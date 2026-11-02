@@ -1,7 +1,7 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.4) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
-rem Windows drivers: Exynos9820Hsi2c, SecTsY761Touch (touch, from the z3s SecTsY79ATouch),
+rem build-s10.cmd (v1.5) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
@@ -57,7 +57,8 @@ rem The public half of the certificate, for install-in-windows.ps1 (pnputil on t
 powershell -NoProfile -Command "$c = Get-ChildItem Cert:\CurrentUser\%CERTSTORE% | Where-Object { $_.Subject -eq 'CN=%CERTNAME%' } | Select-Object -First 1; Export-Certificate -Cert $c -FilePath '%OUT%\kit-test-cert.cer' | Out-Null" || (echo [FAIL] exporting the certificate & exit /b 1)
 
 call :msb Exynos9820Hsi2c || exit /b 1
-call :msb SecTsY761Touch || exit /b 1
+rem v1.5: S10Touch (new touch driver, notes/s10-touch-driver.md) replaces SecTsY761Touch
+call :msb S10Touch || exit /b 1
 call :ufs || exit /b 1
 call :msb S10eBattery || exit /b 1
 rem WiFiCx client (KMDF 1.33 + NetAdapterCx 2.2); same msbuild switches as its build-package.ps1.

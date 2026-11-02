@@ -5,7 +5,7 @@ flash-windows.cmd**. Chỉ khác layout máy, bộ driver và UEFI.
 
 | File | Việc |
 |---|---|
-| `build-s10.cmd` | v1.4: build + ký `Exynos9820Hsi2c`, `SecTsY761Touch` (cảm ứng), `Exynos9820Ufs` (board **Beyond1**), `S10eBattery` (pin/sạc), `Exynos9820WlanCx` (WiFi), `Exynos9820Audio` (loa, **bật sẵn**), `S10eDiag` (phím) → `out\`. GPU tạm gỡ |
+| `build-s10.cmd` | v1.5: build + ký `Exynos9820Hsi2c`, `S10Touch` (cảm ứng **mới**), `Exynos9820Ufs` (board **Beyond1**), `S10eBattery` (pin/sạc), `Exynos9820WlanCx` (WiFi), `Exynos9820Audio` (loa, **bật sẵn**), `S10eDiag` (phím) → `out\`. GPU tạm gỡ |
 | `get-wifi-fw.cmd` | v1.1: kéo firmware WiFi BCM4375 **của chính con S10** (`/vendor/firmware`) ra `bcm4375\` (TWRP hoặc Android có root). **Bắt buộc cho WiFi** |
 | `install-in-windows.ps1` | v1.1: đã có Windows rồi: chạy **trên máy** (PowerShell Admin) để thêm cảm ứng, pin, WiFi (+firmware), loa (bật phần cứng), phím mà không cài lại; cuối cùng in trạng thái từng thiết bị |
 | `push-to-windows.cmd` | **Không cần USB:** máy ở TWRP (Windows mount ở `/data`), chạy trên PC → đẩy driver + firmware WiFi thẳng vào Windows; lần đăng nhập tới bấm **Yes** là tự cài rồi khởi động lại |

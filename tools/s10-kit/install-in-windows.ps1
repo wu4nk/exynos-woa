@@ -4,8 +4,8 @@
   folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
       .\install-in-windows.ps1
-  Does: removes the old S10e touch package (S6SY761TouchBeyond0, same ACPI\SCSY0761), installs
-  SecTsY761Touch, S10eBattery, Exynos9820WlanCx (+ WiFi firmware), Exynos9820Audio (speaker
+  Does: removes the older touch packages (S6SY761TouchBeyond0, SecTsY761Touch: same ACPI\SCSY0761), installs
+  S10Touch (new touch driver), S10eBattery, Exynos9820WlanCx (+ WiFi firmware), Exynos9820Audio (speaker
   hardware switched ON), and the key agent (S10eDiag + S10eAgent, through setup\SetupComplete.cmd).
   Reboot afterwards. Flash UEFI v0.1.5+ first.
   v1.1: audio Parameters forced to 1 (the INF value does not overwrite an old 0); WiFi firmware set
@@ -30,7 +30,7 @@ if (Test-Path $cer) {
 
 # 1. packages that bind the same hardware IDs as ours: remove them first
 $blocks = (pnputil /enum-drivers | Out-String) -split "(\r?\n){2,}"
-foreach ($old in 's6sy761touchbeyond0.inf', 'malig76wddm.inf', 'malig76probe.inf') {
+foreach ($old in 's6sy761touchbeyond0.inf', 'sectsy761touch.inf', 'malig76wddm.inf', 'malig76probe.inf') {
   foreach ($b in $blocks) {
     if ($b -match [regex]::Escape($old) -and $b -match '(oem\d+\.inf)') {
       $pub = $Matches[1]
@@ -64,7 +64,7 @@ foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable') { Set-ItemProperty $ap $v 1
 Ok 'audio: AmpInit / AmpEnable / AboxEnable = 1'
 
 # 4. driver packages
-foreach ($n in 'SecTsY761Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio') {
+foreach ($n in 'S10Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio') {
   $inf = Join-Path $Out "$n\$n.inf"
   if (-not (Test-Path $inf)) { Warn "$n not built - skipped"; continue }
   $r = pnputil /add-driver $inf /install 2>&1 | Out-String

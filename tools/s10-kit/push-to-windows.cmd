@@ -12,7 +12,7 @@ rem Phone in TWRP, Windows volume mounted on /data, USB cable in.
 rem ---------------------------------------------------------------------------
 setlocal EnableExtensions
 cd /d "%~dp0"
-if not exist "out\SecTsY761Touch\SecTsY761Touch.sys" (echo [FAIL] no out\ - run build-s10.cmd first & exit /b 1)
+if not exist "out\S10Touch\S10Touch.sys" (echo [FAIL] no out\ - run build-s10.cmd first & exit /b 1)
 adb get-state >nul 2>&1 || (echo [FAIL] adb sees no device & exit /b 1)
 set "BL="
 for /f %%B in ('adb shell "getprop ro.boot.bootloader"') do set "BL=%%B"

@@ -16,7 +16,7 @@ mkdir -p "$D"
 cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,collect-logs.ps1,push-to-windows.cmd,auto-install.ps1} "$D/"
 mkdir -p "$D/setup" && cp "$KIT/setup/SetupComplete.cmd" "$KIT/setup/S10-install-once.cmd" "$D/setup/"
 cp "$UEFI" "$D/"
-for d in Exynos9820Hsi2c Exynos9820Ufs SecTsY761Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio S10eDiag include; do
+for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio S10eDiag include; do
   (cd "$REPO/drivers" && git ls-files -z "$d" | xargs -0 -I{} cp --parents {} "$D/")
 done
 echo "s10-woa-kit v$VER  repo $(git -C "$REPO" rev-parse --short HEAD)  uefi $(basename "$UEFI")" > "$D/VERSION.txt"

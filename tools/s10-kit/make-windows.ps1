@@ -160,7 +160,7 @@ try {
   if (-not (Test-Path $Source))    { Fail "Not found: $Source" }
   if (-not (Test-Path $DriverDir)) { Fail "No $DriverDir - run build-s10.cmd first." }
   $infs = @(Get-ChildItem $DriverDir -Recurse -Filter *.inf)
-  foreach ($need in 'Exynos9820Ufs.inf', 'Exynos9820Hsi2c.inf', 'SecTsY761Touch.inf') {
+  foreach ($need in 'Exynos9820Ufs.inf', 'Exynos9820Hsi2c.inf', 'S10Touch.inf') {
     if (-not ($infs | Where-Object Name -eq $need)) { Fail "$need missing under $DriverDir - run build-s10.cmd (Windows cannot boot without the UFS driver)." }
   }
   $UfsVer = $null
@@ -169,7 +169,7 @@ try {
     Write-Host ("       driver {0,-26} {1}" -f $i.Name, $ver)
     if ($i.Name -eq 'Exynos9820Ufs.inf' -and "$ver" -match ',\s*(\d+\.\d+\.\d+\.\d+)') { $UfsVer = [version]$Matches[1] }
     if ($i.Name -match '^Exynos990|^SecTsY79A') { Fail "$($i.Name) is an S20 Ultra (z3s) driver - $DriverDir must hold only the S10 drivers" }
-    if ($i.Name -eq 'S6SY761TouchBeyond0.inf') { Fail "$($i.FullName): the old S10e touch driver binds the same ACPI\SCSY0761 as SecTsY761Touch - remove it from $DriverDir" }
+    if ($i.Name -eq 'S6SY761TouchBeyond0.inf' -or $i.Name -eq 'SecTsY761Touch.inf') { Fail "$($i.FullName): an old touch driver binds the same ACPI\SCSY0761 as S10Touch - remove it from $DriverDir" }
   }
   foreach ($opt in @(@('S10eBattery.inf', 'battery / charging'), @('Exynos9820WlanCx.inf', 'WiFi'), @('Exynos9820Audio.inf', 'sound'))) {
     if (-not ($infs | Where-Object Name -eq $opt[0])) { Warn "$($opt[0]) not in $DriverDir - no $($opt[1]) in this image" }
