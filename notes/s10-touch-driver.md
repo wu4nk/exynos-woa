@@ -91,3 +91,14 @@ STATUS_INVALID_DEVICE_STATE (= the c0000184 of 1.0.4 too - it was never the HSI2
 Fix: request created after a successful WdfIoTargetOpen (target closed again if that fails); SpbRead/SpbWrite
 return STATUS_DEVICE_NOT_READY unless open. Exynos9820Hsi2c 1.0.1.0 (no D3 idle) kept: harmless, removes a D0
 transition from the first transfer after a pause.
+
+## 1.0.7.0 (2026-11-03) - works, but taps doubled, drags broken, 3-finger drag = a tap per step
+User after 1.0.6: touch works; single tap often seen twice; drag: double tap at start/end, or cut then a late tap at
+the end; 3 fingers moving -> a stream of taps along the path. Reading: contacts are lifted and re-pressed mid-gesture.
+Two paths did that: (1) any SPB error -> AllUp (1.0.1+; Linux drops the batch only); (2) READ_ALL (left x 8 bytes)
+is used by every multi-finger batch, rarely with one finger -> its failure = AllUp every batch with 3 fingers.
+Exynos9820Hsi2c reads > EXYNOS_HSI2C_FIFO_TRIGGER (8) go through the RX_ALMOST_FULL/TRAILING refill path (GIC SPI
+declared Edge in the DSDT) - not proven on hardware; the 8-byte read is.
+Fix: lift only after S10T_ERROR_LIFT_STREAK (5) failed reads in a row; the rest of a batch is read with
+READ_ONE_EVENT x left (8 bytes each); PRAM F+/F- marks, lift reasons, SpbMaxUs / SpbSlow(>20 ms) in heartbeat 2,
+1 move event in 16 logged.

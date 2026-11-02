@@ -86,6 +86,7 @@
 #define SECTS_STATE_RELEASE         3
 #define SECTS_COORD_MAX             0x0FFF         /* live DT sec,max_coords = <0x1000 0x1000> */
 #define SECTS_SPB_TIMEOUT_MS        250            /* as SecTsY761Touch */
+#define S10T_ERROR_LIFT_STREAK      5              /* 1.0.7: lift every finger only after this many failed reads in a row */
 
 /* ---- HID ---- */
 #define S10T_REPORT_ID              0x54
@@ -141,6 +142,9 @@ typedef struct _S10T_STATS {
     volatile LONG ReadRequests;     /* 1.0.3: IOCTL_HID_READ_REPORTs from hidclass (0 = nobody reads us) */
     volatile LONG Reinits;
     volatile LONG Events;           /* raw controller events read */
+    volatile LONG ErrorLifts;       /* 1.0.7: all-up forced by repeated bus errors */
+    volatile LONG SpbMaxUs;         /* 1.0.7: slowest SPB read, us */
+    volatile LONG SpbSlow;          /* 1.0.7: SPB reads over 20 ms */
 } S10T_STATS;
 
 typedef struct _S10T_DEVICE {
@@ -166,6 +170,7 @@ typedef struct _S10T_DEVICE {
     ULONG           FifoHead, FifoCount;
     ULONGLONG       LastEventTime;
     UCHAR           Events[SECTS_EVENT_SIZE * SECTS_MAX_EVENTS];
+    ULONG           ErrStreak;          /* 1.0.7: consecutive failed reads */
     BOOLEAN         BatchEmpty;         /* last attention gave an I2C error or an empty event stack */
     ULONG           EmptyStreak;        /* consecutive such attentions: back-off against a stuck-low line */
 

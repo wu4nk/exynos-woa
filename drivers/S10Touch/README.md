@@ -47,3 +47,9 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 
 ## 1.0.6.0
 - Sửa màn hình xanh WDF_VIOLATION 0x10D (5 = WDF_INVALID_HANDLE, handle 0) của 1.0.5: request SPB dùng lại được tạo ngay sau `WdfIoTargetCreate`, lúc target chưa mở → `WdfRequestCreate` báo `c0000184`; lần thử lại bỏ qua bước tạo, mở được target rồi gửi request NULL. Giờ request chỉ được tạo sau khi target mở thành công; SpbRead/SpbWrite từ chối khi chưa mở.
+
+## 1.0.7.0
+- Người dùng (2026-11-03): chạm 1 lần thành 2, kéo bị đúp ở điểm đầu/cuối, đứt đoạn; **3 ngón kéo = chạm giật giật dọc đường kéo**.
+- Lỗi I2C không còn nhấc mọi ngón ngay (bản 1.0.1-1.0.6 làm vậy, lần đọc kế tiếp thành một lần chạm mới → chạm đúp). Chỉ nhấc khi lỗi liên tiếp 5 lần (như sec_ts Linux: bỏ lô đó thôi).
+- Không dùng READ_ALL (đọc dài left×8 byte, mọi lô nhiều ngón đều cần) nữa: đọc từng sự kiện 8 byte bằng READ_ONE_EVENT (lệnh này lấy ra một sự kiện khỏi stack), đúng kiểu đọc đã chạy ổn ở UEFI và với 1 ngón.
+- PRAM: thêm dòng F+/F- cho mỗi lần chạm/nhấc, lý do mỗi lần nhấc toàn bộ, thời gian đọc SPB lâu nhất và số lần đọc > 20 ms; chỉ ghi 1/16 sự kiện move để 60 dòng đủ cho cả một thao tác.

@@ -151,8 +151,20 @@ static NTSTATUS SpbRead(_In_ PS10T_DEVICE Dev, _In_ UCHAR Cmd, _Out_writes_(Len)
     WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&mem, &seq, sizeof(seq));
     WDF_REQUEST_SEND_OPTIONS_INIT(&opt, WDF_REQUEST_SEND_OPTION_TIMEOUT);
     WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&opt, WDF_REL_TIMEOUT_IN_MS(SECTS_SPB_TIMEOUT_MS));
-    status = WdfIoTargetSendIoctlSynchronously(Dev->Spb, Dev->SpbRequest, IOCTL_SPB_EXECUTE_SEQUENCE,
-                                               &mem, NULL, &opt, &done);
+    {
+        ULONGLONG t0 = KeQueryInterruptTime();
+        LONG      us;
+
+        status = WdfIoTargetSendIoctlSynchronously(Dev->Spb, Dev->SpbRequest, IOCTL_SPB_EXECUTE_SEQUENCE,
+                                                   &mem, NULL, &opt, &done);
+        us = (LONG)((KeQueryInterruptTime() - t0) / 10ULL);
+        if (us > Dev->Stats.SpbMaxUs) {
+            InterlockedExchange(&Dev->Stats.SpbMaxUs, us);
+        }
+        if (us > 20000) {
+            InterlockedIncrement(&Dev->Stats.SpbSlow);
+        }
+    }
     if (NT_SUCCESS(status) && done != (ULONG_PTR)(1 + Len)) {
         status = STATUS_DEVICE_DATA_ERROR;
     }
@@ -395,12 +407,21 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
     if (!NT_SUCCESS(status)) {
         CHAR t[40];
 
-        (VOID)RtlStringCbPrintfA(t, sizeof(t), "READ_ONE failed %08x", (ULONG)status);
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "READ_ONE failed %08x streak %u", (ULONG)status, Dev->ErrStreak + 1);
         S10tPramRoll(t);
         InterlockedIncrement(&Dev->Stats.I2cErrors);
-        AllUp(Dev);
+        /* 1.0.7: one failed read is not a lift. 1.0.1-1.0.6 lifted every finger on ANY error; the next move event of
+           the same finger then came in as a new touch-down -> a tap seen twice, a drag cut into pieces, a double tap
+           where the drag started (user report, 2026-11-03). sec_ts_read_event simply drops the batch. Lift only when
+           the bus keeps failing, so a finger cannot stay stuck down. */
+        if (++Dev->ErrStreak == S10T_ERROR_LIFT_STREAK) {
+            InterlockedIncrement(&Dev->Stats.ErrorLifts);
+            S10tPramRoll("bus keeps failing: all up");
+            AllUp(Dev);
+        }
         return;
     }
+    Dev->ErrStreak = 0;
     if (ev[0] == 0) {
         return;
     }
@@ -414,12 +435,28 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
         return;
     }
     if (left != 0) {
-        status = SpbRead(Dev, SECTS_CMD_READ_ALL_EVENTS, ev + SECTS_EVENT_SIZE, left * SECTS_EVENT_SIZE);
-        if (!NT_SUCCESS(status)) {
-            InterlockedIncrement(&Dev->Stats.I2cErrors);
-            AllUp(Dev);
-            return;
+        /* 1.0.7: the rest of the stack one event (8 bytes) at a time with READ_ONE_EVENT, which pops an event
+           ("repeat READ_ONE_EVENT until buffer is empty", sec_ts_read_event), instead of one READ_ALL of left x 8
+           bytes. Every multi-finger batch needs the long read - one finger moving rarely does - and that is exactly
+           where touch fell apart (3 fingers dragging = a tap at every step): reads longer than the HSI2C RX trigger
+           (8 bytes) go through the controller's FIFO refill path, the 8-byte read is the one proven in UEFI and
+           Windows. */
+        ULONG k;
+
+        for (k = 1; k <= left; k++) {
+            status = SpbRead(Dev, SECTS_CMD_READ_ONE_EVENT, ev + k * SECTS_EVENT_SIZE, SECTS_EVENT_SIZE);
+            if (!NT_SUCCESS(status) || ev[k * SECTS_EVENT_SIZE] == 0) {
+                if (!NT_SUCCESS(status)) {
+                    CHAR t[40];
+
+                    (VOID)RtlStringCbPrintfA(t, sizeof(t), "READ_ONE %u/%u failed %08x", k, left, (ULONG)status);
+                    S10tPramRoll(t);
+                    InterlockedIncrement(&Dev->Stats.I2cErrors);
+                }
+                break;                              /* keep what was read, no lift */
+            }
         }
+        left = k - 1;
     }
 
     for (i = 0; i <= left; i++) {
@@ -431,9 +468,12 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
             break;
         }
         InterlockedIncrement(&Dev->Stats.Events);
-        (VOID)RtlStringCbPrintfA(t, sizeof(t), "ev %02x %02x %02x %02x %02x %02x %02x %02x L%u/%u",
-                                 e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], i, left);
-        S10tPramRoll(t);
+        /* 1.0.7: every press / release / status event, but only 1 move in 16, so the 60 lines span whole gestures */
+        if (eid != SECTS_EID_COORDINATE || (e[0] >> SECTS_STATE_SHIFT) != SECTS_STATE_MOVE || (Dev->Stats.Events & 15) == 0) {
+            (VOID)RtlStringCbPrintfA(t, sizeof(t), "ev %02x %02x %02x %02x %02x %02x %02x %02x L%u/%u",
+                                     e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], i, left);
+            S10tPramRoll(t);
+        }
         if (eid == SECTS_EID_COORDINATE) {
             ULONG tid   = (e[0] & SECTS_TID_MASK) >> 2;
             ULONG state = e[0] >> SECTS_STATE_SHIFT;
@@ -467,6 +507,8 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
                 if (BuildFrame(Dev, &f, TRUE)) {
                     PushFrame(Dev, &f);
                 }
+                (VOID)RtlStringCbPrintfA(t, sizeof(t), "F- id%u %u,%u", tid - 1, c->X, c->Y);
+                S10tPramRoll(t);
                 continue;
             }
 
@@ -485,6 +527,8 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
                 if (BuildFrame(Dev, &f, TRUE)) {               /* the touch-down gets its own frame */
                     PushFrame(Dev, &f);
                 }
+                (VOID)RtlStringCbPrintfA(t, sizeof(t), "F+ id%u %u,%u st%u tt%u", tid - 1, c->X, c->Y, state, ttype);
+                S10tPramRoll(t);
             } else {
                 moved = TRUE;
             }
@@ -498,6 +542,7 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
                     PushFrame(Dev, &f);
                 }
                 moved = FALSE;
+                S10tPramRoll("status: chip rebooted -> all up, reinit");
                 AllUp(Dev);
                 Dev->NeedReinit = TRUE;
             } else if (stype == SECTS_STYPE_ERR && e[1] == SECTS_ERR_QUEUE_FULL) {
@@ -505,6 +550,7 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
                     PushFrame(Dev, &f);
                 }
                 moved = FALSE;
+                S10tPramRoll("status: queue full -> all up");
                 AllUp(Dev);
             }
         } else if (eid != SECTS_EID_GESTURE) {
@@ -550,11 +596,12 @@ static VOID Heartbeat(_In_ PS10T_DEVICE Dev)
                              Dev->Stats.Irqs, Dev->Stats.Events, Dev->Stats.Frames, Dev->Stats.Delivered,
                              Dev->Stats.ReadRequests, Dev->Stats.I2cErrors, Dev->Stats.InvalidEvents);
     S10tPramLine(2, t);
-    (VOID)RtlStringCbPrintfA(t, sizeof(t), "ff%u co%u rp%u re%u es%u lv%u m%x p%x %uus",
+    (VOID)RtlStringCbPrintfA(t, sizeof(t), "ff%u co%u rp%u re%u el%u lv%u m%x p%x %uus s%u/%u",
                              Dev->Stats.FifoFull, Dev->Stats.Coalesced, Dev->Stats.Repeats, Dev->Stats.Reinits,
-                             Dev->EmptyStreak, Dev->Alive ? (AliveRead(Dev, S10T_GPA1_CON + 4) & 1) : 9,
+                             Dev->Stats.ErrorLifts, Dev->Alive ? (AliveRead(Dev, S10T_GPA1_CON + 4) & 1) : 9,
                              Dev->Alive ? AliveRead(Dev, S10T_EINT_MASK) & 0xFF : 0,
-                             Dev->Alive ? AliveRead(Dev, S10T_EINT_PEND) & 0xFF : 0, Dev->Stats.MaxIrqToReportUs);
+                             Dev->Alive ? AliveRead(Dev, S10T_EINT_PEND) & 0xFF : 0, Dev->Stats.MaxIrqToReportUs,
+                             Dev->Stats.SpbMaxUs, Dev->Stats.SpbSlow);
     S10tPramLine(3, t);
 }
 
