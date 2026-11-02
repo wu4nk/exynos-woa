@@ -16,6 +16,16 @@ A task is not `[x]` until its verification actually ran.
 - [ ] **T08** — Make the installer app able to drive the S10e (stages are `NotImplemented` on purpose) → `tasks/T08-installer-s10e-path.md`
 - [x] **T09** — Get past sboot's load_kernel DT check → `tasks/T09-boot-payload-dtb.md`  *(done: header-v2 container with a DTB section on the BOOT partition, device-validated boots #4-#17; the appended-DTB idea was wrong)*
 
+## Galaxy S10 (beyond1lte) board variant — notes/beyond1-port.md
+
+- [x] **S1** — Read the S10 (SM-G973F) and diff it against the S10e constants
+- [x] **S2** — Firmware board switch (`Exynos9820Board.h`) + `Beyond1LtePkg`; S10e build regression-checked
+- [x] **S3** — UFS driver `-Board Beyond1` (S10 fence/protected LBAs; no free tail → scratch fails closed)
+- [x] **S4** — Linux packer `pack-uefi-beyond1lte.sh` (header v2 + beyond1lte.dtb), versioned image
+- [x] **S5** — Installer `PartitionMap.Beyond1Lte` + `S10eHarness --board beyond1lte`
+- [ ] **S6** — First boot on the S10 (needs the phone; nothing here is validated on it)
+- [ ] **S7** — Settle `kaslr` (S10 DT 0x80001000+0x1000 vs carved 0x80100000+0x100000)
+
 ## Parked — off the boot path
 
 - [ ] **P01** — heimdall auto-restore/reflash path for a fully broken device → `tasks/P01-heimdall-restore.md`

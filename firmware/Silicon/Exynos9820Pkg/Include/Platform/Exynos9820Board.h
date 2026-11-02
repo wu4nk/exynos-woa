@@ -32,7 +32,6 @@
 // 32 bpp. The bootloader scanout base is the S10e's (s3cfb.bootloaderfb=0xca000000
 // in the S10's own bootargs), so only the geometry moves.
 //
-#define EXYNOS_BOARD_NAME_ASCII          "beyond1lte"
 #define EXYNOS_BOARD_FB_WIDTH            1440      // VERIFIED (dumpsys display real 1440 x 3040; fb0 stride 5760 = 1440 x 4)
 #define EXYNOS_BOARD_FB_HEIGHT           3040      // VERIFIED (same reads)
 
@@ -55,7 +54,6 @@
 // Galaxy S10e (beyond0lte) — the values Exynos9820.h carried before the split,
 // unchanged; their provenance stays documented there.
 //
-#define EXYNOS_BOARD_NAME_ASCII          "beyond0lte"
 #define EXYNOS_BOARD_FB_WIDTH            1080
 #define EXYNOS_BOARD_FB_HEIGHT           2280
 #define EXYNOS_BOARD_HAS_DRAM_BANK5      0

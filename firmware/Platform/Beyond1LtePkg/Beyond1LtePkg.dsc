@@ -471,7 +471,7 @@
   # before trusting any timer period here.
   # gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz|26000000   # PCD removed upstream
 
-  # --- Firmware volume placement. MUST match Beyond0LtePkg.fdf.
+  # --- Firmware volume placement. MUST match Beyond1LtePkg.fdf (a copy of Beyond0LtePkg.fdf).
   #
   #     2026-10-10 (notes/m8-uefi-image.md B23/B25): MOVED to 0x90000000, the PRIOR-ART
   #     value - edk2-exynos configs/exynos9820.conf FD_BASE=0x90000000 (FD_SIZE 0x700000)
