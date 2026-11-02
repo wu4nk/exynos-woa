@@ -37,3 +37,6 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
   - dòng 2-3: nhịp tim mỗi giây: số ngắt, sự kiện, khung, khung đã giao, số lệnh đọc của hidclass, lỗi I2C, sự kiện bị loại, FIFO đầy, reinit, mức chân ngắt, thanh ghi EINT, độ trễ lớn nhất
   - dòng 4-63: 60 sự kiện thô gần nhất của chip
 - Không đổi cách xử lý cảm ứng so với 1.0.2.0.
+
+## 1.0.4.0
+- Khởi động chip (chờ app mode, touch function, sense on) chuyển sang luồng worker; `D0Entry` trả về ngay. Bản 1.0.3 chỉ kịp ghi dòng tiêu đề vào PRAM rồi im lặng cả phiên: nó kẹt trong `D0Entry` (mở SPB / đọc boot status) hoặc `PrepareHardware` lỗi. Giờ từng bước đều có dòng PRAM: PrepareHardware (tài nguyên), D0Entry, SpbOpen, interrupts on, từng lần thử boot status (mã lỗi + giá trị), kết quả start.

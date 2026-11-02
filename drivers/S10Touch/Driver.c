@@ -224,18 +224,36 @@ static NTSTATUS ControllerReinit(_In_ PS10T_DEVICE Dev)
     return SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
 }
 
+/* 1.0.4: runs on the worker thread (not in D0Entry, where a bus that never answers held up the PnP start with
+   no trace); every attempt goes to PRAM, and a stop request ends the wait. */
+static BOOLEAN StopWait(_In_ PS10T_DEVICE Dev, _In_ ULONG Ms)
+{
+    LARGE_INTEGER t;
+
+    t.QuadPart = -10000LL * (LONGLONG)Ms;
+    return KeWaitForSingleObject(&Dev->StopEvent, Executive, KernelMode, FALSE, &t) == STATUS_SUCCESS;
+}
+
 static NTSTATUS ControllerStart(_In_ PS10T_DEVICE Dev)
 {
     UCHAR    boot = 0;
     ULONG    tries;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
+    CHAR     t[48];
 
     for (tries = 0; tries < 50; tries++) {
+        boot   = 0;
         status = SpbRead(Dev, SECTS_CMD_BOOT_STATUS, &boot, 1);
+        if (tries < 3 || tries % 10 == 9 || (NT_SUCCESS(status) && boot == SECTS_STATUS_APP_MODE)) {
+            (VOID)RtlStringCbPrintfA(t, sizeof(t), "boot try %u st %08x val %02x", tries, (ULONG)status, boot);
+            S10tPramRoll(t);
+        }
         if (NT_SUCCESS(status) && boot == SECTS_STATUS_APP_MODE) {
             break;
         }
-        SleepMs(20);
+        if (StopWait(Dev, 20)) {
+            return STATUS_CANCELLED;
+        }
     }
     RegWrite(Dev->Device, L"S10tBootStatus", NT_SUCCESS(status) ? boot : 0xFFFFFFFFUL);
     RegWrite(Dev->Device, L"S10tBootTries", tries);
@@ -538,6 +556,21 @@ static VOID WorkerMain(_In_ PVOID Context)
     objs[1] = &Dev->IrqEvent;
     objs[2] = &Dev->KickEvent;
 
+    {
+        NTSTATUS st;
+        CHAR     t[56];
+
+        S10tPramRoll("worker: controller start");
+        st = ControllerStart(Dev);
+        RegWrite(Dev->Device, L"S10tStartStatus", (ULONG)st);
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "start boot %02x tries %u st %08x rpt %u",
+                                 Dev->BootStatus, Dev->BootTries, (ULONG)st, Dev->RepeatMs);
+        S10tPramLine(1, t);
+        S10tPramRoll(t);
+        /* events that came in while starting: read them now (the EINT is unmasked since PostInterruptsEnabled) */
+        KeSetEvent(&Dev->IrqEvent, IO_NO_INCREMENT, FALSE);
+    }
+
     for (;;) {
         /* the repeat clock runs while a finger is down and the controller spoke within S10T_REPEAT_LIMIT_MS;
            after that the contact simply stays down (no phantom refresh) until the controller reports again */
@@ -714,6 +747,12 @@ NTSTATUS S10tEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw, _I
         }
     }
     RegWrite(Device, L"S10tResources", (spb ? 1 : 0) | (irq >= 0 ? 2 : 0) | (alive ? 4 : 0));
+    {
+        CHAR t[48];
+
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "PrepareHardware res %u (need 7) n %u", (spb ? 1 : 0) | (irq >= 0 ? 2 : 0) | (alive ? 4 : 0), n);
+        S10tPramRoll(t);
+    }
     if (!spb || irq < 0 || !alive) {
         return STATUS_DEVICE_CONFIGURATION_ERROR;   /* needs the S10 DSDT TSP0 (UEFI v0.1.2+) */
     }
@@ -730,6 +769,7 @@ NTSTATUS S10tEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw, _I
         ic.InterruptTranslated = WdfCmResourceListGetDescriptor(Translated, (ULONG)irq);
         status = WdfInterruptCreate(Device, &ic, WDF_NO_OBJECT_ATTRIBUTES, &Dev->Interrupt);
         if (!NT_SUCCESS(status)) {
+            S10tPramRoll("WdfInterruptCreate FAILED");
             RegWrite(Device, L"S10tInterruptStatus", (ULONG)status);
             return status;
         }
@@ -764,24 +804,22 @@ NTSTATUS S10tEvtD0Entry(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Previ
     NTSTATUS     status;
 
     UNREFERENCED_PARAMETER(Previous);
+    S10tPramRoll("D0Entry");
     EintConfigure(Dev);                         /* masked until D0EntryPostInterruptsEnabled */
 
     status = SpbOpen(Dev);
     RegWrite(Device, L"S10tSpbOpenStatus", (ULONG)status);
+    {
+        CHAR t[40];
+
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "SpbOpen %08x", (ULONG)status);
+        S10tPramRoll(t);
+    }
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
-    /* Not fatal: a controller that does not answer is visible in the registry, the device still starts. */
-    status = ControllerStart(Dev);
-    RegWrite(Device, L"S10tStartStatus", (ULONG)status);
-    {
-        CHAR t[56];
-
-        (VOID)RtlStringCbPrintfA(t, sizeof(t), "D0Entry boot %02x tries %u start %08x rpt %u",
-                                 Dev->BootStatus, Dev->BootTries, (ULONG)status, Dev->RepeatMs);
-        S10tPramLine(1, t);
-    }
+    /* 1.0.4: the controller is started by the worker (ControllerStart), D0Entry returns right away. */
 
     status = WorkerStart(Dev);
     RegWrite(Device, L"S10tWorkerStatus", (ULONG)status);
@@ -793,6 +831,7 @@ NTSTATUS S10tEvtD0EntryPostInterruptsEnabled(_In_ WDFDEVICE Device, _In_ WDF_POW
     PS10T_DEVICE Dev = S10tGet(Device);
 
     UNREFERENCED_PARAMETER(Previous);
+    S10tPramRoll("interrupts on");
     EintAck(Dev);
     EintMask(Dev, FALSE);
     return STATUS_SUCCESS;

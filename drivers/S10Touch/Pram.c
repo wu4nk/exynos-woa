@@ -12,7 +12,7 @@
  * Layout: 64 lines of 64 bytes, "<uptime ms, 10 digits> <text>" padded with spaces, ended by '\n' (the S10eDiag /
  * MaliG76Wddm format, read with `tr -c '[:print:]\n' '\n'`):
  *   line 0   "S10TOUCH <version>" + boot uptime
- *   line 1   start: boot status, tries, ControllerStart status, resources
+ *   line 1   start (worker): boot status, tries, ControllerStart status
  *   line 2   heartbeat (worker, once a second): counters
  *   line 3   heartbeat 2: attention line level, EINT registers, read requests, reinits
  *   lines 4..63  rolling: every raw controller event (8 bytes) and notable things, "#seq" first
@@ -47,7 +47,7 @@ VOID S10tPramInit(VOID)
             Pram[i] = (i % S10T_PRAM_LINE == S10T_PRAM_LINE - 1) ? '\n' : ' ';
         }
         PramRoll = S10T_PRAM_ROLL0;
-        S10tPramLine(0, "S10TOUCH 1.0.3.0 (pram +0xE000, 64 x 64 B)");
+        S10tPramLine(0, "S10TOUCH 1.0.4.0 (pram +0xE000, 64 x 64 B)");
     }
 }
 

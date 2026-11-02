@@ -58,3 +58,14 @@ integrity 0x80, fw 17.55.02.01, img 17.55.02.34, touch function already 0x0061, 
 1.0.3.0: the driver writes its state into WINPRAM +0xE000 (free slice per the 2026-10-13 inventory), 64 x 64 B
 lines: D0Entry result, a 1 s heartbeat with all counters + EINT mask/pend + attention level + hidclass read
 requests, and the last 60 raw controller events. The worker now always waits with a 1 s timeout (heartbeat).
+
+## 1.0.4.0 (2026-11-03) - 1.0.3 PRAM: header only
+Logs 20261103-000930 (fresh image from make-windows v2.3): UEFILOG = **v0.1.7** (the flash kit picked it, not
+v0.1.8): USI03 still at PERIC0_IP/1 (~800 kHz SCL); TouchChip: boot status 0x20, id 53 45 37 71, ts status
+00 02 01 00, **sense on: Device Error** (write failed at 800 kHz) -> "controller NOT started". WINPRAM-RESTART.BIN
++0xE000: only line 0 "S10TOUCH 1.0.3.0" at uptime 6484 ms - no D0Entry line (written after ControllerStart), no
+heartbeat for the whole session -> stuck in SpbOpen / ControllerStart inside D0Entry, or PrepareHardware failed
+after PramInit. 1.0.4: ControllerStart runs on the worker (stop-aware waits), D0Entry returns at once, PRAM marks
+for PrepareHardware (resource mask), D0Entry, SpbOpen status, interrupts on, boot-status attempts, start result.
+Also noted: Exynos9820Hsi2c idles to D3 after 1 s (SystemManagedIdleTimeoutWithHint 1000 ms): first transfer
+after idle waits for its D0 - a latency candidate for later.
