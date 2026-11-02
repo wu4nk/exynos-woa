@@ -1,8 +1,9 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem push-to-windows.cmd (v1.3) - put the built kit straight into the Windows install on the S10
-rem   push-to-windows.cmd       C: if TWRP can write it, else the EFI partition (S10KIT\INSTALL.CMD)
-rem   push-to-windows.cmd esp   always the EFI partition, the Windows volume is not touched at all
+rem push-to-windows.cmd (v1.4) - put the built kit straight into the Windows install on the S10
+rem   push-to-windows.cmd       (v1.4 default) the kit goes to /cache = the EFI partition (ESP:\S10KIT +
+rem                             INSTALL.CMD); the Windows volume is not touched at all
+rem   push-to-windows.cmd c     straight into C: (only when TWRP can write the Windows volume)
 rem from TWRP, no USB stick: TWRP mounts the Windows volume (userdata, NTFS) on /data.
 rem   - drivers + scripts      -> C:\S10Prov\kit\
 rem   - WiFi firmware          -> C:\Windows\System32\drivers\bcm4375\ (active right away)
@@ -14,8 +15,8 @@ rem Phone in TWRP, Windows volume mounted on /data, USB cable in.
 rem ---------------------------------------------------------------------------
 setlocal EnableExtensions
 cd /d "%~dp0"
-set "MODE="
-if /i "%~1"=="esp" set "MODE=esp"
+set "MODE=esp"
+if /i "%~1"=="c" set "MODE=c"
 if not exist "out\S10Touch\S10Touch.sys" (echo [FAIL] no out\ - run build-s10.cmd first & exit /b 1)
 adb get-state >nul 2>&1 || (echo [FAIL] adb sees no device & exit /b 1)
 set "BL="
@@ -47,7 +48,7 @@ echo [ OK ] Reboot to Windows ^(TWRP: Reboot ^> System^), log in, tap Yes on the
 exit /b 0
 :esp
 echo.
-echo [ OK ] The Windows volume is read-only in TWRP, so the kit went to the boot partition ^(ESP^) instead.
+echo [ OK ] Kit written to /cache = the EFI partition ^(ESP:\S10KIT^).
 echo        Reboot to Windows, open cmd AS ADMINISTRATOR and type:
 echo.
 echo            mountvol S: /s
@@ -59,7 +60,7 @@ echo        reason TWRP mounts Windows read-only^) and tells you when to reboot.
 exit /b 0
 #__SH__
 #!/system/bin/sh
-# push-to-windows.sh (v1.3) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
+# push-to-windows.sh (v1.4) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
 # pushed the kit to $STAGE. Places it inside the Windows volume that TWRP mounted on /data:
 #   C:\S10Prov\kit\                      the kit (out\, bcm4375\, setup\, scripts)
 #   C:\Windows\System32\drivers\bcm4375\ the WiFi firmware (works offline, no install step needed)
@@ -86,7 +87,7 @@ ci() {
 }
 
 [ -d "$STAGE/out" ] || fail "nothing staged in $STAGE (push-to-windows.cmd pushes it first)"
-if [ "$MODE" != esp ]; then
+if [ "$MODE" = c ]; then
   SYS32=$(ci "$W" "Windows/System32")
   if [ ! -d "$SYS32" ]; then mount /data 2>/dev/null; SYS32=$(ci "$W" "Windows/System32"); fi
   [ -d "$SYS32" ] || fail "/data is not the Windows volume (no Windows\\System32) - mount it in TWRP first"
@@ -137,21 +138,21 @@ make_rw() {
 # writable from TWRP) with S10KIT\INSTALL.CMD; exit 3 tells push-to-windows.cmd to print the Windows steps.
 esp_fallback() {
   ED=$(readlink -f /dev/block/by-name/cache 2>/dev/null)
-  [ -n "$ED" ] || fail "no cache partition (ESP) either"
+  [ -n "$ED" ] || fail "no cache partition"
+  # /cache as TWRP mounts it; mount it there if TWRP did not
   E=$(grep "^$ED " /proc/mounts | head -n 1 | cut -d' ' -f2)
-  if [ -n "$E" ]; then
-    mount -o remount,rw "$E" 2>/dev/null
-  else
-    E=/tmp/s10esp; mkdir -p "$E"
-    mount -t vfat -o rw "$ED" "$E" 2>/dev/null || fail "/data is read-only and the ESP ($ED) does not mount as FAT32 either"
+  if [ -z "$E" ]; then
+    E=/cache; mkdir -p "$E"
+    mount -t vfat -o rw "$ED" "$E" 2>/dev/null || fail "/cache ($ED) does not mount as FAT32"
   fi
+  mount -o remount,rw "$E" 2>/dev/null
   [ -d "$(ci "$E" "EFI")" ] || fail "$ED mounted on $E has no EFI\\ folder - not the Windows ESP, nothing written"
   K="$E/S10KIT"
   rm -rf "$K"; mkdir -p "$K" || fail "mkdir $K"
   cp -r "$STAGE"/. "$K"/ || fail "copy the kit to the ESP (full?)"
   printf '%s\r\n' \
     '@echo off' \
-    'rem S10KIT\INSTALL.CMD - written by push-to-windows v1.3 (TWRP could only read the Windows volume).' \
+    'rem S10KIT\INSTALL.CMD - written by push-to-windows v1.4 (TWRP could only read the Windows volume).' \
     'rem In Windows, an ADMINISTRATOR cmd:   mountvol S: /s   then   S:\S10KIT\INSTALL.CMD' \
     'net session >nul 2>&1 || (echo [FAIL] open cmd as Administrator first & exit /b 1)' \
     'robocopy "%~dp0." C:\S10Prov\kit /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul' \
@@ -167,12 +168,11 @@ esp_fallback() {
     'echo Done. Type:  mountvol S: /d   then reboot (shutdown /r /t 0).' \
     > "$K/INSTALL.CMD" || fail "write INSTALL.CMD"
   sync
-  say "kit -> ESP:\\S10KIT ($(du -sk "$K" | cut -f1) KiB) + INSTALL.CMD"
-  [ "$E" = /tmp/s10esp ] && umount "$E" 2>/dev/null
+  say "kit -> $E/S10KIT = ESP:\\S10KIT ($(du -sk "$K" | cut -f1) KiB) + INSTALL.CMD"
   exit 3
 }
 if [ "$MODE" = esp ]; then
-  echo "[ OK ] ESP mode (push-to-windows.cmd esp): the Windows volume is not touched"
+  echo "[ OK ] writing to /cache (the EFI partition); the Windows volume is not touched"
   esp_fallback
 fi
 make_rw || { echo "[WARN] /data stays read-only - using the ESP instead"; esp_fallback; }
