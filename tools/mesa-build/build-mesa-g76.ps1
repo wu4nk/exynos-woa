@@ -35,7 +35,12 @@ foreach ($s in $Stage) {
 $MesaOrig = Join-Path $Mali 'mesa-26.2'          # never modified
 $Mesa = Join-Path $Mali 'mesa-26.2-g76'          # patched working copy
 $Ref = Join-Path $Mali 'wddm-mali-g52'
+# The wddm-mali-g52 commit patches/0020+ were written against. Upstream kept going (it has its own
+# mesa-patches/0020 now, and a newer shim): every file below comes from THIS commit, extracted with
+# git archive, whatever the clone has checked out (notes/gpu-s10-review.md).
+$RefCommit = '16f7e7c6'
 $Work = Join-Path $Mali 'g12-work'
+$RefPin = Join-Path $Work "ref-$RefCommit"
 $Venv = Join-Path $Mali 'venv'
 $Libpan = Join-Path $Work 'libpan-prebuilt'
 $HostBuild = Join-Path $Work 'build-host-x64'
@@ -73,7 +78,7 @@ function Common-Tools {
     if ($h -ne '8D324B62BE33604B2C45AD1DD34AB93D722534448F55A16CA7292DE32B6AC135') { throw "winflexbison sha256 $h" }
     Expand-Archive "$dl\wfb.zip" -DestinationPath $Flex -Force
   }
-  $env:PATH = "$Venv\Scripts;$Flex;$Ref\ci\clc-stubs;$env:PATH"
+  $env:PATH = "$Venv\Scripts;$Flex;$RefPin\ci\clc-stubs;$env:PATH"
   $env:LIBPAN_PREBUILT = $Libpan
 }
 
@@ -90,11 +95,18 @@ $MesonOpts = @(
 if (Want 'source') {
   if (Test-Path $Mesa) { throw "$Mesa exists - delete it to re-create the working copy" }
   git clone -c core.autocrlf=false --no-local $MesaOrig $Mesa; Check 'clone'
+  git -C $Ref cat-file -e "$RefCommit^{commit}" 2>$null
+  if ($LASTEXITCODE) { throw "$Ref has no commit $RefCommit (shallow clone?): git -C $Ref fetch --unshallow" }
+  if (Test-Path $RefPin) { Remove-Item -Recurse -Force $RefPin }
+  New-Item -ItemType Directory -Force $RefPin | Out-Null
+  git -C $Ref archive --format=tar -o "$Work\ref-pin.tar" $RefCommit ci win32-compat include mesa-patches; Check 'git archive'
+  tar -xf "$Work\ref-pin.tar" -C $RefPin; Check 'tar'
   $lf = Join-Path $Work 'patches-lf'
+  if (Test-Path $lf) { Remove-Item -Recurse -Force $lf }
   New-Item -ItemType Directory -Force $lf | Out-Null
-  Copy-Item -Recurse "$Ref\win32-compat" "$Mesa\include\win32-compat"
-  Copy-Item "$Ref\include\malikm_ioctl.h", "$Ref\include\maliwddm_abi.h" "$Mesa\include\win32-compat\"
-  Get-ChildItem "$Ref\mesa-patches" -Filter *.patch | Sort-Object Name | ForEach-Object {
+  Copy-Item -Recurse "$RefPin\win32-compat" "$Mesa\include\win32-compat"
+  Copy-Item "$RefPin\include\malikm_ioctl.h", "$RefPin\include\maliwddm_abi.h" "$Mesa\include\win32-compat\"
+  Get-ChildItem "$RefPin\mesa-patches" -Filter *.patch | Sort-Object Name | ForEach-Object {
     $t = [IO.File]::ReadAllText($_.FullName) -replace "`r", ''
     [IO.File]::WriteAllText((Join-Path $lf $_.Name), $t)
     Write-Host "applying $($_.Name)"

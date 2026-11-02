@@ -90,3 +90,18 @@ No device access (S10 owner tests). Builds: UEFI only (Linux); Windows drivers c
   MdlPage = MdlOffset) is device-validated with the current reading, so remapping at GpuVa + MdlOffset is a guess.
   Instead PartialMaps / LastPartialMdlOffset are counted (BuildPagingBuffer) and logged at StopDevice; a GpuEnable 1
   run with PartialMaps 0 closes it.
+- Review of Fix 2 (adversarial): counted only on the GpuUp path (the GPU mapping is the thing that assumes whole
+  maps; the !GpuUp path records the MDL for presents exactly as before). NumberOfPages compared before the clamp,
+  so an oversized map counts too. No behaviour change. No defect.
+
+## Fix 3 - Mesa: patch 0040 (upstream residency fix) + reference pinned to 16f7e7c6
+- patches/0040-g13-shim-lists-every-live-bo-per-submit.patch = upstream 555a120 + d064464 (malikm_drm.c only),
+  generated on a replay of 16f7e7c6's shim + our 0020..0037 shim hunks. Verified: the whole chain 0020..0040
+  applies in order to 16f7e7c6:win32-compat/malikm_drm.c (scratchpad/shim-verify); every identifier the new code
+  uses exists in the patched file (wddm_bo, walloc_size, wbo_cap, trace_on, w_escape, w_render, PANFROST_BO_HEAP);
+  MW_ESCAPE_STATS_DATA JobsFailed/LastJsStatus/LastFaultStatus/LastFaultAddress exist in our ABI header.
+  Not compiled here (needs the Windows SDK + Mesa tree); upstream CI built the same code.
+- build-mesa-g76.ps1: $RefCommit = 16f7e7c6; the source stage git-archives ci/ win32-compat/ include/
+  mesa-patches/ of that commit into g12-work\ref-16f7e7c6 and uses only those (and its ci\clc-stubs on PATH).
+  Simulated here: the archive holds mesa-patches 0001..0019 only, and include/maliwddm_abi.h is byte-identical to
+  drivers/MaliG76Wddm/include/maliwddm_abi.h. A shallow clone fails early with the fetch --unshallow hint.
