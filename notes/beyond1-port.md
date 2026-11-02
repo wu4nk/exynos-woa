@@ -142,3 +142,13 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   set-esp-type.ps1 refuse a bootloader that is not G973*; set-esp-type re-checks the
   cache/userdata GUIDs on the phone. z3s-disk.cs compiled with .NET 8; the PowerShell
   scripts were NOT parsed or run here (no PowerShell on this machine).
+- 2026-11-02 — FIRST S10 WINDOWS BOOT (WU4NK): Windows boots; horizontal streaks over the
+  regions the boot spinner redraws. Suspected: the framebuffer is a hole in the EFI memory
+  map (UEFI maps it Device, the OS picks its own attributes) — Mu-Silicium/edk2-msm publish
+  the panel buffer as "Display Reserved", write-through, and WU4NK's S20U (Mu-Silicium based)
+  shows no streaks. v0.1.1: `BEYOND0LTE_FB_DISPLAY_RESERVED_WT` (default = S10 board):
+  page table WT + resource HOB EFI_RESOURCE_MEMORY_RESERVED (attrs 0x1007, base 0xCA000000,
+  0x10B3000) + EfiReservedMemoryType allocation HOB — checked in the PeilessSec disassembly.
+  S10e PeilessSec unchanged except ASSERT line immediates. UNVERIFIED until booted; if the
+  streaks only move with the animation and leave no residue, the cause is command-mode
+  tearing instead (no TE sync) and this does not fix it.

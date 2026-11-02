@@ -48,6 +48,19 @@
 #define MMAP_DEV    ARM_MEMORY_REGION_ATTRIBUTE_DEVICE
 
 //
+// Boot framebuffer as "Display Reserved" (S10 v0.1.1, notes/beyond1-port.md): mapped
+// WRITE-THROUGH and published to the OS as a reserved-memory resource + EfiReservedMemoryType
+// allocation, the way Mu-Silicium / edk2-msm describe every WoA panel buffer. Without it the
+// framebuffer is a HOLE in the EFI memory map and the OS picks the attributes itself. The
+// Galaxy S10's first Windows boot showed horizontal streaks over the regions the boot spinner
+// redraws; SUSPECTED cause: CPU writes held in cache while the DECON scans DRAM. UNVERIFIED -
+// this build is the test. Default on for the S10 board only; the S10e build is unchanged.
+//
+#ifndef BEYOND0LTE_FB_DISPLAY_RESERVED_WT
+#define BEYOND0LTE_FB_DISPLAY_RESERVED_WT  EXYNOS9820_BOARD_BEYOND1
+#endif
+
+//
 // The 9810 flow wrote single-byte boot breadcrumbs to 0xFED14000 and mapped a
 // 64 KB Device window over it. That worked because on the S9+ DRAM ENDED at
 // 0xBC800000, so 0xFED14000 was above every bank.
@@ -403,7 +416,11 @@ ArmPlatformGetVirtualMemoryMap (
     Table[Index].PhysicalBase = EXYNOS_FB_BASE;
     Table[Index].VirtualBase  = EXYNOS_FB_BASE;
     Table[Index].Length       = EFI_PAGES_TO_SIZE (EFI_SIZE_TO_PAGES (EXYNOS_FB_SIZE));
+#if BEYOND0LTE_FB_DISPLAY_RESERVED_WT
+    Table[Index].Attributes   = ARM_MEMORY_REGION_ATTRIBUTE_WRITE_THROUGH;
+#else
     Table[Index].Attributes   = MMAP_DEV;
+#endif
     Index++;
   }
 
@@ -546,6 +563,22 @@ ArmPlatformGetVirtualMemoryMap (
           }
         }
       }
+#endif
+
+#if BEYOND0LTE_FB_DISPLAY_RESERVED_WT
+      //
+      // "Display Reserved": the panel buffer reaches the OS as reserved, write-through memory
+      // (page-rounded; the same extent mMonitorReservations carves out of bank1 RAM above, so
+      // this resource HOB overlaps no system-memory HOB).
+      //
+      BuildResourceDescriptorHob (
+        EFI_RESOURCE_MEMORY_RESERVED,
+        EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED |
+        EFI_RESOURCE_ATTRIBUTE_TESTED | EFI_RESOURCE_ATTRIBUTE_WRITE_THROUGH_CACHEABLE,
+        EXYNOS_FB_BASE,
+        (EXYNOS_FB_SIZE + 0xFFFULL) & ~0xFFFULL
+        );
+      BuildMemoryAllocationHob (EXYNOS_FB_BASE, (EXYNOS_FB_SIZE + 0xFFFULL) & ~0xFFFULL, EfiReservedMemoryType);
 #endif
 
       // W35: the Windows UFS driver's DMA workspace (inside its bank0 window) - never RAM to anyone.
