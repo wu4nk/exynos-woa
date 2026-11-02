@@ -1,6 +1,6 @@
 <#
-  gpu-s10.ps1 (v1.0) - Galaxy S10 GPU stage G1: run the Mali-G76 job test, then switch the screen
-  to the Mali display driver. Run ON THE PHONE, PowerShell as Administrator, from the kit folder
+  gpu-s10.ps1 (v1.1) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
 
@@ -8,17 +8,24 @@
     .\gpu-s10.ps1 probe     install MaliG76Probe: the GPU runs ONE job (writes c0ffee42 into RAM) and
                             the result goes to C:\Windows\System32\LogFiles\MaliG76Probe-run.txt
     .\gpu-s10.ps1 display   swap to MaliG76Wddm, display-only mode (GpuEnable 0, FullAdapter 0) - reboot
+    .\gpu-s10.ps1 full      G2a: copy maliumd.dll (Mesa d3d10umd + panfrost, ARM64) to System32 and switch
+                            MaliG76Wddm to the full adapter (FullAdapter 1, GpuEnable 0) - reboot.
+                            Mesa draws with softpipe ON THE CPU in this mode (the Mali does no work yet):
+                            expect it to be SLOWER than display-only. maliumd.dll is looked for next to this
+                            script, in out-gpu\ and in out-gpu\umd\.
     .\gpu-s10.ps1 off       remove both GPU packages; Microsoft Basic Display takes the screen back - reboot
 
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
   Rescue if the screen stays black after "display": boot TWRP, mount the ESP, create
   \S10EDIAG\nogpu.flg on it (GPU0 disappears on the next boot) - or flash beyond1lte-uefi v0.1.2.
+  Back from "full": .\gpu-s10.ps1 display (FullAdapter 0 again; maliumd.dll may stay, it is only loaded
+  in full mode). If "full" hangs: nogpu.flg from TWRP, boot, run "display", delete nogpu.flg, reboot.
 #>
-param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'off')][string]$Action = 'status')
+param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'off')][string]$Action = 'status')
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.0  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.1  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -31,6 +38,7 @@ $Out = Join-Path $PSScriptRoot 'out-gpu'                     # build-s10.cmd v1.
 if (-not (Test-Path $Out)) { $Out = Join-Path $PSScriptRoot 'out' }
 $ProbeLog = "$env:SystemRoot\System32\LogFiles\MaliG76Probe-run.txt"
 $SvcParams = 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters'
+$UmdDst = "$env:SystemRoot\System32\maliumd.dll"   # MaliG76Wddm.inf UserModeDriverName = maliumd.dll x4
 
 function Get-Gpu0 { Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'ACPI\SAMS9828\*' } | Select-Object -First 1 }
 
@@ -85,6 +93,14 @@ function Show-Status {
       $l = '    {0} = 0x{1:X8}' -f $_.Name, $_.Value; $l | Add-Content $Report; Write-Host $l }
     if ($p.FbMatchesGop -eq 1) { Ok 'display: the framebuffer Windows handed over is the S10 panel (1440x3040)' }
   }
+  if (Test-Path $SvcParams) {
+    $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
+    Info ("mode registry: FullAdapter {0}  GpuEnable {1}" -f $m.FullAdapter, $m.GpuEnable)
+  }
+  if (Test-Path $UmdDst) {
+    $h = (Get-FileHash $UmdDst -Algorithm SHA256).Hash.ToLower()
+    Info ("UMD: $UmdDst  {0:N0} bytes  sha256 {1}" -f (Get-Item $UmdDst).Length, $h)
+  } else { Info 'UMD: no maliumd.dll in System32 (only needed for "full")' }
   Get-CimInstance Win32_VideoController | ForEach-Object {
     Info ("video: {0}  {1}x{2}  status {3}" -f $_.Name, $_.CurrentHorizontalResolution, $_.CurrentVerticalResolution, $_.Status) }
   return $true
@@ -113,6 +129,35 @@ switch ($Action) {
     Ok 'mode: display-only (GpuEnable 0, FullAdapter 0)'
     Info 'reboot, then run: .\gpu-s10.ps1 status   (FbMatchesGop = 1 is the good sign)'
     Info 'black screen after reboot -> TWRP, create \S10EDIAG\nogpu.flg on the ESP (or flash v0.1.2)'
+  }
+  'full' {
+    if (-not (Show-Status)) { Fail 'no GPU0 - flash beyond1lte-uefi v0.1.3+ first' }
+    $g = Get-Gpu0
+    $svc = (Get-PnpDeviceProperty -InstanceId $g.InstanceId -KeyName DEVPKEY_Device_Service -ErrorAction SilentlyContinue).Data
+    if ($svc -ne 'MaliG76Wddm') { Fail "GPU0 runs '$svc', not MaliG76Wddm - run .\gpu-s10.ps1 display first, reboot, check status" }
+    $src = @((Join-Path $PSScriptRoot 'maliumd.dll'), (Join-Path $Out 'maliumd.dll'), (Join-Path $Out 'umd\maliumd.dll')) |
+      Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $src) { Fail 'no maliumd.dll next to this script, in out-gpu\ or out-gpu\umd\ - copy it there first' }
+    $sum = Join-Path (Split-Path $src) 'SHA256SUMS'
+    $h = (Get-FileHash $src -Algorithm SHA256).Hash.ToLower()
+    if ((Test-Path $sum) -and -not (Select-String -Path $sum -Pattern $h -SimpleMatch -Quiet)) {
+      Fail "maliumd.dll sha256 $h is not in $sum - copy damaged?"
+    }
+    # A loaded DLL cannot be overwritten but can be renamed: move the old one aside first.
+    if (Test-Path $UmdDst) {
+      $old = "$UmdDst.old"
+      if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+      Rename-Item $UmdDst (Split-Path $old -Leaf) -Force
+      Info "previous maliumd.dll -> $old"
+    }
+    Copy-Item $src $UmdDst -Force
+    Ok ("maliumd.dll -> $UmdDst ({0:N0} bytes, sha256 {1})" -f (Get-Item $UmdDst).Length, $h)
+    New-Item -Force $SvcParams | Out-Null
+    Set-ItemProperty $SvcParams FullAdapter 1 -Type DWord
+    Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
+    Ok 'mode: full adapter, GPU half off (FullAdapter 1, GpuEnable 0) - Mesa softpipe draws on the CPU'
+    Info 'reboot, then run: .\gpu-s10.ps1 status   and collect logs (s10-log.cmd)'
+    Info 'back: .\gpu-s10.ps1 display + reboot.  Hang: TWRP -> \S10EDIAG\nogpu.flg on the ESP, boot, "display", delete the flag'
   }
   'off' {
     Remove-Pkg 'maliG76wddm.inf'

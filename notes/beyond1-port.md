@@ -361,3 +361,18 @@ G2 (Mesa UMD) on the Linux build box: Mesa 26.2.4 @9a0169f from github chaotic-c
 our 0020-0040 all apply; libpan SPIR-V v4-v14 built (conda-forge LLVM 18, 0 warnings); host panfrost_compile built
 with clang 18 -mms-bitfields; ARM64 UMD via zig 0.13 (aarch64-windows-gnu, -mms-bitfields) needs the WDK DDI headers
 (tools/mesa-build/get-ddi-headers.ps1 on the user's PC; Mesa include/winddk/README.txt list).
+
+## G2 build 2026-11-03 05:50 - maliumd.dll (Mesa d3d10umd + panfrost, ARM64) built on Linux
+- ddi-headers.zip from the user's extracted EWDK: SDK 10.0.28000.0, 34 files (Compress-Archive names with
+  backslashes). Used only the 11 mingw lacks: d3d10/11tokenizedprogramformat.hpp, d3d10umddi.h, d3dkmddi.h,
+  d3dkmdt.h, d3dkmthk.h, d3dukmdt.h, d3dumddi.h, dxgiddi.h, dxmini.h, wmidata.h; mingw's sal/d3d11/dxgi stay.
+- Fixes needed (none in Mesa itself beyond 0041): case symlinks d3d1xTokenizedProgramFormat.hpp; `_Maybenull_`
+  missing from mingw sal.h (-include ddi_mingw_compat.h); -Wno-error=missing-prototypes (the shim's exported
+  helpers malikm_* / d3d10_bind_runtime have no prototypes; MSVC never enables that warning).
+- Result: libgallium_d3d10.dll 14.6 MB, PE32+ AArch64 DLL, exports OpenAdapter10 / OpenAdapter10_2 (+ Mesa's
+  D3DKMT.cpp stubs, exported because d3dkmthk.h declares them dllimport - MSVC does the same; the shim resolves the
+  real D3DKMT* through GetProcAddress(win32u/gdi32), malikm_drm.c:642). Imports: GDI32, KERNEL32, USER32,
+  api-ms-win-core-synch, api-ms-win-crt-* (UCRT) - no VCRUNTIME140, so no vc_redist needed (libc++ static).
+- buildtype debugoptimized (asserts on), same as the S10e g54 UMD.
+- gpu-s10.ps1 v1.1: `full` = G2a (copies maliumd.dll to System32, FullAdapter 1, GpuEnable 0). Expectation from
+  S10e g52-g54: desktop via softpipe on the CPU, slower than display-only; GpuEnable 1 never worked on the S10e.

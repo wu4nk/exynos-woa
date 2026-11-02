@@ -69,10 +69,23 @@ if want cross; then
   for t in cc c++; do printf '#!/bin/sh\nexec %s %s -target aarch64-windows-gnu "$@"\n' "$ZIG" $t > $TC/zig-$t; done
   for t in ar rc dlltool; do printf '#!/bin/sh\nexec %s %s "$@"\n' "$ZIG" $t > $TC/zig-$t; done
   chmod +x $TC/zig-*
-  # DDI headers: flatten um/shared/km into one -I dir (they include each other by bare name).
+  # DDI headers: only the ones mingw-w64 lacks (Mesa include/winddk/README.txt), flat in one -I dir. The WDK's
+  # sal.h / d3d11.h / dxgi*.h stay out: mingw's own are used. Compress-Archive (PowerShell 5.1) stores names
+  # with backslashes ("um\d3d10umddi.h"), so match on the basename.
   if [ -f "$DDI_IN" ]; then rm -rf ddi-zip; mkdir ddi-zip; (cd ddi-zip && python3 -I -m zipfile -e "$DDI_IN" .); DDI_SRC=ddi-zip; else DDI_SRC=$DDI_IN; fi
-  rm -rf ddi; mkdir ddi; find "$DDI_SRC" -type f \( -name '*.h' -o -name '*.hpp' \) -exec cp {} ddi/ \;
-  echo "ddi: $(ls ddi | wc -l) headers"
+  rm -rf ddi; mkdir ddi
+  for h in d3d10tokenizedprogramformat.hpp d3d11tokenizedprogramformat.hpp d3d10umddi.h d3dkmddi.h d3dkmdt.h \
+           d3dkmthk.h d3dukmdt.h d3dumddi.h dxgiddi.h dxmini.h wmidata.h; do
+    f=$(find "$DDI_SRC" -type f | awk -v h="$h" '{n=$0; gsub(/.*[\/\\]/, "", n); if (tolower(n) == h) {print; exit}}')
+    [ -n "$f" ] || { echo "ddi: missing $h"; exit 1; }
+    cp "$f" ddi/$h
+  done
+  # d3d10umddi.h includes them with this case (Windows is case-insensitive, Linux is not).
+  ln -s d3d10tokenizedprogramformat.hpp ddi/d3d10TokenizedProgramFormat.hpp
+  ln -s d3d11tokenizedprogramformat.hpp ddi/d3d11TokenizedProgramFormat.hpp
+  # SAL annotation the WDK 10.0.28000 d3dkmddi.h uses that mingw-w64's sal.h lacks.
+  printf '/* exynos-woa G2: SAL the WDK DDI headers use that mingw-w64 lacks (no-ops). */\n#pragma once\n#ifndef _Maybenull_\n#define _Maybenull_\n#endif\n' > ddi/ddi_mingw_compat.h
+  echo "ddi: $(ls ddi | wc -l) files"
   # mingw has no libsynchronization.a (MSVC name): import lib from api-ms-win-core-synch-l1-2-0.
   ZLIB_DEF=$(dirname "$ZIG")/lib/libc/mingw/lib-common/api-ms-win-core-synch-l1-2-0.def
   $TC/zig-dlltool -m arm64 -d "$ZLIB_DEF" -l xlib/libsynchronization.a
@@ -96,8 +109,8 @@ pkg-config = '$ENV/bin/pkg-config'
 pkg_config_libdir = ['$Z/lib/pkgconfig']
 
 [built-in options]
-c_args = ['-mms-bitfields', '-DHAVE_FUNC_ATTRIBUTE_PACKED', '-I$W/ddi']
-cpp_args = ['-mms-bitfields', '-DHAVE_FUNC_ATTRIBUTE_PACKED', '-I$W/ddi']
+c_args = ['-include', '$W/ddi/ddi_mingw_compat.h', '-Wno-error=missing-prototypes', '-mms-bitfields', '-DHAVE_FUNC_ATTRIBUTE_PACKED', '-I$W/ddi']
+cpp_args = ['-include', '$W/ddi/ddi_mingw_compat.h', '-Wno-error=missing-prototypes', '-mms-bitfields', '-DHAVE_FUNC_ATTRIBUTE_PACKED', '-I$W/ddi']
 c_link_args = ['-L$W/xlib']
 cpp_link_args = ['-L$W/xlib']
 
@@ -122,7 +135,7 @@ if want collect; then
   D=build-arm64/src/gallium/targets/d3d10umd/libgallium_d3d10.dll
   O=$W/out-umd; rm -rf $O; mkdir -p $O
   cp $D $O/libgallium_d3d10.dll; cp $D $O/maliumd.dll
-  ( cd $O; sha256sum *.dll > SHA256SUMS )
+  ( cd $O; sha256sum maliumd.dll > SHA256SUMS )
   llvm-readobj-18 --coff-imports $D | grep -E 'Name:' | sort -u > $O/imports.txt || true
   llvm-readobj-18 --coff-exports $D | grep -E 'Name:' > $O/exports.txt || true
   file $D; cat $O/SHA256SUMS; echo "imports:"; cat $O/imports.txt
