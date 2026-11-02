@@ -2,7 +2,7 @@
   get-ddi-headers.ps1 - gom cac header D3D DDI (chi co trong WDK/EWDK) thanh 1 zip nho de gui cho Claude,
   de Claude build Mesa (panfrost + d3d10umd, ARM64) tren may Linux (G2, phuong an 2).
 
-  Chay tren PC (khong phai tren dien thoai), sau khi da mount ISO EWDK:
+  Chay tren PC (khong phai tren dien thoai). EWDK: mount ISO, hoac giai nen ra Downloads\EWDK (tu tim):
     powershell -ExecutionPolicy Bypass -File get-ddi-headers.ps1
   hoac chi ro thu muc Include:
     powershell -ExecutionPolicy Bypass -File get-ddi-headers.ps1 -Include "E:\Program Files\Windows Kits\10\Include\10.0.26100.0"
@@ -21,6 +21,17 @@ if (-not $Include) {
     $roots += Join-Path $d.Root 'Program Files (x86)\Windows Kits\10\Include'
     $roots += Join-Path $d.Root 'Windows Kits\10\Include'
   }
+  # EWDK giai nen ra thu muc (vd C:\Users\Admin\Downloads\EWDK) thay vi mount ISO
+  foreach ($e in @((Join-Path $env:USERPROFILE 'Downloads\EWDK'), (Join-Path $env:USERPROFILE 'Desktop\EWDK'), 'C:\EWDK')) {
+    $roots += Join-Path $e 'Program Files\Windows Kits\10\Include'
+    $roots += Join-Path $e 'Program Files (x86)\Windows Kits\10\Include'
+    if (Test-Path $e) {
+      Get-ChildItem $e -Recurse -Filter d3d10umddi.h -ErrorAction SilentlyContinue |
+        Where-Object { $_.Directory.Name -eq 'um' } |
+        ForEach-Object { $roots += $_.Directory.Parent.Parent.FullName }
+    }
+  }
+  $roots = $roots | Select-Object -Unique
   $cands = foreach ($r in $roots) {
     if (Test-Path $r) {
       Get-ChildItem $r -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'um\d3d10umddi.h') }
