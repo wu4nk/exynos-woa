@@ -129,9 +129,21 @@
 #ifndef BEYOND0LTE_DVFS_SET
 #define BEYOND0LTE_DVFS_SET    1    // m15: 0 = read-only (FREQ_GET only)
 #endif
+//
+// v0.1.10 (S10, user 2026-11-03 "raise the clocks"): every value is an exact step of the TWRP kernel's own tables
+// (notes/m15-perf.md run 31). LITTLE (A55) to its top step; MID (A75) one step below 2210000 / 2314000, the steps
+// the DT's mif-perf table pairs with MIF >= 2093000 (MIF is left as sboot set it); INT to its top step. Windows has
+// no thermal management on this port, so MID stays below its maximum. The S10e build keeps the m15 values.
+//
+#if EXYNOS9820_BOARD_BEYOND1
+#define BEYOND0LTE_DVFS_LITTLE_KHZ  1950000u   // LITTLE max (cpu0: 1950000 1846000 1742000 1586000 1456000 ...)
+#define BEYOND0LTE_DVFS_MID_KHZ     2106000u   // MID (cpu4: 2314000 2210000 2106000 2002000 1898000 1794000 ...)
+#define BEYOND0LTE_DVFS_INT_KHZ     534000u    // INT max (devfreq_int 100000 200000 267000 400000 534000)
+#else
 #define BEYOND0LTE_DVFS_LITTLE_KHZ  1456000u   // exact LITTLE step (cpu0 scaling_available_frequencies, max 1950000)
 #define BEYOND0LTE_DVFS_MID_KHZ     1794000u   // exact MID step (cpu4 scaling_available_frequencies, max 2314000)
 #define BEYOND0LTE_DVFS_INT_KHZ     400000u    // exact INT step (devfreq_int available_frequencies, max 534000)
+#endif
 
 //
 // S2MPS19 addressing through ACPM: speedy channel 0 (s2mps19_core.c:55, stock dtbo acpm-speedy-channel 0),

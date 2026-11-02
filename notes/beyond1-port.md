@@ -324,3 +324,10 @@ SetupComplete stops the agent before replacing it). User: remove the green bar /
 v0.1.9: BEYOND1LTE_TOUCH_TEST 0 (TsTouchTest/TsPoll/TsFill compiled out); chip bring-up, USI03 /2 clock fix and the
 UEFILOG lines stay. Build Beyond1 rc 0, Beyond0 rc 0. beyond1lte-uefi-v0.1.9.img sha256
 770c57407849b4d569306a9635a6f4e153ccf292fd733ac9d110ceb4271d135f.
+
+## Round 9 (2026-11-03) - v0.1.10: faster clocks
+User: boot exception now rare (a failed boot ends in TWRP via the crash path); asks for more speed.
+S10 build only: DVFS FREQ_REQ LITTLE 1950000 (max), MID 2106000 (2210/2314 need MIF >= 2093000 per mif-perf; MIF
+left at sboot's value), INT 534000 (max) - all exact TWRP-kernel ladder steps; S10e keeps 1456000/1794000/400000.
+Progress-0x66 guard still skips the request after a boot that hung in it. No thermal management in Windows: MID kept
+below max. NOT VALIDATED: read the "DVFS FREQ_REQ ... reply" lines + s10eperf clocks.
