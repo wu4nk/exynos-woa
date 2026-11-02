@@ -13,6 +13,11 @@ param(
   [switch]$NoInstrumentation,
   [switch]$WideUncached,
   [switch]$DmaWindow,
+  # Board the LBA fence is built for: Beyond0 = Galaxy S10e (default, unchanged),
+  # Beyond1 = Galaxy S10 (/D EXYNOS9820_BOARD_BEYOND1=1, notes/beyond1-port.md).
+  # A driver built for one board must NEVER be installed on the other: the ESP,
+  # USERDATA and protected ranges are different LBAs.
+  [ValidateSet("Beyond0", "Beyond1")][string]$Board = "Beyond0",
   [string]$WdkRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
 )
 $ErrorActionPreference = "Stop"
@@ -55,6 +60,8 @@ if ($NoInstrumentation) { $ProfileFlags += ' /D UFS_PERF_INSTRUMENTATION=0' }
 if ($WideUncached)      { $ProfileFlags += ' /D UFS_WIDE_UNCACHED_ACCESS=1' }
 if ($DmaWindow)         { $ProfileFlags += ' /D UFS_DMA_WINDOW_ENFORCE=1' }
 if ($PortableKernelContract) { $ProfileFlags += ' /D UFS_PORTABLE_KERNEL_CONTRACT=1' }
+if ($Board -eq "Beyond1")    { $ProfileFlags += ' /D EXYNOS9820_BOARD_BEYOND1=1' }
+Write-Host "==> board: $Board" -ForegroundColor Cyan
 $ClFlags += $ProfileFlags
 
 # Linker flags of the validated driver build.

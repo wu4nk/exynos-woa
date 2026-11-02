@@ -1002,8 +1002,30 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * Samsung's PIT. The C_ASSERTs below were re-derived in the same step; a
  * half-edit still fails the compile.
  */
+/*
+ * BOARD SWITCH. build-ufs.ps1 -Board Beyond1 passes /D EXYNOS9820_BOARD_BEYOND1=1 for
+ * the Galaxy S10 (beyond1lte). Same disk geometry as the S10e (31 236 096 LBAs,
+ * LastUsableLBA 31 236 090, AltLBA 31 236 095) and the same BOOT/RECOVERY/EFS LBAs,
+ * but a 34-partition table: the ESP is sda31 cache, OMR sda32, CP_DEBUG sda33 and
+ * USERDATA sda34 - all read from the S10's live GPT 2026-11-02
+ * (notes/beyond1-port.md §2). Two S10 facts the S10e comments above do NOT hold for:
+ *   - USERDATA ends exactly at LastUsableLBA: there is NO unclaimed tail;
+ *   - the backup GPT IS present (header at 31 236 095, entries at 31 236 091..,
+ *     CRCs valid, entries identical to the primary) - still outside the fence.
+ * Its headers declare HeaderSize = 92, so the in-flight translation below is a
+ * no-op on the S10 (UfsTranslateGptHeaderBlock ignores a 92-byte header).
+ */
+#ifndef EXYNOS9820_BOARD_BEYOND1
+#define EXYNOS9820_BOARD_BEYOND1             0
+#endif
+
+#if EXYNOS9820_BOARD_BEYOND1
+#define UFS_WRITE_FENCE_FIRST_LBA            3118592ULL   // VERIFIED S10 (sda31 cache/ESP start, live GPT)
+#define UFS_WRITE_FENCE_LAST_LBA             31236090ULL  // VERIFIED S10 (LastUsableLBA, header +0x30)
+#else
 #define UFS_WRITE_FENCE_FIRST_LBA            1983488ULL   // VERIFIED (sda28 CACHE/ESP start, live GPT)
 #define UFS_WRITE_FENCE_LAST_LBA             31236090ULL  // VERIFIED (this disk's LastUsableLBA, header +0x30)
+#endif
 
 /*
  * PROTECTED PARTITIONS - sda29 OMR and sda30 CP_DEBUG, the two real
@@ -1127,8 +1149,23 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * That makes the next boot a clean single-variable test: same rebuilt binary,
  * same hardware, only the issuer differs.
  */
+#if EXYNOS9820_BOARD_BEYOND1
+/*
+ * The S10 has no unclaimed tail (USERDATA ends at LastUsableLBA), so there is no
+ * free scratch run to aim this window at. It is aimed instead at the first 256
+ * LBAs of sda33 CP_DEBUG, which protected range B refuses BEFORE the readout
+ * window is consulted - so every scratch write fails closed on the S10. The readout
+ * boot itself is refused at compile time rather than left to that ordering.
+ */
+#if UFS_READOUT_BOOT
+#error "UFS_READOUT_BOOT has no writable scratch region on beyond1lte (no unclaimed tail)"
+#endif
+#define UFS_READOUT_WINDOW_FIRST_LBA         3284992UL    // S10 sda33 CP_DEBUG start - REFUSED by range B
+#define UFS_READOUT_WINDOW_LAST_LBA          3285247UL    // 256 LBAs, all inside CP_DEBUG
+#else
 #define UFS_READOUT_WINDOW_FIRST_LBA         31234816UL   // S10e tail start, one LBA past USERDATA
 #define UFS_READOUT_WINDOW_LAST_LBA          31235071UL   // 256 LBAs, verified zero (notes §9)
+#endif
 
 /*
  * The scratch region, mirrored here because UfsDiag.c's UFS_SCRATCH_LBA is a
@@ -1140,8 +1177,13 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * yet, so that check fails on the S10e until the scratch pass runs - a
  * device-validation gap, not a wrong constant.
  */
+#if EXYNOS9820_BOARD_BEYOND1
+#define UFS_READOUT_SCRATCH_FIRST_LBA        3284992UL    // S10: mirrors UfsDiag.c, inside CP_DEBUG (refused)
+#define UFS_READOUT_SCRATCH_LAST_LBA         3285247UL
+#else
 #define UFS_READOUT_SCRATCH_FIRST_LBA        31234816UL
 #define UFS_READOUT_SCRATCH_LAST_LBA         31235071UL
+#endif
 
 /*
  * PROTECTED PARTITIONS - the real partitions that fall INSIDE the fence, i.e.
@@ -1167,7 +1209,38 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * cover both; they are kept split so a half-edited pair still fails the C_ASSERTs
  * below rather than silently admitting one of them.
  */
-#if UFS_FULL_WINDOWS_MODE
+#if UFS_FULL_WINDOWS_MODE && EXYNOS9820_BOARD_BEYOND1
+/*
+ * Galaxy S10 layout (live GPT 2026-11-02, notes/beyond1-port.md §2):
+ *
+ *   sda26..30 VENDOR..OPTICS LBA 2131968 .. 3118591   below the fence, refused by it
+ *   sda31  cache       LBA 3118592 .. 3272191   WRITABLE  <- the ESP
+ *   sda32  omr         LBA 3272192 .. 3284991   refused   (range A)
+ *   sda33  cp_debug    LBA 3284992 .. 3286271   refused   (range B, also the S10's
+ *                                                         fail-closed "scratch")
+ *   sda34  userdata    LBA 3286272 .. 31236090  WRITABLE  <- Windows (to LastUsableLBA)
+ *   backup GPT         LBA 31236091 .. 31236095  outside the fence (present on the S10)
+ */
+#define UFS_PROTECTED_PARTITION_FIRST_LBA    3272192ULL   // VERIFIED S10 (sda32 omr start)
+#define UFS_PROTECTED_PARTITION_LAST_LBA     3284991ULL   // VERIFIED S10 (sda32 omr end)
+#define UFS_PROTECTED_PARTITION2_FIRST_LBA   3284992ULL   // VERIFIED S10 (sda33 cp_debug start)
+#define UFS_PROTECTED_PARTITION2_LAST_LBA    3286271ULL   // VERIFIED S10 (sda33 cp_debug end)
+C_ASSERT(UFS_PROTECTED_PARTITION2_FIRST_LBA == UFS_PROTECTED_PARTITION_LAST_LBA + 1ULL);
+C_ASSERT(UFS_PROTECTED_PARTITION2_FIRST_LBA < UFS_PROTECTED_PARTITION2_LAST_LBA);
+C_ASSERT(UFS_PROTECTED_PARTITION2_LAST_LBA < UFS_WRITE_FENCE_LAST_LBA);
+/* The ESP must stay writable: range A begins right after cache (sda31) ends. */
+C_ASSERT(UFS_PROTECTED_PARTITION_FIRST_LBA == 3272191ULL + 1ULL);
+C_ASSERT(UFS_WRITE_FENCE_FIRST_LBA + 153600ULL - 1ULL == 3272191ULL);   /* cache = 153 600 LBAs */
+/* USERDATA must stay writable: range B ends one LBA before it starts. */
+C_ASSERT(UFS_PROTECTED_PARTITION2_LAST_LBA + 1ULL == 3286272ULL);
+/* USERDATA runs to the fence's top: there is nothing writable past it. */
+C_ASSERT(UFS_WRITE_FENCE_LAST_LBA == 31236090ULL);
+/* The S10's scratch/readout runs must sit wholly inside a REFUSED range (fail closed). */
+C_ASSERT(UFS_READOUT_SCRATCH_FIRST_LBA >= UFS_PROTECTED_PARTITION2_FIRST_LBA);
+C_ASSERT(UFS_READOUT_SCRATCH_LAST_LBA <= UFS_PROTECTED_PARTITION2_LAST_LBA);
+C_ASSERT(UFS_READOUT_WINDOW_FIRST_LBA >= UFS_PROTECTED_PARTITION2_FIRST_LBA);
+C_ASSERT(UFS_READOUT_WINDOW_LAST_LBA <= UFS_PROTECTED_PARTITION2_LAST_LBA);
+#elif UFS_FULL_WINDOWS_MODE
 #define UFS_PROTECTED_PARTITION_FIRST_LBA    2137088ULL   // VERIFIED (sda29 OMR start, live GPT)
 /*
  * The writable set is no longer contiguous, so the guard is two ranges.
@@ -1199,8 +1272,13 @@ C_ASSERT(UFS_PROTECTED_PARTITION2_LAST_LBA < 31234816ULL);
  * A build that refuses writes does not need the split: the whole Android run,
  * VENDOR through CP_DEBUG inclusive, is refused as one range.
  */
+#if EXYNOS9820_BOARD_BEYOND1
+#define UFS_PROTECTED_PARTITION_FIRST_LBA    2131968ULL  // VERIFIED S10 (sda26 vendor start)
+#define UFS_PROTECTED_PARTITION_LAST_LBA     3286271ULL  // VERIFIED S10 (sda33 cp_debug end)
+#else
 #define UFS_PROTECTED_PARTITION_FIRST_LBA    1543168ULL  // VERIFIED (sda26 VENDOR start)
 #define UFS_PROTECTED_PARTITION_LAST_LBA     2151167ULL  // VERIFIED (sda30 CP_DEBUG end)
+#endif
 #endif
 
 /*

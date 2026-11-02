@@ -1619,7 +1619,23 @@ RunWriteProbe(
  * refuse rather than write, and it is a device-validation step, not a constant
  * to fix here.
  */
+#ifndef EXYNOS9820_BOARD_BEYOND1
+#define EXYNOS9820_BOARD_BEYOND1  0
+#endif
+#if EXYNOS9820_BOARD_BEYOND1
+/*
+ * Galaxy S10 (beyond1lte, build-ufs.ps1 -Board Beyond1): USERDATA (sda34) runs to the
+ * disk's LastUsableLBA 31236090 and the backup GPT follows at 31236091, so there is
+ * NO unclaimed tail to use (notes/beyond1-port.md §2). The scratch run is aimed at
+ * the first 256 LBAs of sda33 cp_debug instead, which the driver's protected range B
+ * refuses: --write-live stops at its signature gate (cp_debug is not stamped) and
+ * --log-lba writes are refused by the miniport. Both fail CLOSED on the S10; they
+ * need a real free region (e.g. a shrunk Windows volume) before they can be used.
+ */
+#define UFS_SCRATCH_LBA           3284992UL    // S10 sda33 cp_debug start - refused by the driver
+#else
 #define UFS_SCRATCH_LBA           31234816UL   // S10e tail start, one LBA past USERDATA (live GPT)
+#endif
 #define UFS_SCRATCH_BLOCKS        256UL
 
 /*
@@ -1654,8 +1670,13 @@ C_ASSERT(UFS_WRITE_LIVE_MAX_BLOCKS <= UFS_SCRATCH_BLOCKS);
  * driver's fence, so an incorrectly edited fence cannot quietly move it onto
  * USERDATA.
  */
+#if EXYNOS9820_BOARD_BEYOND1
+C_ASSERT(UFS_SCRATCH_LBA >= 3284992UL);                              // S10 cp_debug (sda33) starts here
+C_ASSERT((UFS_SCRATCH_LBA + UFS_SCRATCH_BLOCKS - 1UL) <= 3286271UL); // ... and ends here, below USERDATA
+#else
 C_ASSERT(UFS_SCRATCH_LBA > 31234815UL);   // USERDATA (sda31) ends here
 C_ASSERT((UFS_SCRATCH_LBA + UFS_SCRATCH_BLOCKS - 1UL) < 31236091UL); // backup GPT starts here
+#endif
 
 static BOOL
 WriteLiveBlock(

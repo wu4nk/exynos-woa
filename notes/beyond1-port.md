@@ -79,3 +79,19 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
 - 2026-11-02 — `Beyond0LteFbSerialPortLib` `STATIC_ASSERT (ROWS * CELL_H < HEIGHT)`
   fired for 3040 (exact multiple of 32): ROWS is now `(HEIGHT - 1) / CELL_H`
   (S10e unchanged at 71, S10 94).
+- 2026-11-02 — GPT headers on the S10: primary AND backup both `HeaderSize = 92`, CRCs
+  valid, backup entries byte-identical to the primary (CRC 0x8959027D). The UFS driver's
+  in-flight 512→92 translation (`UfsTranslateGptHeaderBlock`) ignores a 92-byte header,
+  so it is a no-op here.
+- 2026-11-02 — UFS driver: `-Board Beyond1` (build-ufs.ps1) → `/D EXYNOS9820_BOARD_BEYOND1=1`.
+  Fence 3118592..31236090 (cache start .. LastUsableLBA), protected A = omr
+  3272192..3284991, B = cp_debug 3284992..3286271, refusing-build run vendor..cp_debug
+  2131968..3286271. **No unclaimed tail on the S10**: UfsDiag scratch / readout window
+  are aimed inside cp_debug (refused by range B, C_ASSERTed), and `UFS_READOUT_BOOT=1`
+  is an `#error` on this board. Asserts compile-checked with clang `_Static_assert` on
+  the extracted block for both boards, plus a negative test (cp_debug end +1 → fails).
+  MSVC/WDK build NOT run here (Windows only).
+- 2026-11-02 — not changed, with reasons: touch driver (same bus/IRQ/IC, raw 12-bit
+  coords; the HID physical extent is still the S9+'s on the S10e too — S10 measured
+  2.60 × 5.51 in from dumpsys dpi, vs 2.71 × 5.58 in the descriptor), battery driver
+  (`fg_resistor = 2` is now a read on the S10; design capacity comes from the gauge).
