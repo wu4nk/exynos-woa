@@ -326,6 +326,10 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
             return STATUS_SUCCESS;
         }
         ULONG pages = (ULONG)Arg->MapApertureSegment.NumberOfPages;
+        if (Arg->MapApertureSegment.MdlOffset != 0 || pages != alloc->Pages) {
+            a->PartialMaps++;
+            a->LastPartialMdlOffset = (ULONG)Arg->MapApertureSegment.MdlOffset;
+        }
         if (pages > alloc->Pages)
             pages = alloc->Pages;
         PPFN_NUMBER pfn = MmGetMdlPfnArray(Arg->MapApertureSegment.pMdl) + Arg->MapApertureSegment.MdlOffset;

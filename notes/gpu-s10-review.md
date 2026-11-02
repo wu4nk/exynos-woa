@@ -78,3 +78,15 @@ No device access (S10 owner tests). Builds: UEFI only (Linux); Windows drivers c
   StopDevice registry trace and the GetEngineTrace-style string (command.c).
 - Check: maligpu.c compiles clean (clang -fsyntax-only -Wall -Wextra, stub ntddk.h in scratchpad/stub, -fshort-wchar).
   command.c/adapter.c not compilable here (dispmprt.h) - edits are a field, a counter and a format argument.
+- Review of Fix 1 (f91fbc8, adversarial): the refused-start recovery claim checked - Reap(TRUE) runs from SyncPoll
+  (command.c:425-436, the 1 ms poll) with MW_JOB_TIMEOUT_MS 2000 (command.c:23) -> hard stop + MkGpuBringup + drop:
+  real path. FLUSH_MEM on a freshly reset AS0 (MkGpuInit) = what panfrost_mmu_as_get -> panfrost_mmu_enable does on
+  a reset GPU; a stuck AS_ACTIVE only costs the 10 ms poll (AsWaitReady result ignored, as before). COHERENCY_NONE
+  is valid whatever COHERENCY_FEATURES says (kbase writes it unconditionally with COHERENCY_REG). ChainFlag still
+  advances on a refused start - harmless (the slot is reset before the next start). No defect found.
+
+## Fix 2 - partial aperture maps: counted, not changed
+- MS docs leave open whether MdlOffset is relative to the allocation; the full-mode present path (AllocationVa uses
+  MdlPage = MdlOffset) is device-validated with the current reading, so remapping at GpuVa + MdlOffset is a guess.
+  Instead PartialMaps / LastPartialMdlOffset are counted (BuildPagingBuffer) and logged at StopDevice; a GpuEnable 1
+  run with PartialMaps 0 closes it.

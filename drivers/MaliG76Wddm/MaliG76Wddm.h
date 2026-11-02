@@ -202,6 +202,10 @@ struct _MW_ADAPTER {
     ULONG Renders, Presents, Submits, DodPresents;
     ULONG PagingOps[16];
     ULONG Maps, MapFails, Unmaps, LastMapPages, Allocations;
+    /* MAP_APERTURE_SEGMENT calls that do not cover the allocation from its first page (MdlOffset != 0 or fewer
+     * pages): the GPU mapping (always at GpuVa) and AllocationVa (MDL page MdlOffset) assume whole maps.
+     * UNVERIFIED whether VidMm ever splits them; counted so a GpuEnable 1 run answers it (notes/gpu-s10-review.md). */
+    ULONG PartialMaps, LastPartialMdlOffset;
     NTSTATUS LastMapStatus;
     ULONG64 LastMapVa, LastAllocVa;
     ULONG Patches, PatchAllocations, PatchPatchLocations, PatchSegment0;
