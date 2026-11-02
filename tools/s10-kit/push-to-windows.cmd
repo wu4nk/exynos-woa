@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem push-to-windows.cmd (v1.5) - put the built kit straight into the Windows install on the S10
+rem push-to-windows.cmd (v1.6) - put the built kit straight into the Windows install on the S10
 rem   push-to-windows.cmd       (v1.4 default) the kit goes to /cache = the EFI partition (ESP:\S10KIT +
 rem                             INSTALL.CMD); the Windows volume is not touched at all
 rem   push-to-windows.cmd c     straight into C: (only when TWRP can write the Windows volume)
@@ -30,8 +30,8 @@ if not exist "bcm4375\bcmdhd_sta.bin_b1" echo [WARN] no bcm4375\ - WiFi needs ge
 
 set "S=/tmp/s10kit"
 adb shell "rm -rf %S% && mkdir -p %S%" || (echo [FAIL] adb shell & exit /b 1)
-for %%D in (out setup bcm4375) do if exist "%%D\" (adb push "%%D" %S%/ >nul || (echo [FAIL] push %%D & exit /b 1))
-for %%F in (install-in-windows.ps1 auto-install.ps1 collect-logs.ps1 kit-watch.ps1 s10-log.cmd) do (adb push "%%F" %S%/ >nul || (echo [FAIL] push %%F & exit /b 1))
+for %%D in (out setup bcm4375 out-gpu) do if exist "%%D\" (adb push "%%D" %S%/ >nul || (echo [FAIL] push %%D & exit /b 1))
+for %%F in (install-in-windows.ps1 auto-install.ps1 collect-logs.ps1 kit-watch.ps1 s10-log.cmd gpu-s10.ps1) do if exist "%%F" (adb push "%%F" %S%/ >nul || (echo [FAIL] push %%F & exit /b 1))
 echo [ OK ] kit staged on the phone
 set "L="
 for /f "delims=:" %%N in ('findstr /n /x /c:"#__SH__" "%~f0"') do set "L=%%N"
@@ -62,7 +62,7 @@ echo        reason TWRP mounts Windows read-only^) and tells you when to reboot.
 exit /b 0
 #__SH__
 #!/system/bin/sh
-# push-to-windows.sh (v1.5) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
+# push-to-windows.sh (v1.6) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
 # pushed the kit to $STAGE. Places it inside the Windows volume that TWRP mounted on /data:
 #   C:\S10Prov\kit\                      the kit (out\, bcm4375\, setup\, scripts)
 #   C:\Windows\System32\drivers\bcm4375\ the WiFi firmware (works offline, no install step needed)
@@ -155,7 +155,7 @@ esp_fallback() {
   date +%Y%m%d-%H%M%S > "$K/kit.stamp"     # v1.5: kit-watch.ps1 (logon) offers each new stamp once
   printf '%s\r\n' \
     '@echo off' \
-    'rem S10KIT\INSTALL.CMD - written by push-to-windows v1.5 (TWRP could only read the Windows volume).' \
+    'rem S10KIT\INSTALL.CMD - written by push-to-windows v1.6 (TWRP could only read the Windows volume).' \
     'rem In Windows, an ADMINISTRATOR cmd:   mountvol S: /s   then   S:\S10KIT\INSTALL.CMD' \
     'net session >nul 2>&1 || (echo [FAIL] open cmd as Administrator first & exit /b 1)' \
     'robocopy "%~dp0." C:\S10Prov\kit /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul' \
