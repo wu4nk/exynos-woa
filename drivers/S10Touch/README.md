@@ -44,3 +44,6 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 ## 1.0.5.0
 - PRAM của 1.0.4 chỉ ra lỗi: `SpbOpen c0000184` (STATUS_INVALID_DEVICE_STATE) - lúc driver cảm ứng mở kết nối I2C thì bộ điều khiển I2C chưa sẵn sàng (đang khởi động, hoặc đang ngủ D3 do tự tắt sau 1 s rảnh). `D0Entry` thất bại một lần là thiết bị cảm ứng chết cả phiên.
 - Mở SPB giờ do worker làm, thử lại mỗi 100 ms trong 10 s rồi mỗi giây, có log PRAM. Đi kèm Exynos9820Hsi2c 1.0.1.0 không còn tự ngủ D3.
+
+## 1.0.6.0
+- Sửa màn hình xanh WDF_VIOLATION 0x10D (5 = WDF_INVALID_HANDLE, handle 0) của 1.0.5: request SPB dùng lại được tạo ngay sau `WdfIoTargetCreate`, lúc target chưa mở → `WdfRequestCreate` báo `c0000184`; lần thử lại bỏ qua bước tạo, mở được target rồi gửi request NULL. Giờ request chỉ được tạo sau khi target mở thành công; SpbRead/SpbWrite từ chối khi chưa mở.

@@ -104,6 +104,9 @@ static NTSTATUS SpbWrite(_In_ PS10T_DEVICE Dev, _In_reads_(Len) PVOID Buf, _In_ 
     ULONG_PTR                done = 0;
     NTSTATUS                 status;
 
+    if (!Dev->SpbOpen) {
+        return STATUS_DEVICE_NOT_READY;
+    }
     WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&mem, Buf, Len);
     WDF_REQUEST_SEND_OPTIONS_INIT(&opt, WDF_REQUEST_SEND_OPTION_TIMEOUT);
     WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&opt, WDF_REL_TIMEOUT_IN_MS(SECTS_SPB_TIMEOUT_MS));
@@ -132,6 +135,9 @@ static NTSTATUS SpbRead(_In_ PS10T_DEVICE Dev, _In_ UCHAR Cmd, _Out_writes_(Len)
     UCHAR                    cmd = Cmd;
     NTSTATUS                 status;
 
+    if (!Dev->SpbOpen || Dev->SpbRequest == WDF_NO_HANDLE) {
+        return STATUS_DEVICE_NOT_READY;
+    }
     WDF_REQUEST_REUSE_PARAMS_INIT(&reuse, WDF_REQUEST_REUSE_NO_FLAGS, STATUS_SUCCESS);
     status = WdfRequestReuse(Dev->SpbRequest, &reuse);
     if (!NT_SUCCESS(status)) {
@@ -165,12 +171,6 @@ static NTSTATUS SpbOpen(_In_ PS10T_DEVICE Dev)
         if (!NT_SUCCESS(status)) {
             return status;
         }
-        WDF_OBJECT_ATTRIBUTES_INIT(&attr);
-        attr.ParentObject = Dev->Spb;
-        status = WdfRequestCreate(&attr, Dev->Spb, &Dev->SpbRequest);
-        if (!NT_SUCCESS(status)) {
-            return status;
-        }
     }
 
     status = RESOURCE_HUB_CREATE_PATH_FROM_ID(&path, Dev->SpbConnectionId.LowPart, Dev->SpbConnectionId.HighPart);
@@ -182,7 +182,24 @@ static NTSTATUS SpbOpen(_In_ PS10T_DEVICE Dev)
     open.CreateDisposition = FILE_OPEN;
     open.FileAttributes    = FILE_ATTRIBUTE_NORMAL;
     status = WdfIoTargetOpen(Dev->Spb, &open);
-    Dev->SpbOpen = NT_SUCCESS(status);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    /* 1.0.6: the reused request is made only once the target is OPEN. Before, it was created right after
+       WdfIoTargetCreate: on a target that is not open yet that fails with STATUS_INVALID_DEVICE_STATE (the
+       "SpbOpen c0000184" of 1.0.4/1.0.5), the retry then skipped the creation, opened the target and the first
+       SpbRead passed a NULL request -> WDF_VIOLATION 0x10D (5 = WDF_INVALID_HANDLE, handle 0). */
+    if (Dev->SpbRequest == WDF_NO_HANDLE) {
+        WDF_OBJECT_ATTRIBUTES_INIT(&attr);
+        attr.ParentObject = Dev->Spb;
+        status = WdfRequestCreate(&attr, Dev->Spb, &Dev->SpbRequest);
+        if (!NT_SUCCESS(status)) {
+            Dev->SpbRequest = WDF_NO_HANDLE;
+            WdfIoTargetClose(Dev->Spb);
+            return status;
+        }
+    }
+    Dev->SpbOpen = TRUE;
     return status;
 }
 

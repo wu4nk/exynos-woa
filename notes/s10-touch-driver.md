@@ -80,3 +80,14 @@ worked when the controller happened to be up).
 Fix: S10Touch opens the target from the worker with retries (100 ms x 100, then 1 s, PRAM marks, registry
 S10tSpbOpenStatus/Tries); Exynos9820Hsi2c idleSettings.Enabled = WdfFalse (stays in D0 - also removes a D0
 transition from the first transfer of every touch).
+
+## 1.0.6.0 (2026-11-03) - WDF_VIOLATION from 1.0.5
+Logs 20261103-015018: WINPRAM.BIN (crash dump path): =UFSBUGCHECK BC=0x10D B1=0x5 (WDF_INVALID_HANDLE) B2=0 (handle
+NULL) B3=0x1008. Touch PRAM: PrepareHardware res 7, D0Entry, "SpbOpen try 0 st c0000184", interrupts on,
+"SpbOpen try 1 st 0", "worker: controller start", then the crash. Cause: SpbOpen created the reused request
+(WdfRequestCreate with IoTarget = the not-yet-opened target) right after WdfIoTargetCreate; that create returned
+STATUS_INVALID_DEVICE_STATE (= the c0000184 of 1.0.4 too - it was never the HSI2C), the retry skipped creation
+(Spb != NULL), opened the target, and ControllerStart's first SpbRead called WdfRequestReuse(NULL).
+Fix: request created after a successful WdfIoTargetOpen (target closed again if that fails); SpbRead/SpbWrite
+return STATUS_DEVICE_NOT_READY unless open. Exynos9820Hsi2c 1.0.1.0 (no D3 idle) kept: harmless, removes a D0
+transition from the first transfer after a pause.
