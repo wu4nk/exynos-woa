@@ -73,7 +73,7 @@ param(
   [string] $EspGuidText = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251',
   [string] $WinGuidText = '712bcd12-3071-4f1c-8951-9c75a5ecca08'
 )
-$ScriptVersion = 'make-windows v2.1-s10'
+$ScriptVersion = 'make-windows v2.2-s10'
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
@@ -160,7 +160,7 @@ try {
   if (-not (Test-Path $Source))    { Fail "Not found: $Source" }
   if (-not (Test-Path $DriverDir)) { Fail "No $DriverDir - run build-s10.cmd first." }
   $infs = @(Get-ChildItem $DriverDir -Recurse -Filter *.inf)
-  foreach ($need in 'Exynos9820Ufs.inf', 'Exynos9820Hsi2c.inf', 'S6SY761TouchBeyond0.inf') {
+  foreach ($need in 'Exynos9820Ufs.inf', 'Exynos9820Hsi2c.inf', 'SecTsY761Touch.inf') {
     if (-not ($infs | Where-Object Name -eq $need)) { Fail "$need missing under $DriverDir - run build-s10.cmd (Windows cannot boot without the UFS driver)." }
   }
   $UfsVer = $null
@@ -169,6 +169,17 @@ try {
     Write-Host ("       driver {0,-26} {1}" -f $i.Name, $ver)
     if ($i.Name -eq 'Exynos9820Ufs.inf' -and "$ver" -match ',\s*(\d+\.\d+\.\d+\.\d+)') { $UfsVer = [version]$Matches[1] }
     if ($i.Name -match '^Exynos990|^SecTsY79A') { Fail "$($i.Name) is an S20 Ultra (z3s) driver - $DriverDir must hold only the S10 drivers" }
+    if ($i.Name -eq 'S6SY761TouchBeyond0.inf') { Fail "$($i.FullName): the old S10e touch driver binds the same ACPI\SCSY0761 as SecTsY761Touch - remove it from $DriverDir" }
+  }
+  foreach ($opt in @(@('S10eBattery.inf', 'battery / charging'), @('Exynos9820WlanCx.inf', 'WiFi'))) {
+    if (-not ($infs | Where-Object Name -eq $opt[0])) { Warn "$($opt[0]) not in $DriverDir - no $($opt[1]) in this image" }
+  }
+  $DiagDir = Join-Path $DriverDir 'S10eDiag'
+  if (-not (Test-Path (Join-Path $DiagDir 'S10eAgent.exe'))) { Warn "no $DiagDir\S10eAgent.exe - hardware keys (power / Bixby / volume) will not work" ; $DiagDir = $null }
+  $WifiFw = Join-Path $PSScriptRoot 'bcm4375'
+  if (-not (Test-Path (Join-Path $WifiFw 'bcmdhd_sta.bin_b1'))) {
+    Warn "no $WifiFw\bcmdhd_sta.bin_b1 - run get-wifi-fw.cmd (phone in TWRP) first, or WiFi will find no firmware"
+    $WifiFw = $null
   }
   # The UFS driver's write fence is per board: a driver built for the S10e would write
   # into the S10's Android partitions. build-ufs.ps1 keeps a "UFSBRD01" record in the
@@ -361,7 +372,26 @@ try {
   if ($LASTEXITCODE) { Fail "dism /Add-Driver ($LASTEXITCODE)" }
   $got = Get-WindowsDriver -Path "${W}:\" | Where-Object { $_.OriginalFileName -match 'exynos9820ufs' }
   if (-not $got) { Fail 'Exynos9820Ufs is not in the image after Add-Driver' }
-  Ok 'UFS, HSI2C, touch drivers in the image'
+  Ok 'drivers in the image (UFS, HSI2C, touch, + battery / WiFi when built)'
+
+  # S10 kit v1.1: WiFi blobs where Exynos9820WlanCx looks for them, and the key agent installed
+  # by SetupComplete.cmd at the end of Setup (as the S10e's s10e-setupcomplete.cmd does).
+  if ($WifiFw) {
+    $fwDst = "${W}:\Windows\System32\drivers\bcm4375"
+    New-Item -ItemType Directory -Force $fwDst | Out-Null
+    Copy-Item (Join-Path $WifiFw '*') $fwDst -Force
+    Ok "WiFi firmware -> \Windows\System32\drivers\bcm4375 ($((Get-ChildItem $fwDst).Count) files)"
+  }
+  $prov = "${W}:\S10Prov"
+  New-Item -ItemType Directory -Force $prov | Out-Null
+  if ($DiagDir) {
+    New-Item -ItemType Directory -Force "$prov\S10eDiag" | Out-Null
+    Copy-Item (Join-Path $DiagDir '*') "$prov\S10eDiag" -Force
+  }
+  $scr = "${W}:\Windows\Setup\Scripts"
+  New-Item -ItemType Directory -Force $scr | Out-Null
+  Copy-Item (Join-Path $PSScriptRoot 'setup\SetupComplete.cmd') (Join-Path $scr 'SetupComplete.cmd') -Force
+  Ok "SetupComplete.cmd: key agent$(if (-not $DiagDir) { ' (missing - keys off)' }) + power settings at the end of Setup"
 
   # ------------------------------------------------------------ 5. registry
   Step '5. registry'

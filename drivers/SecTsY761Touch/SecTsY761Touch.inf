@@ -1,0 +1,88 @@
+;
+;
+;Copyright (c) Microsoft Corporation All rights Reserved
+;Copyright (C) Microsoft Corporation, All Rights Reserved.
+;
+;SPDX-Licence-Identifier: GPL-2.0
+;
+;Copyright (c) 2017  Samsung Electronics Co., Ltd.
+;Copyright (c) 2017  Andi Shyti <andi@etezian.org>
+;                    Andi Shyti <andi.shyti@samsung.com>
+;
+;Copyright (c) 2022 - 2023  Morc - Richard Gráčik
+;
+; Galaxy S10 (beyond1lte) port of WU4NK's z3s SecTsY79ATouch: sec_ts y761 on HSI2C10
+; (\_SB.I2C0, Exynos9820Hsi2c), 8-byte events.
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=HIDClass
+ClassGuid={745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider=%ProviderString%
+DriverVer=11/02/2026,0.3.0.0
+CatalogFile=SecTsY761Touch.cat
+PnpLockdown = 1
+
+[Manufacturer]
+%ManufacturerString%=Microsoft,NTarm64.10.0...16299
+
+[Microsoft.NTarm64.10.0...16299]
+%DeviceDesc%=SecTsY761Touch, ACPI\SCSY0761
+
+[SecTsY761Touch.NT]
+CopyFiles=KMDriverCopy
+
+[SecTsY761Touch.NT.hw]
+AddReg=SecTsY761Touch_AddReg
+
+[SecTsY761Touch.NT.Services]
+AddService=SecTsY761Touch,0x00000002,SecTsY761Touch_Service_Inst
+
+[SecTsY761Touch.NT.Wdf]
+KmdfService=SecTsY761Touch,SecTsY761Touch_Wdf
+
+[SecTsY761Touch_Wdf]
+KmdfLibraryVersion=1.15
+
+
+[SecTsY761Touch_AddReg]
+HKR,,"UpperFilters",    %REG_MULTI_SZ%, mshidkmdf
+HKR,,"MultiportDevice", %REG_DWORD%,    0
+HKR,,"XRevert",0x00010001,0
+HKR,,"YRevert",0x00010001,0
+HKR,,"XYExchange",0x00010001,0
+HKR,,"XMin",0x00010001,0
+HKR,,"XMax",0x00010001,4095
+HKR,,"YMin",0x00010001,0
+HKR,,"YMax",0x00010001,4095
+
+[SecTsY761Touch_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %13%\SecTsY761Touch.sys
+
+[KMDriverCopy]
+SecTsY761Touch.sys
+
+[SourceDisksNames]
+1=%DiskDesc%,,,
+
+[SourceDisksFiles]
+SecTsY761Touch.sys=1
+
+[DestinationDirs]
+KMDriverCopy=13
+
+;---------------------------------------------------------------;
+
+[Strings]
+ProviderString     = "WU4NK WoA (port of Morc S6SY761Touch)"
+ManufacturerString = "Samsung Electronics Co."
+DeviceDesc         = "Samsung sec_ts y761 Touchscreen (Galaxy S10) Device"
+ServiceDesc        = "Samsung sec_ts y761 Touchscreen (Galaxy S10) Service"
+DiskDesc           = "Samsung sec_ts y761 Touchscreen (Galaxy S10) Installation Disk"
+REG_MULTI_SZ            = 0x00010000
+REG_DWORD               = 0x00010001

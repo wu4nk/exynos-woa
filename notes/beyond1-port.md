@@ -160,3 +160,15 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   DECON + 0 (from the older edk2-exynos) — the prime suspect. v0.1.2: S10 shim writes +0x70
   (S10e shim byte-identical), plus TSP0 interrupt Level/ActiveHigh on the S10 (AML checked
   with iasl -d for both boards) for the new touch driver.
+- 2026-11-02 — SecTsY761Touch (drivers/): WU4NK's z3s SecTsY79ATouch v0.2 (DIRQL ISR + work
+  item, app-mode/touch-function/sense-on start, EID 3 handling) with the y761 event format
+  (8-byte events, left_event mask 0x3F, 64-event FIFO — the S10e driver's values), ACPI\SCSY0761,
+  S10 HID extent 2.60 x 5.51 in. Reason: the S10e driver connects a PASSIVE-level ISR to a GIC
+  SPI (gpa1-0 = SPI 13), which the S20U work had already replaced. The parser reads only bytes
+  0-3 and 7 of an event, identical in both formats. Not compiled here (WDK).
+- 2026-11-02 — kit v1.1: S10's key GPIOs equal the S10e's (live DT gpio_keys: gpa0-3/4/6,
+  gpa2-4), MAX77705 on hsi2c@15D60000, WLAN enable gpg0-5 / PERST gpf2-2 / CLKREQ gpf2-0 —
+  so S10eDiag+S10eAgent, S10eBattery and Exynos9820WlanCx are used unchanged. build-s10.cmd
+  builds them (S10eDiag build.bat made EWDK-aware), get-wifi-fw.cmd pulls the phone's own
+  BCM4375 blobs, make-windows v2.2-s10 places blobs + SetupComplete.cmd (key agent),
+  install-in-windows.ps1 adds everything to an installed Windows.

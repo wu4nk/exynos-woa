@@ -1,14 +1,17 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.0) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
-rem Windows drivers: Exynos9820Hsi2c, S6SY761TouchBeyond0, Exynos9820Ufs (-Board Beyond1).
+rem build-s10.cmd (v1.1) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem Windows drivers: Exynos9820Hsi2c, SecTsY761Touch (touch, from the z3s SecTsY79ATouch),
+rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
+rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
 rem Same shape as the z3s build-all.cmd; run it inside an EWDK window (LaunchBuildEnv.cmd).
 rem
 rem Signs with the SAME test certificate as the z3s kit ("CN=z3s WoA Test", made by
 rem new-cert.ps1) - nothing new to trust if it is already on this PC.
 rem
 rem Driver sources: next to this file (the kit zip) or ..\..\drivers (inside the repo).
-rem Output: out\<Driver>\ with .sys, .inf, .cat (all signed). make-windows.ps1 reads out\.
+rem Output: out\<Driver>\ with .sys, .inf, .cat (all signed); out\S10eDiag\ holds the key agent
+rem (no .inf - make-windows.ps1 installs it from SetupComplete.cmd). make-windows.ps1 reads out\.
 rem
 rem The UFS driver is NOT built from its .vcxproj: the validated profile is
 rem build-ufs.ps1 -WideUncached -DmaWindow (fixed cl/link lines, portable contract),
@@ -47,10 +50,16 @@ echo [ OK ] Signing with "%CERTNAME%" from CurrentUser\%CERTSTORE%
 
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%" || exit /b 1
+rem The public half of the certificate, for install-in-windows.ps1 (pnputil on the phone must trust it).
+powershell -NoProfile -Command "$c = Get-ChildItem Cert:\CurrentUser\%CERTSTORE% | Where-Object { $_.Subject -eq 'CN=%CERTNAME%' } | Select-Object -First 1; Export-Certificate -Cert $c -FilePath '%OUT%\kit-test-cert.cer' | Out-Null" || (echo [FAIL] exporting the certificate & exit /b 1)
 
 call :msb Exynos9820Hsi2c || exit /b 1
-call :msb S6SY761TouchBeyond0 || exit /b 1
+call :msb SecTsY761Touch || exit /b 1
 call :ufs || exit /b 1
+call :msb S10eBattery || exit /b 1
+rem WiFiCx client (KMDF 1.33 + NetAdapterCx 2.2); same msbuild switches as its build-package.ps1.
+call :msb Exynos9820WlanCx "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false" || exit /b 1
+call :diag || exit /b 1
 
 echo.
 echo [ OK ] Drivers ready in %OUT%
@@ -65,7 +74,7 @@ set "DST=%OUT%\%NAME%"
 echo.
 echo ==== %NAME% ====
 pushd "%SRC%" || exit /b 1
-msbuild "%NAME%.vcxproj" /nologo /m /v:minimal /p:Configuration=Release /p:Platform=ARM64 /p:SignMode=Off /p:EnableInf2cat=false
+msbuild "%NAME%.vcxproj" /nologo /m /v:minimal /p:Configuration=Release /p:Platform=ARM64 /p:SignMode=Off /p:EnableInf2cat=false %~2
 if errorlevel 1 (popd & echo [FAIL] build %NAME% & exit /b 1)
 mkdir "%DST%"
 set "SYS="
@@ -97,6 +106,23 @@ copy /y "%UFSBUILD%\%NAME%.sys" "%DST%\" >nul
 copy /y "%SRC%\%NAME%.inf" "%DST%\" >nul
 rem UfsDiag.exe stays in _ufs-build (a test tool, not part of the driver package).
 goto :catsign
+
+rem ---------------------------------------------------------------------------
+:diag
+rem S10eDiag (kernel MMIO helper) + S10eAgent (service) + s10ekeys/s10ereboot/...: the S10e's key
+rem handling. The S10's keys are the same GPIOs (gpa0-3/4/6, gpa2-4, live DT gpio_keys), so it is
+rem used unchanged. Built by its own build.bat (EWDK-aware), signed here with the kit certificate.
+set "DST=%OUT%\S10eDiag"
+echo.
+echo ==== S10eDiag (keys agent) ====
+set "S10E_SIGN_SKIP=1"
+call "%SRCROOT%S10eDiag\build.bat" "%DST%"
+if errorlevel 1 (echo [FAIL] S10eDiag build.bat & exit /b 1)
+set "S10E_SIGN_SKIP="
+del /q "%DST%\*.obj" >nul 2>&1
+for %%F in ("%DST%\*.sys" "%DST%\*.exe") do call :sign "%%~F" || exit /b 1
+echo [ OK ] S10eDiag
+exit /b 0
 
 rem ---------------------------------------------------------------------------
 :catsign

@@ -5,8 +5,11 @@ flash-windows.cmd**. Chỉ khác layout máy, bộ driver và UEFI.
 
 | File | Việc |
 |---|---|
-| `build-s10.cmd` | Build + ký 3 driver: `Exynos9820Hsi2c`, `S6SY761TouchBeyond0`, `Exynos9820Ufs` (board **Beyond1**) → `out\` |
-| `make-windows.ps1` | v2.1-s10: dựng Windows từ ISO → `C:\s10\windows\` (pieces + uefi.img + flash-windows.cmd) |
+| `build-s10.cmd` | v1.1: build + ký `Exynos9820Hsi2c`, `SecTsY761Touch` (cảm ứng mới), `Exynos9820Ufs` (board **Beyond1**), `S10eBattery` (pin/sạc), `Exynos9820WlanCx` (WiFi), `S10eDiag` (phím) → `out\` |
+| `get-wifi-fw.cmd` | Kéo firmware WiFi BCM4375 **của chính con S10** ra `bcm4375\` (TWRP hoặc Android có root) |
+| `install-in-windows.ps1` | Đã có Windows rồi: chạy **trên máy** (PowerShell Admin) để thêm cảm ứng mới, pin, WiFi, phím mà không cài lại |
+| `setup\SetupComplete.cmd` | Chạy cuối Setup: cài dịch vụ phím (S10eDiag + S10eAgent), tắt sleep màn hình |
+| `make-windows.ps1` | v2.2-s10: dựng Windows từ ISO → `C:\s10\windows\` (pieces + uefi.img + flash-windows.cmd) |
 | `set-esp-type.ps1` | v1.3-s10: đổi type `cache` thành ESP trong cả 2 bản GPT (flash-windows.cmd tự gọi) |
 | `z3s-disk.cs` | Helper C# của kit z3s (giữ nguyên tên, chỉ sửa 1 dòng thông báo) |
 | `new-cert.ps1` | Chứng chỉ test "z3s WoA Test" — **dùng chung với kit z3s**, có rồi thì khỏi chạy |
@@ -23,6 +26,12 @@ build-s10.cmd
 UFS **không** build từ `.vcxproj`: `build-s10.cmd` gọi `build-ufs.ps1 -WideUncached -DmaWindow
 -Board Beyond1` (đúng profile đã chạy trên S10e). Script này tự tìm VS Build Tools và SDK
 10.0.28000 của EWDK.
+
+## 1b. Firmware WiFi (một lần, máy ở TWRP)
+
+```bat
+get-wifi-fw.cmd
+```
 
 ## 2. Dựng Windows (PowerShell Admin)
 
