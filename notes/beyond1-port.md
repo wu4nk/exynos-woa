@@ -287,3 +287,19 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   audio); 3 silent periods at Run, position excludes them. Client tolerance +1 period, timer tolerance 2 periods,
   +20 ms latency. UNVERIFIED that this is the crackle (the run log's "late timer passes" / LateWrites decide);
   amp-side distortion would not change with it.
+
+## Round 6 (2026-11-02) - v0.1.7: touch controller started by the firmware
+User: on the z3s port touch only became reliable once the UEFI itself found and started the panel IC, then the
+Windows driver. Done the same here (Beyond0LteTouchPowerDxe/TouchChip.c, S10 build only via
+BEYOND1LTE_TOUCH_CHIP_INIT = EXYNOS9820_BOARD_BEYOND1):
+- after the rails (and DVFS) at ReadyToBoot: USI03 gates + QCH, USI mode I2C, gpp1-4/5 func 2 no pull, HSI2C reset
+  400 kHz (Exynos9820Hsi2c ControllerConfigurePlatform/ControllerReset order) on hsi2c@104B0000, slave 0x48;
+- sec_ts y771 probe order: boot status 0x55 -> 0x20 (50 x 20 ms); else SW reset 0x12 + wait for INFO ack 0x00 +
+  boot status again; log device id 0x22, integrity 0x21, ts status 0xAF, fw 0xA3, img 0xA5; touch function |= 0x61
+  (2 B), sense on, clear stack;
+- boot touch test (z3s style): top bar green (chip OK) / red (no answer) for 3 s; touch -> blue bar, 10 s of white
+  dots where the firmware sees each finger; then the stack is cleared and the chip left sensing for Windows.
+Panel IC family: beyond1lte_defconfig CONFIG_TOUCHSCREEN_SEC_TS_Y771=y (Exynos9820.h: S10 blob y771_beyond1_phole.bin).
+Build: Beyond1LtePkg DEBUG rc 0, Beyond0LtePkg DEBUG rc 0 (S10e unchanged: init compiled out).
+Image: beyond1lte-uefi-v0.1.7.img 7716864 B sha256 7ef5b61b5dac68ca21bba8477a93c86255977015af5234f0813a288f44da293d.
+NOT VALIDATED ON HARDWARE: read the TouchChip: lines of UEFILOG.TXT.

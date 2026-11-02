@@ -13,6 +13,8 @@
 
 [Sources]
   Beyond0LteTouchPowerDxe.c
+  TouchChip.c
+  TouchChip.h
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -23,8 +25,12 @@
   UefiDriverEntryPoint
   UefiBootServicesTableLib
   BaseLib
+  BaseMemoryLib
   DebugLib
   IoLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid     ## SOMETIMES_CONSUMES (S10 boot touch test)
 
 [Guids]
   gEfiEventReadyToBootGuid           ## CONSUMES ## Event

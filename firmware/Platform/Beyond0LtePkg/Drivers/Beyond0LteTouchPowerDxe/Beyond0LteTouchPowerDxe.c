@@ -34,6 +34,7 @@
 #include <Platform/Exynos9820.h>
 
 #include "../Beyond0LteAudioProbeDxe/Beyond0LteAudioPower.h"   // BEYOND0LTE_AUDIO_DCVDD, codec-power event group
+#include "TouchChip.h"                                         // S10: sec_ts bring-up + boot touch test (v0.1.7)
 
 //
 // 0 = read-only run: log L19CTRL / L27CTRL and the ACPM channel layout, never write the PMIC.
@@ -836,6 +837,9 @@ OnReadyToBoot (
   if (EFI_ERROR (FindChannel (ACPM_PMIC_IPC_CHANNEL, &Ch))) {
     DEBUG ((DEBUG_ERROR, "TouchPower: done (no ACPM channel)\n"));
     SignalCodecPower ("no ACPM channel - DCVDD untouched");
+ #if BEYOND1LTE_TOUCH_CHIP_INIT
+    TouchChipBringUp (FALSE);   // the rails may still be on from sboot
+ #endif
     return;
   }
 
@@ -937,6 +941,14 @@ OnReadyToBoot (
       }
     }
   }
+
+ #if BEYOND1LTE_TOUCH_CHIP_INIT
+  //
+  // v0.1.7 (S10): the firmware finds and starts the panel IC itself before Windows, as on the z3s port -
+  // last, so the rails have settled and the CPU runs at the DVFS step requested above (TouchChip.c).
+  //
+  TouchChipBringUp (Enabled);
+ #endif
 }
 
 EFI_STATUS
