@@ -27,3 +27,14 @@ của SecTsY79ATouch: `TouchBootStatus` 0x20 = chip OK, `TouchFunction` = 0x0061
 `TouchIrqCount` / `TouchI2cErrorCount` / `TouchOverflowCount`.
 
 **Chưa chạy trên máy.** Giấy phép: GPL-2.0 (xem `LICENSE`).
+
+## v0.3.1 — giữ ngón tay / kéo liền mạch
+
+Chip y761 chỉ gửi sự kiện khi điểm chạm **thay đổi**; ngón tay đứng yên thì im lặng. Màn cảm ứng
+HID thông thường báo mọi điểm chạm ở **mỗi khung quét**, và bộ xử lý cử chỉ của Windows (giữ =
+chuột phải, kéo, quán tính) được chỉnh theo kiểu đó. Từ 0.3.1, khi còn ngón tay chạm mà chip im
+quá `HoldRepeatMs` (mặc định 10 ms ≈ 100 Hz), driver gửi lại khung hiện tại; ngừng sau 3 s không
+có sự kiện nào từ chip (chống "ngón ma" khi mất sự kiện nhả).
+
+- Tắt: `HoldRepeatMs` = 0 (DWORD, khóa thiết bị `...\Enum\ACPI\SCSY0761\0\Device Parameters`), tối đa 100.
+- Đếm: `TouchHoldRepeatCount` (ghi ở D0Exit, cùng chỗ các bộ đếm khác).

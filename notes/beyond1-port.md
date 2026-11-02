@@ -215,3 +215,16 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   el2_earlymem is exactly the top of bank5. S10e build unchanged (no bank5).
 - If v0.1.4 still throws: the cause is not the location -> next suspect is the DXE memory-protection split of a
   live 2 MB code block (PcdDxeNxMemoryProtectionPolicy / image protection), A/B by turning image protection off.
+
+## Touch: hold not recognised, drags break up (user, 2026-11-02) -> SecTsY761Touch 0.3.1
+- Checked first: the runtime descriptor patch (offsets 40/41, 57/58, stride 58) really rewrites every contact's
+  X/Y LOGICAL_MAXIMUM 1080/2250 -> 4095 (parsed the array: bytes 39..41 / 56..58 are 0x26 lo hi for all 10
+  contacts); the IC range is 12-bit (live DT sec,max_coords <0x1000 0x1000>; Android dmesg swipe dd:-1895 in x).
+  Scan time unit 100 us (0x55 0x0C, 0x66 0x01 0x10) matches KeQueryInterruptTime/1000. So not geometry.
+- Cause addressed: the y761 reports only on change; a stationary finger produces no frames, a slow drag produces
+  sparse frames. HID touchscreens report every contact every scan; Windows' interaction engine (press-and-hold,
+  drag, inertia) assumes that. INFERENCE (no device trace yet).
+- 0.3.1: PASSIVE one-shot WDFTIMER (re-armed) re-queues the current frame as a coalescable move every
+  HoldRepeatMs (default 10, registry, 0 = off, max 100) while a contact is Active and the IC has been quiet that
+  long; stops 3 s after the last IC coordinate event; stopped in TouchStopInput; counter TouchHoldRepeatCount.
+- Not compiled here (WDF headers); EWDK build is the check.

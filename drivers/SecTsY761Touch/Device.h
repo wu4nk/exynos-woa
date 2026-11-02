@@ -102,6 +102,7 @@ typedef struct _SECTS_CONTACT_STATE
 DRIVER_INITIALIZE                   DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD           EvtDeviceAdd;
 EVT_WDF_TIMER                       EvtTimerFunc;
+EVT_WDF_TIMER                       TouchHoldTimerFunc;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP      EvtDriverCleanup;
 
 EVT_WDF_DEVICE_PREPARE_HARDWARE      OnPrepareHardware;
@@ -140,6 +141,15 @@ typedef struct _DEVICE_CONTEXT
     volatile LONG           InputQueueFlushCount;
     volatile LONG           InputReportCoalesceCount;
     volatile LONG           InputReportCompleteCount;
+    //
+    // Stationary-contact repeat (v0.3.1): the y761 sends an event only when a contact
+    // changes, while Windows' touch stack is built for digitizers that report every
+    // contact in every scan frame. HoldTimer re-sends the current frame every
+    // HoldRepeatMs while a contact is down and the controller is quiet.
+    //
+    WDFTIMER                HoldTimer;
+    ULONGLONG               LastEventTime;      // KeQueryInterruptTime of the last coordinate event
+    volatile LONG           InputHoldRepeatCount;
 
     PVOID PoFxPowerSettingCallbackHandle1;
     PVOID PoFxPowerSettingCallbackHandle2;

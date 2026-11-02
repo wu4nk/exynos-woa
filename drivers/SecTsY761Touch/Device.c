@@ -125,6 +125,14 @@ ULONG XMin = 0;
 ULONG XMax = SECTS_COORDINATE_MAX;
 ULONG YMin = 0;
 ULONG YMax = SECTS_COORDINATE_MAX;
+//
+// Stationary-contact repeat period (device key "HoldRepeatMs", 0 = off). 10 ms ~ the
+// controller's own ~120 Hz scan, so a held finger looks like any HID touchscreen's.
+//
+ULONG HoldRepeatMs = 10;
+// Stop repeating after this long without a controller event (a lost RELEASE must not
+// keep a phantom finger "fresh" forever; the contact itself stays down, as before).
+#define SECTS_HOLD_REPEAT_LIMIT_100NS (3ULL * 10000000ULL)
 
 static
 VOID
@@ -607,6 +615,77 @@ TouchQueueAllUpReport(
 }
 
 static
+BOOLEAN
+TouchAnyContactActiveLocked(
+	_In_ PDEVICE_CONTEXT DeviceContext
+)
+{
+	for (ULONG contactId = 0; contactId < SECTS_MAX_CONTACTS; contactId++)
+	{
+		if (DeviceContext->Contacts[contactId].Active)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static
+VOID
+TouchArmHoldTimer(
+	_In_ PDEVICE_CONTEXT DeviceContext
+)
+{
+	if ((HoldRepeatMs != 0) && (DeviceContext->HoldTimer != WDF_NO_HANDLE))
+	{
+		WdfTimerStart(DeviceContext->HoldTimer, WDF_REL_TIMEOUT_IN_MS(HoldRepeatMs));
+	}
+}
+
+VOID
+TouchHoldTimerFunc(
+	_In_ WDFTIMER Timer
+)
+/*++
+	PASSIVE_LEVEL one-shot timer (re-armed here while needed): while a contact is down
+	and the controller has been quiet for a full period, queue the current frame again
+	(as a move, so it coalesces when hidclass is not reading).
+--*/
+{
+	PDEVICE_CONTEXT pDevice;
+	BOOLEAN queued = FALSE;
+	BOOLEAN rearm = FALSE;
+	ULONGLONG quiet;
+
+	pDevice = GetDeviceContext((WDFDEVICE)WdfTimerGetParentObject(Timer));
+
+	WdfWaitLockAcquire(pDevice->InputLock, NULL);
+	if (!pDevice->InputStopping && TouchAnyContactActiveLocked(pDevice))
+	{
+		quiet = KeQueryInterruptTime() - pDevice->LastEventTime;
+		if (quiet < SECTS_HOLD_REPEAT_LIMIT_100NS)
+		{
+			if (quiet >= (ULONGLONG)HoldRepeatMs * 10000ULL)
+			{
+				queued = TouchQueueCurrentReportLocked(pDevice, TRUE);
+			}
+			rearm = TRUE;
+		}
+	}
+	WdfWaitLockRelease(pDevice->InputLock);
+
+	if (queued)
+	{
+		InterlockedIncrement(&pDevice->InputHoldRepeatCount);
+		TouchDrainInputReports(pDevice);
+	}
+	if (rearm)
+	{
+		TouchArmHoldTimer(pDevice);
+	}
+}
+
+static
 VOID
 TouchStopInput(
 	_Inout_ PDEVICE_CONTEXT DeviceContext
@@ -616,6 +695,10 @@ TouchStopInput(
 	DeviceContext->InputStopping = TRUE;
 	TouchResetInputStateLocked(DeviceContext);
 	WdfWaitLockRelease(DeviceContext->InputLock);
+	if (DeviceContext->HoldTimer != WDF_NO_HANDLE)
+	{
+		WdfTimerStop(DeviceContext->HoldTimer, FALSE);
+	}
 }
 
 #define DEFINE_GUID2(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
@@ -1140,6 +1223,22 @@ Return Value:
 		&deviceContext->InputLock);
 	if (!NT_SUCCESS(status)) {
 		return status;
+	}
+
+	{
+		WDF_TIMER_CONFIG timerConfig;
+
+		WDF_TIMER_CONFIG_INIT(&timerConfig, TouchHoldTimerFunc);   // one-shot, re-armed
+		timerConfig.AutomaticSerialization = FALSE;
+		WDF_OBJECT_ATTRIBUTES_INIT(&deviceAttributes);
+		deviceAttributes.ParentObject = device;
+		deviceAttributes.ExecutionLevel = WdfExecutionLevelPassive;  // takes InputLock
+		deviceContext->HoldTimer = WDF_NO_HANDLE;
+		status = WdfTimerCreate(&timerConfig, &deviceAttributes, &deviceContext->HoldTimer);
+		if (!NT_SUCCESS(status)) {
+			deviceContext->HoldTimer = WDF_NO_HANDLE;   // not fatal: no repeats
+			status = STATUS_SUCCESS;
+		}
 	}
 
 	hidAttributes = &deviceContext->HidDeviceAttributes;
@@ -1723,6 +1822,7 @@ OnD0Entry(
 	InterlockedExchange(&pDevice->InputQueueFlushCount, 0);
 	InterlockedExchange(&pDevice->InputReportCoalesceCount, 0);
 	InterlockedExchange(&pDevice->InputReportCompleteCount, 0);
+	InterlockedExchange(&pDevice->InputHoldRepeatCount, 0);
 
 	RecordStartValues(FxDevice, 20, STATUS_SUCCESS);
 	TouchConfigureInterrupt(pDevice);
@@ -1827,6 +1927,10 @@ OnD0Exit(
 		FxDevice,
 		L"TouchReportCompleteCount",
 		(ULONG)pDevice->InputReportCompleteCount);
+	RecordStartValue(
+		FxDevice,
+		L"TouchHoldRepeatCount",
+		(ULONG)pDevice->InputHoldRepeatCount);
 	TouchStopInput(pDevice);
 	SpbDeviceClose(pDevice);
 
@@ -2889,6 +2993,7 @@ OnInterruptWorkItem(
 	BYTE                    touchType, touchId;
 	UINT8					event_id, * event;
 	BOOLEAN                 clearStack = FALSE;
+	BOOLEAN                 armHold = FALSE;
 	UNREFERENCED_PARAMETER(AssociatedObject);
 
 	device = WdfInterruptGetDevice(FxInterrupt);
@@ -2974,6 +3079,7 @@ OnInterruptWorkItem(
 			}
 
 			contact = &pDevice->Contacts[touchId];
+			pDevice->LastEventTime = KeQueryInterruptTime();
 			x = (event[1] << 4) | ((event[3] & 0xf0) >> 4);
 			y = (event[2] << 4) | (event[3] & 0x0f);
 
@@ -3018,7 +3124,13 @@ OnInterruptWorkItem(
 		}
 	}
 
+	armHold = !pDevice->InputStopping && TouchAnyContactActiveLocked(pDevice);
 	WdfWaitLockRelease(pDevice->InputLock);
+
+	if (armHold)
+	{
+		TouchArmHoldTimer(pDevice);
+	}
 
 	if (clearStack)
 	{
@@ -3251,6 +3363,7 @@ Return Value:
 	UNICODE_STRING  xMaxName;
 	UNICODE_STRING  yMinName;
 	UNICODE_STRING  yMaxName;
+	UNICODE_STRING  holdRepeatName;
 	PDEVICE_CONTEXT deviceContext;
 	WDF_OBJECT_ATTRIBUTES   attributes;
 
@@ -3282,6 +3395,12 @@ Return Value:
 		status = WdfRegistryQueryULong(hKey, &xMaxName, &XMax);
 		status = WdfRegistryQueryULong(hKey, &yMinName, &YMin);
 		status = WdfRegistryQueryULong(hKey, &yMaxName, &YMax);
+		RtlInitUnicodeString(&holdRepeatName, L"HoldRepeatMs");
+		(void)WdfRegistryQueryULong(hKey, &holdRepeatName, &HoldRepeatMs);
+		if (HoldRepeatMs > 100)
+		{
+			HoldRepeatMs = 100;
+		}
 
 		WdfRegistryClose(hKey);
 	}
