@@ -99,6 +99,16 @@ if (Test-Path $kw) {
   } catch { Warn "kit watcher task: $($_.Exception.Message)" }
 } else { Warn 'no kit-watch.ps1 next to this script - no install prompt at logon' }
 
+# 5b. newer helper scripts from the kit onto the desktop / next to the kit copy (s10-log.cmd, gpu-s10.ps1)
+foreach ($n in 's10-log.cmd', 'gpu-s10.ps1') {
+  $src = Join-Path $PSScriptRoot $n
+  if (-not (Test-Path $src)) { continue }
+  $dst = if ($n -eq 's10-log.cmd') { Join-Path $env:PUBLIC "Desktop\$n" } else { "C:\S10Prov\kit\$n" }
+  if ((Resolve-Path $src).Path -ne $dst) {
+    try { Copy-Item $src $dst -Force; Ok "$n -> $dst" } catch { Warn "$n -> ${dst}: $($_.Exception.Message)" }
+  }
+}
+
 # 6. what Windows sees now
 function Show($id, $what) {
   $d = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like "ACPI\$id\*" } | Select-Object -First 1

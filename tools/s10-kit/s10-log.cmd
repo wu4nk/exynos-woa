@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.2) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.3) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -23,7 +23,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.2 -> $dir"
+Write-Host "s10-log v1.3 -> $dir"
 
 # 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
 #    state, config, logs; a stopped service is started here and the exact error is recorded.
@@ -94,6 +94,27 @@ Save 'devices.txt' {
 Save 'problem-devices.txt' { pnputil /enum-devices /problem }
 Save 'drivers.txt' { pnputil /enum-drivers }
 Save 'events-system.txt' { wevtutil qe System /c:300 /rd:true /f:text }
+# v1.3 (G2 full mode): who crashed - dwm / LogonUI / winlogon / the UMD (Application Error 1000, WER 1001, Desktop
+# Window Manager 9020/9027...), the WER report texts, and the GPU mode the KMD was started with.
+Save 'events-application.txt' { wevtutil qe Application /c:300 /rd:true /f:text }
+Save 'gpu-mode.txt' {
+  '===== Services\MaliG76Wddm\Parameters'
+  Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters' -ErrorAction SilentlyContinue | Format-List
+  '===== UMD files'
+  foreach ($f in "$env:SystemRoot\System32\maliumd.dll", "$env:SystemRoot\System32\maliumd.dll.old") {
+    if (Test-Path $f) { "{0}  {1} B  {2}  sha256 {3}" -f $f, (Get-Item $f).Length, (Get-Item $f).LastWriteTime.ToString('s'), (Get-FileHash $f).Hash.ToLower() } else { "$f  -" }
+  }
+  '===== video controllers'
+  Get-CimInstance Win32_VideoController | Format-List Name, Status, PNPDeviceID, InstalledDisplayDrivers, DriverVersion, CurrentHorizontalResolution, CurrentVerticalResolution
+}
+$wer = Join-Path $dir 'wer'; New-Item -ItemType Directory -Force $wer | Out-Null
+foreach ($root in 'C:\ProgramData\Microsoft\Windows\WER\ReportArchive', 'C:\ProgramData\Microsoft\Windows\WER\ReportQueue') {
+  Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'dwm|LogonUI|winlogon|explorer|maliumd|d3d|dxgi|BlueScreen|LiveKernel' } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 20 | ForEach-Object {
+      Copy-Item (Join-Path $_.FullName 'Report.wer') (Join-Path $wer "$($_.Name).wer.txt") -ErrorAction SilentlyContinue }
+}
+Get-ChildItem C:\Windows\LiveKernelReports -Recurse -File -ErrorAction SilentlyContinue | Select-Object FullName, Length, LastWriteTime |
+  Out-File -Encoding utf8 (Join-Path $wer 'livekernelreports.txt')
 Copy-Item C:\Windows\INF\setupapi.dev.log $dir -ErrorAction SilentlyContinue
 Copy-Item C:\Windows\System32\LogFiles\Exynos*.txt, C:\Windows\System32\LogFiles\S10*.txt, C:\Windows\System32\LogFiles\MaliG76*.txt, C:\S10Prov\gpu-report.txt $dir -ErrorAction SilentlyContinue
 Write-Host '[ OK ] devices, counters, events'

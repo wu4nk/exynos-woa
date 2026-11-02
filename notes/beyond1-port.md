@@ -376,3 +376,14 @@ with clang 18 -mms-bitfields; ARM64 UMD via zig 0.13 (aarch64-windows-gnu, -mms-
 - buildtype debugoptimized (asserts on), same as the S10e g54 UMD.
 - gpu-s10.ps1 v1.1: `full` = G2a (copies maliumd.dll to System32, FullAdapter 1, GpuEnable 0). Expectation from
   S10e g52-g54: desktop via softpipe on the CPU, slower than display-only; GpuEnable 1 never worked on the S10e.
+
+## DEVICE RESULT 2026-11-03 06:17 - G2a (gpu-s10.ps1 full, maliumd.dll mingw build) FAILS: black screen + cursor
+User: after `full` + reboot only the mouse cursor on black, no sign-in screen. No logs yet.
+Reading: the KMD came up as the full adapter (the pointer is drawn - SetPointerPosition path) but nothing the UMD
+composes reaches the panel, or LogonUI/dwm crash in the UMD. Same family as S10e g39 ("DWM composes black") /
+g45-g51 (LogonUI fail-fast in CreateCompositionBuffer) - but our UMD has 0020-0040 (those fixes), so first
+suspects are what differs from the S10e UMD: the toolchain (zig mingw vs clang-cl MSVC), WDK 10.0.28000 DDI headers
+(vs the S10e's EWDK), and the S10 panel 1440x3040 vs 1080x2280.
+Rescue sent: TWRP -> /cache/S10EDIAG/nogpu.flg -> boot (Basic Display) -> s10-log v1.3 (adds Application log, WER
+report texts, gpu-mode.txt) -> gpu-s10.ps1 display -> delete the flag -> reboot.
+install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10.ps1 to C:\S10Prov\kit (5b).
