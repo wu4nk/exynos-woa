@@ -19,6 +19,11 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power" /v HibernateEnabled /t REG
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power" /v HiberbootEnabled /t REG_DWORD /d 0 /f >> "%LOG%" 2>&1
 
 if not exist "%P%\S10eDiag\S10eDiag.sys" (echo no S10eDiag in %P% - keys not installed >> "%LOG%" & goto :done)
+rem S10 kit v1.6: on an UPDATE the agent is running and Windows keeps its old .exe locked - copy /y then fails
+rem silently and the old agent stays (2026-11-03: "Reboot to TWRP" still dead after the fixed agent was installed).
+rem Stop it first; it is started again below.
+sc stop S10eAgent >> "%LOG%" 2>&1
+ping -n 4 127.0.0.1 >nul
 copy /y "%P%\S10eDiag\S10eDiag.sys" C:\Windows\System32\drivers\ >> "%LOG%" 2>&1
 for %%F in (s10ediag.exe S10eAgent.exe s10erotate.exe s10eperf.exe s10etouchlog.exe s10ereboot.exe s10escale.exe s10ekeys.exe) do copy /y "%P%\S10eDiag\%%F" C:\Windows\System32\ >> "%LOG%" 2>&1
 sc create S10eDiag type= kernel start= system error= ignore binPath= System32\drivers\S10eDiag.sys DisplayName= "S10e diagnostics" >> "%LOG%" 2>&1
