@@ -1,6 +1,8 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem push-to-windows.cmd (v1.0) - put the built kit straight into the Windows install on the S10
+rem push-to-windows.cmd (v1.3) - put the built kit straight into the Windows install on the S10
+rem   push-to-windows.cmd       C: if TWRP can write it, else the EFI partition (S10KIT\INSTALL.CMD)
+rem   push-to-windows.cmd esp   always the EFI partition, the Windows volume is not touched at all
 rem from TWRP, no USB stick: TWRP mounts the Windows volume (userdata, NTFS) on /data.
 rem   - drivers + scripts      -> C:\S10Prov\kit\
 rem   - WiFi firmware          -> C:\Windows\System32\drivers\bcm4375\ (active right away)
@@ -12,6 +14,8 @@ rem Phone in TWRP, Windows volume mounted on /data, USB cable in.
 rem ---------------------------------------------------------------------------
 setlocal EnableExtensions
 cd /d "%~dp0"
+set "MODE="
+if /i "%~1"=="esp" set "MODE=esp"
 if not exist "out\S10Touch\S10Touch.sys" (echo [FAIL] no out\ - run build-s10.cmd first & exit /b 1)
 adb get-state >nul 2>&1 || (echo [FAIL] adb sees no device & exit /b 1)
 set "BL="
@@ -34,7 +38,7 @@ if not defined L (echo [FAIL] embedded phone script missing & exit /b 1)
 more +%L% "%~f0" > "%TEMP%\s10push.sh"
 adb push "%TEMP%\s10push.sh" /tmp/s10push.crlf >nul || (echo [FAIL] push script & exit /b 1)
 del "%TEMP%\s10push.sh" >nul 2>&1
-adb shell "tr -d '\r' < /tmp/s10push.crlf > /tmp/s10push.sh; sh /tmp/s10push.sh %S%; R=$?; rm -rf %S% /tmp/s10push.sh /tmp/s10push.crlf; exit $R"
+adb shell "tr -d '\r' < /tmp/s10push.crlf > /tmp/s10push.sh; sh /tmp/s10push.sh %S% %MODE%; R=$?; rm -rf %S% /tmp/s10push.sh /tmp/s10push.crlf; exit $R"
 if errorlevel 4 (echo [FAIL] see the lines above & exit /b 1)
 if errorlevel 3 goto :esp
 if errorlevel 1 (echo [FAIL] see the lines above & exit /b 1)
@@ -49,12 +53,13 @@ echo.
 echo            mountvol S: /s
 echo            S:\S10KIT\INSTALL.CMD
 echo.
-echo        It copies the kit to C:\S10Prov\kit, installs the drivers, turns off hibernation ^(the usual
+echo        Then: rmdir /s /q S:\S10KIT  ^&  mountvol S: /d  ^&  shutdown /r /t 0
+echo        INSTALL.CMD copies the kit to C:\S10Prov\kit, installs the drivers, turns off hibernation ^(the usual
 echo        reason TWRP mounts Windows read-only^) and tells you when to reboot.
 exit /b 0
 #__SH__
 #!/system/bin/sh
-# push-to-windows.sh (v1.2) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
+# push-to-windows.sh (v1.3) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
 # pushed the kit to $STAGE. Places it inside the Windows volume that TWRP mounted on /data:
 #   C:\S10Prov\kit\                      the kit (out\, bcm4375\, setup\, scripts)
 #   C:\Windows\System32\drivers\bcm4375\ the WiFi firmware (works offline, no install step needed)
@@ -64,6 +69,7 @@ exit /b 0
 # NTFS under Linux is case-sensitive for lookups, Windows names are not: every path is resolved
 # case-insensitively against what is really on the volume.
 STAGE="${1:-/tmp/s10kit}"
+MODE="$2"
 W=/data
 say()  { echo "[ OK ] $*"; }
 fail() { echo "[FAIL] $*"; exit 1; }
@@ -80,10 +86,19 @@ ci() {
 }
 
 [ -d "$STAGE/out" ] || fail "nothing staged in $STAGE (push-to-windows.cmd pushes it first)"
-SYS32=$(ci "$W" "Windows/System32")
-if [ ! -d "$SYS32" ]; then mount /data 2>/dev/null; SYS32=$(ci "$W" "Windows/System32"); fi
-[ -d "$SYS32" ] || fail "/data is not the Windows volume (no Windows\\System32) - mount it in TWRP first"
-writable() { T="$W/.s10-write-test.$$"; ( : > "$T" ) 2>/dev/null && rm -f "$T"; }
+if [ "$MODE" != esp ]; then
+  SYS32=$(ci "$W" "Windows/System32")
+  if [ ! -d "$SYS32" ]; then mount /data 2>/dev/null; SYS32=$(ci "$W" "Windows/System32"); fi
+  [ -d "$SYS32" ] || fail "/data is not the Windows volume (no Windows\\System32) - mount it in TWRP first"
+fi
+# v1.3: "writable" only counts when /data IS the Windows volume. v1.1/v1.2 tested the bare directory too:
+# after a failed re-mount /data is TWRP's own ramdisk folder - writable, empty, gone at reboot - so the kit
+# "landed" in RAM. Now: a mount point, Windows\System32 present, and the test file written there.
+writable() {
+  grep -q " $W " /proc/mounts || return 1
+  [ -d "$(ci "$W" "Windows/System32")" ] || return 1
+  T="$(ci "$W" "Windows")/.s10-write-test.$$"; ( : > "$T" ) 2>/dev/null && rm -f "$T"
+}
 
 # v1.1: a Windows that crashed, was force-restarted (Vol Down + Power) or shut down with fast startup
 # leaves NTFS "dirty" / hibernated, and TWRP then mounts it read-only. Try to get it writable here:
@@ -115,7 +130,7 @@ make_rw() {
     writable && { say "mounted /data read-write (mount $opt)"; return 0; }
     umount "$W" 2>/dev/null
   done
-  mount "$DEV" "$W" 2>/dev/null || mount /data 2>/dev/null   # leave it mounted as TWRP had it
+  grep -q " $W " /proc/mounts || mount "$DEV" "$W" 2>/dev/null || mount /data 2>/dev/null   # back as TWRP had it
   return 1
 }
 # v1.2: when NTFS stays read-only, put the kit on the ESP instead (FAT32 = the cache partition, always
@@ -136,7 +151,7 @@ esp_fallback() {
   cp -r "$STAGE"/. "$K"/ || fail "copy the kit to the ESP (full?)"
   printf '%s\r\n' \
     '@echo off' \
-    'rem S10KIT\INSTALL.CMD - written by push-to-windows v1.2 (TWRP could only read the Windows volume).' \
+    'rem S10KIT\INSTALL.CMD - written by push-to-windows v1.3 (TWRP could only read the Windows volume).' \
     'rem In Windows, an ADMINISTRATOR cmd:   mountvol S: /s   then   S:\S10KIT\INSTALL.CMD' \
     'net session >nul 2>&1 || (echo [FAIL] open cmd as Administrator first & exit /b 1)' \
     'robocopy "%~dp0." C:\S10Prov\kit /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP >nul' \
@@ -156,7 +171,12 @@ esp_fallback() {
   [ "$E" = /tmp/s10esp ] && umount "$E" 2>/dev/null
   exit 3
 }
+if [ "$MODE" = esp ]; then
+  echo "[ OK ] ESP mode (push-to-windows.cmd esp): the Windows volume is not touched"
+  esp_fallback
+fi
 make_rw || { echo "[WARN] /data stays read-only - using the ESP instead"; esp_fallback; }
+SYS32=$(ci "$W" "Windows/System32")
 say "Windows volume on /data: $SYS32"
 
 KIT=$(ci "$W" "S10Prov/kit")
