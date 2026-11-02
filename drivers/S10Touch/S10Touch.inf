@@ -1,0 +1,70 @@
+;
+; S10Touch.inf - Galaxy S10 (beyond1lte) touchscreen: Samsung sec_ts y761 on \_SB.I2C0 (Exynos9820Hsi2c),
+; attention gpa1-0 (ALIVE EINT8, GSIV 45). New driver for the S10 kit (notes/s10-touch-driver.md); replaces
+; SecTsY761Touch / S6SY761TouchBeyond0 (same hardware ID - the kit's installer removes those packages first).
+; KMDF HID minidriver with mshidkmdf as the upper filter (vhidmini2 KMDF pattern).
+; Device key values (DWORD): RepeatMs (default 8, 0 = no stationary-contact repeat, max 100);
+; written by the driver: S10t* status and counters (S10tMaxIrqToReportUs = worst interrupt -> report latency).
+;
+; SPDX-License-Identifier: GPL-2.0
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = HIDClass
+ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider    = %ProviderString%
+DriverVer   = 11/02/2026,1.0.0.0
+CatalogFile = S10Touch.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskDesc%,,,""
+
+[SourceDisksFiles]
+S10Touch.sys = 1,,
+
+[Manufacturer]
+%ManufacturerString% = Standard,NTarm64.10.0...16299
+
+[Standard.NTarm64.10.0...16299]
+%DeviceDesc% = S10Touch_Device, ACPI\SCSY0761
+
+[S10Touch_Device.NT]
+CopyFiles = S10Touch_Files
+
+[S10Touch_Files]
+S10Touch.sys
+
+[S10Touch_Device.NT.HW]
+AddReg = S10Touch_HwAddReg
+
+[S10Touch_HwAddReg]
+HKR,,"UpperFilters",0x00010000,"mshidkmdf"
+HKR,,"RepeatMs",0x00010003,8
+
+[S10Touch_Device.NT.Services]
+AddService = S10Touch,0x00000002,S10Touch_Service
+
+[S10Touch_Service]
+DisplayName   = %ServiceDesc%
+ServiceType   = 1               ; SERVICE_KERNEL_DRIVER
+StartType     = 3               ; SERVICE_DEMAND_START
+ErrorControl  = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary = %13%\S10Touch.sys
+
+[S10Touch_Device.NT.Wdf]
+KmdfService = S10Touch,S10Touch_Wdf
+
+[S10Touch_Wdf]
+KmdfLibraryVersion = 1.15
+
+[Strings]
+ProviderString     = "exynos-woa S10 kit"
+ManufacturerString = "Samsung Electronics Co."
+DeviceDesc         = "Galaxy S10 Touchscreen (S10Touch)"
+ServiceDesc        = "Galaxy S10 Touchscreen"
+DiskDesc           = "Galaxy S10 Touchscreen Installation Disk"

@@ -1,0 +1,764 @@
+/*
+ * S10Touch - Driver.c: PnP/power, the attention interrupt, the SPB transport and the input worker.
+ * See S10Touch.h for the design. SPDX-License-Identifier: GPL-2.0
+ */
+#include "S10Touch.h"
+
+/* ======================================================================
+ * Small helpers
+ * ====================================================================== */
+
+static ULONG AliveRead(_In_ PS10T_DEVICE Dev, _In_ ULONG Off)
+{
+    return READ_REGISTER_ULONG((volatile ULONG *)(Dev->Alive + Off));
+}
+
+static VOID AliveWrite(_In_ PS10T_DEVICE Dev, _In_ ULONG Off, _In_ ULONG Val)
+{
+    WRITE_REGISTER_ULONG((volatile ULONG *)(Dev->Alive + Off), Val);
+}
+
+/* Safe at any IRQL: the ISR and the worker never touch EINT8_MASK at the same time (the ISR masks, only the
+   worker unmasks after it has drained the events; the line cannot fire while masked). */
+static VOID EintMask(_In_ PS10T_DEVICE Dev, _In_ BOOLEAN Mask)
+{
+    ULONG v;
+
+    if (Dev->Alive == NULL) {
+        return;
+    }
+    v = AliveRead(Dev, S10T_EINT_MASK);
+    v = Mask ? (v | S10T_EINT0_BIT) : (v & ~S10T_EINT0_BIT);
+    AliveWrite(Dev, S10T_EINT_MASK, v);
+}
+
+static VOID EintAck(_In_ PS10T_DEVICE Dev)
+{
+    if (Dev->Alive != NULL) {
+        AliveWrite(Dev, S10T_EINT_PEND, S10T_EINT0_BIT);   /* write-1-to-clear */
+    }
+}
+
+static VOID EintConfigure(_In_ PS10T_DEVICE Dev)
+{
+    ULONG v;
+
+    EintMask(Dev, TRUE);
+    v = AliveRead(Dev, S10T_GPA1_CON);
+    AliveWrite(Dev, S10T_GPA1_CON, (v & ~S10T_PIN0_FUNC_MASK) | S10T_PIN0_FUNC_EINT);
+    v = AliveRead(Dev, S10T_GPA1_PUD);
+    AliveWrite(Dev, S10T_GPA1_PUD, v & ~S10T_PIN0_PUD_MASK);               /* the controller drives the line */
+    v = AliveRead(Dev, S10T_EINT_CON);
+    AliveWrite(Dev, S10T_EINT_CON, (v & ~S10T_EINT0_TRIG_MASK) | S10T_EINT0_LEVEL_LOW);
+    v = AliveRead(Dev, S10T_EINT_FLTCON);
+    AliveWrite(Dev, S10T_EINT_FLTCON, (v & ~S10T_EINT0_FLT_MASK) | S10T_EINT0_FLT_VALUE);
+    EintAck(Dev);
+}
+
+static VOID SleepMs(_In_ ULONG Ms)
+{
+    LARGE_INTEGER t;
+
+    t.QuadPart = -10000LL * (LONGLONG)Ms;
+    KeDelayExecutionThread(KernelMode, FALSE, &t);
+}
+
+static VOID RegWrite(_In_ WDFDEVICE Device, _In_ PCWSTR Name, _In_ ULONG Value)
+{
+    WDFKEY         key;
+    UNICODE_STRING n;
+
+    if (NT_SUCCESS(WdfDeviceOpenRegistryKey(Device, PLUGPLAY_REGKEY_DEVICE, KEY_SET_VALUE,
+                                            WDF_NO_OBJECT_ATTRIBUTES, &key))) {
+        RtlInitUnicodeString(&n, Name);
+        (VOID)WdfRegistryAssignULong(key, &n, Value);
+        WdfRegistryClose(key);
+    }
+}
+
+static ULONG RegRead(_In_ WDFDEVICE Device, _In_ PCWSTR Name, _In_ ULONG Default)
+{
+    WDFKEY         key;
+    UNICODE_STRING n;
+    ULONG          v = Default;
+
+    if (NT_SUCCESS(WdfDeviceOpenRegistryKey(Device, PLUGPLAY_REGKEY_DEVICE, KEY_READ,
+                                            WDF_NO_OBJECT_ATTRIBUTES, &key))) {
+        RtlInitUnicodeString(&n, Name);
+        if (!NT_SUCCESS(WdfRegistryQueryULong(key, &n, &v))) {
+            v = Default;
+        }
+        WdfRegistryClose(key);
+    }
+    return v;
+}
+
+/* ======================================================================
+ * SPB (I2C through Exynos9820Hsi2c)
+ * ====================================================================== */
+
+static NTSTATUS SpbWrite(_In_ PS10T_DEVICE Dev, _In_reads_(Len) PVOID Buf, _In_ ULONG Len)
+{
+    WDF_MEMORY_DESCRIPTOR    mem;
+    WDF_REQUEST_SEND_OPTIONS opt;
+    ULONG_PTR                done = 0;
+    NTSTATUS                 status;
+
+    WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&mem, Buf, Len);
+    WDF_REQUEST_SEND_OPTIONS_INIT(&opt, WDF_REQUEST_SEND_OPTION_TIMEOUT);
+    WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&opt, WDF_REL_TIMEOUT_IN_MS(SECTS_SPB_TIMEOUT_MS));
+    status = WdfIoTargetSendWriteSynchronously(Dev->Spb, NULL, &mem, NULL, &opt, &done);
+    if (NT_SUCCESS(status) && done != Len) {
+        status = STATUS_DEVICE_DATA_ERROR;
+    }
+    return status;
+}
+
+static NTSTATUS SpbCommand(_In_ PS10T_DEVICE Dev, _In_ UCHAR Cmd)
+{
+    return SpbWrite(Dev, &Cmd, 1);
+}
+
+/* One command byte out, Len bytes back, as one I2C sequence (repeated start). Uses the pre-allocated request,
+   so the input path allocates nothing. PASSIVE_LEVEL, one caller at a time (D0Entry before the worker exists,
+   then only the worker). */
+static NTSTATUS SpbRead(_In_ PS10T_DEVICE Dev, _In_ UCHAR Cmd, _Out_writes_(Len) PVOID Buf, _In_ ULONG Len)
+{
+    SPB_TRANSFER_LIST_AND_ENTRIES(2) seq;
+    WDF_MEMORY_DESCRIPTOR    mem;
+    WDF_REQUEST_SEND_OPTIONS opt;
+    WDF_REQUEST_REUSE_PARAMS reuse;
+    ULONG_PTR                done = 0;
+    UCHAR                    cmd = Cmd;
+    NTSTATUS                 status;
+
+    WDF_REQUEST_REUSE_PARAMS_INIT(&reuse, WDF_REQUEST_REUSE_NO_FLAGS, STATUS_SUCCESS);
+    status = WdfRequestReuse(Dev->SpbRequest, &reuse);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    SPB_TRANSFER_LIST_INIT(&seq.List, 2);
+    seq.List.Transfers[0] = SPB_TRANSFER_LIST_ENTRY_INIT_SIMPLE(SpbTransferDirectionToDevice, 0, &cmd, 1);
+    seq.ExtraTransfers[0] = SPB_TRANSFER_LIST_ENTRY_INIT_SIMPLE(SpbTransferDirectionFromDevice, 0, Buf, Len);
+
+    WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&mem, &seq, sizeof(seq));
+    WDF_REQUEST_SEND_OPTIONS_INIT(&opt, WDF_REQUEST_SEND_OPTION_TIMEOUT);
+    WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&opt, WDF_REL_TIMEOUT_IN_MS(SECTS_SPB_TIMEOUT_MS));
+    status = WdfIoTargetSendIoctlSynchronously(Dev->Spb, Dev->SpbRequest, IOCTL_SPB_EXECUTE_SEQUENCE,
+                                               &mem, NULL, &opt, &done);
+    if (NT_SUCCESS(status) && done != (ULONG_PTR)(1 + Len)) {
+        status = STATUS_DEVICE_DATA_ERROR;
+    }
+    return status;
+}
+
+static NTSTATUS SpbOpen(_In_ PS10T_DEVICE Dev)
+{
+    WDF_IO_TARGET_OPEN_PARAMS open;
+    WDF_OBJECT_ATTRIBUTES     attr;
+    NTSTATUS                  status;
+    DECLARE_UNICODE_STRING_SIZE(path, RESOURCE_HUB_PATH_SIZE);
+
+    if (Dev->Spb == WDF_NO_HANDLE) {
+        status = WdfIoTargetCreate(Dev->Device, WDF_NO_OBJECT_ATTRIBUTES, &Dev->Spb);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+        WDF_OBJECT_ATTRIBUTES_INIT(&attr);
+        attr.ParentObject = Dev->Spb;
+        status = WdfRequestCreate(&attr, Dev->Spb, &Dev->SpbRequest);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+    }
+
+    status = RESOURCE_HUB_CREATE_PATH_FROM_ID(&path, Dev->SpbConnectionId.LowPart, Dev->SpbConnectionId.HighPart);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open, &path, GENERIC_READ | GENERIC_WRITE);
+    open.ShareAccess       = 0;
+    open.CreateDisposition = FILE_OPEN;
+    open.FileAttributes    = FILE_ATTRIBUTE_NORMAL;
+    status = WdfIoTargetOpen(Dev->Spb, &open);
+    Dev->SpbOpen = NT_SUCCESS(status);
+    return status;
+}
+
+static VOID SpbClose(_In_ PS10T_DEVICE Dev)
+{
+    if (Dev->SpbOpen) {
+        WdfIoTargetClose(Dev->Spb);
+        Dev->SpbOpen = FALSE;
+    }
+}
+
+/* sec_ts_probe order (the sequence SecTsY761Touch runs on this phone): app mode, touch functions, sense on,
+   settle, clear the event stack. The rails are switched on by UEFI (Beyond0LteTouchPowerDxe). */
+static NTSTATUS ControllerStart(_In_ PS10T_DEVICE Dev)
+{
+    UCHAR    boot = 0;
+    UCHAR    func[2] = { 0, 0 };
+    UCHAR    cmd[3];
+    ULONG    tries;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+    for (tries = 0; tries < 50; tries++) {
+        status = SpbRead(Dev, SECTS_CMD_BOOT_STATUS, &boot, 1);
+        if (NT_SUCCESS(status) && boot == SECTS_STATUS_APP_MODE) {
+            break;
+        }
+        SleepMs(20);
+    }
+    RegWrite(Dev->Device, L"S10tBootStatus", NT_SUCCESS(status) ? boot : 0xFFFFFFFFUL);
+    RegWrite(Dev->Device, L"S10tBootTries", tries);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    if (boot != SECTS_STATUS_APP_MODE) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    if (NT_SUCCESS(SpbRead(Dev, SECTS_CMD_TOUCHFUNCTION, func, sizeof(func)))) {
+        cmd[0] = SECTS_CMD_TOUCHFUNCTION;
+        cmd[1] = (UCHAR)(func[0] | SECTS_SETFUNC_DEFAULT);
+        cmd[2] = func[1];
+        (VOID)SpbWrite(Dev, cmd, sizeof(cmd));
+    }
+
+    status = SpbCommand(Dev, SECTS_CMD_SENSE_ON);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    SleepMs(50);
+    return SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+}
+
+/* ======================================================================
+ * Frames (worker thread only)
+ * ====================================================================== */
+
+static BOOLEAN AnyDown(_In_ PS10T_DEVICE Dev)
+{
+    ULONG i;
+
+    for (i = 0; i < S10T_MAX_CONTACTS; i++) {
+        if (Dev->Contacts[i].Down) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* Current contacts -> one frame. Lifted contacts go out once with tip 0, then are forgotten. */
+static BOOLEAN BuildFrame(_In_ PS10T_DEVICE Dev, _Out_ S10T_FRAME *F, _In_ BOOLEAN StateChange)
+{
+    ULONG i;
+    ULONG n = 0;
+
+    RtlZeroMemory(F, sizeof(*F));
+    F->Report.ReportId = S10T_REPORT_ID;
+    F->Report.ScanTime = (USHORT)(KeQueryInterruptTime() / 1000ULL);     /* 100 ns -> 100 us */
+    for (i = 0; i < S10T_MAX_CONTACTS; i++) {
+        S10T_CONTACT *c = &Dev->Contacts[i];
+
+        if (c->Down || c->Lifted) {
+            F->Report.Points[n].Tip       = c->Down ? 1 : 0;
+            F->Report.Points[n].ContactId = (UCHAR)i;
+            F->Report.Points[n].X         = c->X;
+            F->Report.Points[n].Y         = c->Y;
+            n++;
+            if (c->Lifted) {
+                StateChange = TRUE;
+                c->Lifted = FALSE;
+            }
+        }
+    }
+    F->Report.ContactCount = (UCHAR)n;
+    F->MoveOnly = !StateChange;
+    return n != 0;
+}
+
+/* Into the FIFO. A move-only frame replaces a move-only frame still waiting at the tail (the reader gets the
+   newest position, never a backlog); press/release frames always get their own slot. */
+static VOID PushFrame(_In_ PS10T_DEVICE Dev, _In_ const S10T_FRAME *F)
+{
+    ULONG tail;
+
+    if (Dev->FifoCount != 0) {
+        tail = (Dev->FifoHead + Dev->FifoCount - 1) % S10T_FIFO_DEPTH;
+        if (F->MoveOnly && Dev->Fifo[tail].MoveOnly) {
+            Dev->Fifo[tail] = *F;
+            InterlockedIncrement(&Dev->Stats.Coalesced);
+            return;
+        }
+    }
+    if (Dev->FifoCount == S10T_FIFO_DEPTH) {
+        /* nobody is reading: drop the oldest frame */
+        Dev->FifoHead = (Dev->FifoHead + 1) % S10T_FIFO_DEPTH;
+        Dev->FifoCount--;
+        InterlockedIncrement(&Dev->Stats.FifoFull);
+    }
+    Dev->Fifo[(Dev->FifoHead + Dev->FifoCount) % S10T_FIFO_DEPTH] = *F;
+    Dev->FifoCount++;
+    InterlockedIncrement(&Dev->Stats.Frames);
+}
+
+/* Read and decode one batch from the controller. Returns TRUE when the contact table changed. */
+static BOOLEAN ReadEvents(_In_ PS10T_DEVICE Dev, _Out_ PBOOLEAN StateChange)
+{
+    UCHAR   *ev = Dev->Events;
+    ULONG    left, i;
+    BOOLEAN  changed = FALSE;
+    NTSTATUS status;
+
+    *StateChange = FALSE;
+    Dev->BatchEmpty = TRUE;
+    status = SpbRead(Dev, SECTS_CMD_READ_ONE_EVENT, ev, SECTS_EVENT_SIZE);
+    if (!NT_SUCCESS(status)) {
+        InterlockedIncrement(&Dev->Stats.I2cErrors);
+        return FALSE;
+    }
+    if (ev[0] == 0) {
+        return FALSE;
+    }
+    Dev->BatchEmpty = FALSE;
+    left = ev[7] & SECTS_LEFT_EVENTS_MASK;
+    if (left > SECTS_MAX_EVENTS - 1) {
+        InterlockedIncrement(&Dev->Stats.InvalidEvents);
+        (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+        return FALSE;
+    }
+    if (left != 0) {
+        status = SpbRead(Dev, SECTS_CMD_READ_ALL_EVENTS, ev + SECTS_EVENT_SIZE, left * SECTS_EVENT_SIZE);
+        if (!NT_SUCCESS(status)) {
+            InterlockedIncrement(&Dev->Stats.I2cErrors);
+            left = 0;                                   /* still use the first event */
+        }
+    }
+
+    for (i = 0; i <= left; i++) {
+        UCHAR *e = ev + i * SECTS_EVENT_SIZE;
+        ULONG  eid = e[0] & SECTS_EID_MASK;
+
+        if (e[0] == 0) {
+            break;
+        }
+        if (eid == SECTS_EID_COORDINATE) {
+            ULONG tid   = (e[0] & SECTS_TID_MASK) >> 2;
+            ULONG state = e[0] >> SECTS_STATE_SHIFT;
+            S10T_CONTACT *c;
+
+            if (tid == 0 || tid > S10T_MAX_CONTACTS || state == 0) {
+                continue;
+            }
+            c = &Dev->Contacts[tid - 1];
+            if (state == SECTS_STATE_RELEASE) {
+                if (c->Down) {
+                    c->Down = FALSE;
+                    c->Lifted = TRUE;
+                    changed = TRUE;
+                    *StateChange = TRUE;
+                }
+            } else {                                     /* press or move */
+                if (!c->Down) {
+                    *StateChange = TRUE;
+                }
+                c->Down   = TRUE;
+                c->Lifted = FALSE;
+                c->X = (USHORT)(((ULONG)e[1] << 4) | (e[3] >> 4));
+                c->Y = (USHORT)(((ULONG)e[2] << 4) | (e[3] & 0x0F));
+                changed = TRUE;
+            }
+            Dev->LastEventTime = KeQueryInterruptTime();
+        } else if (eid != SECTS_EID_STATUS && eid != SECTS_EID_GESTURE) {
+            /* EID 3 = invalid: sec_ts_read_event clears the stack and drops the rest of the batch */
+            InterlockedIncrement(&Dev->Stats.InvalidEvents);
+            (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+            break;
+        }
+    }
+    return changed;
+}
+
+static VOID AllUp(_In_ PS10T_DEVICE Dev)
+{
+    S10T_FRAME f;
+    ULONG      i;
+    BOOLEAN    any = FALSE;
+
+    for (i = 0; i < S10T_MAX_CONTACTS; i++) {
+        if (Dev->Contacts[i].Down) {
+            Dev->Contacts[i].Down = FALSE;
+            Dev->Contacts[i].Lifted = TRUE;
+            any = TRUE;
+        }
+    }
+    if (any && BuildFrame(Dev, &f, TRUE)) {
+        PushFrame(Dev, &f);
+    }
+}
+
+static VOID UpdateLatency(_In_ PS10T_DEVICE Dev)
+{
+    LONGLONG t0 = InterlockedCompareExchange64(&Dev->IrqTime, 0, 0);
+    LONG     us;
+
+    if (t0 == 0) {
+        return;
+    }
+    us = (LONG)((KeQueryInterruptTime() - (ULONGLONG)t0) / 10ULL);
+    if (us > Dev->Stats.MaxIrqToReportUs && us < 10000000) {
+        InterlockedExchange(&Dev->Stats.MaxIrqToReportUs, us);
+    }
+}
+
+/* ======================================================================
+ * The worker thread
+ * ====================================================================== */
+
+static KSTART_ROUTINE WorkerMain;
+
+static VOID WorkerMain(_In_ PVOID Context)
+{
+    PS10T_DEVICE  Dev = (PS10T_DEVICE)Context;
+    PVOID         objs[3];
+    LARGE_INTEGER timeout;
+    NTSTATUS      w;
+
+    (VOID)KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY + 8);
+
+    objs[0] = &Dev->StopEvent;
+    objs[1] = &Dev->IrqEvent;
+    objs[2] = &Dev->KickEvent;
+
+    for (;;) {
+        /* the repeat clock runs while a finger is down and the controller spoke within S10T_REPEAT_LIMIT_MS;
+           after that the contact simply stays down (no phantom refresh) until the controller reports again */
+        BOOLEAN repeatDue = AnyDown(Dev) && Dev->RepeatMs != 0 &&
+                            (KeQueryInterruptTime() - Dev->LastEventTime) < (ULONGLONG)S10T_REPEAT_LIMIT_MS * 10000ULL;
+
+        timeout.QuadPart = -10000LL * (LONGLONG)(repeatDue ? Dev->RepeatMs : 0);
+        w = KeWaitForMultipleObjects(3, objs, WaitAny, Executive, KernelMode, FALSE,
+                                     repeatDue ? &timeout : NULL, NULL);
+        if (w == STATUS_WAIT_0) {
+            break;
+        }
+
+        if (w == STATUS_WAIT_1) {
+            /* attention: drain the controller, one frame per batch, then unmask (level line: if the controller
+               still holds it low, the ISR fires again right away and we come back here) */
+            BOOLEAN    stateChange;
+            S10T_FRAME f;
+
+            if (ReadEvents(Dev, &stateChange) && BuildFrame(Dev, &f, stateChange)) {
+                PushFrame(Dev, &f);
+            }
+            S10tDeliver(Dev);
+            UpdateLatency(Dev);
+            /* A line that stays low with nothing to read (or a bus that keeps failing) would bring us straight
+               back here at real-time priority: back off, up to 50 ms, after three such attentions in a row. */
+            if (Dev->BatchEmpty) {
+                if (++Dev->EmptyStreak > 3) {
+                    SleepMs(Dev->EmptyStreak > 13 ? 50 : 5 * (Dev->EmptyStreak - 3));
+                }
+            } else {
+                Dev->EmptyStreak = 0;
+            }
+            EintAck(Dev);
+            EintMask(Dev, FALSE);
+        } else if (w == STATUS_TIMEOUT) {
+            /* a finger is down and the controller has been quiet for RepeatMs: same frame, new scan time */
+            ULONGLONG quiet = KeQueryInterruptTime() - Dev->LastEventTime;
+            S10T_FRAME f;
+
+            if (quiet >= (ULONGLONG)Dev->RepeatMs * 10000ULL &&
+                quiet < (ULONGLONG)S10T_REPEAT_LIMIT_MS * 10000ULL &&
+                BuildFrame(Dev, &f, FALSE)) {
+                PushFrame(Dev, &f);
+                InterlockedIncrement(&Dev->Stats.Repeats);
+            }
+            S10tDeliver(Dev);
+        } else {
+            /* a read request arrived: hand it whatever is waiting */
+            S10tDeliver(Dev);
+        }
+    }
+
+    AllUp(Dev);
+    S10tDeliver(Dev);
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+VOID S10tKickWorker(_In_ PS10T_DEVICE Dev)
+{
+    KeSetEvent(&Dev->KickEvent, IO_NO_INCREMENT, FALSE);
+}
+
+static NTSTATUS WorkerStart(_In_ PS10T_DEVICE Dev)
+{
+    HANDLE   h;
+    NTSTATUS status;
+
+    KeClearEvent(&Dev->StopEvent);
+    KeClearEvent(&Dev->IrqEvent);
+    KeClearEvent(&Dev->KickEvent);
+    RtlZeroMemory(Dev->Contacts, sizeof(Dev->Contacts));
+    Dev->FifoHead = Dev->FifoCount = 0;
+    Dev->LastEventTime = KeQueryInterruptTime();
+
+    status = PsCreateSystemThread(&h, THREAD_ALL_ACCESS, NULL, NULL, NULL, WorkerMain, Dev);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    status = ObReferenceObjectByHandle(h, THREAD_ALL_ACCESS, *PsThreadType, KernelMode, (PVOID *)&Dev->Worker, NULL);
+    ZwClose(h);
+    if (!NT_SUCCESS(status)) {
+        /* the thread runs but cannot be waited for: stop it and give up */
+        KeSetEvent(&Dev->StopEvent, IO_NO_INCREMENT, FALSE);
+        SleepMs(50);
+        Dev->Worker = NULL;
+    }
+    return status;
+}
+
+static VOID WorkerStop(_In_ PS10T_DEVICE Dev)
+{
+    if (Dev->Worker != NULL) {
+        KeSetEvent(&Dev->StopEvent, IO_NO_INCREMENT, FALSE);
+        (VOID)KeWaitForSingleObject(Dev->Worker, Executive, KernelMode, FALSE, NULL);
+        ObDereferenceObject(Dev->Worker);
+        Dev->Worker = NULL;
+    }
+}
+
+/* ======================================================================
+ * Interrupt
+ * ====================================================================== */
+
+BOOLEAN S10tEvtIsr(_In_ WDFINTERRUPT Interrupt, _In_ ULONG MessageID)
+{
+    PS10T_DEVICE Dev = S10tGet(WdfInterruptGetDevice(Interrupt));
+
+    UNREFERENCED_PARAMETER(MessageID);
+    if (Dev->Alive == NULL) {
+        return FALSE;
+    }
+    /* Level line: mask EINT8 until the worker has drained the controller. */
+    EintMask(Dev, TRUE);
+    EintAck(Dev);
+    InterlockedIncrement(&Dev->Stats.Irqs);
+    (VOID)InterlockedExchange64(&Dev->IrqTime, (LONGLONG)KeQueryInterruptTime());
+    WdfInterruptQueueDpcForIsr(Interrupt);
+    return TRUE;
+}
+
+VOID S10tEvtDpc(_In_ WDFINTERRUPT Interrupt, _In_ WDFOBJECT AssociatedObject)
+{
+    PS10T_DEVICE Dev = S10tGet(WdfInterruptGetDevice(Interrupt));
+
+    UNREFERENCED_PARAMETER(AssociatedObject);
+    KeSetEvent(&Dev->IrqEvent, IO_NO_INCREMENT, FALSE);
+}
+
+/* ======================================================================
+ * PnP / power
+ * ====================================================================== */
+
+NTSTATUS S10tEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw, _In_ WDFCMRESLIST Translated)
+{
+    PS10T_DEVICE Dev = S10tGet(Device);
+    ULONG        i, n = WdfCmResourceListGetCount(Translated);
+    BOOLEAN      spb = FALSE, alive = FALSE;
+    LONG         irq = -1;
+    PHYSICAL_ADDRESS alivePa;
+    WDF_INTERRUPT_CONFIG ic;
+    NTSTATUS     status;
+
+    alivePa.QuadPart = 0;
+    for (i = 0; i < n; i++) {
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR d = WdfCmResourceListGetDescriptor(Translated, i);
+
+        if (d == NULL) {
+            continue;
+        }
+        switch (d->Type) {
+        case CmResourceTypeConnection:
+            if (!spb && d->u.Connection.Class == CM_RESOURCE_CONNECTION_CLASS_SERIAL &&
+                d->u.Connection.Type == CM_RESOURCE_CONNECTION_TYPE_SERIAL_I2C) {
+                Dev->SpbConnectionId.LowPart  = d->u.Connection.IdLowPart;
+                Dev->SpbConnectionId.HighPart = d->u.Connection.IdHighPart;
+                spb = TRUE;
+            }
+            break;
+        case CmResourceTypeInterrupt:
+            if (irq < 0) {
+                irq = (LONG)i;
+            }
+            break;
+        case CmResourceTypeMemory:
+            if ((ULONGLONG)d->u.Memory.Start.QuadPart == S10T_ALIVE_PA && d->u.Memory.Length >= S10T_ALIVE_LEN) {
+                alivePa = d->u.Memory.Start;
+                alive = TRUE;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    RegWrite(Device, L"S10tResources", (spb ? 1 : 0) | (irq >= 0 ? 2 : 0) | (alive ? 4 : 0));
+    if (!spb || irq < 0 || !alive) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;   /* needs the S10 DSDT TSP0 (UEFI v0.1.2+) */
+    }
+
+    Dev->Alive = (PUCHAR)MmMapIoSpaceEx(alivePa, S10T_ALIVE_LEN, PAGE_READWRITE | PAGE_NOCACHE);
+    if (Dev->Alive == NULL) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    EintMask(Dev, TRUE);
+
+    if (Dev->Interrupt == WDF_NO_HANDLE) {
+        WDF_INTERRUPT_CONFIG_INIT(&ic, S10tEvtIsr, S10tEvtDpc);
+        ic.InterruptRaw        = WdfCmResourceListGetDescriptor(Raw, (ULONG)irq);
+        ic.InterruptTranslated = WdfCmResourceListGetDescriptor(Translated, (ULONG)irq);
+        status = WdfInterruptCreate(Device, &ic, WDF_NO_OBJECT_ATTRIBUTES, &Dev->Interrupt);
+        if (!NT_SUCCESS(status)) {
+            RegWrite(Device, L"S10tInterruptStatus", (ULONG)status);
+            return status;
+        }
+    }
+
+    Dev->RepeatMs = RegRead(Device, L"RepeatMs", S10T_REPEAT_MS_DEFAULT);
+    if (Dev->RepeatMs > 100) {
+        Dev->RepeatMs = 100;
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS S10tEvtReleaseHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Translated)
+{
+    PS10T_DEVICE Dev = S10tGet(Device);
+
+    UNREFERENCED_PARAMETER(Translated);
+    if (Dev->Alive != NULL) {
+        EintMask(Dev, TRUE);
+        MmUnmapIoSpace(Dev->Alive, S10T_ALIVE_LEN);
+        Dev->Alive = NULL;
+    }
+    /* an interrupt created in PrepareHardware is deleted by the framework after this callback */
+    Dev->Interrupt = WDF_NO_HANDLE;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS S10tEvtD0Entry(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Previous)
+{
+    PS10T_DEVICE Dev = S10tGet(Device);
+    NTSTATUS     status;
+
+    UNREFERENCED_PARAMETER(Previous);
+    EintConfigure(Dev);                         /* masked until D0EntryPostInterruptsEnabled */
+
+    status = SpbOpen(Dev);
+    RegWrite(Device, L"S10tSpbOpenStatus", (ULONG)status);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    /* Not fatal: a controller that does not answer is visible in the registry, the device still starts. */
+    status = ControllerStart(Dev);
+    RegWrite(Device, L"S10tStartStatus", (ULONG)status);
+
+    status = WorkerStart(Dev);
+    RegWrite(Device, L"S10tWorkerStatus", (ULONG)status);
+    return status;
+}
+
+NTSTATUS S10tEvtD0EntryPostInterruptsEnabled(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Previous)
+{
+    PS10T_DEVICE Dev = S10tGet(Device);
+
+    UNREFERENCED_PARAMETER(Previous);
+    EintAck(Dev);
+    EintMask(Dev, FALSE);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS S10tEvtD0ExitPreInterruptsDisabled(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Target)
+{
+    PS10T_DEVICE Dev = S10tGet(Device);
+
+    UNREFERENCED_PARAMETER(Target);
+    EintMask(Dev, TRUE);
+    EintAck(Dev);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS S10tEvtD0Exit(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Target)
+{
+    PS10T_DEVICE Dev = S10tGet(Device);
+
+    UNREFERENCED_PARAMETER(Target);
+    WorkerStop(Dev);
+    SpbClose(Dev);
+
+    RegWrite(Device, L"S10tIrqs", (ULONG)Dev->Stats.Irqs);
+    RegWrite(Device, L"S10tI2cErrors", (ULONG)Dev->Stats.I2cErrors);
+    RegWrite(Device, L"S10tInvalidEvents", (ULONG)Dev->Stats.InvalidEvents);
+    RegWrite(Device, L"S10tFrames", (ULONG)Dev->Stats.Frames);
+    RegWrite(Device, L"S10tRepeats", (ULONG)Dev->Stats.Repeats);
+    RegWrite(Device, L"S10tCoalesced", (ULONG)Dev->Stats.Coalesced);
+    RegWrite(Device, L"S10tDelivered", (ULONG)Dev->Stats.Delivered);
+    RegWrite(Device, L"S10tFifoFull", (ULONG)Dev->Stats.FifoFull);
+    RegWrite(Device, L"S10tMaxIrqToReportUs", (ULONG)Dev->Stats.MaxIrqToReportUs);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS S10tEvtDeviceAdd(_In_ WDFDRIVER Driver, _Inout_ PWDFDEVICE_INIT Init)
+{
+    WDF_PNPPOWER_EVENT_CALLBACKS pnp;
+    WDF_OBJECT_ATTRIBUTES        attr;
+    WDFDEVICE                    device;
+    PS10T_DEVICE                 Dev;
+    NTSTATUS                     status;
+
+    UNREFERENCED_PARAMETER(Driver);
+
+    WdfFdoInitSetFilter(Init);                  /* mshidkmdf above us; unknown IRPs go down */
+
+    WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
+    pnp.EvtDevicePrepareHardware              = S10tEvtPrepareHardware;
+    pnp.EvtDeviceReleaseHardware              = S10tEvtReleaseHardware;
+    pnp.EvtDeviceD0Entry                      = S10tEvtD0Entry;
+    pnp.EvtDeviceD0Exit                       = S10tEvtD0Exit;
+    pnp.EvtDeviceD0EntryPostInterruptsEnabled = S10tEvtD0EntryPostInterruptsEnabled;
+    pnp.EvtDeviceD0ExitPreInterruptsDisabled  = S10tEvtD0ExitPreInterruptsDisabled;
+    WdfDeviceInitSetPnpPowerEventCallbacks(Init, &pnp);
+
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr, S10T_DEVICE);
+    status = WdfDeviceCreate(&Init, &attr, &device);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    Dev = S10tGet(device);
+    RtlZeroMemory(Dev, sizeof(*Dev));
+    Dev->Device     = device;
+    Dev->Interrupt  = WDF_NO_HANDLE;
+    Dev->Spb        = WDF_NO_HANDLE;
+    Dev->SpbRequest = WDF_NO_HANDLE;
+    Dev->RepeatMs   = S10T_REPEAT_MS_DEFAULT;
+    KeInitializeEvent(&Dev->IrqEvent, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&Dev->KickEvent, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&Dev->StopEvent, NotificationEvent, FALSE);
+
+    return S10tQueuesCreate(device, Dev);
+}
+
+NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
+{
+    WDF_DRIVER_CONFIG config;
+
+    WDF_DRIVER_CONFIG_INIT(&config, S10tEvtDeviceAdd);
+    return WdfDriverCreate(DriverObject, RegistryPath, WDF_NO_OBJECT_ATTRIBUTES, &config, WDF_NO_HANDLE);
+}
