@@ -102,3 +102,18 @@ declared Edge in the DSDT) - not proven on hardware; the 8-byte read is.
 Fix: lift only after S10T_ERROR_LIFT_STREAK (5) failed reads in a row; the rest of a batch is read with
 READ_ONE_EVENT x left (8 bytes each); PRAM F+/F- marks, lift reasons, SpbMaxUs / SpbSlow(>20 ms) in heartbeat 2,
 1 move event in 16 logged.
+
+## 1.0.8.0 + Exynos9820Hsi2c 1.0.2.0 (2026-11-03) - SPB reads time out
+Logs 20261103-030905. WINPRAM-RESTART (clean session, 1.0.7): heartbeat irq249 ev424 fr661 dl661 rd663 i2c50 inv9,
+ff0 rp416 re1 el0, MaxIrqToReport 281249 us, SpbMax 272524 us, SpbSlow(>20 ms) 53; roll: repeated
+"READ_ONE failed c00000b5" (STATUS_IO_TIMEOUT = our 250 ms send timeout), then "overflow: stack cleared". Events
+decode fine (tid 1 press 0x44 / move 0x84 / release 0xC4, ttype 0). WINPRAM.BIN of the force-reset session is
+bit-rotted (RAM not refreshed across that reset) - the RESTART dump is the usable one.
+=> ~1 in 10 short HSI2C transfers never completes: the controller finishes but the completion interrupt is lost
+(DSDT declares SPI 420 Edge; Linux DT gives no type = level). Each loss stalls the worker 250 ms -> backlog ->
+overflow -> all up -> doubled taps / broken drags / "delay".
+UEFI test: 34 events in 10 s (3/s), backlog 13 - the UEFI reader is throttled by GOP Blt per event (slow uncached
+framebuffer: also why boot drawing is slow); not a touch fault.
+Fix: Exynos9820Hsi2c PollTimer (high-resolution, 2 ms) while a request is in flight: under the interrupt lock,
+enabled status set -> disable + ack + run OnInterruptDpc (rescue count TelemetryRescueCount); stopped with the
+request timer. S10Touch SPB timeout 250 -> 50 ms. Candidate for later: DSDT I2C0 interrupt Level (UEFI).

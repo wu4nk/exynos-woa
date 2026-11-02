@@ -124,6 +124,8 @@ struct _PBC_DEVICE {
     WDFSPINLOCK Lock;
     WDFTIMER DelayTimer;
     WDFTIMER RequestTimer;
+    WDFTIMER PollTimer;             // 1.0.2: lost-interrupt rescue while a request is in flight
+    volatile LONG TelemetryRescueCount;
     WDFWORKITEM TelemetryWorkItem;
 
     volatile LONG TelemetrySequence;

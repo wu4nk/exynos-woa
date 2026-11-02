@@ -176,6 +176,25 @@ OnDeviceAdd(
         {
             return status;
         }
+
+        //
+        // 1.0.2 (S10 touch, 2026-11-03): the touch driver saw ~10 % of its 8-byte reads end in its own 250 ms
+        // timeout (S10Touch PRAM: i2c50 of ~600 reads, slowest 281 ms) - the transfer was done but its interrupt
+        // never arrived (GIC SPI declared Edge in the DSDT, a level source). While a request is in flight this
+        // timer looks at the controller every 2 ms and runs the normal ISR + DPC path itself when an enabled
+        // status bit is set, so a lost interrupt costs 2 ms instead of the whole request.
+        //
+        WDF_TIMER_CONFIG_INIT(&timerConfig, OnPollTimer);
+        timerConfig.AutomaticSerialization = FALSE;
+        timerConfig.UseHighResolutionTimer = WdfTrue;
+        status = WdfTimerCreate(
+            &timerConfig,
+            &timerAttributes,
+            &device->PollTimer);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
     }
 
     {

@@ -65,6 +65,7 @@
 #define EXYNOS_HSI2C_FIFO_TRIGGER             8UL
 #define EXYNOS_HSI2C_MAX_TRANSFER_LENGTH      0x00001000UL
 #define EXYNOS_HSI2C_REQUEST_TIMEOUT_MS       1000UL
+#define EXYNOS_HSI2C_POLL_MS                  2UL      // 1.0.2: lost-interrupt rescue period
 
 #define EXYNOS_CMU_GATE_USI03_SOURCE          0x2008UL                // cal-if: RSTNSYNC_CLK_PERIC0_OSCCLK_IPCLKPORT_CLK (chain-inferred role)
 #define EXYNOS_CMU_GATE_USI03_RESET_SYNC      0x2038UL                // cal-if: RSTNSYNC_CLK_PERIC0_USI03_USI_IPCLKPORT_CLK

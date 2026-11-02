@@ -11,6 +11,7 @@ EVT_WDF_INTERRUPT_DPC OnInterruptDpc;
 EVT_WDF_REQUEST_CANCEL OnCancel;
 EVT_WDF_TIMER OnDelayTimerExpired;
 EVT_WDF_TIMER OnRequestTimeout;
+EVT_WDF_TIMER OnPollTimer;
 EVT_WDF_WORKITEM OnTelemetryWorkItem;
 
 EVT_SPB_TARGET_CONNECT OnTargetConnect;

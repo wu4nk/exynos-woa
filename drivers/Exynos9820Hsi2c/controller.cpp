@@ -969,6 +969,7 @@ ControllerCompleteTransfer(
     ControllerDisableInterrupts(Device);
     PbcDeviceSetInterruptMask(Device, 0);
     WdfTimerStop(Device->RequestTimer, FALSE);
+    WdfTimerStop(Device->PollTimer, FALSE);
 
     if (Request->Status != STATUS_CANCELLED)
     {

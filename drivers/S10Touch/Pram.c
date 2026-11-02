@@ -47,7 +47,7 @@ VOID S10tPramInit(VOID)
             Pram[i] = (i % S10T_PRAM_LINE == S10T_PRAM_LINE - 1) ? '\n' : ' ';
         }
         PramRoll = S10T_PRAM_ROLL0;
-        S10tPramLine(0, "S10TOUCH 1.0.7.0 (pram +0xE000, 64 x 64 B)");
+        S10tPramLine(0, "S10TOUCH 1.0.8.0 (pram +0xE000, 64 x 64 B)");
     }
 }
 

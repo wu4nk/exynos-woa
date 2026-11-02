@@ -1249,6 +1249,9 @@ PbcRequestDoTransfer(
         (VOID)WdfTimerStart(
             Device->RequestTimer,
             WDF_REL_TIMEOUT_IN_MS(EXYNOS_HSI2C_REQUEST_TIMEOUT_MS));
+        (VOID)WdfTimerStart(
+            Device->PollTimer,
+            WDF_REL_TIMEOUT_IN_MS(EXYNOS_HSI2C_POLL_MS));
     }
 
     if (Request->DelayInUs != 0)
@@ -1351,6 +1354,57 @@ OnRequestTimeout(
     if (completeRequest)
     {
         PbcRequestComplete(request);
+    }
+}
+
+VOID
+OnPollTimer(
+    _In_ WDFTIMER Timer
+    )
+{
+    WDFDEVICE fxDevice = (WDFDEVICE)WdfTimerGetParentObject(Timer);
+    PPBC_DEVICE device = GetDeviceContext(fxDevice);
+    BOOLEAN active;
+    BOOLEAN rescued = FALSE;
+    ULONG interruptMask;
+    ULONG interruptStatus;
+
+    WdfSpinLockAcquire(device->Lock);
+    active = (device->CurrentTarget != NULL) && (device->CurrentTarget->CurrentRequest != NULL);
+    WdfSpinLockRelease(device->Lock);
+    if (!active)
+    {
+        return;
+    }
+
+    // What OnInterruptIsr does, under the interrupt lock so it cannot race the real ISR.
+    WdfInterruptAcquireLock(device->InterruptObject);
+    interruptMask = PbcDeviceGetInterruptMask(device);
+    if (interruptMask != 0)
+    {
+        interruptStatus = ControllerGetInterruptStatus(device, interruptMask);
+        if (interruptStatus != 0)
+        {
+            ControllerDisableInterrupts(device);
+            ControllerAcknowledgeInterrupts(device, interruptStatus);
+            InterlockedOr(&device->InterruptStatus, (LONG)interruptStatus);
+            rescued = TRUE;
+        }
+    }
+    WdfInterruptReleaseLock(device->InterruptObject);
+
+    if (rescued)
+    {
+        InterlockedIncrement(&device->TelemetryRescueCount);
+        OnInterruptDpc(device->InterruptObject, (WDFOBJECT)fxDevice);
+    }
+
+    WdfSpinLockAcquire(device->Lock);
+    active = (device->CurrentTarget != NULL) && (device->CurrentTarget->CurrentRequest != NULL);
+    WdfSpinLockRelease(device->Lock);
+    if (active)
+    {
+        (VOID)WdfTimerStart(device->PollTimer, WDF_REL_TIMEOUT_IN_MS(EXYNOS_HSI2C_POLL_MS));
     }
 }
 

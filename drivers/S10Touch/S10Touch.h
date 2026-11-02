@@ -85,7 +85,7 @@
 #define SECTS_STATE_MOVE            2
 #define SECTS_STATE_RELEASE         3
 #define SECTS_COORD_MAX             0x0FFF         /* live DT sec,max_coords = <0x1000 0x1000> */
-#define SECTS_SPB_TIMEOUT_MS        250            /* as SecTsY761Touch */
+#define SECTS_SPB_TIMEOUT_MS        50             /* 1.0.8: an 8-byte read takes ~0.3 ms; a stuck one now costs 50 ms, not 250 */
 #define S10T_ERROR_LIFT_STREAK      5              /* 1.0.7: lift every finger only after this many failed reads in a row */
 
 /* ---- HID ---- */

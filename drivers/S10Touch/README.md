@@ -53,3 +53,8 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 - Lỗi I2C không còn nhấc mọi ngón ngay (bản 1.0.1-1.0.6 làm vậy, lần đọc kế tiếp thành một lần chạm mới → chạm đúp). Chỉ nhấc khi lỗi liên tiếp 5 lần (như sec_ts Linux: bỏ lô đó thôi).
 - Không dùng READ_ALL (đọc dài left×8 byte, mọi lô nhiều ngón đều cần) nữa: đọc từng sự kiện 8 byte bằng READ_ONE_EVENT (lệnh này lấy ra một sự kiện khỏi stack), đúng kiểu đọc đã chạy ổn ở UEFI và với 1 ngón.
 - PRAM: thêm dòng F+/F- cho mỗi lần chạm/nhấc, lý do mỗi lần nhấc toàn bộ, thời gian đọc SPB lâu nhất và số lần đọc > 20 ms; chỉ ghi 1/16 sự kiện move để 60 dòng đủ cho cả một thao tác.
+
+## 1.0.8.0 (+ Exynos9820Hsi2c 1.0.2.0)
+- Log của 1.0.7: 50 lần đọc I2C hết giờ (`c00000b5`, mỗi lần chờ 250 ms, chậm nhất 281 ms, 53 lần > 20 ms) trên ~600 lần đọc 8 byte. Mỗi lần như vậy cả luồng cảm ứng đứng 250 ms, chip dồn sự kiện, cuối cùng tràn → nhấc hết ngón → chạm đúp/giật. Đây là thủ phạm của "delay" và "đứt đoạn".
+- Exynos9820Hsi2c 1.0.2.0: khi đang có giao dịch, cứ 2 ms tự kiểm tra bộ điều khiển; nếu giao dịch đã xong mà ngắt bị lạc thì tự xử lý như ngắt thật.
+- S10Touch: thời gian chờ SPB 250 → 50 ms.
