@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.0) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.1) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -23,7 +23,38 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.0 -> $dir"
+Write-Host "s10-log v1.1 -> $dir"
+
+# 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
+#    state, config, logs; a stopped service is started here and the exact error is recorded.
+Save 'services.txt' {
+  foreach ($svc in 'S10eDiag', 'S10eAgent') {
+    "===== $svc"
+    sc.exe query $svc
+    sc.exe qc $svc
+    $st = "$(sc.exe query $svc | Select-String 'STATE')"
+    if ($st -notmatch 'RUNNING') {
+      "--- not running: sc start $svc"
+      sc.exe start $svc
+      "exit code $LASTEXITCODE  (2 = file missing, 577 = signature rejected, 1060 = service not installed, 1275 = driver blocked)"
+      Start-Sleep 2
+      sc.exe query $svc
+    }
+  }
+  '===== files'
+  foreach ($f in 'C:\Windows\System32\drivers\S10eDiag.sys', 'C:\Windows\System32\S10eAgent.exe', 'C:\Windows\System32\s10ediag.exe',
+                 'C:\Windows\System32\s10ereboot.exe', 'C:\S10Prov\S10eDiag\S10eDiag.sys') {
+    if (Test-Path $f) { $s = Get-AuthenticodeSignature $f; "{0}  {1} B  signer: {2}  status: {3}" -f $f, (Get-Item $f).Length, $s.SignerCertificate.Subject, $s.Status } else { "$f  MISSING" }
+  }
+  '===== bcdedit (testsigning)'
+  bcdedit /enum '{current}' | Select-String -Pattern 'testsigning|nointegritychecks'
+  '===== \\.\S10eDiag'
+  s10ediag.exe info
+}
+foreach ($f in 'C:\S10Prov\setupcomplete.log', 'C:\Windows\Temp\S10eAgent.log', 'C:\ProgramData\S10e\buttons.ini', 'C:\S10Prov\install.log') {
+  Copy-Item $f $dir -ErrorAction SilentlyContinue
+}
+Write-Host '[ OK ] services'
 
 # 1. live PRAM: S10Touch (+0xE000, 4 KiB) and the S10eDiag mark ring (+0xA000, 16 KiB), decoded to text
 $diag = Get-Command s10ediag.exe -ErrorAction SilentlyContinue
@@ -73,6 +104,7 @@ if ($esp) {
   mountvol "${esp}:" /s 2>$null
   if (Test-Path "${esp}:\") {
     foreach ($f in 'UEFILOG.TXT', 'WINPRAM.BIN', 'WINPRAM-RESTART.BIN') { Copy-Item "${esp}:\$f" $dir -ErrorAction SilentlyContinue }
+    Copy-Item "${esp}:\S10EDIAG\out\agent.log" (Join-Path $dir 'esp-agent.log') -ErrorAction SilentlyContinue
     mountvol "${esp}:" /d 2>$null
     Write-Host '[ OK ] UEFILOG / WINPRAM from the ESP'
   }
