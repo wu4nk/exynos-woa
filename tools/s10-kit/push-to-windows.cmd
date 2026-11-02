@@ -41,7 +41,7 @@ echo [ OK ] Reboot to Windows ^(TWRP: Reboot ^> System^), log in, tap Yes on the
 exit /b 0
 #__SH__
 #!/system/bin/sh
-# push-to-windows.sh (v1.0) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
+# push-to-windows.sh (v1.1) - run ON THE PHONE (TWRP, root) by push-to-windows.cmd, AFTER the PC has
 # pushed the kit to $STAGE. Places it inside the Windows volume that TWRP mounted on /data:
 #   C:\S10Prov\kit\                      the kit (out\, bcm4375\, setup\, scripts)
 #   C:\Windows\System32\drivers\bcm4375\ the WiFi firmware (works offline, no install step needed)
@@ -70,8 +70,42 @@ ci() {
 SYS32=$(ci "$W" "Windows/System32")
 if [ ! -d "$SYS32" ]; then mount /data 2>/dev/null; SYS32=$(ci "$W" "Windows/System32"); fi
 [ -d "$SYS32" ] || fail "/data is not the Windows volume (no Windows\\System32) - mount it in TWRP first"
-T="$W/.s10-write-test.$$"
-( : > "$T" ) 2>/dev/null && rm -f "$T" || fail "/data is read-only (Windows hibernated / fast startup?) - boot Windows, shut down fully, retry"
+writable() { T="$W/.s10-write-test.$$"; ( : > "$T" ) 2>/dev/null && rm -f "$T"; }
+
+# v1.1: a Windows that crashed, was force-restarted (Vol Down + Power) or shut down with fast startup
+# leaves NTFS "dirty" / hibernated, and TWRP then mounts it read-only. Try to get it writable here:
+# remount; then ntfsfix -d (clear the dirty flag) and mount again with ntfs-3g remove_hiberfile
+# (drops only the fast-startup hibernation image: Windows does a normal cold boot) or ntfs3 force.
+make_rw() {
+  writable && return 0
+  echo "[WARN] /data is read-only - trying to fix it"
+  grep " $W " /proc/mounts | head -n 1 | sed 's/^/       mount: /'
+  DEV=$(grep " $W " /proc/mounts | head -n 1 | cut -d' ' -f1)
+  case "$DEV" in /dev/fuse|fuse*|"") DEV=$(readlink -f /dev/block/by-name/userdata 2>/dev/null) ;; esac
+  [ -n "$DEV" ] || DEV=/dev/block/by-name/userdata
+  echo "       device: $DEV"
+
+  mount -o remount,rw "$W" 2>/dev/null; writable && { say "remounted /data read-write"; return 0; }
+
+  umount "$W" 2>/dev/null || umount -l "$W" 2>/dev/null
+  if command -v ntfsfix >/dev/null 2>&1; then
+    ntfsfix -d "$DEV" 2>&1 | sed 's/^/       ntfsfix: /'
+  fi
+  for try in ntfs-3g mount.ntfs-3g mount.ntfs; do
+    command -v $try >/dev/null 2>&1 || continue
+    $try -o rw,remove_hiberfile "$DEV" "$W" 2>&1 | sed "s/^/       $try: /"
+    writable && { say "mounted /data read-write with $try (remove_hiberfile)"; return 0; }
+    umount "$W" 2>/dev/null
+  done
+  for opt in "-t ntfs3 -o rw,force" "-t ntfs -o rw" "-o rw"; do
+    mount $opt "$DEV" "$W" 2>/dev/null
+    writable && { say "mounted /data read-write (mount $opt)"; return 0; }
+    umount "$W" 2>/dev/null
+  done
+  mount "$DEV" "$W" 2>/dev/null || mount /data 2>/dev/null   # leave it mounted as TWRP had it
+  return 1
+}
+make_rw || fail "/data stays read-only. In Windows: open cmd as admin, run 'powercfg /h off' then 'shutdown /s /t 0' (a full shutdown, not restart / force off), then retry. Or run 'chkdsk C: /f' once."
 say "Windows volume on /data: $SYS32"
 
 KIT=$(ci "$W" "S10Prov/kit")
