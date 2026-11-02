@@ -83,18 +83,38 @@ public static class PartitionMap
         "{52444e41-494f-2044-7573-657264617461}",   // "ANDROID userdata"
         null);                                      // no secondary ESP: SYSTEM here is a 5.98 GiB ext4 Android system
 
+    /// <summary>
+    /// Beyond1lte (SM-G973F, Galaxy S10) geometry, read from the live GPT of WU4NK's own phone
+    /// (notes/beyond1-port.md §2, 2026-11-02). Same disk as the S10e (31 236 096 x 4096 B), but a
+    /// 34-partition table: CACHE is sda31 (LBA 3 118 592 .. 3 272 191, 153 600 LBAs = 629 145 600 B),
+    /// USERDATA is sda34 (LBA 3 286 272 .. 31 236 090 = 27 949 819 LBAs = 114 482 458 624 B, ending
+    /// exactly at LastUsableLBA), BOOT and RECOVERY are the S10e's LBAs.
+    /// PER-PHONE GUIDs: unlike the S10e, this phone's cache and userdata entries do NOT carry
+    /// Samsung's name-derived identifiers - they are random GUIDs (the table has been rewritten,
+    /// HeaderSize 92 with a valid backup copy). The two below are THIS phone's; another S10 will
+    /// differ, and a BCD pointed at the wrong GUID will not boot. Re-read them from the target's GPT
+    /// (sda LBA 2.., entries 31 and 34, unique GUID at +16) before building for another device.
+    /// Never validated by an install.
+    /// </summary>
+    public static readonly GeometryType Beyond1Lte = new(127_943_049_216, 13_460_570_112, 114_482_458_624,
+        629_145_600, 57_671_680, 67_633_152, DiskGuid,
+        "{21ca1362-c5e9-45d2-b5bd-3f4dd0f30251}",   // sda31 cache    - this phone's unique GUID
+        "{712bcd12-3071-4f1c-8951-9c75a5ecca08}",   // sda34 userdata - this phone's unique GUID
+        null);                                      // no secondary ESP (sda25 system is ext4 Android)
+
     /// <summary>True only for a codename whose geometry this class actually carries. The
     /// installer must not fall back to a phone's layout for an unidentified device: a wrong
     /// geometry silently builds a Windows volume for the wrong disk and lets the partition
     /// stage verify against the wrong sizes.</summary>
     public static bool IsKnown(string? codename) =>
-        codename?.ToLowerInvariant() is "star2lte" or "beyond0lte";
+        codename?.ToLowerInvariant() is "star2lte" or "beyond0lte" or "beyond1lte";
 
     public static GeometryType For(string? codename) =>
         (codename?.ToLowerInvariant() switch
         {
             "star2lte" => Star2Lte,
             "beyond0lte" => Beyond0Lte,
+            "beyond1lte" => Beyond1Lte,
             _ => throw new ArgumentOutOfRangeException(nameof(codename),
                 $"No geometry is recorded for {(codename is null ? "an unidentified phone" : codename)}; identify the phone before any layout-dependent step."),
         });

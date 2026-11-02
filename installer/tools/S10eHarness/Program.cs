@@ -4,6 +4,10 @@
 // same Core services the app's InstallPage calls (RunImageAsync / RunPartitionAsync /
 // RunTransferAsync), with PartitionMap.For("beyond0lte").
 //
+// Galaxy S10 (beyond1lte): put `--board beyond1lte` before the verb. Every verb then uses
+// PartitionMap.Beyond1Lte (USERDATA sda34, CACHE sda31, this phone's GPT GUIDs) and the
+// SM-G973F model string; `check` confirms the phone's sizes match before anything writes.
+//
 //   image    <media.iso|install.wim> <index> <driversRoot> <workDir>
 //   check    <adb.exe> <serial>
 //   backup   <adb.exe> <serial> <dir>           (identity partitions: EFS, PARAM, ... - read-only on the phone)
@@ -12,7 +16,20 @@ using S9Woa.Installer.Core.Deploy;
 using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
 
-var geometry = PartitionMap.For("beyond0lte");
+var board = "beyond0lte";
+if (args.Length >= 2 && args[0] == "--board")
+{
+    board = args[1].ToLowerInvariant();
+    args = args[2..];
+}
+if (board is not ("beyond0lte" or "beyond1lte"))
+{
+    Console.Error.WriteLine($"unknown board {board}: beyond0lte (S10e) or beyond1lte (S10)");
+    return 1;
+}
+var geometry = PartitionMap.For(board);
+var model = board == "beyond1lte" ? "SM-G973F" : "SM-G970F";
+Console.WriteLine($"board {board} ({model})");
 var runner = new ProcessRunner();
 var log = new Progress<string>(m => Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {m}"));
 
@@ -37,7 +54,9 @@ switch (args.FirstOrDefault())
         {
             File.Delete(vhdx);
         }
-        var unattend = new UnattendOptions { Username = "S10e", ComputerName = "GALAXY-S10E" };
+        var unattend = board == "beyond1lte"
+            ? new UnattendOptions { Username = "S10", ComputerName = "GALAXY-S10" }
+            : new UnattendOptions { Username = "S10e", ComputerName = "GALAXY-S10E" };
         var built = await new VhdxImageBuilder(runner, null, null, geometry).BuildAsync(vhdx, install, index, drivers,
             SlimProfile.Lite, unattend, Path.Combine(work, "out"), log);
         Console.WriteLine($"windows.img {built.WindowsImage} {built.WindowsBytes} B sha256 {built.WindowsSha256}");
@@ -69,14 +88,14 @@ switch (args.FirstOrDefault())
                 return 2;
             }
         }
-        Console.WriteLine("partitions match the beyond0lte geometry");
+        Console.WriteLine($"partitions match the {board} geometry");
         return 0;
     }
     case "backup" when args.Length == 4:
     {
         // RunBackupAsync's call: BackupService over PartitionMap.IdentityBackup, hashed on phone and PC.
         var twrp = new TwrpClient(args[1], args[2], runner);
-        var manifest = await new BackupService(twrp).BackupAsync(args[3], "SM-G970F", args[2], log);
+        var manifest = await new BackupService(twrp).BackupAsync(args[3], model, args[2], log);
         Console.WriteLine($"Backed up {manifest.Partitions.Count} partitions to {args[3]}.");
         return 0;
     }
@@ -112,6 +131,6 @@ switch (args.FirstOrDefault())
         return 0;
     }
     default:
-        Console.Error.WriteLine("usage: image <media> <index> <driversRoot> <workDir> | check <adb> <serial> | backup <adb> <serial> <dir> | transfer <adb> <serial> <workDir>");
+        Console.Error.WriteLine("usage: [--board beyond0lte|beyond1lte] image <media> <index> <driversRoot> <workDir> | check <adb> <serial> | backup <adb> <serial> <dir> | transfer <adb> <serial> <workDir>");
         return 1;
 }

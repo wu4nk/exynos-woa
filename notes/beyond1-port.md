@@ -111,3 +111,14 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   RAM too, so the S10 keeps parity — OPEN: settle which kaslr value is right.
 - 2026-11-02 — S10e regression re-run after the ROWS change: still only the PeilessSec
   ASSERT line immediate differs.
+- 2026-11-02 — installer: `PartitionMap.Beyond1Lte` (disk 127 943 049 216 B, USERDATA
+  offset 13 460 570 112 B / 114 482 458 624 B = LBA 3286272..31236090, CACHE 629 145 600 B,
+  BOOT/RECOVERY as S10e) and `S10eHarness --board beyond1lte` (geometry, SM-G973F model,
+  S10 unattend names). **This phone's cache/userdata unique GUIDs are random**
+  ({21ca1362-…0251}, {712bcd12-…ca08}), not Samsung's name-derived ones — they are
+  per-device and go into the BCD. Compiled on Linux (.NET 8, net8.0 TFM in a scratch copy,
+  Odin serial flasher excluded, CA1416 silenced — the real target is net8.0-windows) and
+  ran: `--board beyond1lte` → geometry LBAs 3286272..31236090, cache 153 600 LBAs; a bad
+  board name is refused. xUnit tests NOT run (NuGet blocked here).
+  GptTypeService already handles a present backup GPT (entries at LastLBA-4) — the S10's
+  layout satisfies its adjacency check.
