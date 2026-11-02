@@ -28,6 +28,7 @@
 #include <hidport.h>
 #include <spb.h>
 #include <ntstrsafe.h>
+#define RESHUB_USE_HELPER_ROUTINES      /* reshub.h only defines RESOURCE_HUB_CREATE_PATH_FROM_ID with this */
 #include <reshub.h>
 
 #define S10T_TAG                    'T01S'

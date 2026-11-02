@@ -19,3 +19,4 @@
 - Review: the first worker draft blocked on KickEvent after 3 s idle (would have ignored attentions) - replaced by
   the repeatDue condition; ReleaseHardware now clears the interrupt handle (framework deletes interrupts created
   in PrepareHardware); ntstrsafe.h before reshub.h (RESOURCE_HUB_CREATE_PATH_FROM_ID uses RtlUnicodeStringPrintf).
+- EWDK build 1 (user 17:40): C4013 RESOURCE_HUB_CREATE_PATH_FROM_ID undefined - the SDK reshub.h defines it only under RESHUB_USE_HELPER_ROUTINES (the old SecTsY761Touch defined it before the include). Fixed in S10Touch.h.
