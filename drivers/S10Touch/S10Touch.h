@@ -145,6 +145,7 @@ typedef struct _S10T_STATS {
     volatile LONG ErrorLifts;       /* 1.0.7: all-up forced by repeated bus errors */
     volatile LONG SpbMaxUs;         /* 1.0.7: slowest SPB read, us */
     volatile LONG SpbSlow;          /* 1.0.7: SPB reads over 20 ms */
+    volatile LONG DirectRetries;    /* 1.1.0: direct-I2C transfers retried after a bus reset */
 } S10T_STATS;
 
 typedef struct _S10T_DEVICE {
@@ -155,6 +156,9 @@ typedef struct _S10T_DEVICE {
     WDFREQUEST      SpbRequest;         /* reused for every write-read (worker thread only) */
     LARGE_INTEGER   SpbConnectionId;
     PUCHAR          Alive;              /* ALIVE GPIO page, uncached */
+    BOOLEAN         Direct;             /* 1.1.0: registry DirectI2c (default 1): polled HSI2C, no SpbCx */
+    PUCHAR          Hs;                 /* 1.1.0: hsi2c@104B0000, uncached (direct mode) */
+    ULONG           DirectClock;        /* USI03 USER mux (0x100) | div ratio, as found */
     BOOLEAN         SpbOpen;
 
     /* worker */
@@ -201,6 +205,12 @@ VOID S10tKickWorker(_In_ PS10T_DEVICE Dev);
 /* Hid.c */
 NTSTATUS S10tQueuesCreate(_In_ WDFDEVICE Device, _In_ PS10T_DEVICE Dev);
 VOID S10tDeliver(_In_ PS10T_DEVICE Dev);
+
+/* DirectI2c.c (1.1.0): the touch IC over hsi2c@104B0000, polled, as the UEFI does it */
+NTSTATUS S10tDirectOpen(_In_ PS10T_DEVICE Dev);
+VOID     S10tDirectClose(_In_ PS10T_DEVICE Dev);
+NTSTATUS S10tDirectRead(_In_ PS10T_DEVICE Dev, _In_ UCHAR Cmd, _Out_writes_(Len) PVOID Buf, _In_ ULONG Len);
+NTSTATUS S10tDirectWrite(_In_ PS10T_DEVICE Dev, _In_reads_(Len) PVOID Buf, _In_ ULONG Len);
 
 /* Pram.c (1.0.3): text lines in firmware-saved reserved RAM (WINPRAM +0xE000), readable after a force restart */
 VOID S10tPramInit(VOID);

@@ -58,3 +58,9 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 - Log của 1.0.7: 50 lần đọc I2C hết giờ (`c00000b5`, mỗi lần chờ 250 ms, chậm nhất 281 ms, 53 lần > 20 ms) trên ~600 lần đọc 8 byte. Mỗi lần như vậy cả luồng cảm ứng đứng 250 ms, chip dồn sự kiện, cuối cùng tràn → nhấc hết ngón → chạm đúp/giật. Đây là thủ phạm của "delay" và "đứt đoạn".
 - Exynos9820Hsi2c 1.0.2.0: khi đang có giao dịch, cứ 2 ms tự kiểm tra bộ điều khiển; nếu giao dịch đã xong mà ngắt bị lạc thì tự xử lý như ngắt thật.
 - S10Touch: thời gian chờ SPB 250 → 50 ms.
+
+## 1.1.0.0 - đọc chip trực tiếp, không qua SpbCx
+- Log s10-log 04:00 (1.0.8 + Hsi2c 1.0.2): 597 lần đọc lỗi `c00000b5` trên ~2000 sự kiện, một lô 3-4 lần đọc mất ~50 ms (12+ ms mỗi lần đọc 8 byte qua SpbCx/Exynos9820Hsi2c). Chip có 31 chỗ trong hàng đợi; kéo lâu là đầy → `overflow: stack cleared` → nhả ngón → kéo bị cắt thành nhiều lần chạm.
+- Bus thì ổn: UEFI đọc 1 byte mất 224 µs, chưa lỗi lần nào. Nên 1.1.0 dùng đúng cách đọc của UEFI: driver tự điều khiển hsi2c@104B0000 (polled, chờ bằng KeStallExecutionProcessor, ~0,3 ms mỗi lần đọc 8 byte, tự reset bus + thử lại 1 lần nếu lỗi), trên luồng worker. Không gửi gì qua Exynos9820Hsi2c nữa (vẫn cài được, nó không đụng bus khi không có yêu cầu).
+- Registry `DirectI2c` (DWORD, mặc định 1); 0 = quay lại đường SpbCx cũ.
+- PRAM: dòng mở bus ghi `direct open ... clk <mux|div>`; heartbeat thêm `dr` = số lần thử lại.

@@ -43,6 +43,7 @@
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Hid.c" />
     <ClCompile Include="Pram.c" />
+    <ClCompile Include="DirectI2c.c" />
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <Target Name="ValidateOfflineBuild" BeforeTargets="PrepareForBuild">

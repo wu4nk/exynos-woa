@@ -107,6 +107,9 @@ static NTSTATUS SpbWrite(_In_ PS10T_DEVICE Dev, _In_reads_(Len) PVOID Buf, _In_ 
     if (!Dev->SpbOpen) {
         return STATUS_DEVICE_NOT_READY;
     }
+    if (Dev->Direct) {
+        return S10tDirectWrite(Dev, Buf, Len);
+    }
     WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&mem, Buf, Len);
     WDF_REQUEST_SEND_OPTIONS_INIT(&opt, WDF_REQUEST_SEND_OPTION_TIMEOUT);
     WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&opt, WDF_REL_TIMEOUT_IN_MS(SECTS_SPB_TIMEOUT_MS));
@@ -135,6 +138,20 @@ static NTSTATUS SpbRead(_In_ PS10T_DEVICE Dev, _In_ UCHAR Cmd, _Out_writes_(Len)
     UCHAR                    cmd = Cmd;
     NTSTATUS                 status;
 
+    if (Dev->SpbOpen && Dev->Direct) {
+        ULONGLONG t0 = KeQueryInterruptTime();
+        LONG      us;
+
+        status = S10tDirectRead(Dev, Cmd, Buf, Len);
+        us = (LONG)((KeQueryInterruptTime() - t0) / 10ULL);
+        if (us > Dev->Stats.SpbMaxUs) {
+            InterlockedExchange(&Dev->Stats.SpbMaxUs, us);
+        }
+        if (us > 20000) {
+            InterlockedIncrement(&Dev->Stats.SpbSlow);
+        }
+        return status;
+    }
     if (!Dev->SpbOpen || Dev->SpbRequest == WDF_NO_HANDLE) {
         return STATUS_DEVICE_NOT_READY;
     }
@@ -178,6 +195,12 @@ static NTSTATUS SpbOpen(_In_ PS10T_DEVICE Dev)
     NTSTATUS                  status;
     DECLARE_UNICODE_STRING_SIZE(path, RESOURCE_HUB_PATH_SIZE);
 
+    if (Dev->Direct) {
+        status = S10tDirectOpen(Dev);
+        Dev->SpbOpen = NT_SUCCESS(status);
+        return status;
+    }
+
     if (Dev->Spb == WDF_NO_HANDLE) {
         status = WdfIoTargetCreate(Dev->Device, WDF_NO_OBJECT_ATTRIBUTES, &Dev->Spb);
         if (!NT_SUCCESS(status)) {
@@ -217,6 +240,11 @@ static NTSTATUS SpbOpen(_In_ PS10T_DEVICE Dev)
 
 static VOID SpbClose(_In_ PS10T_DEVICE Dev)
 {
+    if (Dev->Direct) {
+        S10tDirectClose(Dev);
+        Dev->SpbOpen = FALSE;
+        return;
+    }
     if (Dev->SpbOpen) {
         WdfIoTargetClose(Dev->Spb);
         Dev->SpbOpen = FALSE;
@@ -592,9 +620,10 @@ static VOID Heartbeat(_In_ PS10T_DEVICE Dev)
         return;
     }
     Dev->LastHeartbeat = now;
-    (VOID)RtlStringCbPrintfA(t, sizeof(t), "irq%u ev%u fr%u dl%u rd%u i2c%u inv%u",
+    (VOID)RtlStringCbPrintfA(t, sizeof(t), "irq%u ev%u fr%u dl%u rd%u i2c%u inv%u dr%u",
                              Dev->Stats.Irqs, Dev->Stats.Events, Dev->Stats.Frames, Dev->Stats.Delivered,
-                             Dev->Stats.ReadRequests, Dev->Stats.I2cErrors, Dev->Stats.InvalidEvents);
+                             Dev->Stats.ReadRequests, Dev->Stats.I2cErrors, Dev->Stats.InvalidEvents,
+                             Dev->Stats.DirectRetries);
     S10tPramLine(2, t);
     (VOID)RtlStringCbPrintfA(t, sizeof(t), "ff%u co%u rp%u re%u el%u lv%u m%x p%x %uus s%u/%u",
                              Dev->Stats.FifoFull, Dev->Stats.Coalesced, Dev->Stats.Repeats, Dev->Stats.Reinits,
@@ -628,7 +657,8 @@ static VOID WorkerMain(_In_ PVOID Context)
         for (tries = 0;; tries++) {
             st = SpbOpen(Dev);
             if (NT_SUCCESS(st) || tries < 3 || tries % 20 == 19) {
-                (VOID)RtlStringCbPrintfA(t, sizeof(t), "SpbOpen try %u st %08x", tries, (ULONG)st);
+                (VOID)RtlStringCbPrintfA(t, sizeof(t), "%s open try %u st %08x clk %x", Dev->Direct ? "direct" : "spb",
+                                         tries, (ULONG)st, Dev->DirectClock);
                 S10tPramRoll(t);
             }
             if (NT_SUCCESS(st)) {
@@ -859,6 +889,7 @@ NTSTATUS S10tEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw, _I
         }
     }
 
+    Dev->Direct   = RegRead(Device, L"DirectI2c", 1) != 0;   /* 1.1.0: 0 = through SpbCx / Exynos9820Hsi2c */
     Dev->RepeatMs = RegRead(Device, L"RepeatMs", S10T_REPEAT_MS_DEFAULT);
     if (Dev->RepeatMs > 100) {
         Dev->RepeatMs = 100;

@@ -117,3 +117,18 @@ framebuffer: also why boot drawing is slow); not a touch fault.
 Fix: Exynos9820Hsi2c PollTimer (high-resolution, 2 ms) while a request is in flight: under the interrupt lock,
 enabled status set -> disable + ack + run OnInterruptDpc (rescue count TelemetryRescueCount); stopped with the
 request timer. S10Touch SPB timeout 250 -> 50 ms. Candidate for later: DSDT I2C0 interrupt Level (UEFI).
+
+## 1.1.0.0 (2026-11-03) - direct polled HSI2C; S10eAgent Reboot-to-TWRP fix
+s10-log v1.1 (04:00, live PRAM via s10ediag peek - works): S10Touch 1.0.8 heartbeat irq1538 ev2053 fr8636 i2c597
+inv28 dr- , rp7350, el6 (error lifts), SpbMax 105 ms, SpbSlow 5. Roll: "READ_ONE k/n failed c00000b5" every ~52 ms,
+left climbing 13 -> 29 -> "overflow: stack cleared" -> F+ again: a batch of 3-4 reads takes ~50 ms (> 12 ms per
+8-byte read through SpbCx + Exynos9820Hsi2c 1.0.2 incl. its 2 ms poll), failures are quick (SpbSlow only 5), the
+reader falls behind the panel (~120 events/s/finger) and the 31-event stack overflows on every long drag.
+UEFI's polled transfer on the same bus: 224 us per 1-byte read, no error ever. => 1.1.0: DirectI2c.c = TouchChip.c's
+TsXfer in kernel (map HSI2C + CMU/SYSREG/GPIO, same platform writes, INT_EN only for the latched status bits,
+KeStallExecutionProcessor polling, 5 ms limit, reset + 1 retry), selected by DirectI2c=1 (default); SpbRead/
+SpbWrite/SpbOpen/SpbClose dispatch on Dev->Direct. Exynos9820Hsi2c stays installed (\_SB.I2C0) but gets no requests;
+its ISR returns FALSE with software mask 0; SPI 420 is Edge -> no storm. Divider forced to /2 if found /1 (UEFI < 0.1.8).
+S10eAgent (services RUNNING, signatures Valid, testsigning Yes): agent.log "no ESP with \S10EDIAG - nothing to do
+this boot" -> Worker returned before its request loop -> recovery.req never served. Fix: RequestsThread (1 s poll)
+started right after the stale-request discard; recovery.req removed from the Worker's final loop.

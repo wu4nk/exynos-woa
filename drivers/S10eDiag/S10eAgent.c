@@ -214,6 +214,24 @@ ReadWaitSeconds(void)
     return (Read > 0) ? strtoul(Text, NULL, 10) : DEFAULT_WAIT_S;
 }
 
+// recovery.req -> s10ediag recovery + flush + hard reset (m14 runs 18-20: a clean restart loops back into Windows;
+// flush + hard reset is the proven way). Polled every second for the whole session.
+static DWORD WINAPI
+RequestsThread(LPVOID Parameter)
+{
+    UNREFERENCED_PARAMETER(Parameter);
+    for (;;) {
+        if (GetFileAttributesW(L"C:\\S10eTmp\\req\\recovery.req") != INVALID_FILE_ATTRIBUTES) {
+            DeleteFileW(L"C:\\S10eTmp\\req\\recovery.req");
+            LogLine("request: reboot to TWRP");
+            RunAndWait(L"C:\\Windows\\System32\\s10ediag.exe flushreset", 60000, INVALID_HANDLE_VALUE);
+        }
+        if (WaitForSingleObject(gStopEvent, 1000) == WAIT_OBJECT_0) {
+            return 0;
+        }
+    }
+}
+
 static DWORD WINAPI
 Worker(LPVOID Parameter)
 {
@@ -244,6 +262,12 @@ Worker(LPVOID Parameter)
     if (DeleteFileW(L"C:\\S10eTmp\\req\\collect.req")) {
         LogLine("stale request discarded: collect.req");
     }
+
+    // 0b. (S10, 2026-11-03) "Reboot to TWRP" from the first second of the session, in its own thread. It used to be
+    // served only by the loop at the end of this worker, which is reached only after an ESP holding \S10EDIAG is
+    // found - the S10's ESP has none, so the worker returned ("nothing to do this boot") and the desktop
+    // shortcut never worked. The stale request above is gone before this thread starts.
+    CloseHandle(CreateThread(NULL, 0, RequestsThread, NULL, 0, NULL));
 
     // 1. The ESP (volumes can arrive late on one core: retry for ~5 min).
     for (Attempt = 0; Attempt < 30; Attempt++) {
@@ -347,12 +371,6 @@ Worker(LPVOID Parameter)
     //   collect.req  -> run collect.cmd again with STAY=1 (logs refreshed, Windows keeps running)
     //
     for (;;) {
-        if (GetFileAttributesW(L"C:\\S10eTmp\\req\\recovery.req") != INVALID_FILE_ATTRIBUTES) {
-            DeleteFileW(L"C:\\S10eTmp\\req\\recovery.req");
-            LogLine("request: reboot to TWRP");
-            // m14 runs 18-20: a clean restart loops back into Windows; flush + hard reset is the proven way.
-            RunAndWait(L"C:\\Windows\\System32\\s10ediag.exe flushreset", 60000, INVALID_HANDLE_VALUE);
-        }
         if (GetFileAttributesW(L"C:\\S10eTmp\\req\\collect.req") != INVALID_FILE_ATTRIBUTES) {
             DeleteFileW(L"C:\\S10eTmp\\req\\collect.req");
             LogLine("request: collect logs");
