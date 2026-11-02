@@ -331,3 +331,12 @@ S10 build only: DVFS FREQ_REQ LITTLE 1950000 (max), MID 2106000 (2210/2314 need 
 left at sboot's value), INT 534000 (max) - all exact TWRP-kernel ladder steps; S10e keeps 1456000/1794000/400000.
 Progress-0x66 guard still skips the request after a boot that hung in it. No thermal management in Windows: MID kept
 below max. NOT VALIDATED: read the "DVFS FREQ_REQ ... reply" lines + s10eperf clocks.
+
+## Round 10 (2026-11-03) - GPU stage G1 again: UEFI v0.1.11, kit v1.7
+User: clocks better; "switch to the GPU now". v0.1.11 = v0.1.10 + GpuProbeDxe BEYOND0LTE_GPU_POWER_ON=1 (G3D left on /
+powered, DSDT GPU0 shown). Rescue: /cache/S10EDIAG/nogpu.flg from TWRP. build-s10.cmd v1.7: S10_GPU=1 builds
+MaliG76Probe/MaliG76Wddm into out-gpu\ (both bind ACPI\SAMS9828 - must not reach make-windows v2.3, which installs
+everything in out\); gpu-s10.ps1 reads out-gpu\. s10-log v1.2: SAMS9828 device + MaliG76*.txt + gpu-report.txt.
+Plan: G1a probe job (MaliG76Probe PASS = the G76 runs a job on the S10), G1b display-only MaliG76Wddm, then G2 =
+GpuEnable 1 (Mesa panfrost UMD, tools/mesa-build, built on the PC) - never reached on the S10e either.
+beyond1lte-uefi-v0.1.11.img sha256 5393d8016e184c996633f4713d04e8c6bd3f4f3e3d0285b63986f09f450f2990. Build rc 0.

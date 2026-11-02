@@ -5,7 +5,7 @@ rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
-rem v1.4: GPU parked for the touch/audio/WiFi test round (UEFI v0.1.5 hides GPU0); set S10_GPU=1
+rem v1.7: GPU packages (S10_GPU=1) land in out-gpu\. v1.4: GPU parked for the touch/audio/WiFi test round (UEFI v0.1.5 hides GPU0); set S10_GPU=1
 rem before running this to build MaliG76Probe / MaliG76Wddm again (v1.3 behaviour, optional).
 rem Same shape as the z3s build-all.cmd; run it inside an EWDK window (LaunchBuildEnv.cmd).
 rem
@@ -72,6 +72,13 @@ rem GPU (parked; S10_GPU=1 to build). /p:MwNoWx=1: keep /W4 but do not fail on w
 if not "%S10_GPU%"=="1" goto :nogpu
 call :msb MaliG76Probe "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1" || (echo [WARN] MaliG76Probe not built - GPU test skipped & if exist "%OUT%\MaliG76Probe" rmdir /s /q "%OUT%\MaliG76Probe")
 call :msb MaliG76Wddm "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1 /p:ExynosBoardBeyond1=1" || (echo [WARN] MaliG76Wddm not built - GPU display skipped & if exist "%OUT%\MaliG76Wddm" rmdir /s /q "%OUT%\MaliG76Wddm")
+rem v1.7: the two GPU packages go to out-gpu\, NOT out\: both bind ACPI\SAMS9828 (only one may be installed), and
+rem make-windows v2.3 / push-to-windows / install-in-windows take EVERYTHING in out\. gpu-s10.ps1 reads out-gpu\.
+if exist "%ROOT%out-gpu" rmdir /s /q "%ROOT%out-gpu"
+mkdir "%ROOT%out-gpu"
+for %%G in (MaliG76Probe MaliG76Wddm) do if exist "%OUT%\%%G" move "%OUT%\%%G" "%ROOT%out-gpu\" >nul
+if exist "%OUT%\kit-test-cert.cer" copy /y "%OUT%\kit-test-cert.cer" "%ROOT%out-gpu\" >nul
+echo [ OK ] GPU packages in %ROOT%out-gpu ^(use gpu-s10.ps1^)
 :nogpu
 
 echo.

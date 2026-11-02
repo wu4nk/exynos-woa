@@ -27,7 +27,8 @@ function Fail($m) { Say 'FAIL' $m Red; exit 1 }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
       [Security.Principal.WindowsBuiltInRole]::Administrator)) { Fail 'run PowerShell as Administrator' }
 
-$Out = Join-Path $PSScriptRoot 'out'
+$Out = Join-Path $PSScriptRoot 'out-gpu'                     # build-s10.cmd v1.7 (S10_GPU=1) puts the Mali packages here
+if (-not (Test-Path $Out)) { $Out = Join-Path $PSScriptRoot 'out' }
 $ProbeLog = "$env:SystemRoot\System32\LogFiles\MaliG76Probe-run.txt"
 $SvcParams = 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters'
 

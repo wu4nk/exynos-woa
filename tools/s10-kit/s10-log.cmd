@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.1) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.2) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -23,7 +23,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.1 -> $dir"
+Write-Host "s10-log v1.2 -> $dir"
 
 # 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
 #    state, config, logs; a stopped service is started here and the exact error is recorded.
@@ -80,7 +80,7 @@ Write-Host '[ OK ] PRAM'
 
 # 2. device state + driver counters (S10Touch S10t*, HSI2C telemetry, everything in Device Parameters)
 Save 'devices.txt' {
-  foreach ($id in 'SCSY0761', 'SAMS9820', 'SAMS9827', 'SAMS9825', 'SAMS9826') {
+  foreach ($id in 'SCSY0761', 'SAMS9820', 'SAMS9827', 'SAMS9825', 'SAMS9826', 'SAMS9828') {
     "===== ACPI\$id"
     foreach ($d in @(Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like "ACPI\$id\*" })) {
       $d | Format-List FriendlyName, InstanceId, Status, Problem
@@ -95,7 +95,7 @@ Save 'problem-devices.txt' { pnputil /enum-devices /problem }
 Save 'drivers.txt' { pnputil /enum-drivers }
 Save 'events-system.txt' { wevtutil qe System /c:300 /rd:true /f:text }
 Copy-Item C:\Windows\INF\setupapi.dev.log $dir -ErrorAction SilentlyContinue
-Copy-Item C:\Windows\System32\LogFiles\Exynos*.txt, C:\Windows\System32\LogFiles\S10*.txt $dir -ErrorAction SilentlyContinue
+Copy-Item C:\Windows\System32\LogFiles\Exynos*.txt, C:\Windows\System32\LogFiles\S10*.txt, C:\Windows\System32\LogFiles\MaliG76*.txt, C:\S10Prov\gpu-report.txt $dir -ErrorAction SilentlyContinue
 Write-Host '[ OK ] devices, counters, events'
 
 # 3. firmware log + saved PRAM dumps from the ESP

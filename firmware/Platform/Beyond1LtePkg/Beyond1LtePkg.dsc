@@ -359,7 +359,7 @@
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.10"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.11"
   #
   # v0.1.6 (notes/beyond1-port.md "UEFI exception in ArmCpuDxe"): no DXE image protection (default 0x2 = every
   # firmware-volume image gets RO code / XP data). The intermittent EC 0x00 exception sits in exactly that
@@ -634,9 +634,11 @@
   # Rescue without reflash: \S10EDIAG\nogpu.flg on the ESP hides GPU0 (BootLogDxe); or flash v0.1.2.
   # v0.1.5: GPU parked again at the user's request (test touch/audio/WiFi first). The define is kept
   # in place, 0 = rescue image: GPU0 always hidden, the G3D domain is only read, never powered.
+  # v0.1.11 (2026-11-03, user: "switch to the GPU now"): back to 1 - stage G1 on the S10 (probe job, then the
+  # display-only Mali driver). Rescue: TWRP `touch /cache/S10EDIAG/nogpu.flg` (the ESP) hides GPU0 next boot.
   Platform/Beyond0LtePkg/Drivers/Beyond0LteGpuProbeDxe/Beyond0LteGpuProbeDxe.inf {
     <BuildOptions>
-      *_*_*_CC_FLAGS = -DBEYOND0LTE_GPU_POWER_ON=0
+      *_*_*_CC_FLAGS = -DBEYOND0LTE_GPU_POWER_ON=1
   }
 
   # --- RAM discovery: Beyond0LteRamManagerDxe is the ported 9810 manager. It
