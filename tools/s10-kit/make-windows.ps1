@@ -418,6 +418,10 @@ try {
   foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1') {
     if (Test-Path (Join-Path $PSScriptRoot $f)) { Copy-Item (Join-Path $PSScriptRoot $f) $kit -Force }
   }
+  # one-click log collector on everyone's desktop (C:\log.zip -> TWRP: adb pull /data/log.zip)
+  if (Test-Path (Join-Path $PSScriptRoot 's10-log.cmd')) {
+    Copy-Item (Join-Path $PSScriptRoot 's10-log.cmd') "${W}:\Users\Public\Desktop\s10-log.cmd" -Force
+  }
   '' | Set-Content "$kit\install.done"   # everything is already installed: the logon launcher has nothing to do
   Ok "kit -> C:\S10Prov\kit (out\, bcm4375\, setup\, install-in-windows / collect-logs)"
   if ($DiagDir) {
