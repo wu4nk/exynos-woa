@@ -303,3 +303,17 @@ Panel IC family: beyond1lte_defconfig CONFIG_TOUCHSCREEN_SEC_TS_Y771=y (Exynos98
 Build: Beyond1LtePkg DEBUG rc 0, Beyond0LtePkg DEBUG rc 0 (S10e unchanged: init compiled out).
 Image: beyond1lte-uefi-v0.1.7.img 7716864 B sha256 7ef5b61b5dac68ca21bba8477a93c86255977015af5234f0813a288f44da293d.
 NOT VALIDATED ON HARDWARE: read the TouchChip: lines of UEFILOG.TXT.
+
+## Round 7 (2026-11-02) - v0.1.8: touch test lags far behind the finger
+User on v0.1.7: bar green (chip answers), dots follow the finger but with a very long delay; in Windows touch
+is jerky, broken up and jumps elsewhere. A delay that grows = the reader is slower than the panel (y771 event
+stack backlog; at overflow the stack is cleared -> jumps). Same bus, same timing math in UEFI and Windows.
+Suspect: the USI03 kernel clock. cal-if 9820: PLL_CON0_MUX_CLKCMU_PERIC0_USI03_USI_USER (CMU_PERIC0+0x1E0, bit4:
+0 OSCCLK 26 MHz / 1 CLKCMU_PERIC0_IP), DIV_CLK_PERIC0_USI03_USI (+0x1810, ratio [3:0]); CLKCMU_PERIC0_IP UUD LUT
+400 MHz; i2c-exynos5.c clk_set_rate(default-clk 200 MHz) -> /2. Nobody but Linux sets it; every HSI2C timing here
+and in Exynos9820Hsi2c assumes 200 MHz. If sboot leaves the USER mux on OSCCLK, SCL is ~52 kHz (8x slow).
+CMU_TOP (PERIC0_IP mux/div at 0x10BC/0x18A8) is not readable: only 0x1000 of it is mapped -> 400 MHz UNVERIFIED.
+v0.1.8 TouchChip: logs mux/div + a timed 1-byte read (arch counter 26 MHz), sets div 1 + mux PERIC0_IP, re-times,
+restores the old clock (and computes timing for it) if the bus stops answering; xfer polling 5 us; drawing loop
+sleeps only when the stack is empty; logs events/s and the deepest left_event backlog.
+Build rc 0. beyond1lte-uefi-v0.1.8.img sha256 3271639e1d781f8172be75815884e5d3542a4dc2eaee622152aa32b9273af2af.

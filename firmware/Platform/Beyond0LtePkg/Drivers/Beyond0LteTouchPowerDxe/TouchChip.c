@@ -24,7 +24,11 @@
   mode, for the Windows driver (S10Touch re-runs touch function + sense on itself).
 
   Every I2C wait is bounded; any failure is logged and the boot continues.
-  NOT VALIDATED ON HARDWARE (stage Guided) until the first UEFILOG of v0.1.7 is read.
+  v0.1.8: the v0.1.7 test drew, but far behind the finger (user, 2026-11-02): the reader was slower than the
+  panel. The USI03 kernel clock is now set to the 200 MHz the HSI2C timing assumes (TsClockFix, with a
+  measured before/after and a fallback), transfers poll every 5 us, the drawing loop only sleeps when the
+  event stack is empty, and the log reports events/s and the deepest backlog (left_event) seen.
+  NOT VALIDATED ON HARDWARE (stage Guided) until the UEFILOG of v0.1.8 is read.
 **/
 
 #include <Uefi.h>
@@ -57,6 +61,27 @@
 #define CMU_QCH_USI03              0x303Cu   // QCH_CON_USI03_USI_QCH
 #define CMU_QCH_REQUIRED           (BIT0 | BIT1)   // ENABLE | CLOCK_REQUEST
 #define SYSREG_USI_MODE_I2C        0x4u
+
+//
+// v0.1.8: the USI03 kernel clock itself (cal-if exynos9820 cmucal-sfr.c / cmucal-node.c):
+//   PLL_CON0_MUX_CLKCMU_PERIC0_USI03_USI_USER 0x1E0: MUX_SEL bit 4 (0 = OSCCLK_PERIC0 26 MHz,
+//     1 = CLKCMU_PERIC0_IP), BUSY bit 7
+//   CLK_CON_DIV_DIV_CLK_PERIC0_USI03_USI 0x1810: DIVRATIO [3:0] (divide by ratio + 1), BUSY bit 16
+// The HSI2C timing (here, and in the Windows Exynos9820Hsi2c driver) is computed for a 200 MHz ipclk = the DT
+// default-clk, which i2c-exynos5.c reaches with clk_set_rate(): CLKCMU_PERIC0_IP 400 MHz (cmucal-vclk.c UUD LUT
+// cmucal_vclk_mux_clkcmu_peric0_ip_lut 400000 kHz) / 2. Nothing outside Linux sets that rate, so v0.1.8 does
+// it: USER mux -> CLKCMU_PERIC0_IP, DIVRATIO 1. The 400 MHz parent is UNVERIFIED (CMU_TOP is only mapped
+// 0x1000 here, its PERIC0_IP mux/div at 0x10BC/0x18A8 cannot be read) - so the result is checked by timing
+// real transfers with the 26 MHz arch timer, and the old setting is put back if the bus stops answering.
+//
+#define CMU_USI03_USER_MUX         0x01E0u
+#define   CMU_USER_MUX_SEL           BIT4
+#define   CMU_USER_MUX_BUSY          BIT7
+#define CMU_USI03_DIV              0x1810u
+#define   CMU_DIV_RATIO_MASK         0xFu
+#define   CMU_DIV_BUSY               BIT16
+#define OSCCLK_HZ                  26000000u    // EXYNOS_ARCH_TIMER_FREQ_HZ source, OSCCLK_PERIC0
+#define PERIC0_IP_HZ               400000000u   // UNVERIFIED (cal-if UUD LUT)
 
 #define GPP1_CON                   0x020u
 #define GPP1_PUD                   0x028u
@@ -211,13 +236,13 @@ TsXfer (
   }
 
   IntStat = 0;
-  for (Us = 0; Us < TS_I2C_TIMEOUT_US; Us += 50) {
+  for (Us = 0; Us < TS_I2C_TIMEOUT_US; Us += 5) {
     IntStat = MmioRead32 (TS_I2C + HSI2C_INT_STAT);
     if ((IntStat & (HSI2C_INT_TRANSFER_DONE | HSI2C_INT_ERRORS)) != 0) {
       break;
     }
 
-    gBS->Stall (50);
+    gBS->Stall (5);
   }
 
   if ((IntStat & HSI2C_INT_ERRORS) != 0) {
@@ -290,6 +315,152 @@ TsWrite (
   }
 
   return TsXfer (FALSE, Buf, Length + 1, TRUE);
+}
+
+STATIC
+UINT64
+TsTicks (
+  VOID
+  )
+{
+  UINT64  V;
+
+  __asm__ __volatile__ ("isb\n\tmrs %0, cntpct_el0" : "=r" (V) :: "memory");
+  return V;
+}
+
+// Microseconds since Start, from the 26 MHz arch counter (CNTFRQ_EL0 verified 26 MHz).
+STATIC
+UINT32
+TsUsSince (
+  IN UINT64  Start
+  )
+{
+  return (UINT32)(((TsTicks () - Start) * 1000000ULL) / EXYNOS_ARCH_TIMER_FREQ_HZ);
+}
+
+STATIC
+UINT32
+TsIpclkHz (
+  IN UINT32  Mux,
+  IN UINT32  Div
+  )
+{
+  return (((Mux & CMU_USER_MUX_SEL) != 0) ? PERIC0_IP_HZ : OSCCLK_HZ) / ((Div & CMU_DIV_RATIO_MASK) + 1);
+}
+
+STATIC
+VOID
+TsWaitClkIdle (
+  VOID
+  )
+{
+  UINTN  Us;
+
+  for (Us = 0; Us < 1000; Us++) {
+    if (((MmioRead32 (TS_CMU + CMU_USI03_USER_MUX) & CMU_USER_MUX_BUSY) == 0) &&
+        ((MmioRead32 (TS_CMU + CMU_USI03_DIV) & CMU_DIV_BUSY) == 0)) {
+      return;
+    }
+
+    gBS->Stall (1);
+  }
+}
+
+// HSI2C fast-mode timing for an ipclk, exynos5_i2c_set_timing (HSI2C_FAST_SPD, 400 kHz) - the formula the
+// FS*_400K constants were derived from for 200 MHz.
+STATIC
+VOID
+TsSetTiming (
+  IN UINT32  IpclkHz
+  )
+{
+  UINT32  FsDiv;
+  UINT32  High;
+  UINT32  Start;
+
+  FsDiv = (IpclkHz / (400000u * 15u)) & 0xFF;
+  High  = (4u * (IpclkHz / 1000000u)) / ((FsDiv + 1) * 10);
+  Start = (High > 0) ? High - 1 : 0;
+  High  = (High > 7) ? 0 : ((0xFFu << High) & 0xFF);
+  Start = (Start > 7) ? 0 : ((0xFFu << Start) & 0xFF);
+  MmioAndThenOr32 (TS_I2C + HSI2C_TIMING_FS3, ~0x00FF0000u, FsDiv << 16);
+  MmioAndThenOr32 (TS_I2C + HSI2C_TIMING_FS2, ~0x000000FFu, High);
+  MmioAndThenOr32 (TS_I2C + HSI2C_TIMING_FS1, ~0x00FF0000u, Start << 16);
+  DEBUG ((DEBUG_ERROR, "TouchChip: HSI2C timing for ipclk %u Hz: FS1 %x FS2 %x FS3 %x\n", IpclkHz,
+          MmioRead32 (TS_I2C + HSI2C_TIMING_FS1), MmioRead32 (TS_I2C + HSI2C_TIMING_FS2),
+          MmioRead32 (TS_I2C + HSI2C_TIMING_FS3)));
+}
+
+// Average microseconds of one 1-byte register read (cmd write + repeated start + 1 byte): ~40 SCL periods,
+// ~100-150 us at 400 kHz. 0 = the bus does not answer.
+STATIC
+UINT32
+TsMeasureReadUs (
+  VOID
+  )
+{
+  UINT64  T0;
+  UINT8   B;
+  UINTN   I;
+
+  T0 = TsTicks ();
+  for (I = 0; I < 20; I++) {
+    if (EFI_ERROR (TsRead (SEC_TS_READ_BOOT_STATUS, &B, 1))) {
+      return 0;
+    }
+  }
+
+  return TsUsSince (T0) / 20;
+}
+
+//
+// Put the USI03 kernel clock at the 200 MHz everything here is timed for; keep it only if the bus still answers.
+//
+STATIC
+VOID
+TsClockFix (
+  VOID
+  )
+{
+  UINT32  Mux0;
+  UINT32  Div0;
+  UINT32  UsBefore;
+  UINT32  UsAfter;
+
+  Mux0     = MmioRead32 (TS_CMU + CMU_USI03_USER_MUX);
+  Div0     = MmioRead32 (TS_CMU + CMU_USI03_DIV);
+  UsBefore = TsMeasureReadUs ();
+  DEBUG ((DEBUG_ERROR, "TouchChip: USI03 clock as found: USER mux %x (%a) div %x (/%u) -> ipclk ~%u Hz (timing assumes 200 MHz),"
+                       " 1-byte read %u us\n", Mux0, (Mux0 & CMU_USER_MUX_SEL) ? "PERIC0_IP" : "OSCCLK 26 MHz",
+          Div0, (Div0 & CMU_DIV_RATIO_MASK) + 1, TsIpclkHz (Mux0, Div0), UsBefore));
+
+  if (((Mux0 & CMU_USER_MUX_SEL) != 0) && ((Div0 & CMU_DIV_RATIO_MASK) == 1)) {
+    DEBUG ((DEBUG_ERROR, "TouchChip: USI03 clock already PERIC0_IP / 2 - unchanged\n"));
+    return;
+  }
+
+  // Divider first (a larger division while the faster parent is selected), then the mux (cal-if order irrelevant here).
+  MmioAndThenOr32 (TS_CMU + CMU_USI03_DIV, ~CMU_DIV_RATIO_MASK, 1);
+  TsWaitClkIdle ();
+  MmioOr32 (TS_CMU + CMU_USI03_USER_MUX, CMU_USER_MUX_SEL);
+  TsWaitClkIdle ();
+  TsI2cReset ();
+  UsAfter = TsMeasureReadUs ();
+  DEBUG ((DEBUG_ERROR, "TouchChip: USI03 clock set: USER mux %x div %x -> 1-byte read %u us (was %u)\n",
+          MmioRead32 (TS_CMU + CMU_USI03_USER_MUX), MmioRead32 (TS_CMU + CMU_USI03_DIV), UsAfter, UsBefore));
+
+  if ((UsAfter == 0) && (UsBefore != 0)) {
+    // The new clock does not drive the bus: back to what sboot left, with the timing computed for that clock.
+    MmioWrite32 (TS_CMU + CMU_USI03_USER_MUX, Mux0 & ~CMU_USER_MUX_BUSY);
+    TsWaitClkIdle ();
+    MmioAndThenOr32 (TS_CMU + CMU_USI03_DIV, ~CMU_DIV_RATIO_MASK, Div0 & CMU_DIV_RATIO_MASK);
+    TsWaitClkIdle ();
+    TsI2cReset ();
+    TsSetTiming (TsIpclkHz (Mux0, Div0));
+    DEBUG ((DEBUG_ERROR, "TouchChip: bus dead on PERIC0_IP / 2 - clock restored, timing for the old clock: read %u us\n",
+            TsMeasureReadUs ()));
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -458,6 +629,8 @@ TsFill (
   (VOID)Gop->Blt (Gop, &Px, EfiBltVideoFill, 0, 0, X, Y, W, H, 0);
 }
 
+STATIC UINT32  mMaxLeft;
+
 // Pops every pending event; draws a dot per press/move when Draw. Returns the number of fingers seen.
 STATIC
 UINTN
@@ -482,6 +655,10 @@ TsPoll (
     }
 
     (*Events)++;
+    if ((UINT32)(Ev[7] & 0x1F) > mMaxLeft) {   // y771: left_event:5 - how far behind the reader is
+      mMaxLeft = Ev[7] & 0x1F;
+    }
+
     if ((Ev[0] & 0x3) != 0) {               // not a coordinate event
       continue;
     }
@@ -549,13 +726,23 @@ TsTouchTest (
   DEBUG ((DEBUG_ERROR, "TouchChip: test window %u ms, %u events, %a\n", Ms, Events,
           Armed ? "touched - drawing" : "not touched"));
   if (Armed) {
+    UINT64  T0;
+    UINTN   Before;
+
     TsFill (Gop, 0x2962FF, 0, 0, MAX_UINTN, TOUCH_TEST_BAR_HEIGHT);   // blue bar = drawing mode
-    for (Ms = 0; Ms < TOUCH_TEST_RUN_MS; Ms += 8) {
+    Events   = 0;
+    mMaxLeft = 0;
+    T0       = TsTicks ();
+    while (TsUsSince (T0) < TOUCH_TEST_RUN_MS * 1000u) {
+      Before = Events;
       (VOID)TsPoll (Gop, TRUE, &Events);
-      gBS->Stall (8000);
+      if (Events == Before) {
+        gBS->Stall (1000);                  // stack empty: look again in 1 ms (the panel reports at ~120 Hz)
+      }
     }
 
-    DEBUG ((DEBUG_ERROR, "TouchChip: drawing done, %u events in total\n", Events));
+    DEBUG ((DEBUG_ERROR, "TouchChip: drawing done: %u events in %u ms (%u/s), deepest backlog %u events\n",
+            Events, TOUCH_TEST_RUN_MS, (UINT32)((Events * 1000) / TOUCH_TEST_RUN_MS), mMaxLeft));
   }
 
   TsFill (Gop, 0x000000, 0, 0, MAX_UINTN, TOUCH_TEST_BAR_HEIGHT);
@@ -576,6 +763,9 @@ TouchChipBringUp (
   TsBusInit ();
 
   Ok = TsWaitAppMode (&Boot, &Tries);
+  if (Ok) {
+    TsClockFix ();
+  }
   DEBUG ((DEBUG_ERROR, "TouchChip: boot status %02x after %u tries (%a)\n", Boot, Tries,
           Ok ? "application mode" : "NOT in application mode"));
   if (!Ok) {
