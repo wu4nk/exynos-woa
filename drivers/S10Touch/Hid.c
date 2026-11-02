@@ -78,7 +78,7 @@ static const HID_DESCRIPTOR S10tHidDescriptor = {
 };
 
 static const WCHAR S10tManufacturer[] = L"Samsung Electronics";
-static const WCHAR S10tProduct[]      = L"Galaxy S10 Touchscreen (sec_ts y761)";
+static const WCHAR S10tProduct[]      = L"Galaxy S10 Touchscreen (sec_ts y771)";
 static const WCHAR S10tSerial[]       = L"S10TOUCH";
 
 /* ======================================================================

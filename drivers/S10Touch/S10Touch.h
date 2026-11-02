@@ -1,6 +1,6 @@
 /*
- * S10Touch - touchscreen driver for the Galaxy S10 (beyond1lte, SM-G973F): Samsung sec_ts "y761"
- * (S6SY761 family) on HSI2C10 behind \_SB.I2C0 (Exynos9820Hsi2c), attention line gpa1-0 = ALIVE EINT8
+ * S10Touch - touchscreen driver for the Galaxy S10 (beyond1lte, SM-G973F): Samsung sec_ts "y771"
+ * (S6SY761 command family; Linux driver sec_ts/y771) on HSI2C10 behind \_SB.I2C0 (Exynos9820Hsi2c), attention line gpa1-0 = ALIVE EINT8
  * -> GIC SPI 13 (GSIV 45, level). Written from scratch for the S10 kit (notes/s10-touch-driver.md).
  *
  * Shape: KMDF HID minidriver under mshidkmdf (the vhidmini2 KMDF pattern: our service is the function
@@ -53,7 +53,7 @@
 #define S10T_EINT0_FLT_VALUE        0x000000C0UL   /* filter enable, digital filter */
 #define S10T_EINT0_BIT              0x00000001UL
 
-/* ---- sec_ts y761 command set (Linux s6sy761.c / Samsung sec_ts.h) ---- */
+/* ---- sec_ts command set (y761 and y771 share it) (Linux s6sy761.c / Samsung sec_ts.h) ---- */
 #define SECTS_CMD_SENSE_ON          0x10
 #define SECTS_CMD_TOUCHFUNCTION     0x30
 #define SECTS_CMD_BOOT_STATUS       0x55
@@ -63,8 +63,18 @@
 #define SECTS_STATUS_APP_MODE       0x20
 #define SECTS_SETFUNC_DEFAULT       0x61           /* TOUCH | PALM | WET, as sec_ts_probe */
 #define SECTS_EVENT_SIZE            8
-#define SECTS_LEFT_EVENTS_MASK      0x3F
-#define SECTS_MAX_EVENTS            (SECTS_LEFT_EVENTS_MASK + 1)
+/* The S10 panel is a y771 (beyond1lte_defconfig: CONFIG_TOUCHSCREEN_SEC_TS_Y771=y), not a y761: byte 7 of an
+   event is left_event:5 | max_energy_flag:1 | ttype_1_0:2 (sec_ts/y771/sec_ts.h struct sec_ts_event_coordinate),
+   so the count is 5 bits (sec_ts_read_event: & 0x1F) and bit 5 is a flag. 1.0.0/1.0.1 masked 0x3F: every event
+   with max_energy_flag set asked READ_ALL for 32 extra events -> stale stack contents replayed as touches. */
+#define SECTS_LEFT_EVENTS_MASK      0x1F
+#define SECTS_MAX_EVENTS            31             /* sec_ts.c MAX_EVENT_COUNT */
+#define SECTS_STYPE_SHIFT           2              /* status event: eid:2 stype:4 sf:2 */
+#define SECTS_STYPE_MASK            0x0F
+#define SECTS_STYPE_ERR             1              /* TYPE_STATUS_EVENT_ERR */
+#define SECTS_STYPE_INFO            2              /* TYPE_STATUS_EVENT_INFO */
+#define SECTS_ACK_BOOT_COMPLETE     0x00           /* status_id; status_data_1 0x20 = rebooted into app mode (watchdog) */
+#define SECTS_ERR_QUEUE_FULL        0x01
 #define SECTS_EID_MASK              0x03
 #define SECTS_EID_COORDINATE        0x00
 #define SECTS_EID_STATUS            0x01
@@ -158,6 +168,7 @@ typedef struct _S10T_DEVICE {
 
     /* configuration (device key) */
     ULONG           RepeatMs;
+    BOOLEAN         NeedReinit;     /* the controller reported a watchdog reboot: touch function + sense on again */
     S10T_STATS      Stats;
 } S10T_DEVICE, *PS10T_DEVICE;
 

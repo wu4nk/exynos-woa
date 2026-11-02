@@ -1,5 +1,5 @@
 ;
-; S10Touch.inf - Galaxy S10 (beyond1lte) touchscreen: Samsung sec_ts y761 on \_SB.I2C0 (Exynos9820Hsi2c),
+; S10Touch.inf - Galaxy S10 (beyond1lte) touchscreen: Samsung sec_ts y771 on \_SB.I2C0 (Exynos9820Hsi2c),
 ; attention gpa1-0 (ALIVE EINT8, GSIV 45). New driver for the S10 kit (notes/s10-touch-driver.md); replaces
 ; SecTsY761Touch / S6SY761TouchBeyond0 (same hardware ID - the kit's installer removes those packages first).
 ; KMDF HID minidriver with mshidkmdf as the upper filter (vhidmini2 KMDF pattern).
@@ -14,7 +14,7 @@ Signature   = "$WINDOWS NT$"
 Class       = HIDClass
 ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
 Provider    = %ProviderString%
-DriverVer   = 11/02/2026,1.0.1.0
+DriverVer   = 11/02/2026,1.0.2.0
 CatalogFile = S10Touch.cat
 PnpLockdown = 1
 

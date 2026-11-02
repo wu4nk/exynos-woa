@@ -196,11 +196,32 @@ static VOID SpbClose(_In_ PS10T_DEVICE Dev)
 
 /* sec_ts_probe order (the sequence SecTsY761Touch runs on this phone): app mode, touch functions, sense on,
    settle, clear the event stack. The rails are switched on by UEFI (Beyond0LteTouchPowerDxe). */
+/* Touch function (TOUCH | PALM | WET added to what the chip reports, 2 bytes little-endian as
+   sec_ts_set_touch_function), sense on, empty stack. Also what sec_ts_read_event does after a watchdog reboot. */
+static NTSTATUS ControllerReinit(_In_ PS10T_DEVICE Dev)
+{
+    UCHAR    func[2] = { 0, 0 };
+    UCHAR    cmd[3];
+    NTSTATUS status;
+
+    if (NT_SUCCESS(SpbRead(Dev, SECTS_CMD_TOUCHFUNCTION, func, sizeof(func)))) {
+        cmd[0] = SECTS_CMD_TOUCHFUNCTION;
+        cmd[1] = (UCHAR)(func[0] | SECTS_SETFUNC_DEFAULT);
+        cmd[2] = func[1];
+        (VOID)SpbWrite(Dev, cmd, sizeof(cmd));
+    }
+
+    status = SpbCommand(Dev, SECTS_CMD_SENSE_ON);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    SleepMs(50);
+    return SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+}
+
 static NTSTATUS ControllerStart(_In_ PS10T_DEVICE Dev)
 {
     UCHAR    boot = 0;
-    UCHAR    func[2] = { 0, 0 };
-    UCHAR    cmd[3];
     ULONG    tries;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
@@ -220,19 +241,7 @@ static NTSTATUS ControllerStart(_In_ PS10T_DEVICE Dev)
         return STATUS_DEVICE_NOT_READY;
     }
 
-    if (NT_SUCCESS(SpbRead(Dev, SECTS_CMD_TOUCHFUNCTION, func, sizeof(func)))) {
-        cmd[0] = SECTS_CMD_TOUCHFUNCTION;
-        cmd[1] = (UCHAR)(func[0] | SECTS_SETFUNC_DEFAULT);
-        cmd[2] = func[1];
-        (VOID)SpbWrite(Dev, cmd, sizeof(cmd));
-    }
-
-    status = SpbCommand(Dev, SECTS_CMD_SENSE_ON);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-    SleepMs(50);
-    return SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+    return ControllerReinit(Dev);
 }
 
 /* ======================================================================
@@ -427,7 +436,26 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
             } else {
                 moved = TRUE;
             }
-        } else if (eid != SECTS_EID_STATUS && eid != SECTS_EID_GESTURE) {
+        } else if (eid == SECTS_EID_STATUS) {
+            ULONG stype = (e[0] >> SECTS_STYPE_SHIFT) & SECTS_STYPE_MASK;
+
+            if (stype == SECTS_STYPE_INFO && e[1] == SECTS_ACK_BOOT_COMPLETE && e[2] == SECTS_STATUS_APP_MODE) {
+                /* the chip rebooted (watchdog/ESD): every finger is gone and it needs sense on again */
+                InterlockedIncrement(&Dev->Stats.InvalidEvents);
+                if (moved && BuildFrame(Dev, &f, FALSE)) {
+                    PushFrame(Dev, &f);
+                }
+                moved = FALSE;
+                AllUp(Dev);
+                Dev->NeedReinit = TRUE;
+            } else if (stype == SECTS_STYPE_ERR && e[1] == SECTS_ERR_QUEUE_FULL) {
+                if (moved && BuildFrame(Dev, &f, FALSE)) {
+                    PushFrame(Dev, &f);
+                }
+                moved = FALSE;
+                AllUp(Dev);
+            }
+        } else if (eid != SECTS_EID_GESTURE) {
             /* EID 3 = invalid: sec_ts_read_event clears the stack and drops the rest of the batch */
             InterlockedIncrement(&Dev->Stats.InvalidEvents);
             (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
@@ -489,6 +517,10 @@ static VOID WorkerMain(_In_ PVOID Context)
             /* attention: drain the controller, one frame per batch, then unmask (level line: if the controller
                still holds it low, the ISR fires again right away and we come back here) */
             ReadEvents(Dev);
+            if (Dev->NeedReinit) {
+                Dev->NeedReinit = FALSE;
+                (VOID)ControllerReinit(Dev);
+            }
             S10tDeliver(Dev);
             UpdateLatency(Dev);
             /* A line that stays low with nothing to read (or a bus that keeps failing) would bring us straight

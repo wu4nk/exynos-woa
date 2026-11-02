@@ -1,7 +1,7 @@
 # S10Touch — driver cảm ứng mới cho Galaxy S10
 
 Viết lại từ đầu (11/2026) thay cho `SecTsY761Touch` / `S6SY761TouchBeyond0`. Cùng phần cứng
-(`ACPI\SCSY0761`: chip sec_ts y761 trên I2C0, chân ngắt gpa1-0 = EINT8, GSIV 45), khác cách chạy:
+(`ACPI\SCSY0761`: chip sec_ts **y771** (HID vẫn mang tên 0761) trên I2C0, chân ngắt gpa1-0 = EINT8, GSIV 45), khác cách chạy:
 
 | | Driver cũ | S10Touch |
 |---|---|---|
@@ -25,3 +25,8 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 - Lỗi I2C / tràn stack / READ_ALL lỗi → nhấc toàn bộ ngón (như SecTsY761Touch cũ), không còn "ngón ma" kẹt.
 - Bỏ qua tọa độ HOVER / PROXIMITY / FLIP COVER / STYLUS (như sec_ts Linux).
 - SPB timeout 100 → 250 ms; lặp khung chỉ khi chip im ≥ 2×RepeatMs (mặc định 10 ms), không chen vào nhịp ~120 Hz của chip.
+
+## 1.0.2.0
+- Chip của S10 là **y771** (`CONFIG_TOUCHSCREEN_SEC_TS_Y771=y` trong beyond1lte_defconfig), không phải y761: số sự kiện còn lại chỉ có **5 bit** (`& 0x1F`), bit 5 là cờ `max_energy_flag`. Bản cũ dùng `& 0x3F` → mỗi khi cờ bật, driver đọc thêm 32 sự kiện cũ trong stack và phát lại thành chạm ma. Đây nhiều khả năng là thủ phạm chính của "loạn cảm ứng".
+- Tối đa 31 sự kiện/lô như `sec_ts_read_event`.
+- Sự kiện trạng thái: chip tự khởi động lại (watchdog/ESD, `INFO 0x00 0x20`) → nhả hết ngón, gửi lại touch function + sense on; báo đầy hàng đợi (`ERR 0x01`) → nhả hết ngón.
