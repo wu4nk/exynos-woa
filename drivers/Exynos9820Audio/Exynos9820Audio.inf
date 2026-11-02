@@ -1,5 +1,5 @@
 ;
-; Exynos9820Audio.inf - Galaxy S10e (Exynos 9820) loudspeaker render driver, ACX 1.0 (KMDF).
+; Exynos9820Audio.inf - Galaxy S10 / S10e (Exynos 9820) loudspeaker render driver, ACX 1.0 (KMDF).
 ; Binds the DSDT device AUD0 (ACPI\SAMS9827). notes/d8-audio-win-m1.md.
 ; Install sections follow Microsoft's ACX sample INF (Windows-driver-samples audio/Acx/Samples/AudioCodec/Driver/
 ; AudioCodec.inf, MIT): Class MEDIA, KmdfService, one KS interface set per circuit whose reference string is the
@@ -11,7 +11,7 @@ Signature   = "$WINDOWS NT$"
 Class       = MEDIA
 ClassGuid   = {4d36e96c-e325-11ce-bfc1-08002be10318}
 Provider    = %ProviderString%
-DriverVer   = 10/13/2026,1.0.1.11
+DriverVer   = 11/02/2026,1.0.2.0
 CatalogFile = Exynos9820Audio.cat
 PnpLockdown = 1
 
@@ -48,12 +48,14 @@ ServiceBinary = %13%\Exynos9820Audio.sys
 AddReg        = Audio_Service_AddReg
 
 ; Parameters (Exynos9820Audio.h AUD_CONFIG). FLG_ADDREG_NOCLOBBER | REG_DWORD (0x00010003): a value the tester
-; changed survives a driver update. A8 (user safety): the hardware stages default to OFF (silent endpoint); a package
-; swap that deletes the old package also deletes the staged values, so the defaults are what runs.
+; changed survives a driver update. A8 (user safety) shipped the hardware stages OFF (silent endpoint, test harness
+; switched them on); 1.0.2.0 (S10 kit): ON by default = stage D, the configuration that played through the
+; loudspeaker on the S10e (notes/d8-audio-win-a5.md "DEVICE RESULT a12 stage D"). NOCLOBBER keeps an old 0 on an
+; upgrade, so the S10 kit's install-in-windows.ps1 writes 1 explicitly; 0 = silent endpoint again.
 [Audio_Service_AddReg]
-HKR,Parameters,AmpInit,0x00010003,0
-HKR,Parameters,AmpEnable,0x00010003,0
-HKR,Parameters,AboxEnable,0x00010003,0
+HKR,Parameters,AmpInit,0x00010003,1
+HKR,Parameters,AmpEnable,0x00010003,1
+HKR,Parameters,AboxEnable,0x00010003,1
 HKR,Parameters,HwVolume,0x00010003,0
 HKR,Parameters,Stereo,0x00010003,0
 HKR,Parameters,KsOverride,0x00010003,1
@@ -109,7 +111,7 @@ REG_BINARY             = 0x00000001
 ; localizable
 ProviderString         = "exynos-woa"
 ManufacturerString     = "Samsung Electronics Co."
-DiskDesc               = "Galaxy S10e Audio Installation Disk"
-DeviceDesc             = "Galaxy S10e Audio (ABOX + CS35L40)"
-ServiceDesc            = "Galaxy S10e Audio"
+DiskDesc               = "Galaxy S10 Audio Installation Disk"
+DeviceDesc             = "Galaxy S10 Audio (ABOX + CS35L40)"
+ServiceDesc            = "Galaxy S10 Audio"
 Speaker.FriendlyName   = "Speaker"

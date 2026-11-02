@@ -228,3 +228,12 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   HoldRepeatMs (default 10, registry, 0 = off, max 100) while a contact is Active and the IC has been quiet that
   long; stops 3 s after the last IC coordinate event; stopped in TouchStopInput; counter TouchHoldRepeatCount.
 - Not compiled here (WDF headers); EWDK build is the check.
+
+## Round 3 (user 2026-11-02 16:50): "audio shows the S10e device but no sound, WiFi not detected, park the GPU"
+- UEFI v0.1.5: GPU_POWER_ON back to 0 for the S10 (GPU0 hidden; power-on path dead-stripped: "power-on: done"
+  string absent from the .efi). Bank5 fix of v0.1.4 kept.
+- Audio "no sound" = by design of the package: Exynos9820Audio.inf A8 shipped AmpInit/AmpEnable/AboxEnable = 0
+  (silent endpoint; the S10e harness switched them on per run via esp/extra-audio-stage.cmd). The S10e played
+  through the loudspeaker with all three = 1 (d8-audio-win-a5.md "DEVICE RESULT a12 stage D"). 1.0.2.0: INF and
+  code defaults = 1; strings "Galaxy S10 Audio". INF AddReg is NOCLOBBER (0x00010003) -> an installed 0 survives an
+  upgrade, so install-in-windows.ps1 writes 1 explicitly.

@@ -84,13 +84,14 @@ typedef enum _AUD_RES {
 
 /* ======================================================================
  * Registry: HKLM\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters (REG_DWORD).
- * Defaults (A8, user safety): every hardware stage OFF - a fresh install (or a package swap that drops the staged
- * values) gives a silent, QPC-clocked endpoint; the tester enables AmpInit / AmpEnable / AboxEnable explicitly.
+ * Defaults: 1.0.2.0 (S10 kit) = stage D, every hardware stage ON (the configuration that played through the S10e's
+ * loudspeaker). A8 had them OFF for the test harness; setting AmpInit / AmpEnable / AboxEnable to 0 still gives a
+ * silent, QPC-clocked endpoint.
  * ====================================================================== */
 typedef struct _AUD_CONFIG {
-    ULONG AmpInit;      /* 0 (default): 1 = bus up, amp reset release + ID read (UEFI m1b steps, device-proven) */
-    ULONG AmpEnable;    /* 0 (default): 1 = configure + power the CS35L40 on stream start (boot #99 sequence) */
-    ULONG AboxEnable;   /* 0 (default): 1 = ABOX stage 1 + RDMA0 on stream start (boot #99 sequence) */
+    ULONG AmpInit;      /* 1 (default): 1 = bus up, amp reset release + ID read (UEFI m1b steps, device-proven) */
+    ULONG AmpEnable;    /* 1 (default): 1 = configure + power the CS35L40 on stream start (boot #99 sequence) */
+    ULONG AboxEnable;   /* 1 (default): 1 = ABOX stage 1 + RDMA0 on stream start (boot #99 sequence) */
     ULONG HwVolume;     /* 0 (default): volume + mute elements applied in software by the driver; 1 = on the amp registers */
     ULONG Stereo;       /* 0 (default): mono (L+R)/2 on the loudspeaker only; 1 = L on the earpiece amp (untested) */
     ULONG KsOverride;   /* 1 (default): the driver answers host-pin DATAINTERSECTION / PROPOSEDATAFORMAT (A7) and the
