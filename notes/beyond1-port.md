@@ -340,3 +340,11 @@ everything in out\); gpu-s10.ps1 reads out-gpu\. s10-log v1.2: SAMS9828 device +
 Plan: G1a probe job (MaliG76Probe PASS = the G76 runs a job on the S10), G1b display-only MaliG76Wddm, then G2 =
 GpuEnable 1 (Mesa panfrost UMD, tools/mesa-build, built on the PC) - never reached on the S10e either.
 beyond1lte-uefi-v0.1.11.img sha256 5393d8016e184c996633f4713d04e8c6bd3f4f3e3d0285b63986f09f450f2990. Build rc 0.
+
+## DEVICE RESULT 2026-11-03 05:15 - GPU stage G1a PASS on the S10 (UEFI v0.1.11, MaliG76Probe)
+gpu-report: GPU0 (ACPI\SAMS9828) present (problem 28 before = no driver), MaliG76Probe installed, status OK.
+G3D powered (EMBEDDED_G3D_STATUS 1, G3D_STATUS 1); GPU_ID 0x72110000 (G76 r1p1?), SHADER_PRESENT 0x00770077 = 12 cores,
+L2_FEATURES 07120206, MMU_FEATURES 00002830, AS_PRESENT ff, JS_PRESENT 7, COHERENCY_FEATURES 0; soft reset OK; L2/tiler/
+shader power-up OK; AS0 Mali-LPAE TRANSTAB at PA 9:fd7c9007; WRITE_VALUE job on JS0 -> DONE, JOB IRQ on GSIV 320,
+no MMU/GPU fault, target = c0ffee42 -> RESULT: PASS. Same result as the S10e G9b boot #106.
+Next: G1b display-only MaliG76Wddm (gpu-s10.ps1 display), then G2 (GpuEnable 1 + Mesa panfrost UMD build).
