@@ -132,3 +132,9 @@ its ISR returns FALSE with software mask 0; SPI 420 is Edge -> no storm. Divider
 S10eAgent (services RUNNING, signatures Valid, testsigning Yes): agent.log "no ESP with \S10EDIAG - nothing to do
 this boot" -> Worker returned before its request loop -> recovery.req never served. Fix: RequestsThread (1 s poll)
 started right after the stale-request discard; recovery.req removed from the Worker's final loop.
+
+## DEVICE RESULT 2026-11-03 04:17 - S10Touch 1.1.0.0 (direct polled HSI2C) + UEFI v0.1.8
+User: "cảm ứng ngon luôn rồi" - touch smooth (taps, long drags, multi-finger). Root causes, in order found:
+UEFI left USI03 at PERIC0_IP/1 (~800 kHz SCL, fixed v0.1.8); WdfRequestCreate on an unopened target (1.0.6);
+lift on any bus error + long READ_ALL (1.0.7); SpbCx + Exynos9820Hsi2c path 12+ ms per 8-byte read and ~30 %
+failures -> panel stack overflow on every long drag (fixed by the direct path, 1.1.0). Stage: Ready (device-validated).
