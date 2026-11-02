@@ -285,7 +285,14 @@ DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
                     ,
                     Exclusive
                 )
+#if EXYNOS9820_BOARD_BEYOND1
+                // S10: Level/ActiveHigh, the way WU4NK's S20 Ultra port declares the same
+                // ALIVE-EINT -> GIC SPI wiring for SecTsY761Touch (DIRQL ISR masks the EINT and
+                // defers the I2C read to a work item; the EINT drives the SPI high).
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive)
+#else
                 Interrupt (ResourceConsumer, Level, ActiveLow, Exclusive)
+#endif
                 {
                     45   // DERIVED 9820: sec,irq_gpio = <&gpa1 0 0>, and the shipping DT lists gpa1's SPIs as 13..20, so gpa1-0 is SPI 13 and GSIV = 13 + 32 = 45. The 9810's was GSIV 76 (SPI 44) — same pin name, renumbered because the ALIVE pinctrl moved from 0x14050000 to 0x15850000.
                 }

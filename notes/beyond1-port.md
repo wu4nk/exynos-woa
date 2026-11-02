@@ -152,3 +152,11 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   S10e PeilessSec unchanged except ASSERT line immediates. UNVERIFIED until booted; if the
   streaks only move with the animation and leave no residue, the cause is command-mode
   tearing instead (no TE sync) and this does not fix it.
+- 2026-11-02 — WU4NK: the streaks start already over sboot's "Galaxy S10" logo, i.e. while
+  our shim/UEFI runs, before Windows. Mu-Silicium has a beyond1lte target
+  (Project-Silicium/Mu-Silicium, Platforms/Samsung/beyond1ltePkg): its S5E9820 PlatformSecLib
+  writes 0x1281 to DECON + 0x70 (HW_SW_TRIG_CONTROL) and its memory map carries "Display
+  Reserved" 0xCA000000 + 0x1400000, Reserv, WRITE_THROUGH. Our shim wrote the same 0x1281 to
+  DECON + 0 (from the older edk2-exynos) — the prime suspect. v0.1.2: S10 shim writes +0x70
+  (S10e shim byte-identical), plus TSP0 interrupt Level/ActiveHigh on the S10 (AML checked
+  with iasl -d for both boards) for the new touch driver.

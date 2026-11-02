@@ -221,7 +221,16 @@ _start:
 	 * depend on CPU stores reaching the panel (only the white bands below are diagnostics). */
 	movz	x9, #0x1903, lsl #16    /* 0x19030000 = decon_f base               */
 	mov	w10, #0x1281             /* prior-art "enable frame buffer writes"  */
-	str	w10, [x9]
+#if EXYNOS9820_BOARD_BEYOND1
+	/* Galaxy S10: the value goes to HW_SW_TRIG_CONTROL (decon_f + 0x70), as Mu-Silicium's
+	 * beyond1lte target does (S5E9820Pkg PlatformSecLib: MmioWrite32(Decon + 0x70, 0x1281)) and
+	 * as our own SimpleFramebufferDxe addresses that register. The older edk2-exynos write to
+	 * decon_f + 0 (DECON's global control) is the S10's first suspect for the horizontal streaks
+	 * that start while sboot's logo is still on the panel (notes/beyond1-port.md). */
+	str	w10, [x9, #0x70]
+#else
+	str	w10, [x9]               /* S10e: unchanged (validated boots)       */
+#endif
 	dsb	sy
 #if BEYOND0LTE_SHIM_DIAG
 	LOADFB	x9, 150
