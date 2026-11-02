@@ -44,10 +44,22 @@
 
 /* ---- the GOP framebuffer the firmware leaves (Exynos9820.h EXYNOS_FB_*, SimpleFramebufferDxe.c:420-430) ----
  * Only compared with what dxgkrnl reports (FbMatchesGop); dxgkrnl's values are the ones used. */
-#define MW_GOP_FB_PA            0xCA000000ULL   /* EXYNOS_FB_BASE (VERIFIED, s3cfb.bootloaderfb) */
+#define MW_GOP_FB_PA            0xCA000000ULL   /* EXYNOS_FB_BASE (VERIFIED, s3cfb.bootloaderfb; same on the S10) */
+/* Board switch: EXYNOS9820_BOARD_BEYOND1 = 1 for the Galaxy S10 (MSBuild /p:ExynosBoardBeyond1=1, set by the S10
+ * kit's build-s10.cmd), the values of firmware Exynos9820Board.h. Only FbMatchesGop uses them: the driver itself
+ * takes the geometry dxgkrnl hands over (DxgkCbAcquirePostDisplayOwnership), so it is board-agnostic. */
+#ifndef EXYNOS9820_BOARD_BEYOND1
+#define EXYNOS9820_BOARD_BEYOND1 0
+#endif
+#if EXYNOS9820_BOARD_BEYOND1
+#define MW_GOP_WIDTH            1440u           /* Galaxy S10: dumpsys display real 1440 x 3040 (VERIFIED) */
+#define MW_GOP_HEIGHT           3040u           /* (VERIFIED, same read) */
+#define MW_GOP_PITCH            (1440u * 4u)    /* fb0 stride 5760 B (VERIFIED) */
+#else
 #define MW_GOP_WIDTH            1080u           /* EXYNOS_FB_WIDTH (VERIFIED, DTBO s6e3fa7_beyond0) */
 #define MW_GOP_HEIGHT           2280u           /* EXYNOS_FB_HEIGHT (VERIFIED) */
 #define MW_GOP_PITCH            (1080u * 4u)    /* EXYNOS_FB_STRIDE_PIXELS * 4 (GOP PixelBlueGreenRedReserved8) */
+#endif
 
 /* ---- modes ---- */
 typedef enum _MW_MODE {

@@ -177,3 +177,20 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   cs35l40@41 "cs35l40-rcv" reset gph1-2, boost-peak 4100 mA, on hsi2c@109A0000). Exynos9820Audio
   added unchanged to kit v1.2 (vcxproj -> latest SDK). On the S10e: speaker works, headphone
   jack detected without sound, microphones not started (driver_status.md).
+
+## GPU stage G1 (2026-11-02) - UEFI v0.1.3, kit v1.3
+- Where the S10e left the GPU (notes/gpu-m16-g9b.md, gpu-full-adapter-hang.md): MaliG76Probe ran a real
+  WRITE_VALUE job on the G76 (PASS, boot #106); MaliG76Wddm display-only works; full adapter reaches the desktop
+  but every pixel is Mesa softpipe on the CPU (slower than Basic Display + WARP); GpuEnable 1 (panfrost on the
+  Mali) never done. So "GPU acceleration" does not exist yet on either phone.
+- S10 live DT mali@18500000 == S10e: reg 0x18500000+0x5000, interrupts SPI 0x120/0x11F/0x121, pmu status
+  0x2104 mask 1, gpu_dvfs_start_clock 260000 (VERIFIED, dump/s10-dump/dt/live.dts). DSDT GPU0 reused as-is.
+- UEFI v0.1.3: Beyond1LtePkg.dsc builds Beyond0LteGpuProbeDxe with -DBEYOND0LTE_GPU_POWER_ON=1 (module-scoped
+  BuildOptions; S10e build unchanged). If sboot leaves G3D on (S10e did) nothing is touched; otherwise the S10e's
+  G9 pmucal + DTZPC SMC + ACPM 260 MHz path runs - that path itself was never exercised on hardware (UNVERIFIED).
+  Rescue: \S10EDIAG\nogpu.flg on the ESP or flash v0.1.2.
+- MaliG76Wddm.h: MW_GOP_* per board (only FbMatchesGop uses them; the driver takes dxgkrnl's geometry).
+  Both Mali vcxproj -> $(LatestTargetPlatformVersion), /p:MwNoWx=1 drops /WX, /p:ExynosBoardBeyond1=1.
+- Kit v1.3: build-s10.cmd builds both (optional, warnings on failure); gpu-s10.ps1 probe|display|status|off.
+- Next (G2, after a probe PASS on the S10): the real work is GpuEnable 1 = Mesa panfrost UMD + the KMD's GPU half
+  (tools/mesa-build, Windows + WSL host build) - weeks of device iteration, not started on either phone.

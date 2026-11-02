@@ -8,7 +8,9 @@
     <ProjectGuid>{8E2C1F6B-5D3A-4B7E-9828-C76D0A1E0B10}</ProjectGuid>
     <ProjectName>MaliG76Wddm</ProjectName>
     <TargetName>MaliG76Wddm</TargetName>
-    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
+    <!-- 1 = Galaxy S10 (beyond1lte); the S10 kit passes /p:ExynosBoardBeyond1=1 -->
+    <ExynosBoardBeyond1 Condition="'$(ExynosBoardBeyond1)'==''">0</ExynosBoardBeyond1>
     <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <SignMode>Off</SignMode>
     <MwBuild Condition="'$(MwBuild)'==''">1</MwBuild>
@@ -27,11 +29,12 @@
     <ClCompile>
       <WppEnabled>false</WppEnabled>
       <WarningLevel>Level4</WarningLevel>
-      <TreatWarningAsError>true</TreatWarningAsError>
+      <!-- /p:MwNoWx=1 (S10 kit, newer EWDK SDKs) keeps /W4 but stops treating new SDK warnings as errors -->
+      <TreatWarningAsError Condition="'$(MwNoWx)'==''">true</TreatWarningAsError>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <Optimization>MinSpace</Optimization>
-      <PreprocessorDefinitions>MW_BUILD=$(MwBuild);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MW_BUILD=$(MwBuild);EXYNOS9820_BOARD_BEYOND1=$(ExynosBoardBeyond1);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /Brepro /arch:armv8.0 /forceInterlockedFunctions-</AdditionalOptions>
     </ClCompile>

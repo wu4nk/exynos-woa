@@ -359,7 +359,7 @@
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.2"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.3"
   # --- Debug mask (errors+warnings+info+load). Trim for RELEASE. ---
   # ERROR|WARN only (was 0x8000004F = +INFO|LOAD): the on-panel log (B54) is read from photos, and
   # the hundreds of Loading driver / InstallProtocolInterface lines buried the UFS errors (B73).
@@ -617,8 +617,16 @@
   Platform/Beyond0LtePkg/Drivers/Beyond0LteTouchPowerDxe/Beyond0LteTouchPowerDxe.inf
   # D8a: read the CS47L93 codec / CS35L40 amp IDs into UEFILOG, buses restored (notes/d8-audio-m1.md)
   Platform/Beyond0LtePkg/Drivers/Beyond0LteAudioProbeDxe/Beyond0LteAudioProbeDxe.inf
-  # M16 G3: read-only Mali-G76 probe (PMU G3D status first, GPU_ID only if on) into UEFILOG (notes/gpu-m16-g2g3.md)
-  Platform/Beyond0LtePkg/Drivers/Beyond0LteGpuProbeDxe/Beyond0LteGpuProbeDxe.inf
+  # M16 G3/G9: Mali-G76 probe + power-on into UEFILOG (notes/gpu-m16-g2g3.md, gpu-m16-g3don.md).
+  # S10 GPU stage G1 (v0.1.3+, notes/beyond1-port.md "GPU"): built with BEYOND0LTE_GPU_POWER_ON 1, so the
+  # G3D domain is left on (or powered by the S10e's G9 path if sboot left it off) and DSDT GPU0 is shown to
+  # Windows (MaliG76Probe / MaliG76Wddm bind it). The S10's mali@18500000 node is the S10e's: reg 0x18500000
+  # +0x5000, SPIs 0x120/0x11F/0x121, pmu status 0x2104, start clock 260000 (live DT, VERIFIED 2026-11-02).
+  # Rescue without reflash: \S10EDIAG\nogpu.flg on the ESP hides GPU0 (BootLogDxe); or flash v0.1.2.
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteGpuProbeDxe/Beyond0LteGpuProbeDxe.inf {
+    <BuildOptions>
+      *_*_*_CC_FLAGS = -DBEYOND0LTE_GPU_POWER_ON=1
+  }
 
   # --- RAM discovery: Beyond0LteRamManagerDxe is the ported 9810 manager. It
   #     publishes the two verified high banks as GCD SystemMemory, which is a

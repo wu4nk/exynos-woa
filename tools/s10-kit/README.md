@@ -5,9 +5,10 @@ flash-windows.cmd**. Chỉ khác layout máy, bộ driver và UEFI.
 
 | File | Việc |
 |---|---|
-| `build-s10.cmd` | v1.2: build + ký `Exynos9820Hsi2c`, `SecTsY761Touch` (cảm ứng mới), `Exynos9820Ufs` (board **Beyond1**), `S10eBattery` (pin/sạc), `Exynos9820WlanCx` (WiFi), `Exynos9820Audio` (loa), `S10eDiag` (phím) → `out\` |
+| `build-s10.cmd` | v1.3: build + ký `Exynos9820Hsi2c`, `SecTsY761Touch` (cảm ứng mới), `Exynos9820Ufs` (board **Beyond1**), `S10eBattery` (pin/sạc), `Exynos9820WlanCx` (WiFi), `Exynos9820Audio` (loa), `S10eDiag` (phím), + GPU (tùy chọn): `MaliG76Probe`, `MaliG76Wddm` → `out\` |
 | `get-wifi-fw.cmd` | Kéo firmware WiFi BCM4375 **của chính con S10** ra `bcm4375\` (TWRP hoặc Android có root) |
 | `install-in-windows.ps1` | Đã có Windows rồi: chạy **trên máy** (PowerShell Admin) để thêm cảm ứng mới, pin, WiFi, loa, phím mà không cài lại |
+| `gpu-s10.ps1` | GPU giai đoạn G1, chạy **trên máy** (PowerShell Admin): `probe` (Mali chạy thử 1 job), `display` (driver màn hình Mali), `status`, `off`. Cần UEFI **v0.1.3+** |
 | `setup\SetupComplete.cmd` | Chạy cuối Setup: cài dịch vụ phím (S10eDiag + S10eAgent), tắt sleep màn hình |
 | `make-windows.ps1` | v2.2-s10: dựng Windows từ ISO → `C:\s10\windows\` (pieces + uefi.img + flash-windows.cmd) |
 | `set-esp-type.ps1` | v1.3-s10: đổi type `cache` thành ESP trong cả 2 bản GPT (flash-windows.cmd tự gọi) |
@@ -40,6 +41,29 @@ cd <kit>
 Set-ExecutionPolicy -Scope Process Bypass
 .\make-windows.ps1 -Source D:\iso\22621_arm64.iso -UserName Anh
 ```
+
+## 2b. GPU (tùy chọn, sau khi Windows đã chạy)
+
+Flash `beyond1lte-uefi-v0.1.3.img` (bật nguồn khối G3D và cho Windows thấy thiết bị `GPU0`), rồi
+trên máy, PowerShell Admin, trong thư mục kit có `out\`:
+
+```powershell
+.\gpu-s10.ps1 probe     # Mali-G76 chạy 1 job thật; RESULT: PASS là GPU sống
+.\gpu-s10.ps1 display   # đổi sang driver màn hình Mali (display-only), rồi reboot
+.\gpu-s10.ps1 status    # sau reboot: FbMatchesGop = 1 là đúng màn S10
+```
+
+Kết quả ghi vào `C:\S10Prov\gpu-report.txt`. Màn đen sau `display`: vào TWRP, tạo file
+`\S10EDIAG\nogpu.flg` trên ESP (GPU0 biến mất ở lần boot sau) hoặc flash lại v0.1.2.
+`.\gpu-s10.ps1 off` trả màn hình về Microsoft Basic Display.
+
+Tạo `nogpu.flg` từ PC khi máy ở TWRP:
+
+```bat
+adb shell "mkdir -p /tmp/esp && mount -t vfat /dev/block/by-name/cache /tmp/esp && mkdir -p /tmp/esp/S10EDIAG && touch /tmp/esp/S10EDIAG/nogpu.flg && sync && umount /tmp/esp"
+```
+
+Xóa file đó (`rm /tmp/esp/S10EDIAG/nogpu.flg`) là GPU0 hiện lại.
 
 ## 3. Ghi vào máy
 
