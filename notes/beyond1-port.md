@@ -131,3 +131,14 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   km\ntddk.h (WU4NK's EWDK compiles against 10.0.28000.0, seen in their S20U build
   logs). Touch vcxproj targets `$(LatestTargetPlatformVersion)` like their S20U projects.
   Neither run here (no Windows / no PowerShell on this machine).
+- 2026-11-02 — `tools/s10-kit/`: the S10 edition of WU4NK's own S20 Ultra (z3s) kit
+  (make-windows v2.1 → v2.1-s10, set-esp-type v1.3 → v1.3-s10, z3s-disk.cs unchanged
+  except one message, build-all.cmd → build-s10.cmd). Found while porting: the z3s export
+  (`Z3s.Export.Plan`) requires a MiB-aligned partition, and the S10's userdata
+  (114 482 458 624 B) is not — the NTFS volume is now 109178 MiB and the flash script's
+  size check still uses the whole partition; the last 251 LBAs of userdata stay unused
+  (a real free scratch run for UfsDiag later: LBA 31235840..31236090). Guards added:
+  UFSBRD01 board record must say board 2 / fence 3118592; flash-windows.cmd and
+  set-esp-type.ps1 refuse a bootloader that is not G973*; set-esp-type re-checks the
+  cache/userdata GUIDs on the phone. z3s-disk.cs compiled with .NET 8; the PowerShell
+  scripts were NOT parsed or run here (no PowerShell on this machine).
