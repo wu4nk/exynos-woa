@@ -1,13 +1,12 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.3) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.4) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, SecTsY761Touch (touch, from the z3s SecTsY79ATouch),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
-rem v1.3: GPU stage G1 - MaliG76Probe (one Mali job, the "does the G76 work on the S10" test) and
-rem MaliG76Wddm (display driver, board S10). Both OPTIONAL: a failure there is a warning, the rest
-rem of out\ is still good. gpu-s10.ps1 installs them on the phone (needs UEFI v0.1.3+).
+rem v1.4: GPU parked for the touch/audio/WiFi test round (UEFI v0.1.5 hides GPU0); set S10_GPU=1
+rem before running this to build MaliG76Probe / MaliG76Wddm again (v1.3 behaviour, optional).
 rem Same shape as the z3s build-all.cmd; run it inside an EWDK window (LaunchBuildEnv.cmd).
 rem
 rem Signs with the SAME test certificate as the z3s kit ("CN=z3s WoA Test", made by
@@ -68,9 +67,11 @@ rem reset pins and rails are the S10e's (live DT: cs47l93@0 on spi@10470000, cs3
 rem hsi2c@109A0000, resets gpg1-0 / gph1-1 / gph1-2, LDO17M 1.8 V + LDO18M 1.2 V).
 call :msb Exynos9820Audio "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:ACX_VERSION_MINOR=1" || exit /b 1
 call :diag || exit /b 1
-rem GPU (optional). /p:MwNoWx=1: keep /W4 but do not fail on warnings a newer EWDK SDK adds.
+rem GPU (parked; S10_GPU=1 to build). /p:MwNoWx=1: keep /W4 but do not fail on warnings a newer SDK adds.
+if not "%S10_GPU%"=="1" goto :nogpu
 call :msb MaliG76Probe "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1" || (echo [WARN] MaliG76Probe not built - GPU test skipped & if exist "%OUT%\MaliG76Probe" rmdir /s /q "%OUT%\MaliG76Probe")
 call :msb MaliG76Wddm "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1 /p:ExynosBoardBeyond1=1" || (echo [WARN] MaliG76Wddm not built - GPU display skipped & if exist "%OUT%\MaliG76Wddm" rmdir /s /q "%OUT%\MaliG76Wddm")
+:nogpu
 
 echo.
 echo [ OK ] Drivers ready in %OUT%

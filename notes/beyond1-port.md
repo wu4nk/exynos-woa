@@ -249,3 +249,8 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   (NOCLOBBER), treats pnputil 259 (staged, no device) as a warning, prints touch/audio/WiFi/battery device state.
 - Without logs the remaining WiFi suspects are: WLAN hidden by the firmware (PCIe link not up -> UEFILOG "[PCIe]"),
   or blobs missing (driver run log "DL 3"). collect-logs.ps1 (next task) gathers both.
+- Kit v1.6: build-s10.cmd v1.4 skips MaliG76Probe/MaliG76Wddm unless S10_GPU=1; make-kit drops gpu-s10.ps1 and the
+  Mali sources, adds collect-logs.ps1 (devices + Device Parameters for every ACPI ID we expose, problem devices,
+  driver store, audio Parameters/endpoints, netsh wlan + bcm4375 listing, battery report, driver LogFiles,
+  last 300 System events, UEFILOG.TXT/WINPRAM*.BIN from the ESP via mountvol /s, zipped to C:\S10Prov).
+  PowerShell scripts not syntax-checked here (no pwsh); reviewed by reading.
