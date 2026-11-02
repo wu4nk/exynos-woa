@@ -207,6 +207,7 @@ static VOID EvtInternalIoctl(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request, _In_ 
         status = CopyOut(Request, &attr, sizeof(attr));
         break;
     case IOCTL_HID_READ_REPORT:
+        InterlockedIncrement(&Dev->Stats.ReadRequests);
         status = WdfRequestForwardToIoQueue(Request, Dev->ReadQueue);
         if (NT_SUCCESS(status)) {
             S10tKickWorker(Dev);                        /* the worker owns the FIFO: it completes the read */

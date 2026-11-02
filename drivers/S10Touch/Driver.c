@@ -203,6 +203,9 @@ static NTSTATUS ControllerReinit(_In_ PS10T_DEVICE Dev)
     UCHAR    func[2] = { 0, 0 };
     UCHAR    cmd[3];
     NTSTATUS status;
+    CHAR     t[48];
+
+    InterlockedIncrement(&Dev->Stats.Reinits);
 
     if (NT_SUCCESS(SpbRead(Dev, SECTS_CMD_TOUCHFUNCTION, func, sizeof(func)))) {
         cmd[0] = SECTS_CMD_TOUCHFUNCTION;
@@ -212,6 +215,8 @@ static NTSTATUS ControllerReinit(_In_ PS10T_DEVICE Dev)
     }
 
     status = SpbCommand(Dev, SECTS_CMD_SENSE_ON);
+    (VOID)RtlStringCbPrintfA(t, sizeof(t), "reinit func %02x%02x sense_on %08x", func[1], func[0], (ULONG)status);
+    S10tPramRoll(t);
     if (!NT_SUCCESS(status)) {
         return status;
     }
@@ -234,6 +239,8 @@ static NTSTATUS ControllerStart(_In_ PS10T_DEVICE Dev)
     }
     RegWrite(Dev->Device, L"S10tBootStatus", NT_SUCCESS(status) ? boot : 0xFFFFFFFFUL);
     RegWrite(Dev->Device, L"S10tBootTries", tries);
+    Dev->BootStatus = NT_SUCCESS(status) ? boot : 0xFFFFFFFFUL;
+    Dev->BootTries  = tries;
     if (!NT_SUCCESS(status)) {
         return status;
     }
@@ -351,6 +358,10 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
     Dev->BatchEmpty = TRUE;
     status = SpbRead(Dev, SECTS_CMD_READ_ONE_EVENT, ev, SECTS_EVENT_SIZE);
     if (!NT_SUCCESS(status)) {
+        CHAR t[40];
+
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "READ_ONE failed %08x", (ULONG)status);
+        S10tPramRoll(t);
         InterlockedIncrement(&Dev->Stats.I2cErrors);
         AllUp(Dev);
         return;
@@ -361,6 +372,7 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
     Dev->BatchEmpty = FALSE;
     left = ev[7] & SECTS_LEFT_EVENTS_MASK;
     if (left > SECTS_MAX_EVENTS - 1) {
+        S10tPramRoll("overflow: stack cleared");
         InterlockedIncrement(&Dev->Stats.InvalidEvents);
         AllUp(Dev);
         (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
@@ -378,10 +390,15 @@ static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
     for (i = 0; i <= left; i++) {
         UCHAR *e = ev + i * SECTS_EVENT_SIZE;
         ULONG  eid = e[0] & SECTS_EID_MASK;
+        CHAR   t[48];
 
         if (e[0] == 0) {
             break;
         }
+        InterlockedIncrement(&Dev->Stats.Events);
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "ev %02x %02x %02x %02x %02x %02x %02x %02x L%u/%u",
+                                 e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], i, left);
+        S10tPramRoll(t);
         if (eid == SECTS_EID_COORDINATE) {
             ULONG tid   = (e[0] & SECTS_TID_MASK) >> 2;
             ULONG state = e[0] >> SECTS_STATE_SHIFT;
@@ -485,6 +502,27 @@ static VOID UpdateLatency(_In_ PS10T_DEVICE Dev)
  * The worker thread
  * ====================================================================== */
 
+static VOID Heartbeat(_In_ PS10T_DEVICE Dev)
+{
+    CHAR      t[56];
+    ULONGLONG now = KeQueryInterruptTime();
+
+    if (now - Dev->LastHeartbeat < 10000000ULL) {
+        return;
+    }
+    Dev->LastHeartbeat = now;
+    (VOID)RtlStringCbPrintfA(t, sizeof(t), "irq%u ev%u fr%u dl%u rd%u i2c%u inv%u",
+                             Dev->Stats.Irqs, Dev->Stats.Events, Dev->Stats.Frames, Dev->Stats.Delivered,
+                             Dev->Stats.ReadRequests, Dev->Stats.I2cErrors, Dev->Stats.InvalidEvents);
+    S10tPramLine(2, t);
+    (VOID)RtlStringCbPrintfA(t, sizeof(t), "ff%u co%u rp%u re%u es%u lv%u m%x p%x %uus",
+                             Dev->Stats.FifoFull, Dev->Stats.Coalesced, Dev->Stats.Repeats, Dev->Stats.Reinits,
+                             Dev->EmptyStreak, Dev->Alive ? (AliveRead(Dev, S10T_GPA1_CON + 4) & 1) : 9,
+                             Dev->Alive ? AliveRead(Dev, S10T_EINT_MASK) & 0xFF : 0,
+                             Dev->Alive ? AliveRead(Dev, S10T_EINT_PEND) & 0xFF : 0, Dev->Stats.MaxIrqToReportUs);
+    S10tPramLine(3, t);
+}
+
 static KSTART_ROUTINE WorkerMain;
 
 static VOID WorkerMain(_In_ PVOID Context)
@@ -506,9 +544,10 @@ static VOID WorkerMain(_In_ PVOID Context)
         BOOLEAN repeatDue = AnyDown(Dev) && Dev->RepeatMs != 0 &&
                             (KeQueryInterruptTime() - Dev->LastEventTime) < (ULONGLONG)S10T_REPEAT_LIMIT_MS * 10000ULL;
 
-        timeout.QuadPart = -10000LL * (LONGLONG)(repeatDue ? Dev->RepeatMs : 0);
-        w = KeWaitForMultipleObjects(3, objs, WaitAny, Executive, KernelMode, FALSE,
-                                     repeatDue ? &timeout : NULL, NULL);
+        /* 1.0.3: never wait forever - a 1 s tick keeps the PRAM heartbeat alive */
+        timeout.QuadPart = -10000LL * (LONGLONG)(repeatDue ? Dev->RepeatMs : 1000);
+        w = KeWaitForMultipleObjects(3, objs, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
+        Heartbeat(Dev);
         if (w == STATUS_WAIT_0) {
             break;
         }
@@ -642,6 +681,7 @@ NTSTATUS S10tEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw, _I
     WDF_INTERRUPT_CONFIG ic;
     NTSTATUS     status;
 
+    S10tPramInit();
     alivePa.QuadPart = 0;
     for (i = 0; i < n; i++) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d = WdfCmResourceListGetDescriptor(Translated, i);
@@ -714,6 +754,7 @@ NTSTATUS S10tEvtReleaseHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Transla
     }
     /* an interrupt created in PrepareHardware is deleted by the framework after this callback */
     Dev->Interrupt = WDF_NO_HANDLE;
+    S10tPramFree();
     return STATUS_SUCCESS;
 }
 
@@ -734,6 +775,13 @@ NTSTATUS S10tEvtD0Entry(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Previ
     /* Not fatal: a controller that does not answer is visible in the registry, the device still starts. */
     status = ControllerStart(Dev);
     RegWrite(Device, L"S10tStartStatus", (ULONG)status);
+    {
+        CHAR t[56];
+
+        (VOID)RtlStringCbPrintfA(t, sizeof(t), "D0Entry boot %02x tries %u start %08x rpt %u",
+                                 Dev->BootStatus, Dev->BootTries, (ULONG)status, Dev->RepeatMs);
+        S10tPramLine(1, t);
+    }
 
     status = WorkerStart(Dev);
     RegWrite(Device, L"S10tWorkerStatus", (ULONG)status);
@@ -767,6 +815,7 @@ NTSTATUS S10tEvtD0Exit(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Target
     UNREFERENCED_PARAMETER(Target);
     WorkerStop(Dev);
     SpbClose(Dev);
+    S10tPramRoll("D0Exit");
 
     RegWrite(Device, L"S10tIrqs", (ULONG)Dev->Stats.Irqs);
     RegWrite(Device, L"S10tI2cErrors", (ULONG)Dev->Stats.I2cErrors);

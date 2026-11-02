@@ -30,3 +30,10 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 - Chip của S10 là **y771** (`CONFIG_TOUCHSCREEN_SEC_TS_Y771=y` trong beyond1lte_defconfig), không phải y761: số sự kiện còn lại chỉ có **5 bit** (`& 0x1F`), bit 5 là cờ `max_energy_flag`. Bản cũ dùng `& 0x3F` → mỗi khi cờ bật, driver đọc thêm 32 sự kiện cũ trong stack và phát lại thành chạm ma. Đây nhiều khả năng là thủ phạm chính của "loạn cảm ứng".
 - Tối đa 31 sự kiện/lô như `sec_ts_read_event`.
 - Sự kiện trạng thái: chip tự khởi động lại (watchdog/ESD, `INFO 0x00 0x20`) → nhả hết ngón, gửi lại touch function + sense on; báo đầy hàng đợi (`ERR 0x01`) → nhả hết ngón.
+
+## 1.0.3.0
+- Ghi trạng thái driver vào RAM dành riêng (WINPRAM +0xE000) mà UEFI lưu thành `WINPRAM.BIN` trên ESP sau khi Windows bị ép tắt / treo. Không có cảm ứng thì chỉ còn cách ép tắt, nên registry và event log mất hết; cái này thì còn. `get-logs-twrp.cmd` lấy nó về.
+  - dòng 1: kết quả D0Entry (boot status, số lần thử, ControllerStart)
+  - dòng 2-3: nhịp tim mỗi giây: số ngắt, sự kiện, khung, khung đã giao, số lệnh đọc của hidclass, lỗi I2C, sự kiện bị loại, FIFO đầy, reinit, mức chân ngắt, thanh ghi EINT, độ trễ lớn nhất
+  - dòng 4-63: 60 sự kiện thô gần nhất của chip
+- Không đổi cách xử lý cảm ứng so với 1.0.2.0.

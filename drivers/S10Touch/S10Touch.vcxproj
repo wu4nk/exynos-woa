@@ -42,6 +42,7 @@
   <ItemGroup>
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Hid.c" />
+    <ClCompile Include="Pram.c" />
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <Target Name="ValidateOfflineBuild" BeforeTargets="PrepareForBuild">

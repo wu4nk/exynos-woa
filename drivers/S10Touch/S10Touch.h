@@ -138,6 +138,9 @@ typedef struct _S10T_STATS {
     volatile LONG Delivered;
     volatile LONG FifoFull;
     volatile LONG MaxIrqToReportUs;
+    volatile LONG ReadRequests;     /* 1.0.3: IOCTL_HID_READ_REPORTs from hidclass (0 = nobody reads us) */
+    volatile LONG Reinits;
+    volatile LONG Events;           /* raw controller events read */
 } S10T_STATS;
 
 typedef struct _S10T_DEVICE {
@@ -168,7 +171,10 @@ typedef struct _S10T_DEVICE {
 
     /* configuration (device key) */
     ULONG           RepeatMs;
-    BOOLEAN         NeedReinit;     /* the controller reported a watchdog reboot: touch function + sense on again */
+    BOOLEAN         NeedReinit;
+    ULONGLONG       LastHeartbeat;  /* 1.0.3: PRAM heartbeat clock */
+    ULONG           BootStatus;
+    ULONG           BootTries;     /* the controller reported a watchdog reboot: touch function + sense on again */
     S10T_STATS      Stats;
 } S10T_DEVICE, *PS10T_DEVICE;
 
@@ -190,3 +196,9 @@ VOID S10tKickWorker(_In_ PS10T_DEVICE Dev);
 /* Hid.c */
 NTSTATUS S10tQueuesCreate(_In_ WDFDEVICE Device, _In_ PS10T_DEVICE Dev);
 VOID S10tDeliver(_In_ PS10T_DEVICE Dev);
+
+/* Pram.c (1.0.3): text lines in firmware-saved reserved RAM (WINPRAM +0xE000), readable after a force restart */
+VOID S10tPramInit(VOID);
+VOID S10tPramFree(VOID);
+VOID S10tPramLine(_In_ ULONG Line, _In_z_ PCSTR Text);
+VOID S10tPramRoll(_In_z_ PCSTR Text);

@@ -46,3 +46,15 @@ LineageOS android_kernel_samsung_exynos9820: beyond1lte_defconfig (and beyond0lt
 - Init (probe): power, 70 ms, wait_for_ready (READ_ONE_EVENT until INFO/VENDOR_INFO ack 0x00, 20 ms x
   SEC_TS_WAIT_RETRY_CNT), device id 0x22 (5 B), integrity 0x21 (0x80 ok), boot status 0x55, ts status 0xAF (4 B),
   touch function |= 0x61, sense on.
+
+## 1.0.3.0 (2026-11-02) - no touch at all after installing 1.0.2.0; PRAM telemetry
+Logs (get-logs-twrp 20261102-224113): setupapi: S10Touch 1.0.2.0 imported + device started OK (signer score
+Authenticode, cert not in root but test signing). System.evtx ends 21 s after the install (record 1256), no later
+boot recorded -> the phone was force-reset right after; registry counters (written in D0Exit) never landed; the
+SYSTEM hive did not copy. UEFILOG v0.1.8: USI03 clock found at PERIC0_IP / 1 = ~400 MHz (USER mux 0x10, div 0) ->
+every HSI2C here and in Windows ran at ~800 kHz SCL (timing for 200 MHz); v0.1.8 set div 1 -> 1-byte read 122 us
+-> 225 us (= 400 kHz). Bus speed is NOT what made the UEFI test lag. Chip: device id 53 45 37 71 00 (y771),
+integrity 0x80, fw 17.55.02.01, img 17.55.02.34, touch function already 0x0061, sense on OK.
+1.0.3.0: the driver writes its state into WINPRAM +0xE000 (free slice per the 2026-10-13 inventory), 64 x 64 B
+lines: D0Entry result, a 1 s heartbeat with all counters + EINT mask/pend + attention level + hidclass read
+requests, and the last 60 raw controller events. The worker now always waits with a 1 s timeout (heartbeat).
