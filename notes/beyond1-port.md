@@ -95,3 +95,19 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   coords; the HID physical extent is still the S9+'s on the S10e too — S10 measured
   2.60 × 5.51 in from dumpsys dpi, vs 2.71 × 5.58 in the descriptor), battery driver
   (`fg_resistor = 2` is now a read on the S10; design capacity comes from the gauge).
+- 2026-11-02 — S10 boot image: `tools/pack-uefi-beyond1lte.sh 0.1.0` → header v2, page
+  2048, base 0x10000000, kernel = shim (512 B, S10 board) + FD (7 340 032 B), dummy
+  ramdisk, DTB section = `Platform/Beyond1LtePkg/FdtBlob/beyond1lte.dtb` (edk2-exynos
+  s10.dtb, sha256 5c1853…39d5, BEYOND1LTE EUR OPEN 26 — same board rev as the phone).
+  board name `b1uefi-v0.1.0`, cmdline carries `exynos-woa=beyond1lte-uefi-v0.1.0`.
+  Parsed back independently: FD at kernel+512 byte-equal, DTB at its page, FDT magic.
+  7 716 864 B, fits BOOT (57 671 680 B).
+- 2026-11-02 — RAM map simulated on the host from Exynos9820.h for both boards (same
+  carve algorithm as PlatformMemoryMapLib): S10e 10 pieces / 5.25 GiB (Windows reported
+  5.2 GiB on the S10e), S10 11 pieces / 7.23 GiB. Every S10 DT reservation the map
+  treats as monitor/modem-owned is excluded, EXCEPT `kaslr`: the S10 DT has it at
+  0x80001000 + 0x1000, the map carves `EXYNOS_RS_KASLR` 0x80100000 + 0x100000. The S10e
+  tree carries both values (RS_ vs RSVD_) and its validated boots publish 0x80001000 as
+  RAM too, so the S10 keeps parity — OPEN: settle which kaslr value is right.
+- 2026-11-02 — S10e regression re-run after the ROWS change: still only the PeilessSec
+  ASSERT line immediate differs.
