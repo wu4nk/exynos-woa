@@ -250,7 +250,7 @@ ArmPlatformGetVirtualMemoryMap (
   UINTN  Index;
   UINTN  Region;
 
-  // DRAM pieces (m13: bank0 4 + bank1 3 + bank2 1 + bank3 1 + bank4 1 = 10) + framebuffer slot + the MMIO
+  // DRAM pieces (m13: bank0 4 + bank1 3 + bank2 1 + bank3 1 + bank4 1 = 10; the S10 adds bank5 1 = 11) + framebuffer slot + the MMIO
   // windows + terminator = MMIO + 12 exactly; +16 leaves room for one more carve-out per bank
   STATIC ARM_MEMORY_REGION_DESCRIPTOR  Table[MMIO_REGION_COUNT + 16];
 
@@ -275,8 +275,15 @@ ArmPlatformGetVirtualMemoryMap (
   // as RAM because no read says what would break if Windows used them.
   //
   {
+    // Bank5 exists only on the 8 GB board; the S10e keeps its five-entry table (and its
+    // exact code), the S10 adds the sixth.
+#if EXYNOS_BOARD_HAS_DRAM_BANK5
+    UINT64 BankBase[6];
+    UINT64 BankSize[6];
+#else
     UINT64 BankBase[5];
     UINT64 BankSize[5];
+#endif
     UINTN  B;
 
     BankBase[0] = EXYNOS_DRAM_BASE;
@@ -286,6 +293,16 @@ ArmPlatformGetVirtualMemoryMap (
     BankSize[1] = EXYNOS_DRAM_BANK3_SIZE;
     BankBase[2] = EXYNOS_DRAM_BANK4_BASE;
     BankSize[2] = EXYNOS_DRAM_BANK4_SIZE;
+    //
+    // The 8 GB board's third 2 GiB high bank (Galaxy S10, memory@980000000). Its size is 0
+    // on the S10e (Exynos9820.h), so the S10e map is unchanged. It is a high bank, so the
+    // same BEYOND0LTE_PUBLISH_HIGH_BANKS switch governs it, and el2_earlymem (the top
+    // 0x2800000 of it on the S10) is carved out by mMonitorReservations like on the S10e.
+    //
+#if EXYNOS_BOARD_HAS_DRAM_BANK5
+    BankBase[5] = EXYNOS_DRAM_BANK5_BASE;
+    BankSize[5] = EXYNOS_DRAM_BANK5_SIZE;
+#endif
     //
     // W2: the two 32-bit banks the 9810 port also gave Windows (its RamManager published bank1
     // around seclog + framebuffer). Carved at the reservations above. Unproven for EL1 on the
@@ -311,9 +328,12 @@ ArmPlatformGetVirtualMemoryMap (
     //
     BankSize[1] = 0;
     BankSize[2] = 0;
+#if EXYNOS_BOARD_HAS_DRAM_BANK5
+    BankSize[5] = 0;
+#endif
 #endif
 
-    for (B = 0; B < 5; B++) {
+    for (B = 0; B < sizeof (BankBase) / sizeof (BankBase[0]); B++) {
       UINT64 Start;
       UINT64 End;
       UINT64 Cursor;
@@ -509,7 +529,11 @@ ArmPlatformGetVirtualMemoryMap (
 
         for (T = 0; T < Index; T++) {
           if ((Table[T].Attributes == MMAP_DRAM) && (Table[T].PhysicalBase >= EXYNOS_DRAM_BANK3_BASE) &&
+#if EXYNOS_BOARD_HAS_DRAM_BANK5
+              (Table[T].PhysicalBase + Table[T].Length <= EXYNOS_DRAM_BANK5_BASE + EXYNOS_DRAM_BANK5_SIZE))
+#else
               (Table[T].PhysicalBase + Table[T].Length <= EXYNOS_DRAM_BANK4_BASE + EXYNOS_DRAM_BANK4_SIZE))
+#endif
           {
             BuildResourceDescriptorHob (
               EFI_RESOURCE_SYSTEM_MEMORY,

@@ -53,7 +53,10 @@
 #define CELL_W      (GLYPH_W * SCALE)
 #define CELL_H      (GLYPH_H * SCALE)
 #define COLS        (EXYNOS_FB_WIDTH / CELL_W)
-#define ROWS        (EXYNOS_FB_HEIGHT / CELL_H)
+// HEIGHT - 1 keeps at least one undrawn scanline for the exception flags on any panel: the
+// S10e's 2280 gives 71 rows either way, the S10's 3040 is an exact multiple of 32 (95 rows would
+// leave none), so it gets 94.
+#define ROWS        ((EXYNOS_FB_HEIGHT - 1u) / CELL_H)
 #define FG          0xFFFFFFFFU
 #define BG          0xFF000000U
 #define CON_MAGIC   0x46424331U          // "FBC1"

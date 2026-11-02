@@ -7,8 +7,8 @@
 // paints the fault registers as 32-cell binary strips on the panel and then parks the CPU,
 // so the phone FREEZES on the evidence instead of rebooting.
 //
-// Panel geometry: 1080 x 2280 x 4 B, line = 4320 B, FB 0xCA000000 (Exynos9820.h
-// EXYNOS_FB_BASE/WIDTH; the header is C, so the numbers are restated here). Rows:
+// Panel geometry: per board from Exynos9820Board.h (S10e 1080 x 2280, line 4320 B; S10
+// 1440 x 3040, line 5760 B), FB 0xCA000000 on both. The rows below fit either panel. Rows:
 //   1900  ESR_EL1           (EC = bits 31:26)
 //   1990  ELR_EL1 [31:0]    (faulting PC)
 //   2080  FAR_EL1 [31:0]    (faulting data address, if any)
@@ -21,8 +21,9 @@
 //
 
 #include <AsmMacroLib.h>
+#include <Platform/Exynos9820Board.h>   // panel line length per board (plain integers, asm-safe)
 
-#define FB_ROW(r)  (0xCA000000 + (r) * 4320)
+#define FB_ROW(r)  (0xCA000000 + (r) * EXYNOS_BOARD_FB_LINE_BYTES)   // S10e 4320 B, S10 5760 B
 
   .macro LOADFB reg, row
   movz  \reg, #((FB_ROW(\row)) & 0xFFFF)
@@ -95,8 +96,8 @@ DiagBits:
   mov   w16, #132
   umaddl x17, w15, w16, x9
   tbnz  w14, #0, 3f
-  movz  x16, #0x0280
-  movk  x16, #0x5, lsl #16        // 76 lines * 4320 B
+  movz  x16, #((76 * EXYNOS_BOARD_FB_LINE_BYTES) & 0xFFFF)
+  movk  x16, #((76 * EXYNOS_BOARD_FB_LINE_BYTES) >> 16), lsl #16   // 76 lines (S10e 0x50280, S10 0x6AE00)
   add   x17, x17, x16
   mov   w10, #4
   b     4f
@@ -109,7 +110,7 @@ DiagBits:
   str   w8, [x7], #4
   subs  w11, w11, #1
   b.ne  5b
-  mov   x16, #4320
+  mov   x16, #EXYNOS_BOARD_FB_LINE_BYTES
   add   x17, x17, x16
   subs  w10, w10, #1
   b.ne  4b

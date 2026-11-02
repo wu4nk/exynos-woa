@@ -35,6 +35,14 @@
 #define EXYNOS9820_H_
 
 //
+// Board-level values (panel geometry, the 8 GB board's extra bank, el2_earlymem)
+// come from Exynos9820Board.h, selected by EXYNOS9820_BOARD_BEYOND1. With the
+// switch unset (the S10e build) every value below is the one this header carried
+// before the split.
+//
+#include "Exynos9820Board.h"
+
+//
 // ---------------------------------------------------------------------------
 // DRAM  [bank0 VERIFIED from the vendor DT; the rest are node names only]
 //
@@ -119,6 +127,17 @@
 #define EXYNOS_DRAM_BANK3_SIZE    0x0000000080000000ULL   // VERIFIED (vendor DT reg)
 #define EXYNOS_DRAM_BANK4_BASE    0x0000000900000000ULL   // VERIFIED (node name + vendor DT reg)
 #define EXYNOS_DRAM_BANK4_SIZE    0x0000000080000000ULL   // VERIFIED (vendor DT reg)
+//
+// Bank5 exists only on the 8 GB board (Galaxy S10): live DTB memory@980000000
+// reg = <0x9 0x80000000 0x80000000>, read 2026-11-02 (notes/beyond1-port.md §1.2).
+// On the S10e its size is 0, which the bank loops skip.
+//
+#define EXYNOS_DRAM_BANK5_BASE    0x0000000980000000ULL   // VERIFIED on the S10 (live DTB reg)
+#if EXYNOS_BOARD_HAS_DRAM_BANK5
+#define EXYNOS_DRAM_BANK5_SIZE    0x0000000080000000ULL   // VERIFIED on the S10 (live DTB reg)
+#else
+#define EXYNOS_DRAM_BANK5_SIZE    0x0000000000000000ULL   // the S10e has no bank5
+#endif
 
 //
 // ---------------------------------------------------------------------------
@@ -145,8 +164,10 @@
 #define EXYNOS_RS_KASLR_SIZE      0x0000000000100000ULL   // VERIFIED
 #define EXYNOS_RS_EL2_CODE_BASE   0x0000000087000000ULL   // VERIFIED (el2_code, owner el2,uh)
 #define EXYNOS_RS_EL2_CODE_SIZE   0x0000000000200000ULL   // VERIFIED
-#define EXYNOS_RS_EL2_EARLY_BASE  0x000000097E000000ULL   // VERIFIED (el2_earlymem, owner el2,uh)
-#define EXYNOS_RS_EL2_EARLY_SIZE  0x0000000002000000ULL   // VERIFIED 2026-10-11 live reserved-memory/el2_earlymem reg (was 0x200000 here - 16x short)
+// el2_earlymem sits at the top of the board's last bank, so it is a board value
+// (S10e 0x97E000000 + 0x2000000, S10 0x9FD800000 + 0x2800000 - Exynos9820Board.h).
+#define EXYNOS_RS_EL2_EARLY_BASE  ((((UINT64)EXYNOS_BOARD_EL2_EARLY_BASE_HI) << 32) | (UINT64)EXYNOS_BOARD_EL2_EARLY_BASE_LO)   // VERIFIED (el2_earlymem, owner el2,uh)
+#define EXYNOS_RS_EL2_EARLY_SIZE  ((UINT64)EXYNOS_BOARD_EL2_EARLY_SIZE)   // VERIFIED (S10e 2026-10-11, S10 2026-11-02, live reserved-memory/el2_earlymem reg)
 //
 // m13 (notes/m13-ram.md), live /proc/device-tree/reserved-memory/*/reg read as root in TWRP 2026-10-11:
 //
@@ -196,8 +217,8 @@
 #define EXYNOS_RSVD_CAMERA_CTG_SIZE   0x0000000000E00000ULL   // VERIFIED
 #define EXYNOS_RSVD_SECURE_CAM_BASE   0x0000000096000000ULL   // VERIFIED
 #define EXYNOS_RSVD_SECURE_CAM_SIZE   0x0000000002200000ULL   // VERIFIED
-#define EXYNOS_RSVD_E2_EARLY_BASE     0x000000097E000000ULL   // VERIFIED
-#define EXYNOS_RSVD_E2_EARLY_SIZE     0x0000000002000000ULL   // VERIFIED
+#define EXYNOS_RSVD_E2_EARLY_BASE     EXYNOS_RS_EL2_EARLY_BASE   // VERIFIED (board value, see above)
+#define EXYNOS_RSVD_E2_EARLY_SIZE     EXYNOS_RS_EL2_EARLY_SIZE   // VERIFIED
 #define EXYNOS_RSVD_SEC_RDX_BASE      0x0000000880000000ULL   // VERIFIED
 #define EXYNOS_RSVD_SEC_RDX_SIZE      0x000000000AD00000ULL   // VERIFIED
 
@@ -903,8 +924,10 @@
 // ---------------------------------------------------------------------------
 //
 #define EXYNOS_FB_BASE            0x00000000CA000000ULL   // VERIFIED (s3cfb.bootloaderfb, live cmdline)
-#define EXYNOS_FB_WIDTH           1080                    // VERIFIED (DTBO s6e3fa7_beyond0 resolution)
-#define EXYNOS_FB_HEIGHT          2280                    // VERIFIED (same node)
+// Geometry is a board value (Exynos9820Board.h): S10e 1080 x 2280 (above),
+// S10 1440 x 3040 (dumpsys display + fb0 stride 5760, notes/beyond1-port.md §1.4).
+#define EXYNOS_FB_WIDTH           EXYNOS_BOARD_FB_WIDTH   // VERIFIED per board
+#define EXYNOS_FB_HEIGHT          EXYNOS_BOARD_FB_HEIGHT  // VERIFIED per board
 #define EXYNOS_FB_BYTES_PER_PIXEL 4                       // consistent with the boot #10 photo (B44); format still unread
 #define EXYNOS_FB_STRIDE_PIXELS   EXYNOS_FB_WIDTH         // width*4, as on the 9810
 #define EXYNOS_FB_SIZE            ((UINT64)EXYNOS_FB_STRIDE_PIXELS * \

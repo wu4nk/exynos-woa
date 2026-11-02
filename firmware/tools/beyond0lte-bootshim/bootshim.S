@@ -58,7 +58,10 @@
  *   1100-1199 band: next instruction is `br` into the FD
  * Strips: 32 cells x 33 px (28 painted), MSB left; 1 = 80-row block, 0 = 4-row underline.
  * Uses x2/x3 (as the copy does), x7-x17; x0, x1, x4-x6 kept for the copy and the FD. */
-#define FB_ROW(r)  (0xCA000000 + (r) * 4320)
+/* Panel line length is a board value (S10e 4320 B, S10 5760 B): pack-uefi passes
+ * -DEXYNOS9820_BOARD_BEYOND1=1 for the Galaxy S10. FB base 0xCA000000 on both. */
+#include "../../Silicon/Exynos9820Pkg/Include/Platform/Exynos9820Board.h"
+#define FB_ROW(r)  (0xCA000000 + (r) * EXYNOS_BOARD_FB_LINE_BYTES)
 
 /* The 10 s time bar answered its question in boot #11 (no fixed-time reset, notes
  * /m8-uefi-image.md B47) and costs 10 s per boot, so it is off by default (B73). */
@@ -222,8 +225,8 @@ _start:
 	dsb	sy
 #if BEYOND0LTE_SHIM_DIAG
 	LOADFB	x9, 150
-	movz	w10, #0x78D0
-	movk	w10, #0x2, lsl #16      /* 162000 px = 150 rows x 1080             */
+	movz	w10, #((150 * EXYNOS_BOARD_FB_WIDTH) & 0xFFFF)
+	movk	w10, #((150 * EXYNOS_BOARD_FB_WIDTH) >> 16), lsl #16   /* 150 rows of pixels */
 	bl	_band                    /* shim entered                            */
 
 	adr	x12, _head
@@ -270,7 +273,7 @@ _start:
 	str	w8, [x7, #20]
 	str	w8, [x7, #24]
 	str	w8, [x7, #28]
-	mov	x17, #4320
+	mov	x17, #EXYNOS_BOARD_FB_LINE_BYTES
 	add	x7, x7, x17
 	subs	x16, x16, #1
 	b.ne	13b
@@ -315,8 +318,8 @@ _entry:
 	 * first word 0x1401CC00 at FD base 0x90000000). */
 #if BEYOND0LTE_SHIM_DIAG
 	LOADFB	x9, 1100
-	movz	w10, #0xA5E0
-	movk	w10, #0x1, lsl #16      /* 108000 px = 100 rows x 1080             */
+	movz	w10, #((100 * EXYNOS_BOARD_FB_WIDTH) & 0xFFFF)
+	movk	w10, #((100 * EXYNOS_BOARD_FB_WIDTH) >> 16), lsl #16   /* 100 rows of pixels */
 	bl	_band                    /* copy done, entering the FD              */
 #endif
 	PROGRESS 0x56                   /* branching into the FD                     */
@@ -348,8 +351,8 @@ _bits:
 	mov	w16, #132               /* 33 px * 4 B                             */
 	umaddl	x17, w15, w16, x9
 	tbnz	w14, #0, 8f
-	movz	x16, #0x0280
-	movk	x16, #0x5, lsl #16      /* 76 lines * 4320 B                       */
+	movz	x16, #((76 * EXYNOS_BOARD_FB_LINE_BYTES) & 0xFFFF)
+	movk	x16, #((76 * EXYNOS_BOARD_FB_LINE_BYTES) >> 16), lsl #16   /* 76 lines */
 	add	x17, x17, x16
 	mov	w10, #4
 	b	9f
@@ -359,7 +362,7 @@ _bits:
 10:	str	w8, [x7], #4
 	subs	w11, w11, #1
 	b.ne	10b
-	mov	x16, #4320
+	mov	x16, #EXYNOS_BOARD_FB_LINE_BYTES
 	add	x17, x17, x16
 	subs	w10, w10, #1
 	b.ne	9b

@@ -1,0 +1,81 @@
+# Galaxy S10 (beyond1lte, SM-G973F) — port from the S10e tree
+
+Started 2026-11-02. Device: WU4NK's own SM-G973F, bootloader `G973FXXSGHWC2`, rooted
+(KernelSU-Next), running an S22U-props port ROM on `4.14.356-openela-rc1-ExtremeKernel`.
+`ro.boot.em.model=SM-G973F`, live DTB model string
+`Samsung BEYOND1LTE EUR OPEN 26 board based on EXYNOS9820`.
+
+All reads below were taken by `s10-collect.sh v0.1` as root **in Android** (not TWRP)
+and pulled as `s10-dump.tar.gz`. The live DTB is `/sys/firmware/fdt` (the
+sboot-patched tree, i.e. what our UEFI will face), decompiled locally with the
+`fdt` Python package. Nothing was written to the phone.
+
+## 1. What the S10 shares with the S10e (read, not assumed)
+
+| Item | S10 read | S10e value in tree | Same? |
+|---|---|---|---|
+| SoC / MMIO | `compatible = samsung,exynos9820-*` throughout | Exynos9820.h | yes |
+| FB base | bootargs `s3cfb.bootloaderfb=0xca000000` | `EXYNOS_FB_BASE 0xCA000000` | yes |
+| DRAM bank0..4 | memory@80000000 `0x3AB00000`, @C0000000 `0x20000000`, @E1900000 `0x1E700000`, @880000000 `0x80000000`, @900000000 `0x80000000` | same five | yes |
+| sec_debug_magic, kaslr, el2_code, mm_debug, secure_camera, camera_contig, seclog, modem_spare, modem_if, cp_ram_logging, sec_rdx_bootdev | reserved-memory regs | same bases/sizes | yes |
+| Touch | `hsi2c@104B0000/touchscreen@48`, `sec,sec_ts`, IRQ `gpa1-0` (attn-irq, func 0xF, pud 0), bus pins `gpp1-4/5` func 2, `max_coords 4096x4096`, rails `tsp_io`=LDO19M 1.8 V, `tsp_avdd`=LDO27M 3.0 V | identical (only `afe_base` 0x206 vs 0x205, `firmware_name y771_beyond1_phole.bin`) | yes |
+| Audio | `spi@10470000/cs47l93@0`; `hsi2c@109A0000/cs35l40@40` + `@41` | same | yes |
+| Fuel gauge | max77705, `fuelgauge,fg_resistor = 2` | `MAX77705_FG_RESISTOR_UNVERIFIED 2` | yes (now a read on the S10) |
+| UFS disk | sda 31 236 096 × 4096 B, LastUsableLBA 31 236 090, AltLBA 31 236 095 | same geometry | yes |
+| BOOT / RECOVERY / EFS | sda14 27264..41343, sda15 41344..57855, sda3 4096..9215 | same LBAs | yes |
+
+## 1.2 What differs
+
+| Item | S10 | S10e |
+|---|---|---|
+| Panel | 1440 × 3040 (`dumpsys display` real size; fb0 stride 5760 B @ 32 bpp; lcd_type `SDC_A10013`) | 1080 × 2280 |
+| RAM | 8 GB: extra `memory@980000000 reg = <0x9 0x80000000 0x80000000>` | 6 GB |
+| el2_earlymem | `0x9FD800000 + 0x2800000` | `0x97E000000 + 0x2000000` |
+| camera (ION) | `0x99000000 + 0x1B800000` (custom kernel's DT; not used by any code) | `+0xE400000` |
+| Battery | `fuelgauge,capacity 3273` (3300 mAh cell, `charge_full_design 3300000`) | 3100 mAh |
+| Partitions | 34 on sda (see §2) | 31 |
+| Backup GPT | **present**: header at LBA 31236095, entries 31236091..31236092 non-zero | none (tail all zero) |
+| Free tail | **none**: USERDATA ends exactly at LastUsableLBA 31236090 | 31234816..31236090 unclaimed |
+
+## 2. The S10's GPT (parsed from sda LBA 0..5, 4096-byte LBAs)
+
+```
+sda1  bota0      1024..2175      sda18 persistent  70912..71039
+sda2  bota1      2176..4095      sda19 misc        71040..71295
+sda3  efs        4096..9215      sda20 keyrefuge   71296..75391
+sda4  param      9216..11263     sda21 keydata     75392..79487
+sda5  up_param  11264..13311     sda22 dqmdbg      79488..83583
+sda6  keystorage 13312..13439    sda23 vbmeta      83584..83599
+sda7  sec_efs   13440..18559     sda24 bota3       83600..83967
+sda8  bota2     18560..20607     sda25 system      83968..2131967
+sda9  steady    20608..21631     sda26 vendor    2131968..2541567
+sda10 uh        21632..22143     sda27 product   2541568..2951167
+sda11 uhcfg     22144..23167     sda28 odm       2951168..2952191
+sda12 dtb       23168..25215     sda29 prism     2952192..3110911
+sda13 dtbo      25216..27263     sda30 optics    3110912..3118591
+sda14 boot      27264..41343     sda31 cache     3118592..3272191   <- ESP (same 153 600 LBAs as the S10e's)
+sda15 recovery  41344..57855     sda32 omr       3272192..3284991   refused
+sda16 radio     57856..70655     sda33 cp_debug  3284992..3286271   refused
+sda17 nad_refer 70656..70911     sda34 userdata  3286272..31236090  <- Windows
+```
+
+sdb (8192 × 512 B), sdc (8192 × 512 B) carry no partitions; sdd1 = `cpefs`.
+
+**Partition NUMBERS differ from the S10e** (S10e: CACHE sda28, USERDATA sda31). On the
+S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions by
+**name** (`/dev/block/by-name/cache`, `.../userdata`, `.../boot`) — checked with
+`rg 'sda[0-9]' firmware/tools` — so the names carry over; anything that hard-codes an
+`sdaN` number must not be reused on the S10.
+
+## 3. Progress log
+
+- 2026-11-02 — dump received and parsed (§1, §2).
+- 2026-11-02 — firmware board switch: `Exynos9820Board.h` + `Beyond1LtePkg` (board
+  variant DSC/FDF over the Beyond0LtePkg modules). S10e regression: built Beyond0LtePkg
+  before/after with the Linux CLANGDWARF flow; every module byte-identical except
+  `PeilessSec.efi`, whose only difference is one `ASSERT` line-number immediate
+  (438 → 458, `llvm-objdump -d` diff). Bootshim: S10e binaries byte-identical with
+  diag on and off.
+- 2026-11-02 — `Beyond0LteFbSerialPortLib` `STATIC_ASSERT (ROWS * CELL_H < HEIGHT)`
+  fired for 3040 (exact multiple of 32): ROWS is now `(HEIGHT - 1) / CELL_H`
+  (S10e unchanged at 71, S10 94).
