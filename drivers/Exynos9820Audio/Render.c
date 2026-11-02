@@ -501,16 +501,25 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
  * frames x 16 bytes (UAIF1 frame: 4 x 32-bit slots, left-justified; slot 1 = loudspeaker amp, slot 0 = earpiece amp).
  * Non-cached: the CPU writes it, only the RDMA reads it, so no cache maintenance and no aliasing with a user mapping.
  *
- * Timeline (per Run, j = periods elapsed, k0 = CurrentPacket at Run):
- *   at Run       : ring slots zeroed, packet k0 expanded into slot 1, RDMA started at slot 0 (one period of silence);
- *   boundary j>=1: packet k0+j-1 is complete (the RDMA is now playing it), CurrentPacket = k0+j, and packet k0+j
- *                  (written by the client during the previous period) is expanded into slot (j+1) % AUD_DMA_SLOTS,
- *                  one full period before the RDMA reaches it.
+ * Timeline (per Run, j = ring periods elapsed, k0 = CurrentPacket at Run; 1.0.2.1, AUD_DMA_LEAD = L):
+ *   at Run       : every ring slot zeroed, RDMA started at slot 0 (L periods of silence);
+ *   boundary j>=1: packet k0+j-1 is complete on the client side: it is expanded into slot (j-1+L) % AUD_DMA_SLOTS
+ *                  (L-1 full periods before the RDMA reaches it), slot j-1 (just played) is zeroed, then
+ *                  CurrentPacket = k0+j and the completion is signalled (the client may now refill that buffer).
  * Boundaries come from the RDMA ring position (STATUS[27:12] + [11:0], AboxRingPosition) while the hardware runs, so the client
  * follows the audio PLL, not the QPC; without hardware (disabled or failed) the QPC drives the same timeline.
  * ================================================================================================================ */
 
-#define AUD_DMA_SLOTS        4u     /* periods in the DMA ring: reading j, writing j+1, two spare */
+/* 1.0.2.1 (S10 "crackling" report): more slack between the client and the RDMA. Every client packet is copied into
+   the ring when it COMPLETES (before the client may reuse its buffer and before CurrentPacket advances), AUD_DMA_LEAD
+   periods ahead of the RDMA. Up to 1.0.2.0 the packet that had just become current was copied with one period of
+   lead: a client still writing it, or a timer pass more than one period late (CPU-rendered desktop), put
+   half-written or four-periods-old audio on the speaker = crackle. Now: the client gets a whole extra period, the
+   timer may be up to two periods late, and the slot the RDMA has just left is zeroed so a later miss plays
+   silence, not stale audio. Cost: two more periods of output latency (reported position excludes them). */
+#define AUD_DMA_SLOTS        6u     /* periods in the DMA ring */
+#define AUD_DMA_LEAD         3u     /* packet n plays in ring period (n - first packet) + AUD_DMA_LEAD */
+C_ASSERT(AUD_DMA_LEAD + 1 < AUD_DMA_SLOTS);
 
 static PUCHAR AudPacketVa(_In_ PAUD_STREAM_CONTEXT Ctx, _In_ ULONG Packet)
 {
@@ -660,7 +669,9 @@ static VOID AudUpdatePosition(_Inout_ PAUD_STREAM_CONTEXT Ctx)
 
     Frames = AudElapsedFrames(Ctx);
     if (Ctx->HwStarted) {
-        Frames = (Frames > Ctx->FramesPerPacket) ? Frames - Ctx->FramesPerPacket : 0;
+        ULONGLONG Lead = (ULONGLONG)AUD_DMA_LEAD * Ctx->FramesPerPacket;   /* silent periods at the start of a run */
+
+        Frames = (Frames > Lead) ? Frames - Lead : 0;
     }
     Ctx->Position = Ctx->StartPosition + Frames * Ctx->BlockAlign;
 }
@@ -688,11 +699,16 @@ VOID AudEvtStreamTimer(WDFTIMER Timer)
     Frames = AudElapsedFrames(Ctx);
     while (Frames >= ((ULONGLONG)Ctx->Periods + 1) * Ctx->FramesPerPacket) {
         Ctx->Periods++;
-        Completed = (ULONG)InterlockedIncrement(&Ctx->CurrentPacket) - 1;
+        Completed = (ULONG)InterlockedCompareExchange(&Ctx->CurrentPacket, -1, -1);
         if (Ctx->HwStarted) {
-            AudDmaFillSlot(Ctx, Ctx->Periods + 1, AudPacketVa(Ctx, Completed + 1));
+            /* Ring period P = Ctx->Periods is starting: P-1 just finished, packet Completed (= first + P - 1) is done
+               on the client side and goes to period P - 1 + AUD_DMA_LEAD. Copied BEFORE CurrentPacket advances, so
+               a polling client cannot already be refilling its buffer. */
+            AudDmaFillSlot(Ctx, Ctx->Periods - 1 + AUD_DMA_LEAD, AudPacketVa(Ctx, Completed));
+            AudDmaFillSlot(Ctx, Ctx->Periods - 1, NULL);
             KeMemoryBarrier();
         }
+        (VOID)InterlockedIncrement(&Ctx->CurrentPacket);
         (VOID)AcxRtStreamNotifyPacketComplete(Ctx->Stream, Completed, (ULONGLONG)KeQueryPerformanceCounter(NULL).QuadPart);
         Done++;
 
@@ -876,8 +892,8 @@ static NTSTATUS AudStreamReleaseHardware(ACXSTREAM Stream)
 }
 
 /*
- * Hardware start for one Run, in the boot #99 order: stage-1 clocks, then the RDMA with data (slot 0 silence, slot 1
- * = the current packet), and only then - from AudEvtStreamRun, with the packet timer already running - the amps,
+ * Hardware start for one Run, in the boot #99 order: stage-1 clocks, then the RDMA running over a silent ring (1.0.2.1:
+ * packets enter it as they complete, AUD_DMA_LEAD periods ahead), and only then - from AudEvtStreamRun, with the packet timer already running - the amps,
  * which need data on UAIF1 for PUP_DONE. Any failure leaves the QPC-clocked stream running, silent.
  */
 static VOID AudHwStart(_Inout_ PAUD_STREAM_CONTEXT Ctx)
@@ -902,7 +918,7 @@ static VOID AudHwStart(_Inout_ PAUD_STREAM_CONTEXT Ctx)
     }
 
     for (Slot = 0; Slot < AUD_DMA_SLOTS; Slot++) {
-        AudDmaFillSlot(Ctx, Slot, (Slot == 1) ? AudPacketVa(Ctx, (ULONG)Ctx->CurrentPacket) : NULL);
+        AudDmaFillSlot(Ctx, Slot, NULL);   /* AUD_DMA_LEAD silent periods; packets arrive as they complete */
     }
     KeMemoryBarrier();
 

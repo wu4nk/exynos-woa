@@ -277,3 +277,13 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   (3) M4 as the BOOT CPU (bootshim CPU_ONs core 6 to run UEFI+Windows, so the boot CPU has the smallest feature
   set and every secondary is a superset); (4) loader-time patch LDAPR->LDAR (KernelErrataPatcher style; user mode
   apps keyed on PF_ARM_V83_LRCPC would still fault) . Recommendation: (1) then (3); not started (user decision).
+
+## Round 5 (user 17:25): WiFi sees networks but cannot connect; touch still laggy -> new driver; audio crackles
+- Audio 1.0.2.1 (Render.c): the packet timer copied the packet that had JUST become current into the ring with
+  one period of lead and advanced CurrentPacket first. Two crackle mechanisms under load (CPU-rendered desktop):
+  a client still writing that packet -> half-written audio; a timer pass > 1 period late -> the RDMA replays a
+  4-period-old slot. Now: copy each packet when it COMPLETES, before CurrentPacket advances, into slot
+  (period-1+AUD_DMA_LEAD), LEAD 3, ring 6 slots; the slot just played is zeroed (a later miss = silence, not stale
+  audio); 3 silent periods at Run, position excludes them. Client tolerance +1 period, timer tolerance 2 periods,
+  +20 ms latency. UNVERIFIED that this is the crackle (the run log's "late timer passes" / LateWrites decide);
+  amp-side distortion would not change with it.
