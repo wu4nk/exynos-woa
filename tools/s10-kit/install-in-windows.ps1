@@ -98,3 +98,4 @@ Show 'SAMS9826' 'battery'
 if (-not $fwOk) { Warn 'WiFi firmware missing: the WiFi adapter cannot start until bcm4375\ is installed' }
 
 Ok 'done - reboot the phone; if something is still missing run .\collect-logs.ps1 and send the zip'
+exit 0

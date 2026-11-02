@@ -254,3 +254,13 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   driver store, audio Parameters/endpoints, netsh wlan + bcm4375 listing, battery report, driver LogFiles,
   last 300 System events, UEFILOG.TXT/WINPRAM*.BIN from the ESP via mountvol /s, zipped to C:\S10Prov).
   PowerShell scripts not syntax-checked here (no pwsh); reviewed by reading.
+- push-to-windows (user 17:03 "TWRP mounts Windows on /data, push from there"; 17:04 "cmd"): ONE file,
+  push-to-windows.cmd (PC). It checks adb root + G973, stages out\ setup\ bcm4375\ + scripts in /tmp/s10kit, then
+  extracts the sh script embedded after its own `#__SH__` line (findstr /n + more +N), pushes it, strips CR on the
+  phone and runs it. Phone part: /data must be the Windows volume (Windows\System32, case-insensitive resolution -
+  NTFS lookups are case-sensitive under Linux) and writable (hibernated NTFS mounts read-only); copies the kit to
+  C:\S10Prov\kit, WiFi blobs to System32\drivers\bcm4375, setup\S10-install-once.cmd to the All Users StartUp
+  folder. At logon that launcher starts auto-install.ps1 elevated (one UAC prompt) -> install-in-windows.ps1 with a
+  transcript (C:\S10Prov\install.log) -> install.done -> one reboot; the launcher deletes itself after success and
+  stops after 3 failed tries. install-in-windows.ps1 now ends with `exit 0`. Embedded sh: sh -n clean after
+  extraction; the .cmd/.ps1 are not executable here.
