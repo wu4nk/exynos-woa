@@ -264,3 +264,16 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   transcript (C:\S10Prov\install.log) -> install.done -> one reboot; the launcher deletes itself after success and
   stops after 3 failed tries. install-in-windows.ps1 now ends with `exit 0`. Embedded sh: sh -n clean after
   extraction; the .cmd/.ps1 are not executable here.
+
+## Round 4 (user 17:15): audio + WiFi work; the boot exception still happens sometimes; asks about the M4 cores
+- Boot exception survived v0.1.4/v0.1.5 (UEFI out of bank5) -> location was not (the whole) cause. v0.1.6:
+  PcdImageProtectionPolicy 0 (AutoGen.h of DxeMain: 0x00000000U) - the crashing path
+  (MemoryProtectionCpuArchProtocolNotify -> ProtectUefiImage -> live page-table split of the 2 MB block holding
+  ArmCpuDxe's code) no longer runs. If it still crashes: need the new photo (PC/ESR/backtrace) to see where.
+- M4 (cores 6/7): S10e facts (cpu-ram-plan-20261012.md): CPU_ON of an M4 works; Windows dies once an M4 is
+  offered; Linux's own SANITY CHECK shows ID_AA64ISAR1 LRCPC 1 on A55/A75 but 0 on the M4 (no LDAPR) and
+  MMFR1 VMIDBits/HPDS lower. Windows sizes features from the boot CPU (A55) -> RCPC code on an M4 = UNDEF.
+  Options for the user: (1) probe-only stub (ID regs, ITARGETSR, clock) - safe; (2) BIG-cluster ACPM FREQ_REQ;
+  (3) M4 as the BOOT CPU (bootshim CPU_ONs core 6 to run UEFI+Windows, so the boot CPU has the smallest feature
+  set and every secondary is a superset); (4) loader-time patch LDAPR->LDAR (KernelErrataPatcher style; user mode
+  apps keyed on PF_ARM_V83_LRCPC would still fault) . Recommendation: (1) then (3); not started (user decision).

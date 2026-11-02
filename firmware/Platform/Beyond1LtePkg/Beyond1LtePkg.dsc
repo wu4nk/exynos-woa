@@ -359,7 +359,16 @@
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.5"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.6"
+  #
+  # v0.1.6 (notes/beyond1-port.md "UEFI exception in ArmCpuDxe"): no DXE image protection (default 0x2 = every
+  # firmware-volume image gets RO code / XP data). The intermittent EC 0x00 exception sits in exactly that
+  # path - MemoryProtectionCpuArchProtocolNotify -> ProtectUefiImage -> ArmSetMemoryAttributes splitting the live
+  # 2 MB block that holds ArmCpuDxe's own code - and survived moving UEFI out of bank5 (v0.1.4/v0.1.5). With 0
+  # DxeCore never rewrites live page tables for images (MemoryProtection.c: mImageProtectionPolicy == 0 -> Done).
+  # Cost: no W^X inside UEFI; Windows is unaffected.
+  #
+  gEfiMdeModulePkgTokenSpaceGuid.PcdImageProtectionPolicy|0x00000000
   # --- Debug mask (errors+warnings+info+load). Trim for RELEASE. ---
   # ERROR|WARN only (was 0x8000004F = +INFO|LOAD): the on-panel log (B54) is read from photos, and
   # the hundreds of Loading driver / InstallProtocolInterface lines buried the UFS errors (B73).
