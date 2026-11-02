@@ -194,3 +194,24 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
 - Kit v1.3: build-s10.cmd builds both (optional, warnings on failure); gpu-s10.ps1 probe|display|status|off.
 - Next (G2, after a probe PASS on the S10): the real work is GpuEnable 1 = Mesa panfrost UMD + the KMD's GPU half
   (tools/mesa-build, Windows + WSL host build) - weeks of device iteration, not started on either phone.
+
+## UEFI exception in ArmCpuDxe (user photo 2026-11-02 16:38, v0.1.3) -> v0.1.4
+- Screen: "Synchronous Exception at 0x9FD595FD4", ESR 0x02000000 (EC 0x00 Unknown, IL 1, ISS 0), FAR garbage,
+  ELR = PC. "Sometimes" - not every boot.
+- Symbolised against this tree's DEBUG build (llvm-addr2line on ArmCpuDxe.debug / DxeCore.debug):
+  ArmCpuDxe+0x4FD4 = UpdateRegionMappingRecursive, the instruction right after `bl ArmUpdateTranslationTableEntry`
+  (ArmMmuLibCore.c:195 inlined ReplaceTableEntry, leaf path :474-480) - a VALID `cmp x20, x25`. Caller chain:
+  ArmSetMemoryAttributes <- CpuSetMemoryAttributes <- DxeCore CoreConvertSpace <- SetUefiImageMemoryAttributes <-
+  ProtectUefiImage <- MemoryProtectionCpuArchProtocolNotify (fires when ArmCpuDxe installs the CPU arch protocol).
+  Entry X22 0xBAAE3F50 = L2 index 490 -> the 2 MB block 0x9FD400000 that holds ArmCpuDxe's own code.
+- Where: ArmCpuDxe loaded at 0x9FD591000 = top of the S10-only bank5, directly under uH's el2_earlymem
+  (0x9FD800000). DXE allocates top-down; on the S10e the top of RAM is bank4 (proven layout), so UEFI never ran
+  from bank5 before. EC 0 / ISS 0 on a valid instruction = a corrupted fetch or an exception injected by EL2
+  (that is the ESR a hypervisor injects). UNVERIFIED which.
+- v0.1.4: PlatformMemoryMapLib BEYOND1LTE_UEFI_AVOID_BANK5 (default = board has bank5): bank5 below el2_earlymem
+  goes to DXE as an EfiBootServicesData allocation HOB (0x980000000 + 0x7D800000, checked in PeilessSec's
+  disassembly: BuildMemoryAllocationHob(0x980000000, 0x7d800000, 4)). UEFI then runs from the top of bank4 like
+  the S10e; Windows still gets bank5 (BootServicesData is free after ExitBootServices). STATIC_ASSERT that
+  el2_earlymem is exactly the top of bank5. S10e build unchanged (no bank5).
+- If v0.1.4 still throws: the cause is not the location -> next suspect is the DXE memory-protection split of a
+  live 2 MB code block (PcdDxeNxMemoryProtectionPolicy / image protection), A/B by turning image protection off.

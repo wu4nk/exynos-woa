@@ -61,6 +61,21 @@
 #endif
 
 //
+// S10 v0.1.4 (notes/beyond1-port.md "UEFI exception in ArmCpuDxe"): keep UEFI's own allocator out of the
+// 8 GB board's bank5 (0x980000000 .. el2_earlymem 0x9FD800000) by handing that range to DXE as
+// EfiBootServicesData. DXE allocates top-down, so without this every driver image and page table of the
+// S10 lands in bank5 directly under uH's el2_earlymem - a region the S10e never ran UEFI from (its top of
+// RAM is bank4). The S10 then intermittently took "Synchronous Exception" EC 0x00 (Unknown, ISS 0) at a
+// VALID instruction of ArmCpuDxe (0x9FD595FD4, `cmp x20, x25` after ArmUpdateTranslationTableEntry, inside
+// MemoryProtectionCpuArchProtocolNotify) - the ESR a hypervisor injects, or a corrupted fetch. UNVERIFIED
+// which; this moves UEFI back to the S10e-proven layout (top of bank4). Windows still gets bank5:
+// EfiBootServicesData is free memory for the OS after ExitBootServices.
+//
+#ifndef BEYOND1LTE_UEFI_AVOID_BANK5
+#define BEYOND1LTE_UEFI_AVOID_BANK5  EXYNOS_BOARD_HAS_DRAM_BANK5
+#endif
+
+//
 // The 9810 flow wrote single-byte boot breadcrumbs to 0xFED14000 and mapped a
 // 64 KB Device window over it. That worked because on the S9+ DRAM ENDED at
 // 0xBC800000, so 0xFED14000 was above every bank.
@@ -563,6 +578,22 @@ ArmPlatformGetVirtualMemoryMap (
           }
         }
       }
+#endif
+
+#if BEYOND1LTE_UEFI_AVOID_BANK5 && EXYNOS_BOARD_HAS_DRAM_BANK5 && BEYOND0LTE_PUBLISH_HIGH_BANKS
+      //
+      // Bank5 below el2_earlymem (el2_earlymem is the top of bank5 and already carved out of the RAM HOBs):
+      // RAM for Windows, never for UEFI (see BEYOND1LTE_UEFI_AVOID_BANK5).
+      //
+      STATIC_ASSERT (
+        EXYNOS_RS_EL2_EARLY_BASE + EXYNOS_RS_EL2_EARLY_SIZE == EXYNOS_DRAM_BANK5_BASE + EXYNOS_DRAM_BANK5_SIZE,
+        "bank5 hand-over assumes el2_earlymem is the top of bank5 and the only carve in it"
+        );
+      BuildMemoryAllocationHob (
+        EXYNOS_DRAM_BANK5_BASE,
+        EXYNOS_RS_EL2_EARLY_BASE - EXYNOS_DRAM_BANK5_BASE,
+        EfiBootServicesData
+        );
 #endif
 
 #if BEYOND0LTE_FB_DISPLAY_RESERVED_WT

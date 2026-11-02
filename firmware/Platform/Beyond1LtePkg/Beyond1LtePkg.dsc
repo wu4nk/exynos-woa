@@ -359,7 +359,7 @@
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.3"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.4"
   # --- Debug mask (errors+warnings+info+load). Trim for RELEASE. ---
   # ERROR|WARN only (was 0x8000004F = +INFO|LOAD): the on-panel log (B54) is read from photos, and
   # the hundreds of Loading driver / InstallProtocolInterface lines buried the UFS errors (B73).
