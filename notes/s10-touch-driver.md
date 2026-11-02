@@ -69,3 +69,14 @@ after PramInit. 1.0.4: ControllerStart runs on the worker (stop-aware waits), D0
 for PrepareHardware (resource mask), D0Entry, SpbOpen status, interrupts on, boot-status attempts, start result.
 Also noted: Exynos9820Hsi2c idles to D3 after 1 s (SystemManagedIdleTimeoutWithHint 1000 ms): first transfer
 after idle waits for its D0 - a latency candidate for later.
+
+## 1.0.5.0 + Exynos9820Hsi2c 1.0.1.0 (2026-11-03) - "SpbOpen c0000184"
+Logs 20261103-005515 (UEFI v0.1.8 now: clock fixed, TouchChip sense on Success, chip sensing, stack empty).
+WINPRAM-RESTART +0xE000: "PrepareHardware res 7 n 3", "D0Entry", "SpbOpen c0000184" (STATUS_INVALID_DEVICE_STATE),
+all at 6468 ms, nothing after -> WdfIoTargetOpen on the resource-hub path refused because the HSI2C controller
+was not in a usable state at that instant (not started yet, or idle in D3: Exynos9820Hsi2c assigns S0 idle
+1000 ms), and the failed D0Entry kills the touch device for the session (1.0.0 had the same single attempt; it
+worked when the controller happened to be up).
+Fix: S10Touch opens the target from the worker with retries (100 ms x 100, then 1 s, PRAM marks, registry
+S10tSpbOpenStatus/Tries); Exynos9820Hsi2c idleSettings.Enabled = WdfFalse (stays in D0 - also removes a D0
+transition from the first transfer of every touch).

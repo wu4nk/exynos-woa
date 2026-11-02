@@ -40,3 +40,7 @@ Chưa build/chạy thử trên máy (chỉ kiểm tra cú pháp với header gi�
 
 ## 1.0.4.0
 - Khởi động chip (chờ app mode, touch function, sense on) chuyển sang luồng worker; `D0Entry` trả về ngay. Bản 1.0.3 chỉ kịp ghi dòng tiêu đề vào PRAM rồi im lặng cả phiên: nó kẹt trong `D0Entry` (mở SPB / đọc boot status) hoặc `PrepareHardware` lỗi. Giờ từng bước đều có dòng PRAM: PrepareHardware (tài nguyên), D0Entry, SpbOpen, interrupts on, từng lần thử boot status (mã lỗi + giá trị), kết quả start.
+
+## 1.0.5.0
+- PRAM của 1.0.4 chỉ ra lỗi: `SpbOpen c0000184` (STATUS_INVALID_DEVICE_STATE) - lúc driver cảm ứng mở kết nối I2C thì bộ điều khiển I2C chưa sẵn sàng (đang khởi động, hoặc đang ngủ D3 do tự tắt sau 1 s rảnh). `D0Entry` thất bại một lần là thiết bị cảm ứng chết cả phiên.
+- Mở SPB giờ do worker làm, thử lại mỗi 100 ms trong 10 s rồi mỗi giây, có log PRAM. Đi kèm Exynos9820Hsi2c 1.0.1.0 không còn tự ngủ D3.

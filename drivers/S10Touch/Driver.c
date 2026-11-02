@@ -559,6 +559,26 @@ static VOID WorkerMain(_In_ PVOID Context)
     {
         NTSTATUS st;
         CHAR     t[56];
+        ULONG    tries;
+
+        for (tries = 0;; tries++) {
+            st = SpbOpen(Dev);
+            if (NT_SUCCESS(st) || tries < 3 || tries % 20 == 19) {
+                (VOID)RtlStringCbPrintfA(t, sizeof(t), "SpbOpen try %u st %08x", tries, (ULONG)st);
+                S10tPramRoll(t);
+            }
+            if (NT_SUCCESS(st)) {
+                break;
+            }
+            /* 100 ms apart for 10 s, then once a second for as long as the device is up */
+            if (StopWait(Dev, tries < 100 ? 100 : 1000)) {
+                S10tPramRoll("worker: stopped before SPB open");
+                PsTerminateSystemThread(STATUS_SUCCESS);
+            }
+            Heartbeat(Dev);
+        }
+        RegWrite(Dev->Device, L"S10tSpbOpenStatus", (ULONG)st);
+        RegWrite(Dev->Device, L"S10tSpbOpenTries", tries);
 
         S10tPramRoll("worker: controller start");
         st = ControllerStart(Dev);
@@ -807,19 +827,9 @@ NTSTATUS S10tEvtD0Entry(_In_ WDFDEVICE Device, _In_ WDF_POWER_DEVICE_STATE Previ
     S10tPramRoll("D0Entry");
     EintConfigure(Dev);                         /* masked until D0EntryPostInterruptsEnabled */
 
-    status = SpbOpen(Dev);
-    RegWrite(Device, L"S10tSpbOpenStatus", (ULONG)status);
-    {
-        CHAR t[40];
-
-        (VOID)RtlStringCbPrintfA(t, sizeof(t), "SpbOpen %08x", (ULONG)status);
-        S10tPramRoll(t);
-    }
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-
-    /* 1.0.4: the controller is started by the worker (ControllerStart), D0Entry returns right away. */
+    /* 1.0.5: the SPB target is opened by the worker, with retries: 1.0.4 showed "SpbOpen c0000184"
+       (STATUS_INVALID_DEVICE_STATE) - the I2C controller was not ready (still starting, or idle in D3) at the
+       one moment D0Entry asked, and a failed D0Entry left the touch device dead for the whole session. */
 
     status = WorkerStart(Dev);
     RegWrite(Device, L"S10tWorkerStatus", (ULONG)status);

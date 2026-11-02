@@ -204,6 +204,13 @@ OnDeviceAdd(
             IdleCannotWakeFromS0);
         idleSettings.IdleTimeoutType = SystemManagedIdleTimeoutWithHint;
         idleSettings.IdleTimeout = 1000;
+        //
+        // S10 (2026-11-03): stay in D0. This bus carries only the touch controller, which is read up to
+        // ~120 times a second; idling to D3 after 1 s made the first transfer of every touch wait for a
+        // D0 transition, and a touch client opening its SPB target while the controller sat in D3 got
+        // STATUS_INVALID_DEVICE_STATE (S10Touch PRAM: "SpbOpen c0000184") - no touch at all.
+        //
+        idleSettings.Enabled = WdfFalse;
 
         status = WdfDeviceAssignS0IdleSettings(fxDevice, &idleSettings);
         if (!NT_SUCCESS(status))
