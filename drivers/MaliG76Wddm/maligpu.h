@@ -59,6 +59,9 @@
 #define TILER_PWRON_LO          0x190
 #define L2_PWRON_LO             0x1A0
 #define GPU_COHERENCY_FEATURES  0x300
+#define GPU_COHERENCY_ENABLE    0x304       /* panfrost_regs.h:110 */
+#define COHERENCY_NONE          31u         /* panfrost_regs.h:113; kbase writes it after every reset on a non-coherent
+                                             * system (Samsung bv_r32p1 mali_kbase_cache_policy_backend.c:27-38) */
 #define GPU_THREAD_TLS_ALLOC    0x310
 #define GPU_STACK_PRESENT_LO    0xE00
 #define GPU_STACK_PRESENT_HI    0xE04
@@ -124,6 +127,7 @@
 #define AS_COMMAND_UPDATE       0x01
 #define AS_COMMAND_LOCK         0x02
 #define AS_COMMAND_FLUSH_PT     0x04
+#define AS_COMMAND_FLUSH_MEM    0x05        /* panfrost_regs.h:299: wait for memory accesses, flush L1s and L2 */
 #define AS_STATUS_ACTIVE        0x01
 
 /* ---- the GPU virtual address space, as Linux Panfrost lays it out ---- */
@@ -211,9 +215,10 @@ void MkVaFree(MK_GPU *Gpu, ULONG64 Va, ULONG Pages);
 NTSTATUS MkMmuMapPages(MK_GPU *Gpu, ULONG64 Va, const PFN_NUMBER *Pfn, ULONG Pages, BOOLEAN NoExec);
 void MkMmuUnmapPages(MK_GPU *Gpu, ULONG64 Va, ULONG Pages);
 
-/* Jobs: start a chain on a slot without waiting; collect its done (bit
- * slot) and error (bit 16 + slot) status, from the ISR or the raw register. */
-void MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag);
+/* Jobs: start a chain on a slot without waiting (FALSE = the slot's _NEXT registers still hold a job that has not
+ * started, nothing written - panfrost_job_hw_submit refuses the same case); collect its done (bit slot) and error
+ * (bit 16 + slot) status, from the ISR or the raw register. */
+BOOLEAN MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag);
 ULONG MkJobTakeStatus(MK_GPU *Gpu, ULONG Slot);
 ULONG MkJobSlotStatus(MK_GPU *Gpu, ULONG Slot);
 void MkJobHardStop(MK_GPU *Gpu, ULONG Slot);

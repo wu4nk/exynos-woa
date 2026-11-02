@@ -334,7 +334,10 @@ static void Kick(MW_ADAPTER *A)
         A->JobStart = KeQueryInterruptTime();
         (void)MkJobTakeStatus(&A->Gpu, c->Slot);
         InterlockedExchange(&A->Gpu.MmuIrqStatus, 0);
-        MkJobStart(&A->Gpu, c->Slot, c->Jc, (A->ChainFlag++ & 1) != 0);
+        /* A refused start (slot NEXT still busy) leaves Running set: Reap's timeout hard-stops the slot, resets
+         * the GPU and drops the submission, the same path as a hung chain. */
+        if (!MkJobStart(&A->Gpu, c->Slot, c->Jc, (A->ChainFlag++ & 1) != 0))
+            A->JobStartRefused++;
     }
 }
 
@@ -730,9 +733,9 @@ NTSTATUS APIENTRY MwCollectDbgInfo(IN_CONST_HANDLE hAdapter, const DXGKARG_COLLE
     if (Arg->pBuffer != NULL && Arg->BufferSize > 0)
         (void)RtlStringCbPrintfA((NTSTRSAFE_PSTR)Arg->pBuffer, Arg->BufferSize,
                                  "MaliG76Wddm: submitted %u completed %u running %u queued %u "
-                                 "done %u failed %u timedout %u js 0x%x fault 0x%x @0x%llx",
+                                 "done %u failed %u timedout %u refused %u js 0x%x fault 0x%x @0x%llx",
                                  a->LastSubmittedFence, a->LastCompletedFence, a->Running, a->QCount,
-                                 a->JobsDone, a->JobsFailed, a->JobsTimedOut, a->LastJsStatus,
+                                 a->JobsDone, a->JobsFailed, a->JobsTimedOut, a->JobStartRefused, a->LastJsStatus,
                                  a->LastFaultStatus, a->LastFaultAddress);
     return STATUS_SUCCESS;
 }

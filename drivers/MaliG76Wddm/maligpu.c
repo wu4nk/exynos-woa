@@ -129,6 +129,11 @@ static BOOLEAN SoftReset(MK_GPU *Gpu)
     MK_WR(Gpu, JOB_INT_CLEAR, 0xffffffff);
     MK_WR(Gpu, MMU_INT_CLEAR, 0xffffffff);
     MK_WR(Gpu, GPU_INT_MASK, GPU_IRQ_FAULT | GPU_IRQ_MULTIPLE_FAULT);
+    /* G76 (kbase_pm_init_hw -> kbase_cache_set_coherency_mode, Samsung bv_r32p1 mali_kbase_pm_driver.c:2732): the
+     * coherency protocol is selected after every reset. The 9820 DT has no system-coherency, so kbase selects
+     * NONE; written here instead of relying on the reset value (panfrost leaves it alone). The G76 has
+     * COHERENCY_REG (panfrost_features.h hw_features_g76). */
+    MK_WR(Gpu, GPU_COHERENCY_ENABLE, COHERENCY_NONE);
     return TRUE;
 }
 
@@ -159,8 +164,39 @@ static BOOLEAN AsWaitReady(MK_GPU *Gpu)
     return Poll(Gpu, AS0 + AS_STATUS, AS_STATUS_ACTIVE, 0, 10000);
 }
 
+static ULONG Fls64(ULONG64 X)
+{
+    ULONG idx;
+    return _BitScanReverse64(&idx, X) ? idx + 1 : 0;
+}
+
+/* panfrost_mmu.c mmu_hw_do_operation_locked: lock the naturally aligned region covering [Va, Va + Size), run Op,
+ * wait for it. Size ~0 with Va 0 locks the whole address space (width 63), as panfrost_mmu_enable does. */
+static void AsOperation(MK_GPU *Gpu, ULONG64 Va, ULONG64 Size, ULONG Op)
+{
+    ULONG width;
+    ULONG64 region;
+
+    width = Fls64(Va ^ (Va + Size - 1));
+    if (width < 15)
+        width = 15;                         /* AS_LOCK_REGION_MIN_SIZE: 32 KB */
+    width -= 1;
+    region = (Va & ~((1ULL << width) - 1)) | width;
+
+    (void)AsWaitReady(Gpu);
+    MK_WR(Gpu, AS0 + AS_LOCKADDR_LO, (ULONG)region);
+    MK_WR(Gpu, AS0 + AS_LOCKADDR_HI, (ULONG)(region >> 32));
+    MK_WR(Gpu, AS0 + AS_COMMAND, AS_COMMAND_LOCK);
+    (void)AsWaitReady(Gpu);
+    MK_WR(Gpu, AS0 + AS_COMMAND, Op);
+    (void)AsWaitReady(Gpu);
+}
+
 static void AsEnable(MK_GPU *Gpu)
 {
+    /* panfrost_mmu_enable (panfrost_mmu.c:200): drain and flush whatever the address space still has in flight
+     * before it is reprogrammed. Matters for MkGpuBringup after a fault; a no-op right after a reset. */
+    AsOperation(Gpu, 0, ~0ULL, AS_COMMAND_FLUSH_MEM);
     MK_WR(Gpu, MMU_INT_CLEAR, 0xffffffff);
     MK_WR(Gpu, MMU_INT_MASK, 0xffffffff);
     /* Mali LPAE: table, read-inner. Memory attributes as Linux programs them
@@ -335,33 +371,12 @@ static PULONG64 L3For(MK_GPU *Gpu, ULONG64 Va)
     return Gpu->L3[g][m];
 }
 
-static ULONG Fls64(ULONG64 X)
-{
-    ULONG idx;
-    return _BitScanReverse64(&idx, X) ? idx + 1 : 0;
-}
-
 /* panfrost_mmu.c: lock the region, then flush the page-table caches. */
 static void FlushRange(MK_GPU *Gpu, ULONG64 Va, ULONG64 Size)
 {
-    ULONG width;
-    ULONG64 region;
-
     if (!Gpu->Ready || !MkPowered(Gpu))
         return;
-    width = Fls64(Va ^ (Va + Size - 1));
-    if (width < 15)
-        width = 15;                         /* AS_LOCK_REGION_MIN_SIZE: 32 KB */
-    width -= 1;
-    region = (Va & ~((1ULL << width) - 1)) | width;
-
-    (void)AsWaitReady(Gpu);
-    MK_WR(Gpu, AS0 + AS_LOCKADDR_LO, (ULONG)region);
-    MK_WR(Gpu, AS0 + AS_LOCKADDR_HI, (ULONG)(region >> 32));
-    MK_WR(Gpu, AS0 + AS_COMMAND, AS_COMMAND_LOCK);
-    (void)AsWaitReady(Gpu);
-    MK_WR(Gpu, AS0 + AS_COMMAND, AS_COMMAND_FLUSH_PT);
-    (void)AsWaitReady(Gpu);
+    AsOperation(Gpu, Va, Size, AS_COMMAND_FLUSH_PT);
 }
 
 BOOLEAN MkVaAlloc(MK_GPU *Gpu, ULONG Pages, BOOLEAN Exec, ULONG64 *Va)
@@ -433,11 +448,16 @@ void MkMmuUnmapPages(MK_GPU *Gpu, ULONG64 Va, ULONG Pages)
 
 /* ---- jobs ---- */
 
-void MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag)
+BOOLEAN MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag)
 {
     ULONG cfg = 0 /* AS0 */ | JS_CONFIG_THREAD_PRI(8) |
                 JS_CONFIG_START_FLUSH_CLEAN_INVALIDATE | JS_CONFIG_END_FLUSH_CLEAN_INVALIDATE |
                 (ChainFlag ? JS_CONFIG_JOB_CHAIN_FLAG : 0);
+
+    /* panfrost_job_hw_submit (panfrost_job.c:217): a non-zero JS_COMMAND_NEXT is a queued job the slot has not
+     * taken yet; writing the _NEXT registers now would replace it. */
+    if (MK_RD(Gpu, JS_SLOT(Slot) + JS_COMMAND_NEXT) != 0)
+        return FALSE;
 
     MK_WR(Gpu, JS_SLOT(Slot) + JS_HEAD_NEXT_LO, (ULONG)Jc);
     MK_WR(Gpu, JS_SLOT(Slot) + JS_HEAD_NEXT_HI, (ULONG)(Jc >> 32));
@@ -446,6 +466,7 @@ void MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag)
     MK_WR(Gpu, JS_SLOT(Slot) + JS_CONFIG_NEXT, cfg);
     MkStoreBarrier();
     MK_WR(Gpu, JS_SLOT(Slot) + JS_COMMAND_NEXT, JS_COMMAND_START);
+    return TRUE;
 }
 
 /* What the ISR saw plus what the raw register says now, so a misrouted

@@ -188,6 +188,7 @@ struct _MW_ADAPTER {
     ULONG64 JobStart;           /* interrupt time the running chain started */
     ULONG LastSubmittedFence, LastCompletedFence;
     ULONG JobsDone, JobsFailed, JobsTimedOut, ChainFlag;
+    ULONG JobStartRefused;     /* MkJobStart found the slot's NEXT still busy (command.c Kick) */
     ULONG LastJsStatus, LastFaultStatus;
     ULONG64 LastFaultAddress;
 

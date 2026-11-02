@@ -262,6 +262,7 @@ static NTSTATUS APIENTRY MwStopDevice(IN_CONST_PVOID Context)
         MwLog(a, L"Submits", a->Submits);
         MwLog(a, L"JobsDone", a->JobsDone);
         MwLog(a, L"JobsFailed", a->JobsFailed);
+        MwLog(a, L"JobStartRefused", a->JobStartRefused);
         MwLog(a, L"Irqs", a->Gpu.Irqs);
         MwLog(a, L"IsrUnpowered", a->Gpu.IsrUnpowered);
         StopGpu(a);
