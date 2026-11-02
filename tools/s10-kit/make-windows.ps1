@@ -12,8 +12,8 @@
     - cache / userdata carry RANDOM GPT GUIDs on this phone (not Samsung's name-derived
       ones): -EspGuidText / -WinGuidText default to this phone's; set-esp-type.ps1 re-checks
       them on the phone before anything is written.
-    - drivers: Exynos9820Ufs (-Board Beyond1, checked through its UFSBRD01 identity),
-      Exynos9820Hsi2c, S6SY761TouchBeyond0 - build-s10.cmd puts them in out\.
+    - drivers: every package build-s10.cmd puts in out\ (Exynos9820Ufs -Board Beyond1, checked through
+      its UFSBRD01 identity, Exynos9820Hsi2c, S10Touch, S10eBattery, Exynos9820WlanCx, Exynos9820Audio).
     - UEFI: newest beyond1lte-uefi-v*.img; flash-windows.cmd refuses a phone whose
       bootloader is not G973*.
 
@@ -25,7 +25,9 @@
     2. builds a 4K-sector VHDX shaped like the phone: a 600 MiB FAT32 and a
        110868 MiB NTFS with the phone's disk GUID and cache / userdata
        partition GUIDs, so the BCD points straight at the phone's partitions,
-    3. dism /Apply-Image, adds every driver under drivers\out (UFS, HSI2C, touch),
+    3. dism /Apply-Image, adds EVERY driver package under out\ (UFS, HSI2C, touch, battery,
+       WiFi, audio, ...) and checks each one is in the image, WiFi firmware (bcm4375\) into
+       System32\drivers, the whole kit into C:\S10Prov\kit (v2.3),
        trims inbox apps (unless -NoLite), registry: test signing, no fast startup,
        no VBS/HVCI, NoAutoMount (hides the 30 Android partitions), TPM / Secure Boot
        / RAM / CPU checks off for later upgrades, BypassNRO, scale 300 %, fewer effects,
@@ -68,12 +70,13 @@ param(
   [switch] $Resume,                 # a run failed at step 7 or later: reuse work\windows.vhdx (skips 2-6)
   [string] $Uefi      = '',         # UEFI .img (beyond1lte-uefi-vX.Y.Z.img); default: newest one found
   [switch] $NoUefi,                 # do not put a UEFI into the flash kit
+  [switch] $NoWifi,                 # v2.3: build without WiFi (otherwise Exynos9820WlanCx + bcm4375\ firmware are required)
   # GPT unique GUIDs of THIS phone's cache (sda31) and userdata (sda34). The BCD points
   # at them. Another S10: read its GPT (entries 31 / 34, +16) and pass its values.
   [string] $EspGuidText = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251',
   [string] $WinGuidText = '712bcd12-3071-4f1c-8951-9c75a5ecca08'
 )
-$ScriptVersion = 'make-windows v2.2-s10'
+$ScriptVersion = 'make-windows v2.3-s10'
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
@@ -171,15 +174,31 @@ try {
     if ($i.Name -match '^Exynos990|^SecTsY79A') { Fail "$($i.Name) is an S20 Ultra (z3s) driver - $DriverDir must hold only the S10 drivers" }
     if ($i.Name -eq 'S6SY761TouchBeyond0.inf' -or $i.Name -eq 'SecTsY761Touch.inf') { Fail "$($i.FullName): an old touch driver binds the same ACPI\SCSY0761 as S10Touch - remove it from $DriverDir" }
   }
-  foreach ($opt in @(@('S10eBattery.inf', 'battery / charging'), @('Exynos9820WlanCx.inf', 'WiFi'), @('Exynos9820Audio.inf', 'sound'))) {
+  foreach ($opt in @(@('S10eBattery.inf', 'battery / charging'), @('Exynos9820Audio.inf', 'sound'))) {
     if (-not ($infs | Where-Object Name -eq $opt[0])) { Warn "$($opt[0]) not in $DriverDir - no $($opt[1]) in this image" }
+  }
+  if (-not $NoWifi -and -not ($infs | Where-Object Name -eq 'Exynos9820WlanCx.inf')) {
+    Fail "Exynos9820WlanCx.inf not in $DriverDir - run build-s10.cmd (or -NoWifi to build an image without WiFi)"
   }
   $DiagDir = Join-Path $DriverDir 'S10eDiag'
   if (-not (Test-Path (Join-Path $DiagDir 'S10eAgent.exe'))) { Warn "no $DiagDir\S10eAgent.exe - hardware keys (power / Bixby / volume) will not work" ; $DiagDir = $null }
-  $WifiFw = Join-Path $PSScriptRoot 'bcm4375'
-  if (-not (Test-Path (Join-Path $WifiFw 'bcmdhd_sta.bin_b1'))) {
-    Warn "no $WifiFw\bcmdhd_sta.bin_b1 - run get-wifi-fw.cmd (phone in TWRP) first, or WiFi will find no firmware"
-    $WifiFw = $null
+  # v2.3: the WiFi firmware (get-wifi-fw.cmd output) is looked for in every usual place, and required unless -NoWifi
+  $WifiFw = $null
+  if (-not $NoWifi) {
+    # first the folder PowerShell is in right now (where you ran the script from), then next to the script, ...
+    $fwDirs = @((Join-Path (Get-Location).Path 'bcm4375'), (Join-Path $PSScriptRoot 'bcm4375'), (Join-Path $DriverDir 'bcm4375'),
+                (Join-Path $PSScriptRoot '..\bcm4375'), (Join-Path $OutDir 'bcm4375'), (Join-Path $env:USERPROFILE 'Downloads\bcm4375')) |
+              Select-Object -Unique
+    $WifiFw = $fwDirs | Where-Object { Test-Path (Join-Path $_ 'bcmdhd_sta.bin_b1') } | Select-Object -First 1
+    if (-not $WifiFw) {
+      Fail "no bcm4375\bcmdhd_sta.bin_b1 (looked in: $($fwDirs -join ', ')). Phone in TWRP: run get-wifi-fw.cmd first (or -NoWifi)."
+    }
+    $WifiFw = (Resolve-Path $WifiFw).Path
+    $nv = @(Get-ChildItem $WifiFw -Filter 'nvram*' -ErrorAction SilentlyContinue)
+    if (-not (Test-Path (Join-Path $WifiFw 'bcmdhd_clm.blob')) -or $nv.Count -eq 0) {
+      Fail "$WifiFw is incomplete (needs bcmdhd_sta.bin_b1, bcmdhd_clm.blob and nvram.txt_*) - run get-wifi-fw.cmd again"
+    }
+    Ok "WiFi firmware: $WifiFw ($((Get-ChildItem $WifiFw -File).Count) files)"
   }
   # The UFS driver's write fence is per board: a driver built for the S10e would write
   # into the S10's Android partitions. build-ufs.ps1 keeps a "UFSBRD01" record in the
@@ -370,9 +389,14 @@ try {
   Step '4b. drivers'
   & dism.exe "/Image:${W}:\" /Add-Driver "/Driver:$DriverDir" /Recurse /ForceUnsigned
   if ($LASTEXITCODE) { Fail "dism /Add-Driver ($LASTEXITCODE)" }
-  $got = Get-WindowsDriver -Path "${W}:\" | Where-Object { $_.OriginalFileName -match 'exynos9820ufs' }
-  if (-not $got) { Fail 'Exynos9820Ufs is not in the image after Add-Driver' }
-  Ok 'drivers in the image (UFS, HSI2C, touch, + battery / WiFi / audio when built)'
+  # v2.3: every package of out\ must be in the image, by INF name
+  $inImage = @(Get-WindowsDriver -Path "${W}:\" | ForEach-Object { Split-Path $_.OriginalFileName -Leaf })
+  $missing = @()
+  foreach ($i in $infs) {
+    if ($inImage -contains $i.Name) { Write-Host ("       + {0}" -f $i.Name) } else { $missing += $i.Name }
+  }
+  if ($missing.Count) { Fail "not in the image after Add-Driver: $($missing -join ', ')" }
+  Ok "all $($infs.Count) driver packages of $DriverDir are in the image"
 
   # S10 kit v1.1: WiFi blobs where Exynos9820WlanCx looks for them, and the key agent installed
   # by SetupComplete.cmd at the end of Setup (as the S10e's s10e-setupcomplete.cmd does).
@@ -384,6 +408,18 @@ try {
   }
   $prov = "${W}:\S10Prov"
   New-Item -ItemType Directory -Force $prov | Out-Null
+  # v2.3: the whole kit inside Windows too (C:\S10Prov\kit): out\, bcm4375\, setup\ and the in-Windows scripts,
+  # so install-in-windows.ps1 / collect-logs.ps1 are there without a USB stick or a push from TWRP.
+  $kit = "$prov\kit"
+  New-Item -ItemType Directory -Force $kit | Out-Null
+  Copy-Item $DriverDir "$kit\out" -Recurse -Force
+  if ($WifiFw) { Copy-Item $WifiFw "$kit\bcm4375" -Recurse -Force }
+  Copy-Item (Join-Path $PSScriptRoot 'setup') "$kit\setup" -Recurse -Force
+  foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1') {
+    if (Test-Path (Join-Path $PSScriptRoot $f)) { Copy-Item (Join-Path $PSScriptRoot $f) $kit -Force }
+  }
+  '' | Set-Content "$kit\install.done"   # everything is already installed: the logon launcher has nothing to do
+  Ok "kit -> C:\S10Prov\kit (out\, bcm4375\, setup\, install-in-windows / collect-logs)"
   if ($DiagDir) {
     New-Item -ItemType Directory -Force "$prov\S10eDiag" | Out-Null
     Copy-Item (Join-Path $DiagDir '*') "$prov\S10eDiag" -Force
