@@ -172,3 +172,8 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   builds them (S10eDiag build.bat made EWDK-aware), get-wifi-fw.cmd pulls the phone's own
   BCM4375 blobs, make-windows v2.2-s10 places blobs + SetupComplete.cmd (key agent),
   install-in-windows.ps1 adds everything to an installed Windows.
+- 2026-11-02 — audio: S10 live DT = S10e values (cs47l93@0 on spi@10470000, reset gpg1-0, supplies
+  LDO17M vdd_pmic_codec_1p8 / LDO18M vdd_codec_1p2; cs35l40@40 "cs35l40-bot" reset gph1-1,
+  cs35l40@41 "cs35l40-rcv" reset gph1-2, boost-peak 4100 mA, on hsi2c@109A0000). Exynos9820Audio
+  added unchanged to kit v1.2 (vcxproj -> latest SDK). On the S10e: speaker works, headphone
+  jack detected without sound, microphones not started (driver_status.md).

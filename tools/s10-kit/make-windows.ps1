@@ -171,7 +171,7 @@ try {
     if ($i.Name -match '^Exynos990|^SecTsY79A') { Fail "$($i.Name) is an S20 Ultra (z3s) driver - $DriverDir must hold only the S10 drivers" }
     if ($i.Name -eq 'S6SY761TouchBeyond0.inf') { Fail "$($i.FullName): the old S10e touch driver binds the same ACPI\SCSY0761 as SecTsY761Touch - remove it from $DriverDir" }
   }
-  foreach ($opt in @(@('S10eBattery.inf', 'battery / charging'), @('Exynos9820WlanCx.inf', 'WiFi'))) {
+  foreach ($opt in @(@('S10eBattery.inf', 'battery / charging'), @('Exynos9820WlanCx.inf', 'WiFi'), @('Exynos9820Audio.inf', 'sound'))) {
     if (-not ($infs | Where-Object Name -eq $opt[0])) { Warn "$($opt[0]) not in $DriverDir - no $($opt[1]) in this image" }
   }
   $DiagDir = Join-Path $DriverDir 'S10eDiag'
@@ -372,7 +372,7 @@ try {
   if ($LASTEXITCODE) { Fail "dism /Add-Driver ($LASTEXITCODE)" }
   $got = Get-WindowsDriver -Path "${W}:\" | Where-Object { $_.OriginalFileName -match 'exynos9820ufs' }
   if (-not $got) { Fail 'Exynos9820Ufs is not in the image after Add-Driver' }
-  Ok 'drivers in the image (UFS, HSI2C, touch, + battery / WiFi when built)'
+  Ok 'drivers in the image (UFS, HSI2C, touch, + battery / WiFi / audio when built)'
 
   # S10 kit v1.1: WiFi blobs where Exynos9820WlanCx looks for them, and the key agent installed
   # by SetupComplete.cmd at the end of Setup (as the S10e's s10e-setupcomplete.cmd does).

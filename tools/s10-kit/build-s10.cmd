@@ -1,8 +1,9 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.1) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.2) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, SecTsY761Touch (touch, from the z3s SecTsY79ATouch),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
+rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
 rem Same shape as the z3s build-all.cmd; run it inside an EWDK window (LaunchBuildEnv.cmd).
 rem
@@ -59,6 +60,10 @@ call :ufs || exit /b 1
 call :msb S10eBattery || exit /b 1
 rem WiFiCx client (KMDF 1.33 + NetAdapterCx 2.2); same msbuild switches as its build-package.ps1.
 call :msb Exynos9820WlanCx "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false" || exit /b 1
+rem Audio: ACX 1.1 client, same msbuild switches as its build-package.ps1. The S10's codec, amps,
+rem reset pins and rails are the S10e's (live DT: cs47l93@0 on spi@10470000, cs35l40@40/@41 on
+rem hsi2c@109A0000, resets gpg1-0 / gph1-1 / gph1-2, LDO17M 1.8 V + LDO18M 1.2 V).
+call :msb Exynos9820Audio "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:ACX_VERSION_MINOR=1" || exit /b 1
 call :diag || exit /b 1
 
 echo.

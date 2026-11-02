@@ -38,7 +38,7 @@ foreach ($b in $blocks) {
 }
 
 # 2. driver packages
-foreach ($n in 'SecTsY761Touch', 'S10eBattery', 'Exynos9820WlanCx') {
+foreach ($n in 'SecTsY761Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio') {
   $inf = Join-Path $Out "$n\$n.inf"
   if (-not (Test-Path $inf)) { Warn "$n not built - skipped"; continue }
   $r = pnputil /add-driver $inf /install 2>&1 | Out-String
