@@ -114,6 +114,13 @@
 #define SEC_TS_WAIT_TRIES                50       // x 20 ms, as sec_ts_wait_for_ready
 #define SEC_TS_COORD_RANGE               4096     // sec,max_coords = <4096 4096>
 
+//
+// v0.1.9 (user, 2026-11-03: touch is smooth in Windows now, "remove the green bar and the touch wait screen"):
+// the boot touch test is off - no bar, no 3 s wait. 1 brings it back for bring-up work.
+//
+#ifndef BEYOND1LTE_TOUCH_TEST
+#define BEYOND1LTE_TOUCH_TEST            0
+#endif
 #define TOUCH_TEST_ARM_MS                3000
 #define TOUCH_TEST_RUN_MS                10000
 #define TOUCH_TEST_BAR_HEIGHT            48
@@ -595,6 +602,7 @@ TsStart (
 // Touch test on the boot framebuffer
 // -------------------------------------------------------------------------------------------------
 
+#if BEYOND1LTE_TOUCH_TEST
 STATIC
 VOID
 TsFill (
@@ -748,6 +756,8 @@ TsTouchTest (
   TsFill (Gop, 0x000000, 0, 0, MAX_UINTN, TOUCH_TEST_BAR_HEIGHT);
 }
 
+#endif // BEYOND1LTE_TOUCH_TEST
+
 VOID
 TouchChipBringUp (
   IN BOOLEAN  RailsJustEnabled
@@ -786,7 +796,9 @@ TouchChipBringUp (
     Ok = !EFI_ERROR (TsStart ());
   }
 
+#if BEYOND1LTE_TOUCH_TEST
   TsTouchTest (Ok);
+#endif
 
   if (Ok) {
     (VOID)TsWrite (SEC_TS_CMD_CLEAR_EVENT_STACK, NULL, 0);

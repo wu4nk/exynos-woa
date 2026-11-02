@@ -317,3 +317,10 @@ v0.1.8 TouchChip: logs mux/div + a timed 1-byte read (arch counter 26 MHz), sets
 restores the old clock (and computes timing for it) if the bus stops answering; xfer polling 5 us; drawing loop
 sleeps only when the stack is empty; logs events/s and the deepest left_event backlog.
 Build rc 0. beyond1lte-uefi-v0.1.8.img sha256 3271639e1d781f8172be75815884e5d3542a4dc2eaee622152aa32b9273af2af.
+
+## Round 8 (2026-11-03) - v0.1.9: boot touch test off
+Touch is device-validated (S10Touch 1.1.0, direct polled HSI2C) and Reboot to TWRP works (S10eAgent RequestsThread,
+SetupComplete stops the agent before replacing it). User: remove the green bar / touch wait screen.
+v0.1.9: BEYOND1LTE_TOUCH_TEST 0 (TsTouchTest/TsPoll/TsFill compiled out); chip bring-up, USI03 /2 clock fix and the
+UEFILOG lines stay. Build Beyond1 rc 0, Beyond0 rc 0. beyond1lte-uefi-v0.1.9.img sha256
+770c57407849b4d569306a9635a6f4e153ccf292fd733ac9d110ceb4271d135f.
