@@ -415,7 +415,7 @@ try {
   Copy-Item $DriverDir "$kit\out" -Recurse -Force
   if ($WifiFw) { Copy-Item $WifiFw "$kit\bcm4375" -Recurse -Force }
   Copy-Item (Join-Path $PSScriptRoot 'setup') "$kit\setup" -Recurse -Force
-  foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1') {
+  foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1', 'kit-watch.ps1') {
     if (Test-Path (Join-Path $PSScriptRoot $f)) { Copy-Item (Join-Path $PSScriptRoot $f) $kit -Force }
   }
   # one-click log collector on everyone's desktop (C:\log.zip -> TWRP: adb pull /data/log.zip)

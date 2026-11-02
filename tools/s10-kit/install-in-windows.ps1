@@ -85,6 +85,20 @@ if (Test-Path (Join-Path $diag 'S10eAgent.exe')) {
   Ok 'key agent installed (log: C:\S10Prov\setupcomplete.log)'
 } else { Warn 'no out\S10eDiag - keys skipped' }
 
+# 5b. kit watcher: at every logon, a new kit left on the ESP by push-to-windows.cmd is offered for install
+$kw = Join-Path $PSScriptRoot 'kit-watch.ps1'
+if (Test-Path $kw) {
+  Copy-Item $kw 'C:\S10Prov\kit-watch.ps1' -Force
+  try {
+    $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\S10Prov\kit-watch.ps1'
+    $trg = New-ScheduledTaskTrigger -AtLogOn
+    $prn = New-ScheduledTaskPrincipal -GroupId 'BUILTIN\Users' -RunLevel Highest
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    Register-ScheduledTask -TaskName 'S10 kit watcher' -Action $act -Trigger $trg -Principal $prn -Settings $set -Force | Out-Null
+    Ok 'kit watcher: every logon offers a new ESP:\S10KIT for install (task "S10 kit watcher")'
+  } catch { Warn "kit watcher task: $($_.Exception.Message)" }
+} else { Warn 'no kit-watch.ps1 next to this script - no install prompt at logon' }
+
 # 6. what Windows sees now
 function Show($id, $what) {
   $d = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like "ACPI\$id\*" } | Select-Object -First 1
@@ -97,5 +111,5 @@ Show 'SAMS9825' 'WiFi'
 Show 'SAMS9826' 'battery'
 if (-not $fwOk) { Warn 'WiFi firmware missing: the WiFi adapter cannot start until bcm4375\ is installed' }
 
-Ok 'done - reboot the phone; if something is still missing run .\collect-logs.ps1 and send the zip'
+Ok 'done - drivers were replaced live; restart only if a device above is not OK. Logs: s10-log.cmd on the desktop'
 exit 0

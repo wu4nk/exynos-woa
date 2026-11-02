@@ -28,4 +28,9 @@ sc start S10eAgent >> "%LOG%" 2>&1
 copy /y C:\Windows\System32\s10ereboot.exe "C:\Users\Public\Desktop\Reboot to TWRP.exe" >> "%LOG%" 2>&1
 
 :done
+rem kit watcher (S10 kit v1.5): every logon offers a new ESP:\S10KIT (push-to-windows.cmd) for install
+if exist "%P%\kit\kit-watch.ps1" (
+  copy /y "%P%\kit\kit-watch.ps1" "%P%\kit-watch.ps1" >> "%LOG%" 2>&1
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$a=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\S10Prov\kit-watch.ps1'; $t=New-ScheduledTaskTrigger -AtLogOn; $p=New-ScheduledTaskPrincipal -GroupId 'BUILTIN\Users' -RunLevel Highest; Register-ScheduledTask -TaskName 'S10 kit watcher' -Action $a -Trigger $t -Principal $p -Force" >> "%LOG%" 2>&1
+)
 echo %date% %time% done >> "%LOG%"
