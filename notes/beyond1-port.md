@@ -237,3 +237,15 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   through the loudspeaker with all three = 1 (d8-audio-win-a5.md "DEVICE RESULT a12 stage D"). 1.0.2.0: INF and
   code defaults = 1; strings "Galaxy S10 Audio". INF AddReg is NOCLOBBER (0x00010003) -> an installed 0 survives an
   upgrade, so install-in-windows.ps1 writes 1 explicitly.
+- WiFi "not detected": the driver side is the S10e's working cx5 (native WiFi validated there, d. m12-wifi-wificx.md
+  "USER RESULT cx5"); S10 PCIe0/WLAN pins are the S10e's (live DT: pcie0@13ED0000 same reg/IRQ 0xFD, PERST gpf2-2,
+  CLKREQ gpf2-0, WLAN_EN gpg0-5 cfg_wlanen, host wake gpa0-7) = Exynos9820.h. Blob names the driver loads exist on
+  the S10 (LineageOS beyond1lte proprietary-files: vendor/firmware/bcmdhd_sta.bin_b1, bcmdhd_clm.blob,
+  nvram.txt_1rh_es43_b1, nvram.txt_CS01_semco_b1; S10e list identical). The S10 dump only listed /vendor/etc/wifi
+  (no blobs there) - the blobs are in /vendor/firmware. Weak spot found: get-wifi-fw.sh skipped mounting the real
+  vendor partition whenever a /vendor/firmware dir existed (TWRP ramdisks can have one). v1.1 always mounts vendor
+  + system read-only on scratch dirs and searches every candidate dir.
+- install-in-windows.ps1 v1.1: removes Mali packages, checks the blob set by name, forces the audio Parameters to 1
+  (NOCLOBBER), treats pnputil 259 (staged, no device) as a warning, prints touch/audio/WiFi/battery device state.
+- Without logs the remaining WiFi suspects are: WLAN hidden by the firmware (PCIe link not up -> UEFILOG "[PCIe]"),
+  or blobs missing (driver run log "DL 3"). collect-logs.ps1 (next task) gathers both.

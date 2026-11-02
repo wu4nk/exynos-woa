@@ -1,13 +1,15 @@
 <#
-  install-in-windows.ps1 (v1.0) - add the S10 kit v1.1 drivers to a Windows ALREADY installed
-  on the Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator,
-  from a folder that holds the kit's out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
+  install-in-windows.ps1 (v1.1) - add the S10 kit drivers to a Windows ALREADY installed on the
+  Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator, from the kit
+  folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
       .\install-in-windows.ps1
   Does: removes the old S10e touch package (S6SY761TouchBeyond0, same ACPI\SCSY0761), installs
-  SecTsY761Touch, S10eBattery, Exynos9820WlanCx (+ WiFi firmware), and the key agent
-  (S10eDiag + S10eAgent, through setup\SetupComplete.cmd). Reboot afterwards.
-  Flash UEFI v0.1.2+ first: it declares the touch interrupt the way SecTsY761Touch expects.
+  SecTsY761Touch, S10eBattery, Exynos9820WlanCx (+ WiFi firmware), Exynos9820Audio (speaker
+  hardware switched ON), and the key agent (S10eDiag + S10eAgent, through setup\SetupComplete.cmd).
+  Reboot afterwards. Flash UEFI v0.1.5+ first.
+  v1.1: audio Parameters forced to 1 (the INF value does not overwrite an old 0); WiFi firmware set
+  checked by name before copying; WLAN / audio device state printed at the end.
 #>
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
@@ -24,38 +26,57 @@ if (Test-Path $cer) {
   certutil -addstore -f Root $cer | Out-Null
   certutil -addstore -f TrustedPublisher $cer | Out-Null
   Ok 'kit test certificate trusted (Root + TrustedPublisher)'
-} else { Warn "no $cer - pnputil may refuse the packages (rebuild with build-s10.cmd v1.1)" }
+} else { Warn "no $cer - pnputil may refuse the packages (rebuild with build-s10.cmd v1.1+)" }
 
-# 1. the old S10e touch package binds the same hardware ID: remove it first
-$old = pnputil /enum-drivers | Out-String
-$blocks = $old -split "(\r?\n){2,}"
-foreach ($b in $blocks) {
-  if ($b -match 's6sy761touchbeyond0\.inf' -and $b -match '(oem\d+\.inf)') {
-    $pub = $Matches[1]
-    pnputil /delete-driver $pub /uninstall /force | Out-Null
-    Ok "removed the old touch package $pub (S6SY761TouchBeyond0)"
+# 1. packages that bind the same hardware IDs as ours: remove them first
+$blocks = (pnputil /enum-drivers | Out-String) -split "(\r?\n){2,}"
+foreach ($old in 's6sy761touchbeyond0.inf', 'malig76wddm.inf', 'malig76probe.inf') {
+  foreach ($b in $blocks) {
+    if ($b -match [regex]::Escape($old) -and $b -match '(oem\d+\.inf)') {
+      $pub = $Matches[1]
+      pnputil /delete-driver $pub /uninstall /force | Out-Null
+      Ok "removed $old ($pub)"
+    }
   }
 }
 
-# 2. driver packages
+# 2. WiFi firmware where Exynos9820WlanCx loads it (WlanDl.c: \SystemRoot\System32\drivers\bcm4375\,
+#    firmware bcmdhd_sta.bin_b1, nvram picked by the module's OTP vendor id: Murata 1rh_es43 or Semco CS01)
+$fw = Join-Path $PSScriptRoot 'bcm4375'
+$fwOk = $false
+if (Test-Path (Join-Path $fw 'bcmdhd_sta.bin_b1')) {
+  $nv = @('nvram.txt_1rh_es43_b1', 'nvram.txt_CS01_semco_b1') | Where-Object { Test-Path (Join-Path $fw $_) }
+  if (-not $nv) { Warn 'bcm4375\ has no nvram.txt_1rh_es43_b1 / nvram.txt_CS01_semco_b1 - WiFi will not start' }
+  $dst = "$env:SystemRoot\System32\drivers\bcm4375"
+  New-Item -ItemType Directory -Force $dst | Out-Null
+  Copy-Item (Join-Path $fw '*') $dst -Force
+  Ok "WiFi firmware -> $dst ($((Get-ChildItem $dst).Count) files; nvram: $($nv -join ', '))"
+  $fwOk = $true
+} else {
+  Warn 'no bcm4375\bcmdhd_sta.bin_b1 - run get-wifi-fw.cmd on the PC with the phone in TWRP, copy bcm4375\ here'
+  if (Test-Path "$env:SystemRoot\System32\drivers\bcm4375\bcmdhd_sta.bin_b1") { Ok 'firmware already in System32\drivers\bcm4375'; $fwOk = $true }
+}
+
+# 3. audio: hardware stages ON (stage D). Written before the install so the first start already plays.
+$ap = 'HKLM:\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters'
+New-Item -Force $ap | Out-Null
+foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable') { Set-ItemProperty $ap $v 1 -Type DWord }
+Ok 'audio: AmpInit / AmpEnable / AboxEnable = 1'
+
+# 4. driver packages
 foreach ($n in 'SecTsY761Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio') {
   $inf = Join-Path $Out "$n\$n.inf"
   if (-not (Test-Path $inf)) { Warn "$n not built - skipped"; continue }
   $r = pnputil /add-driver $inf /install 2>&1 | Out-String
+  # 3010 = reboot needed; 259 = package staged but no present device took it (e.g. WiFi hidden by the firmware)
+  if ($LASTEXITCODE -eq 259) { Warn "$n staged in the driver store, no device bound yet"; continue }
   if ($LASTEXITCODE -and $LASTEXITCODE -ne 3010) { Write-Host $r; Fail "pnputil $n ($LASTEXITCODE)" }
   Ok "$n installed"
 }
+# the audio package may have been installed earlier with the old 0 values: set them again
+foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable') { Set-ItemProperty $ap $v 1 -Type DWord }
 
-# 3. WiFi firmware where Exynos9820WlanCx loads it
-$fw = Join-Path $PSScriptRoot 'bcm4375'
-if (Test-Path (Join-Path $fw 'bcmdhd_sta.bin_b1')) {
-  $dst = "$env:SystemRoot\System32\drivers\bcm4375"
-  New-Item -ItemType Directory -Force $dst | Out-Null
-  Copy-Item (Join-Path $fw '*') $dst -Force
-  Ok "WiFi firmware -> $dst"
-} else { Warn 'no bcm4375\ - run get-wifi-fw.cmd with the phone in TWRP; WiFi needs it' }
-
-# 4. key agent (same steps as SetupComplete.cmd on a fresh install)
+# 5. key agent (same steps as SetupComplete.cmd on a fresh install)
 $diag = Join-Path $Out 'S10eDiag'
 if (Test-Path (Join-Path $diag 'S10eAgent.exe')) {
   New-Item -ItemType Directory -Force 'C:\S10Prov\S10eDiag' | Out-Null
@@ -64,4 +85,16 @@ if (Test-Path (Join-Path $diag 'S10eAgent.exe')) {
   Ok 'key agent installed (log: C:\S10Prov\setupcomplete.log)'
 } else { Warn 'no out\S10eDiag - keys skipped' }
 
-Ok 'done - reboot the phone'
+# 6. what Windows sees now
+function Show($id, $what) {
+  $d = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like "ACPI\$id\*" } | Select-Object -First 1
+  if (-not $d) { Warn "$what ($id): not present - the firmware did not expose it (UEFILOG.TXT on the ESP says why)"; return }
+  Ok ("{0} ({1}): {2}, status {3}" -f $what, $id, $d.FriendlyName, $d.Status)
+}
+Show 'SCSY0761' 'touch'
+Show 'SAMS9827' 'audio'
+Show 'SAMS9825' 'WiFi'
+Show 'SAMS9826' 'battery'
+if (-not $fwOk) { Warn 'WiFi firmware missing: the WiFi adapter cannot start until bcm4375\ is installed' }
+
+Ok 'done - reboot the phone; if something is still missing run .\collect-logs.ps1 and send the zip'
