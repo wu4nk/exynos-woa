@@ -1,0 +1,45 @@
+From cb51318fdf38501ffaad086f0dbe172b591a6248 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Tue, 3 Nov 2026 05:35:27 +0700
+Subject: [PATCH] mingw ARM64: __debugbreak on Windows, mingw itimerspec
+
+---
+ include/win32-compat/sys/timerfd.h       | 2 ++
+ src/gallium/frontends/d3d10umd/Debug.cpp | 6 +++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/include/win32-compat/sys/timerfd.h b/include/win32-compat/sys/timerfd.h
+index b5314d0..ff69a4b 100644
+--- a/include/win32-compat/sys/timerfd.h
++++ b/include/win32-compat/sys/timerfd.h
+@@ -5,7 +5,9 @@
+ #define TFD_CLOEXEC  0x80000
+ #define TFD_NONBLOCK 0x800
+ #define TFD_TIMER_ABSTIME 0x1
++#ifndef __MINGW32__ /* exynos-woa: mingw <sys/types.h> already has it (with timespec) */
+ struct itimerspec { struct timespec it_interval; struct timespec it_value; };
++#endif
+ static inline int timerfd_create(int clockid, int flags) { (void)clockid; (void)flags; errno = ENOSYS; return -1; }
+ static inline int timerfd_settime(int fd, int flags, const struct itimerspec *n, struct itimerspec *o)
+ { (void)fd; (void)flags; (void)n; (void)o; errno = ENOSYS; return -1; }
+diff --git a/src/gallium/frontends/d3d10umd/Debug.cpp b/src/gallium/frontends/d3d10umd/Debug.cpp
+index 17f7292..9b68dee 100644
+--- a/src/gallium/frontends/d3d10umd/Debug.cpp
++++ b/src/gallium/frontends/d3d10umd/Debug.cpp
+@@ -71,10 +71,10 @@ AssertFail(const char *expr,
+            const char *function)
+ {
+    DebugPrintf("%s:%u:%s: Assertion `%s' failed.\n", file, line, function, expr);
+-#if defined(__GNUC__)
++#if defined(_MSC_VER) || defined(_WIN32)
++   __debugbreak();   /* exynos-woa: int3 is x86-only; mingw/clang-cl on ARM64 have __debugbreak */
++#elif defined(__GNUC__)
+    __asm("int3");
+-#elif defined(_MSC_VER)
+-   __debugbreak();
+ #else
+    DebugBreak();
+ #endif
+-- 
+2.43.0
+

@@ -348,3 +348,16 @@ L2_FEATURES 07120206, MMU_FEATURES 00002830, AS_PRESENT ff, JS_PRESENT 7, COHERE
 shader power-up OK; AS0 Mali-LPAE TRANSTAB at PA 9:fd7c9007; WRITE_VALUE job on JS0 -> DONE, JOB IRQ on GSIV 320,
 no MMU/GPU fault, target = c0ffee42 -> RESULT: PASS. Same result as the S10e G9b boot #106.
 Next: G1b display-only MaliG76Wddm (gpu-s10.ps1 display), then G2 (GpuEnable 1 + Mesa panfrost UMD build).
+
+## DEVICE RESULT 2026-11-03 05:29 - GPU stage G1b PASS on the S10 (display-only MaliG76Wddm, GpuEnable 0)
+gpu-report: GPU0 status OK, service MaliG76Wddm, problem 0. DDI trace: QueryInterface -> StartDevice (Started 1,
+Mode 0) -> QueryChildRelations -> QueryAdapterInfo -> QueryDeviceDescriptor (C01D0001 = no EDID, expected) ->
+RecommendMonitorModes -> IsSupportedVidPn/EnumCofuncModality -> CommitVidPn (status 0) -> SetVidPnSourceVisibility ->
+PresentDisplayOnly (Presents 0x800 -> 3072 between two reads = the desktop runs through our driver).
+Fb 1440x3040 pitch 5760 format 0x16 at PA 0xCA000000, FbMatchesGop = 1 (the S10 panel, not the S10e one).
+Cosmetic: FriendlyName still says "(Galaxy S10e, G10/G11)" - shared INF string.
+Other: CPUs 6/7 (M4) CM_PROB_FAILED_START 0xC0000225 - the known open item, unrelated.
+G2 (Mesa UMD) on the Linux build box: Mesa 26.2.4 @9a0169f from github chaotic-cx/mesa-mirror, ref 0001-0019 +
+our 0020-0040 all apply; libpan SPIR-V v4-v14 built (conda-forge LLVM 18, 0 warnings); host panfrost_compile built
+with clang 18 -mms-bitfields; ARM64 UMD via zig 0.13 (aarch64-windows-gnu, -mms-bitfields) needs the WDK DDI headers
+(tools/mesa-build/get-ddi-headers.ps1 on the user's PC; Mesa include/winddk/README.txt list).
