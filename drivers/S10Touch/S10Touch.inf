@@ -3,7 +3,7 @@
 ; attention gpa1-0 (ALIVE EINT8, GSIV 45). New driver for the S10 kit (notes/s10-touch-driver.md); replaces
 ; SecTsY761Touch / S6SY761TouchBeyond0 (same hardware ID - the kit's installer removes those packages first).
 ; KMDF HID minidriver with mshidkmdf as the upper filter (vhidmini2 KMDF pattern).
-; Device key values (DWORD): RepeatMs (default 8, 0 = no stationary-contact repeat, max 100);
+; Device key values (DWORD): RepeatMs (default 10, 0 = no stationary-contact repeat, max 100);
 ; written by the driver: S10t* status and counters (S10tMaxIrqToReportUs = worst interrupt -> report latency).
 ;
 ; SPDX-License-Identifier: GPL-2.0
@@ -14,7 +14,7 @@ Signature   = "$WINDOWS NT$"
 Class       = HIDClass
 ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
 Provider    = %ProviderString%
-DriverVer   = 11/02/2026,1.0.0.0
+DriverVer   = 11/02/2026,1.0.1.0
 CatalogFile = S10Touch.cat
 PnpLockdown = 1
 
@@ -44,7 +44,7 @@ AddReg = S10Touch_HwAddReg
 
 [S10Touch_HwAddReg]
 HKR,,"UpperFilters",0x00010000,"mshidkmdf"
-HKR,,"RepeatMs",0x00010003,8
+HKR,,"RepeatMs",0x00010003,10
 
 [S10Touch_Device.NT.Services]
 AddService = S10Touch,0x00000002,S10Touch_Service

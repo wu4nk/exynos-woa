@@ -305,83 +305,8 @@ static VOID PushFrame(_In_ PS10T_DEVICE Dev, _In_ const S10T_FRAME *F)
     InterlockedIncrement(&Dev->Stats.Frames);
 }
 
-/* Read and decode one batch from the controller. Returns TRUE when the contact table changed. */
-static BOOLEAN ReadEvents(_In_ PS10T_DEVICE Dev, _Out_ PBOOLEAN StateChange)
-{
-    UCHAR   *ev = Dev->Events;
-    ULONG    left, i;
-    BOOLEAN  changed = FALSE;
-    NTSTATUS status;
-
-    *StateChange = FALSE;
-    Dev->BatchEmpty = TRUE;
-    status = SpbRead(Dev, SECTS_CMD_READ_ONE_EVENT, ev, SECTS_EVENT_SIZE);
-    if (!NT_SUCCESS(status)) {
-        InterlockedIncrement(&Dev->Stats.I2cErrors);
-        return FALSE;
-    }
-    if (ev[0] == 0) {
-        return FALSE;
-    }
-    Dev->BatchEmpty = FALSE;
-    left = ev[7] & SECTS_LEFT_EVENTS_MASK;
-    if (left > SECTS_MAX_EVENTS - 1) {
-        InterlockedIncrement(&Dev->Stats.InvalidEvents);
-        (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
-        return FALSE;
-    }
-    if (left != 0) {
-        status = SpbRead(Dev, SECTS_CMD_READ_ALL_EVENTS, ev + SECTS_EVENT_SIZE, left * SECTS_EVENT_SIZE);
-        if (!NT_SUCCESS(status)) {
-            InterlockedIncrement(&Dev->Stats.I2cErrors);
-            left = 0;                                   /* still use the first event */
-        }
-    }
-
-    for (i = 0; i <= left; i++) {
-        UCHAR *e = ev + i * SECTS_EVENT_SIZE;
-        ULONG  eid = e[0] & SECTS_EID_MASK;
-
-        if (e[0] == 0) {
-            break;
-        }
-        if (eid == SECTS_EID_COORDINATE) {
-            ULONG tid   = (e[0] & SECTS_TID_MASK) >> 2;
-            ULONG state = e[0] >> SECTS_STATE_SHIFT;
-            S10T_CONTACT *c;
-
-            if (tid == 0 || tid > S10T_MAX_CONTACTS || state == 0) {
-                continue;
-            }
-            c = &Dev->Contacts[tid - 1];
-            if (state == SECTS_STATE_RELEASE) {
-                if (c->Down) {
-                    c->Down = FALSE;
-                    c->Lifted = TRUE;
-                    changed = TRUE;
-                    *StateChange = TRUE;
-                }
-            } else {                                     /* press or move */
-                if (!c->Down) {
-                    *StateChange = TRUE;
-                }
-                c->Down   = TRUE;
-                c->Lifted = FALSE;
-                c->X = (USHORT)(((ULONG)e[1] << 4) | (e[3] >> 4));
-                c->Y = (USHORT)(((ULONG)e[2] << 4) | (e[3] & 0x0F));
-                changed = TRUE;
-            }
-            Dev->LastEventTime = KeQueryInterruptTime();
-        } else if (eid != SECTS_EID_STATUS && eid != SECTS_EID_GESTURE) {
-            /* EID 3 = invalid: sec_ts_read_event clears the stack and drops the rest of the batch */
-            InterlockedIncrement(&Dev->Stats.InvalidEvents);
-            (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
-            break;
-        }
-    }
-    return changed;
-}
-
+/* Every finger up, sent at once (I2C failure, controller overflow, stop): a release lost to a bus error would
+   otherwise leave a finger "down" forever and turn the next touch into a two-finger gesture. */
 static VOID AllUp(_In_ PS10T_DEVICE Dev)
 {
     S10T_FRAME f;
@@ -396,6 +321,120 @@ static VOID AllUp(_In_ PS10T_DEVICE Dev)
         }
     }
     if (any && BuildFrame(Dev, &f, TRUE)) {
+        PushFrame(Dev, &f);
+    }
+}
+
+/* Read one batch from the controller and turn it into frames, in event order:
+     - a press or a release produces its own frame right away (after flushing the moves seen before it), so a
+       quick lift + touch inside one batch is never merged into one moving finger;
+     - moves are collected and go out as one frame at the end of the batch.
+   Bus errors and stack overflows lift every finger (what SecTsY761Touch did - its 1.0.0.0 rewrite did not, and a
+   lost release then made later touches look like a second finger). */
+static VOID ReadEvents(_In_ PS10T_DEVICE Dev)
+{
+    UCHAR     *ev = Dev->Events;
+    ULONG      left, i;
+    BOOLEAN    moved = FALSE;
+    S10T_FRAME f;
+    NTSTATUS   status;
+
+    Dev->BatchEmpty = TRUE;
+    status = SpbRead(Dev, SECTS_CMD_READ_ONE_EVENT, ev, SECTS_EVENT_SIZE);
+    if (!NT_SUCCESS(status)) {
+        InterlockedIncrement(&Dev->Stats.I2cErrors);
+        AllUp(Dev);
+        return;
+    }
+    if (ev[0] == 0) {
+        return;
+    }
+    Dev->BatchEmpty = FALSE;
+    left = ev[7] & SECTS_LEFT_EVENTS_MASK;
+    if (left > SECTS_MAX_EVENTS - 1) {
+        InterlockedIncrement(&Dev->Stats.InvalidEvents);
+        AllUp(Dev);
+        (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+        return;
+    }
+    if (left != 0) {
+        status = SpbRead(Dev, SECTS_CMD_READ_ALL_EVENTS, ev + SECTS_EVENT_SIZE, left * SECTS_EVENT_SIZE);
+        if (!NT_SUCCESS(status)) {
+            InterlockedIncrement(&Dev->Stats.I2cErrors);
+            AllUp(Dev);
+            return;
+        }
+    }
+
+    for (i = 0; i <= left; i++) {
+        UCHAR *e = ev + i * SECTS_EVENT_SIZE;
+        ULONG  eid = e[0] & SECTS_EID_MASK;
+
+        if (e[0] == 0) {
+            break;
+        }
+        if (eid == SECTS_EID_COORDINATE) {
+            ULONG tid   = (e[0] & SECTS_TID_MASK) >> 2;
+            ULONG state = e[0] >> SECTS_STATE_SHIFT;
+            S10T_CONTACT *c;
+            BOOLEAN wasDown;
+            ULONG ttype = ((ULONG)(e[6] >> 6) << 2) | (e[7] >> 6);
+
+            if (tid == 0 || tid > S10T_MAX_CONTACTS || state == 0) {
+                continue;
+            }
+            /* sec_ts_read_event only reports NORMAL / GLOVE / PALM / WET contacts; HOVER, FLIP COVER, STYLUS
+               and PROXIMITY coordinates are not fingers on the glass (a hovering hand made ghost touches). */
+            if (state != SECTS_STATE_RELEASE && ttype != 0 && ttype != 3 && ttype != 5 && ttype != 6) {
+                InterlockedIncrement(&Dev->Stats.InvalidEvents);
+                continue;
+            }
+            c = &Dev->Contacts[tid - 1];
+            wasDown = c->Down;
+            Dev->LastEventTime = KeQueryInterruptTime();
+
+            if (state == SECTS_STATE_RELEASE) {
+                if (!wasDown) {
+                    continue;
+                }
+                if (moved && BuildFrame(Dev, &f, FALSE)) {      /* the moves that came before this lift */
+                    PushFrame(Dev, &f);
+                }
+                moved = FALSE;
+                c->Down = FALSE;
+                c->Lifted = TRUE;
+                if (BuildFrame(Dev, &f, TRUE)) {
+                    PushFrame(Dev, &f);
+                }
+                continue;
+            }
+
+            /* press or move */
+            if (!wasDown) {
+                if (moved && BuildFrame(Dev, &f, FALSE)) {
+                    PushFrame(Dev, &f);
+                }
+                moved = FALSE;
+            }
+            c->Down   = TRUE;
+            c->Lifted = FALSE;
+            c->X = (USHORT)(((ULONG)e[1] << 4) | (e[3] >> 4));
+            c->Y = (USHORT)(((ULONG)e[2] << 4) | (e[3] & 0x0F));
+            if (!wasDown) {
+                if (BuildFrame(Dev, &f, TRUE)) {               /* the touch-down gets its own frame */
+                    PushFrame(Dev, &f);
+                }
+            } else {
+                moved = TRUE;
+            }
+        } else if (eid != SECTS_EID_STATUS && eid != SECTS_EID_GESTURE) {
+            /* EID 3 = invalid: sec_ts_read_event clears the stack and drops the rest of the batch */
+            InterlockedIncrement(&Dev->Stats.InvalidEvents);
+            (VOID)SpbCommand(Dev, SECTS_CMD_CLEAR_EVENT_STACK);
+            break;
+        }
+    }
+    if (moved && BuildFrame(Dev, &f, FALSE)) {
         PushFrame(Dev, &f);
     }
 }
@@ -449,12 +488,7 @@ static VOID WorkerMain(_In_ PVOID Context)
         if (w == STATUS_WAIT_1) {
             /* attention: drain the controller, one frame per batch, then unmask (level line: if the controller
                still holds it low, the ISR fires again right away and we come back here) */
-            BOOLEAN    stateChange;
-            S10T_FRAME f;
-
-            if (ReadEvents(Dev, &stateChange) && BuildFrame(Dev, &f, stateChange)) {
-                PushFrame(Dev, &f);
-            }
+            ReadEvents(Dev);
             S10tDeliver(Dev);
             UpdateLatency(Dev);
             /* A line that stays low with nothing to read (or a bus that keeps failing) would bring us straight
@@ -473,7 +507,7 @@ static VOID WorkerMain(_In_ PVOID Context)
             ULONGLONG quiet = KeQueryInterruptTime() - Dev->LastEventTime;
             S10T_FRAME f;
 
-            if (quiet >= (ULONGLONG)Dev->RepeatMs * 10000ULL &&
+            if (quiet >= 2ULL * Dev->RepeatMs * 10000ULL &&
                 quiet < (ULONGLONG)S10T_REPEAT_LIMIT_MS * 10000ULL &&
                 BuildFrame(Dev, &f, FALSE)) {
                 PushFrame(Dev, &f);

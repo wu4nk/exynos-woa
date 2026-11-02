@@ -75,7 +75,7 @@
 #define SECTS_STATE_MOVE            2
 #define SECTS_STATE_RELEASE         3
 #define SECTS_COORD_MAX             0x0FFF         /* live DT sec,max_coords = <0x1000 0x1000> */
-#define SECTS_SPB_TIMEOUT_MS        100
+#define SECTS_SPB_TIMEOUT_MS        250            /* as SecTsY761Touch */
 
 /* ---- HID ---- */
 #define S10T_REPORT_ID              0x54
@@ -84,7 +84,7 @@
 #define S10T_PID                    0x0761
 #define S10T_VERSION                0x0100
 #define S10T_FIFO_DEPTH             32
-#define S10T_REPEAT_MS_DEFAULT      8              /* ~125 Hz, the y761's own report rate */
+#define S10T_REPEAT_MS_DEFAULT      10             /* repeat period once the controller has been quiet 2 periods */
 #define S10T_REPEAT_LIMIT_MS        3000           /* stop repeating after 3 s without controller events */
 
 #include <pshpack1.h>

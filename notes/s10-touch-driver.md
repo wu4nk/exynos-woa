@@ -20,3 +20,16 @@
   the repeatDue condition; ReleaseHardware now clears the interrupt handle (framework deletes interrupts created
   in PrepareHardware); ntstrsafe.h before reshub.h (RESOURCE_HUB_CREATE_PATH_FROM_ID uses RtlUnicodeStringPrintf).
 - EWDK build 1 (user 17:40): C4013 RESOURCE_HUB_CREATE_PATH_FROM_ID undefined - the SDK reshub.h defines it only under RESHUB_USE_HELPER_ROUTINES (the old SecTsY761Touch defined it before the include). Fixed in S10Touch.h.
+
+## 1.0.1.0 (2026-11-02) - "loạn cảm ứng" after 1.0.0.0
+User report: touch worse than SecTsY761Touch, chaotic. Causes found in 1.0.0.0:
+- one HID frame per I2C batch: release + press of the same tid inside one batch overwrote the lift
+  (Windows saw a finger teleport / a second finger -> random zoom/scroll);
+- no all-up on I2C error, stack overflow or failed READ_ALL (old driver had TouchQueueAllUpReport) -> stuck
+  phantom contact;
+- HOVER / PROXIMITY / FLIP COVER / STYLUS coordinate events were reported as fingers (sec_ts only reports
+  NORMAL, GLOVE, PALM, WET; ttype = ev[6]>>6 <<2 | ev[7]>>6);
+- SPB timeout 100 ms (old: 250 ms); repeat frames every 8 ms interleaved with the chip's own moves.
+Fix: per-event press/release frames in event order (pending moves flushed first, one move frame at batch end),
+AllUp on every read failure/overflow, ttype filter, timeout 250 ms, repeat only after 2 x RepeatMs quiet
+(default RepeatMs 10).
