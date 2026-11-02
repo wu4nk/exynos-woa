@@ -1,6 +1,20 @@
 #include "Exynos9820Ufs.h"
 
 const ULONG UfsDiagBinaryContract[] = UFS_DIAG_BINARY_CONTRACT_INITIALIZER;
+
+/*
+ * Board identity, retained in the PE by /INCLUDE:UfsBoardIdentity (build-ufs.ps1), so a
+ * flash kit can refuse a driver built for the other board before it reaches a phone:
+ * "UFSBRD01", board (1 = S10e beyond0lte, 2 = S10 beyond1lte), then the write fence's
+ * first LBA and the protected run, low 32 bits (every one of them is < 2^32).
+ */
+const ULONG UfsBoardIdentity[] = {
+    0x42534655UL, 0x31304452UL,               /* "UFSB" "RD01" */
+    (EXYNOS9820_BOARD_BEYOND1 ? 2UL : 1UL),
+    (ULONG)UFS_WRITE_FENCE_FIRST_LBA,
+    (ULONG)UFS_PROTECTED_PARTITION_FIRST_LBA,
+    (ULONG)UFS_PROTECTED_PARTITION_LAST_LBA
+};
 static NTSTATUS UfsBugcheckProviderStatus = STATUS_DEVICE_NOT_READY;
 static NTSTATUS UfsBugcheckDataStatus = STATUS_DEVICE_NOT_READY;
 static NTSTATUS UfsBugcheckRegistrationStatus = STATUS_DEVICE_NOT_READY;

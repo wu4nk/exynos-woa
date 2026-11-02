@@ -18,15 +18,39 @@ param(
   # A driver built for one board must NEVER be installed on the other: the ESP,
   # USERDATA and protected ranges are different LBAs.
   [ValidateSet("Beyond0", "Beyond1")][string]$Board = "Beyond0",
-  [string]$WdkRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+  [string]$WdkRoot = "",
+  # SDK/WDK version folder under <kit>\Include and <kit>\Lib. Default: the EWDK's
+  # Version_Number, else the newest installed one that has km\ntddk.h.
+  [string]$KitVersion = ""
 )
 $ErrorActionPreference = "Stop"
 $PortableKernelContract = $true
 
-$VcVars   = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat"
-$SdkInc   = "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0"
-$WdkLib   = Join-Path $WdkRoot "Lib\10.0.26100.0"
-$SdkLib   = "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0"
+# Toolchain roots. Inside an EWDK window (LaunchBuildEnv.cmd) VSINSTALLDIR, WDKContentRoot
+# and Version_Number point at the EWDK's own Build Tools and kit, so the same script builds
+# there; outside it, the paths of the original VS 18 + WDK 10.0.26100 machine are used.
+$VcVars = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat"
+if ($env:VSINSTALLDIR -and (Test-Path (Join-Path $env:VSINSTALLDIR "VC\Auxiliary\Build\vcvarsall.bat"))) {
+  $VcVars = Join-Path $env:VSINSTALLDIR "VC\Auxiliary\Build\vcvarsall.bat"
+}
+$KitRoot = "C:\Program Files (x86)\Windows Kits\10"
+if ($env:WDKContentRoot -and (Test-Path $env:WDKContentRoot)) { $KitRoot = $env:WDKContentRoot.TrimEnd('\') }
+if (-not $WdkRoot) { $WdkRoot = $KitRoot }
+if (-not $KitVersion) {
+  if ($env:Version_Number -and (Test-Path (Join-Path $KitRoot "Include\$($env:Version_Number)\km\ntddk.h"))) {
+    $KitVersion = $env:Version_Number
+  } else {
+    $KitVersion = Get-ChildItem (Join-Path $KitRoot "Include") -Directory -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -match '^10\.0\.\d+\.\d+$' -and (Test-Path (Join-Path $_.FullName "km\ntddk.h")) } |
+      Sort-Object { [version]$_.Name } | Select-Object -Last 1 -ExpandProperty Name
+  }
+}
+if (-not $KitVersion) { throw "no Windows kit with km\ntddk.h under $KitRoot\Include - pass -KitVersion / -WdkRoot" }
+$SdkInc   = Join-Path $KitRoot "Include\$KitVersion"
+$WdkLib   = Join-Path $WdkRoot "Lib\$KitVersion"
+$SdkLib   = Join-Path $KitRoot "Lib\$KitVersion"
+Write-Host "==> toolchain: $VcVars" -ForegroundColor DarkGray
+Write-Host "==> kit: $KitRoot ($KitVersion)" -ForegroundColor DarkGray
 foreach ($p in @($VcVars, $SdkInc, $WdkLib, $SdkLib)) {
   if (-not (Test-Path $p)) { throw "missing toolchain component: $p" }
 }
@@ -69,7 +93,7 @@ $LinkFlags = '/VERSION:"10.0" /INCREMENTAL:NO /NOLOGO /WX /NODEFAULTLIB ' +
   '/NODEFAULTLIB:OLDNAMES.LIB /MANIFEST:NO /DEBUG:NONE /SUBSYSTEM:NATIVE,"10.00" ' +
   '/STACK:"0x40000","0x2000" /Driver /OPT:REF /OPT:ICF /LTCG /ENTRY:"GsDriverEntry" ' +
   '/RELEASE /Brepro /MERGE:"_TEXT=.text;_PAGE=PAGE" /MACHINE:ARM64 /guard:cf /kernel ' +
-  '/IGNORE:4078,4221,4198 /osversion:10.0'
+  '/IGNORE:4078,4221,4198 /osversion:10.0 /INCLUDE:UfsBoardIdentity'
 
 $LinkLibPaths = @(
   "$SdkLib\km\arm64\storport.lib",
@@ -98,6 +122,7 @@ if ($PortableKernelContract) {
   $HelperObj = Join-Path $OutDir 'UfsDiag.obj'
   $HelperBuild = @"
 set INCLUDE=$SdkInc\um;$SdkInc\shared;$SdkInc\ucrt;%INCLUDE%
+set LIB=$SdkLib\um\arm64;$SdkLib\ucrt\arm64;%LIB%
 cl.exe /nologo /W4 /WX /O2 /Oi /GL /MT /GS /guard:cf /Zp8 /D UNICODE /D _UNICODE /D _WIN32_WINNT=0x0A00 $ProfileFlags /Fo"$HelperObj" /Fe"$Helper" "$HelperSource" /link /MACHINE:ARM64 /SUBSYSTEM:CONSOLE /LTCG /INCREMENTAL:NO /Brepro /INCLUDE:UfsDiagBinaryContract setupapi.lib cfgmgr32.lib advapi32.lib user32.lib
 if errorlevel 1 exit /b 4
 "@

@@ -122,3 +122,12 @@ S10, sda28 is `odm` and sda31 is `cache`. Every S10e tool addresses partitions b
   board name is refused. xUnit tests NOT run (NuGet blocked here).
   GptTypeService already handles a present backup GPT (entries at LastLBA-4) — the S10's
   layout satisfies its adjacency check.
+- 2026-11-02 — UFS driver carries `UfsBoardIdentity` ("UFSBRD01", board 1/2, fence first
+  LBA, protected run), kept by `/INCLUDE:UfsBoardIdentity` in build-ufs.ps1, so the flash
+  kit can refuse a driver built for the other board. Encoding checked with clang
+  (32-bit ULONG): S10e → 1, 1983488, 2137088, 2149887; S10 → 2, 3118592, 3272192, 3284991.
+- 2026-11-02 — build-ufs.ps1 works inside an EWDK window: vcvarsall from VSINSTALLDIR,
+  kit root from WDKContentRoot, version from Version_Number or the newest kit with
+  km\ntddk.h (WU4NK's EWDK compiles against 10.0.28000.0, seen in their S20U build
+  logs). Touch vcxproj targets `$(LatestTargetPlatformVersion)` like their S20U projects.
+  Neither run here (no Windows / no PowerShell on this machine).
