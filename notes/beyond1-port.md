@@ -387,3 +387,7 @@ suspects are what differs from the S10e UMD: the toolchain (zig mingw vs clang-c
 Rescue sent: TWRP -> /cache/S10EDIAG/nogpu.flg -> boot (Basic Display) -> s10-log v1.3 (adds Application log, WER
 report texts, gpu-mode.txt) -> gpu-s10.ps1 display -> delete the flag -> reboot.
 install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10.ps1 to C:\S10Prov\kit (5b).
+- 06:39 log.zip (f0890078) is byte-identical to the 05:29 one (49bc7f30, 89512 B, gpu-report 23:20:27): C:\log.zip
+  was not rewritten - s10-log v1.3 did not run (or did not reach its zip step) in that boot. No evidence for G2a yet.
+- Side finding: every boot's System-log time starts at 2026-11-01 23:17:08 (OS start event 12) - the Windows clock
+  is reset to the same value each boot (no RTC / time sync).
