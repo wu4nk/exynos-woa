@@ -105,3 +105,15 @@ No device access (S10 owner tests). Builds: UEFI only (Linux); Windows drivers c
   mesa-patches/ of that commit into g12-work\ref-16f7e7c6 and uses only those (and its ci\clc-stubs on PATH).
   Simulated here: the archive holds mesa-patches 0001..0019 only, and include/maliwddm_abi.h is byte-identical to
   drivers/MaliG76Wddm/include/maliwddm_abi.h. A shallow clone fails early with the fetch --unshallow hint.
+- Review of Fix 3 (adversarial): 0040 has eol=lf like 0020..0039 (.gitattributes `* text=auto eol=lf`), and the
+  build applies tools/mesa-build/patches as-is after the LF upstream set -> same as the existing patches. The
+  pinned extraction runs before $lf is used; `-o` is absolute ($Work\ref-pin.tar) - a relative -o lands in the
+  repo dir under `git -C` (seen in the simulation, so it matters). No defect.
+
+## Follow-ups (not done, need a design or a device run)
+1. Job-fault reset at DIRQL (Reap -> MkGpuBringup inside the ISR / SynchronizeExecution, worst case ~70 ms of
+   polls): move to a work item like panfrost_device_schedule_reset, completing the queue's fences from the DPC.
+2. Serialise AS0 commands (BuildPagingBuffer FlushRange at PASSIVE vs Bringup at DIRQL) - panfrost as_lock.
+3. PartialMaps from the first GpuEnable 1 run decides whether MAP_APERTURE_SEGMENT needs GpuVa + MdlOffset.
+4. FLUSH_REDUCTION (G76 feature): JS_CONFIG_ENABLE_FLUSH_REDUCTION + JS_FLUSH_ID_NEXT from GPU_LATEST_FLUSH_ID -
+   performance only, after jobs run at all.
