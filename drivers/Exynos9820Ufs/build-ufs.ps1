@@ -132,10 +132,11 @@ $Bat = @"
 @echo off
 call "$VcVars" x64_arm64 >nul
 if errorlevel 1 exit /b 1
-rem km\crt goes LAST: on a full VS install vcvars already puts the SDK's ucrt (ctype.h for
-rem ntdef.h) in %INCLUDE%, so that build is unchanged; an EWDK's vcvars does not, and
-rem ntdef.h then finds ctype.h in the WDK's own kernel CRT headers.
-set INCLUDE=$SdkInc\km;$SdkInc\shared;%INCLUDE%;$SdkInc\km\crt
+rem The kit's ucrt goes LAST: on a full VS install vcvars already has the SDK's ucrt in
+rem %INCLUDE% (that is where ntdef.h's ctype.h and crtdefs.h's corecrt.h come from in the
+rem validated build), so that build is unchanged; an EWDK's vcvars does not, and finds the
+rem same headers here. (km\crt is not used: it would mix with the MSVC crtdefs.h.)
+set INCLUDE=$SdkInc\km;$SdkInc\shared;%INCLUDE%;$SdkInc\ucrt
 cl.exe $ClFlags /FI"$SdkInc\shared\warning.h" /Fo"$Obj" "$Src"
 if errorlevel 1 exit /b 2
 link.exe $LinkFlags /OUT:"$Sys" /IMPLIB:"$Lib" /LTCGOUT:"$Iobj" "$Obj" $($LinkLibs -join ' ')
