@@ -660,3 +660,23 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   64-byte aligned for Panfrost's strict linear import (CDD 1440 -> 5760 ok; odd pitches are refused and logged).
   Test: gpu-dwm (sets TdrDelay + S10_FAULTDUMP=dwm.exe), reboot, s10-log. Look for "imported (GPU reads it in
   place)", "GPU BO = shared allocation", "FAULTED chain" + decode in umd-log.
+
+### G2b-3 run 6 (UMD 0046 e3697685, 2026-11-04 ~00:45) - DEVICE RESULT
+- GPU sharing works: every creator logs "GPU BO = shared allocation" (pitch == Panfrost stride for all, incl. the
+  terminal's 1372 -> 5504), DWM logs "imported (GPU reads it in place)" for every OpenResource (1024x1024, 32x32,
+  704x704, 992x2048, 1440x3072 ...). No "not lockable" any more.
+- S10_FAULTDUMP decoded DWM's faulting chains (vertex/tiler chain, reqs 0): in every faulting IDVS job the
+  fragment shader's UBO 0 (= D3D cb0; panfrost puts sysvals at UBO 1) is "XXX: null pointer deref, ubuf_0[0] = 0x0"
+  -> the @0x10 translation faults are reads of an UNBOUND constant buffer (panfrost leaves the descriptor zero,
+  Bifrost does not bounds-check UBO loads). Fix 0047: a 64 KiB zero BO per context for every referenced UBO slot
+  that is not bound.
+- DWM pid 712 crashed at 23:18:13 in dwmcore.dll+0x7d52c (c0000005), DWM 7560 took over. 18 WER dwmcore reports
+  with code 0x8898008D in the same boot (~4.5-6.5 min uptime) without new "screen" lines.
+- XAML hosts crashed 30x in Windows.UI.Xaml.dll+0x253ce4 with 0xC000027B (stowed exception): explorer (restarted ~9x),
+  TextInputHost 11x, SearchHost 6x, StartMenuExperienceHost; 3x d3d11.dll c0000005. No D3D error was visible:
+  the frontend's SetError was silent.
+- Found while reading: CreateResource tested `!pResource` instead of `!pResource->resource` after resource_create,
+  so a failed create went on with a NULL texture (fixed in 0047).
+- 0047 (UMD b7328d16): zero UBO; SetError logs DDI + line + HRESULT; unsupported-format, failed resource_create and
+  failed Map logged with the template; vectored handler logs the first 4 access violations per process (pc/lr/stack
+  as module+offset). Kit v1.12: UMD log folder also writable for ALL APPLICATION PACKAGES (AppContainer XAML hosts).

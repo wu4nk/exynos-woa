@@ -1,0 +1,229 @@
+From acf88bc1ae1000734cedb915edcfc806abe43368 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 01:02:15 +0700
+Subject: [PATCH] G2b-3: zero UBO for unbound constant buffers,
+ SetError/map/format/AV logging, NULL resource check
+
+---
+ src/gallium/drivers/panfrost/pan_cmdstream.c | 20 ++++++++-
+ src/gallium/drivers/panfrost/pan_context.c   |  1 +
+ src/gallium/drivers/panfrost/pan_context.h   |  3 ++
+ src/gallium/frontends/d3d10umd/Resource.cpp  | 17 ++++++-
+ src/gallium/frontends/d3d10umd/State.h       | 14 +++++-
+ src/gallium/targets/d3d10umd/d3d10_gdi.c     | 47 ++++++++++++++++++++
+ 6 files changed, 98 insertions(+), 4 deletions(-)
+
+diff --git a/src/gallium/drivers/panfrost/pan_cmdstream.c b/src/gallium/drivers/panfrost/pan_cmdstream.c
+index 218a03e..97c1c86 100644
+--- a/src/gallium/drivers/panfrost/pan_cmdstream.c
++++ b/src/gallium/drivers/panfrost/pan_cmdstream.c
+@@ -1563,15 +1563,31 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
+       user_ubo_mask_adj = (user_ubo_mask & BITFIELD_MASK(PAN_UBO_SYSVALS)) |
+          ((user_ubo_mask & ~BITFIELD_MASK(PAN_UBO_SYSVALS + 1)) >> 1);
+ 
+-   u_foreach_bit(ubo_adj, user_ubo_mask_adj & buf->enabled_mask) {
++   /* exynos-woa G2b-3 (0047): every UBO the shader reads, bound or not. D3D10 reads of an unbound constant buffer
++    * return 0; the slot used to be left as a zero descriptor (address 0), and Bifrost does not bounds-check UBO
++    * loads: run g2b3-6, DWM's pixel shader read cb0 = NULL -> translation fault @0x10 (pandecode "XXX: null
++    * pointer deref, ubuf_0[0] = 0x0"), the job and the rest of its submission dropped, dozens per boot. */
++   u_foreach_bit(ubo_adj, user_ubo_mask_adj) {
+       unsigned ubo = ubo_adj + (ubo_adj >= sysval_ubo ? 1 : 0);
+ 
+-      size_t usz = buf->cb[ubo_adj].buffer_size;
++      size_t usz = (buf->enabled_mask & BITFIELD_BIT(ubo_adj)) ? buf->cb[ubo_adj].buffer_size : 0;
+       uint64_t address = 0;
+ 
+       if (usz > 0) {
+          address =
+             panfrost_map_constant_buffer_gpu(batch, stage, buf, ubo_adj);
++      } else {
++         if (!ctx->s10_zero_ubo) {
++            ctx->s10_zero_ubo = panfrost_bo_create(pan_device(ctx->base.screen), 65536, 0,
++                                                   "Unbound constant buffer (zeros)");
++            if (ctx->s10_zero_ubo)
++               memset(ctx->s10_zero_ubo->ptr.cpu, 0, 65536);
++         }
++         if (ctx->s10_zero_ubo) {
++            panfrost_batch_add_bo(batch, ctx->s10_zero_ubo, stage);
++            address = ctx->s10_zero_ubo->ptr.gpu;
++            usz = 65536;
++         }
+       }
+ 
+       panfrost_emit_ubo(ubos.cpu, ubo, address, usz);
+diff --git a/src/gallium/drivers/panfrost/pan_context.c b/src/gallium/drivers/panfrost/pan_context.c
+index f8425d4..838add1 100644
+--- a/src/gallium/drivers/panfrost/pan_context.c
++++ b/src/gallium/drivers/panfrost/pan_context.c
+@@ -639,6 +639,7 @@ panfrost_destroy(struct pipe_context *pipe)
+ 
+    u_printf_destroy(&panfrost->printf.ctx);
+    panfrost_bo_unreference(panfrost->printf.bo);
++   panfrost_bo_unreference(panfrost->s10_zero_ubo);   /* exynos-woa 0047 */
+ 
+    if (panfrost->writers)
+       _mesa_hash_table_destroy(panfrost->writers, NULL);
+diff --git a/src/gallium/drivers/panfrost/pan_context.h b/src/gallium/drivers/panfrost/pan_context.h
+index 651bce3..1adbe76 100644
+--- a/src/gallium/drivers/panfrost/pan_context.h
++++ b/src/gallium/drivers/panfrost/pan_context.h
+@@ -117,6 +117,9 @@ struct panfrost_context {
+    /* Gallium context */
+    struct pipe_context base;
+ 
++   /* exynos-woa G2b-3 (0047): 64 KiB of zeros standing for an unbound constant buffer (pan_cmdstream.c) */
++   struct panfrost_bo *s10_zero_ubo;
++
+    /* Context flags */
+    unsigned flags;
+ 
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index 71014ca..fa07f58 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -386,6 +386,12 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+                                        templat.bind)) {
+          debug_printf("%s: unsupported format %s\n",
+                      __func__, util_format_name(templat.format));
++         /* G2b-3 (0047): which format / use the screen refused */
++         fprintf(stderr, "d3d10umd: pid %lu: CreateResource: %s %ux%ux%u samples %u bind 0x%x (DXGI fmt %u, D3D bind 0x%x) "
++                         "not supported by %s\n", GetCurrentProcessId(), util_format_name(templat.format),
++                 templat.width0, templat.height0, templat.depth0, templat.nr_samples, templat.bind,
++                 (unsigned)pCreateResource->Format, (unsigned)pCreateResource->BindFlags,
++                 screen->get_name ? screen->get_name(screen) : "?");
+          SetError(hDevice, E_OUTOFMEMORY);
+          return;
+       }
+@@ -468,8 +474,13 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+ 
+    if (!pResource->resource)
+       pResource->resource = screen->resource_create(screen, &templat);
+-   if (!pResource) {
++   /* G2b-3 (0047): tested pResource (never NULL) instead of the resource, so a failed resource_create went on
++    * with a NULL texture - on Panfrost it fails when the KMD's segment is full. */
++   if (!pResource->resource) {
+       DebugPrintf("%s: failed to create resource\n", __func__);
++      fprintf(stderr, "d3d10umd: pid %lu: CreateResource: resource_create %s %ux%ux%u x%u mips %u bind 0x%x FAILED\n",
++              GetCurrentProcessId(), util_format_name(templat.format), templat.width0, templat.height0,
++              templat.depth0, templat.array_size, templat.last_level + 1, templat.bind);
+       SetError(hDevice, E_OUTOFMEMORY);
+       return;
+    }
+@@ -876,6 +887,10 @@ ResourceMap(D3D10DDI_HDEVICE hDevice,                                // IN
+    }
+    if (!map) {
+       DebugPrintf("%s: failed to map resource\n", __func__);
++      fprintf(stderr, "d3d10umd: pid %lu: ResourceMap: %s %s %ux%u level %u usage 0x%x failed%s\n",
++              GetCurrentProcessId(), pResource->buffer ? "buffer" : "texture", util_format_name(resource->format),
++              resource->width0, resource->height0, level, usage,
++              pResource->kmt_opened_locked || pResource->shared_cpu ? " (opened shared resource)" : "");
+       SetError(hDevice, E_FAIL);
+       return;
+    }
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index 03a238b..eeb5cf9 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -32,6 +32,7 @@
+ 
+ 
+ #include "DriverIncludes.h"
++#include <stdio.h>
+ #include "util/u_hash_table.h"
+ #include "cso_cache/cso_context.h"
+ 
+@@ -152,14 +153,25 @@ CastPipeDevice(DXGI_DDI_HDEVICE hDevice)
+ }
+ 
+ 
++/* G2b-3 (0047): every error handed to the runtime is logged (stderr = the UMD log, patch 0042) with the DDI that
++ * raised it - run g2b3-6: Explorer, SearchHost, TextInputHost and StartMenuExperienceHost died 30 times in
++ * Windows.UI.Xaml.dll with stowed exceptions (0xC000027B), and nothing said which D3D call had failed. The first 40
++ * per process, then every 100th; WASSTILLDRAWING (a polled query not done yet) is not an error and not logged. */
+ static inline void
+-SetError(D3D10DDI_HDEVICE hDevice, HRESULT hr)
++SetErrorAt(D3D10DDI_HDEVICE hDevice, HRESULT hr, const char *where, int line)
+ {
+    if (FAILED(hr)) {
+       Device *pDevice = CastDevice(hDevice);
++      if (hr != DXGI_DDI_ERR_WASSTILLDRAWING) {
++         static unsigned n;
++         if (++n <= 40 || n % 100 == 0)
++            fprintf(stderr, "d3d10umd: pid %lu: %s:%d -> error 0x%08lx (#%u)\n", GetCurrentProcessId(), where, line,
++                    (unsigned long)hr, n);
++      }
+       pDevice->UMCallbacks.pfnSetErrorCb(pDevice->hRTCoreLayer, hr);
+    }
+ }
++#define SetError(hDevice, hr) SetErrorAt((hDevice), (hr), __func__, __LINE__)
+ 
+ 
+ struct Resource
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index 3d607ed..d34f8b3 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -305,6 +305,52 @@ s10_on_abort(int sig)
+    s10_log("  (maliumd.dll image base 0x180000000: add the offset for llvm-symbolizer)");
+ }
+ 
++/* G2b-3 (0047): access violations, logged before the process's own handling (a vectored handler, first in line,
++ * always passing the exception on): run g2b3-6, DWM died in dwmcore.dll+0x7d52c (c0000005) right after its GPU
++ * faults, with nothing in the UMD log. The faulting PC / LR as module+offset, the address, then the stack. At most
++ * 4 per process. */
++static void
++s10_log_addr(const char *what, ULONG_PTR a)
++{
++   HMODULE mod = NULL;
++   char name[MAX_PATH] = "?";
++   if (a && GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++                               (LPCSTR)a, &mod)) {
++      GetModuleFileNameA(mod, name, sizeof(name));
++      s10_log("  %s %s+0x%llx", what, strrchr(name, '\\') ? strrchr(name, '\\') + 1 : name,
++              (unsigned long long)(a - (ULONG_PTR)mod));
++   } else {
++      s10_log("  %s 0x%llx", what, (unsigned long long)a);
++   }
++}
++
++static LONG CALLBACK
++s10_on_exception(EXCEPTION_POINTERS *ep)
++{
++   static volatile LONG seen;
++   const EXCEPTION_RECORD *er = ep->ExceptionRecord;
++
++   if (er->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || InterlockedIncrement(&seen) > 4)
++      return EXCEPTION_CONTINUE_SEARCH;
++   s10_log("ACCESS VIOLATION: %s 0x%llx", er->NumberParameters >= 2 ?
++              (er->ExceptionInformation[0] == 0 ? "read of" : er->ExceptionInformation[0] == 1 ? "write to" : "execute at")
++              : "at", er->NumberParameters >= 2 ? (unsigned long long)er->ExceptionInformation[1] : 0ull);
++   s10_log_addr("pc", (ULONG_PTR)er->ExceptionAddress);
++#if defined(_M_ARM64) || defined(__aarch64__)
++   s10_log_addr("lr", (ULONG_PTR)ep->ContextRecord->Lr);
++#endif
++   {
++      void *frames[40];
++      USHORT count = RtlCaptureStackBackTrace(0, 40, frames, NULL), i;
++      for (i = 0; i < count; i++) {
++         char tag[8];
++         snprintf(tag, sizeof(tag), "#%02u", i);
++         s10_log_addr(tag, (ULONG_PTR)frames[i]);
++      }
++   }
++   return EXCEPTION_CONTINUE_SEARCH;
++}
++
+ static void
+ s10_diag_init(const char *driver)
+ {
+@@ -326,6 +372,7 @@ s10_diag_init(const char *driver)
+    }
+    _set_error_mode(_OUT_TO_STDERR);
+    signal(SIGABRT, s10_on_abort);
++   AddVectoredExceptionHandler(1, s10_on_exception);   /* G2b-3 (0047) */
+    s10_log("screen: driver '%s', maliumd built %s %s, %s", driver ? driver : "?", __DATE__, __TIME__,
+ #ifdef NDEBUG
+            "release (asserts off)"
+-- 
+2.43.0
+
