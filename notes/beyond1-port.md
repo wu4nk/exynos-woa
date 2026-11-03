@@ -764,3 +764,21 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   + OpenSharedResource (legacy) / OpenSharedResource1 (NT handle) on a second device, DComp desktop device on a
   WS_EX_NOREDIRECTIONBITMAP window (target, visual, surface draw, commit - magenta 400x300 for 1.5 s), and a flip
   swap chain for a window (green 400x300 for 1.5 s).
+
+### G2b-3 run 13 (UMD 0050, gpu-watch v1.3 / comprobe v1.1, 2026-11-04 03:12) - DEVICE RESULT
+- User: the phone got very hot.
+- comprobe in the user session (session 1): same format / sharing results as session 0, plus OpenSharedResource
+  (legacy) and OpenSharedResource1 (NT handle) on a second device OK, DCompositionCreateDevice OK, DComp surface
+  BeginDraw OK (atlas 1024x1024 fmt 87 bind 0x20 misc 0x8200, offset 1,1) - then comprobe DIED (task result
+  0xC000013A) with an access violation inside maliumd: pan_resource_afbcp_update (pan_resource.c:2271) from
+  panfrost_batch_read_rsrc (pan_job.c:370), reading 0x6c252064697023e6 = the text "#pid %l".
+- Cause (read, not guessed): d3d10umd IaSetVertexBuffers makes every unbound slot a USER buffer pointing at a static
+  `dummy` float[4]; the device's cso is CSO_NO_VBUF and Panfrost has no user vertex buffers, so
+  util_set_vertex_buffers_mask marks the slot bound (the buffer union is non-NULL) and panfrost_emit_vertex_data
+  casts `dummy` to a panfrost_resource: afbcp / plane.base are whatever .rdata follows `dummy` (our format
+  strings). On the GPU side that becomes a garbage attribute address. Every D3D10/11 app with an input layout
+  naming an empty slot hits it. 0051: without caps.user_vertex_buffers an unbound slot is a NULL resource (0046
+  then binds a zero record).
+- Also 0051: S10_GPU_DENY=<exe list> refuses OpenAdapter to those processes (WARP fallback experiment, off by
+  default); the vectored handler now unwinds the faulting thread from its CONTEXT (RtlVirtualUnwind) - the
+  RtlCaptureStackBackTrace stack stopped at ntdll's dispatcher. UMD a99f832b.

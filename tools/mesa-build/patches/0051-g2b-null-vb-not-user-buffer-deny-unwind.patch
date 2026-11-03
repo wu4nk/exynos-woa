@@ -1,0 +1,135 @@
+From 1052bff145f09a4e6e32f09d01c0bf747d03eb3a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 03:21:43 +0700
+Subject: [PATCH] G2b-3: no fake user vertex buffers without driver support,
+ GPU deny list, unwind AV stacks from the context
+
+---
+ src/gallium/frontends/d3d10umd/Adapter.cpp    | 27 +++++++++++++++++++
+ .../frontends/d3d10umd/InputAssembly.cpp      | 14 +++++++---
+ src/gallium/targets/d3d10umd/d3d10_gdi.c      | 24 +++++++++++++----
+ 3 files changed, 57 insertions(+), 8 deletions(-)
+
+diff --git a/src/gallium/frontends/d3d10umd/Adapter.cpp b/src/gallium/frontends/d3d10umd/Adapter.cpp
+index 3259249..43157df 100644
+--- a/src/gallium/frontends/d3d10umd/Adapter.cpp
++++ b/src/gallium/frontends/d3d10umd/Adapter.cpp
+@@ -62,9 +62,36 @@ static unsigned long memdbg_no = 0;
+  */
+ 
+ 
++/* G2b-3 (0051): S10_GPU_DENY=a.exe,b.exe - those processes are refused the Mali adapter (OpenAdapter E_FAIL), so
++ * D3D11CreateDevice on the hardware adapter fails and they fall back to WARP. An experiment: the XAML shell hosts
++ * crash-loop on the Mali with a stowed E_INVALIDARG (runs g2b3-10..13) - do they live on WARP? */
++#include "util/u_process.h"
++static bool
++s10_gpu_denied(void)
++{
++   const char *l = getenv("S10_GPU_DENY");
++   const char *pn = util_get_process_name();
++   if (!l || !*l || !pn)
++      return false;
++   size_t pl = strlen(pn);
++   for (const char *p = l; *p;) {
++      const char *e = strchr(p, ',');
++      size_t n = e ? (size_t)(e - p) : strlen(p);
++      if (n == pl && !_strnicmp(p, pn, n))
++         return true;
++      p += n + (e ? 1 : 0);
++   }
++   return false;
++}
++
+ static HRESULT
+ OpenAdapterCommon(__inout D3D10DDIARG_OPENADAPTER *pOpenData)   // IN
+ {
++   if (s10_gpu_denied()) {
++      fprintf(stderr, "d3d10umd: pid %lu: %s is in S10_GPU_DENY - OpenAdapter refused (the runtime falls back)\n",
++              GetCurrentProcessId(), util_get_process_name());
++      return E_FAIL;
++   }
+ #if 0
+    if (numAdapters == 0) {
+       memdbg_no = debug_memory_begin();
+diff --git a/src/gallium/frontends/d3d10umd/InputAssembly.cpp b/src/gallium/frontends/d3d10umd/InputAssembly.cpp
+index d36a070..9096f45 100644
+--- a/src/gallium/frontends/d3d10umd/InputAssembly.cpp
++++ b/src/gallium/frontends/d3d10umd/InputAssembly.cpp
+@@ -127,6 +127,13 @@ IaSetVertexBuffers(D3D10DDI_HDEVICE hDevice,
+ 
+    Device *pDevice = CastDevice(hDevice);
+    unsigned i;
++   /* G2b-3 (0051): an unbound slot was a user buffer pointing at `dummy` - fine for softpipe, but Panfrost has no
++    * user vertex buffers (CSO_NO_VBUF: nothing translates them): util_set_vertex_buffers_mask counted the slot as
++    * bound (the buffer union is non-NULL) and panfrost_emit_vertex_data took `dummy` for a panfrost_resource -
++    * run g2b3-13, comprobe died in pan_resource_afbcp_update reading "pid %l" text from .rdata next to `dummy`, and
++    * its garbage "plane.base" went to the GPU as an attribute address. Without user vertex buffers an unbound slot
++    * is a NULL resource (Panfrost then binds zeros, patch 0046). */
++   const bool user_vbs = pDevice->pipe->screen->caps.user_vertex_buffers;
+ 
+    for (i = 0; i < NumBuffers; i++) {
+       struct pipe_vertex_buffer *vb = &pDevice->vertex_buffers[StartBuffer + i];
+@@ -157,9 +164,10 @@ IaSetVertexBuffers(D3D10DDI_HDEVICE hDevice,
+          vb->buffer_offset = 0;
+          if (!vb->is_user_buffer) {
+             pipe_resource_reference(&vb->buffer.resource, NULL);
+-            vb->is_user_buffer = true;
++            vb->is_user_buffer = user_vbs;
+          }
+-         vb->buffer.user = dummy;
++         if (user_vbs)
++            vb->buffer.user = dummy;
+       }
+    }
+ 
+@@ -167,7 +175,7 @@ IaSetVertexBuffers(D3D10DDI_HDEVICE hDevice,
+       struct pipe_vertex_buffer *vb = &pDevice->vertex_buffers[i];
+ 
+       /* XXX this is odd... */
+-      if (!vb->is_user_buffer && !vb->buffer.resource) {
++      if (user_vbs && !vb->is_user_buffer && !vb->buffer.resource) {
+          pDevice->vertex_strides[i] = 0;
+          vb->buffer_offset = 0;
+          vb->is_user_buffer = true;
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index ab88d8f..050539f 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -339,15 +339,29 @@ s10_on_exception(EXCEPTION_POINTERS *ep)
+ #if defined(_M_ARM64) || defined(__aarch64__)
+    s10_log_addr("lr", (ULONG_PTR)ep->ContextRecord->Lr);
+ #endif
++#if defined(_M_ARM64) || defined(__aarch64__)
++   /* 0051: walk the FAULTING thread's stack from its context (RtlCaptureStackBackTrace from here stopped at the
++    * exception dispatcher in run g2b3-13) */
+    {
+-      void *frames[40];
+-      USHORT count = RtlCaptureStackBackTrace(0, 40, frames, NULL), i;
+-      for (i = 0; i < count; i++) {
++      CONTEXT c = *ep->ContextRecord;
++      for (int i = 0; i < 24 && c.Pc; i++) {
+          char tag[8];
+-         snprintf(tag, sizeof(tag), "#%02u", i);
+-         s10_log_addr(tag, (ULONG_PTR)frames[i]);
++         DWORD64 base = 0;
++         PVOID hd = NULL;
++         DWORD64 fr = 0;
++         snprintf(tag, sizeof(tag), "#%02d", i);
++         s10_log_addr(tag, (ULONG_PTR)c.Pc);
++         PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(c.Pc, &base, NULL);
++         if (!fn) {
++            if (c.Pc == c.Lr)
++               break;
++            c.Pc = c.Lr;   /* a leaf without unwind data */
++            continue;
++         }
++         RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, c.Pc, fn, &c, &hd, &fr, NULL);
+       }
+    }
++#endif
+    return EXCEPTION_CONTINUE_SEARCH;
+ }
+ 
+-- 
+2.43.0
+
