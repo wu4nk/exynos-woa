@@ -609,3 +609,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Mesa patch 0044: shim prints every Render failure (first 8, then every 100th; NTSTATUS, jc, slot, named/listed/
   slots, live BOs, pid) and every newly failed job (js, fault status/address, jobs done, pid) without MALIKM_TRACE;
   d3d10_gdi.c diag: test-open the log before freopen(stderr) (fixes the UWP crashes).
+- 23:20 release UMD 0042-0044: sha256 3b8533e55886cd62d9d57be3937637cad7d5ccabaa8986b5e52c00ff2a413d5d (base 0x180000000).
