@@ -1,0 +1,430 @@
+From fe9e210c40d2d3153991f706be82f17e21d20f5c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 3 Nov 2026 23:38:10 +0700
+Subject: [PATCH] G2b-3: shared resources copied for the GPU screen; first
+ device stays the kernel device; present log
+
+---
+ include/win32-compat/malikm_drm.c           | 94 ++++++++++++++++++--
+ src/gallium/frontends/d3d10umd/Device.cpp   |  4 +
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp  |  3 +
+ src/gallium/frontends/d3d10umd/Resource.cpp | 98 ++++++++++++++++++++-
+ src/gallium/frontends/d3d10umd/Shader.cpp   |  2 +
+ src/gallium/frontends/d3d10umd/State.h      | 12 +++
+ src/gallium/targets/d3d10umd/d3d10_gdi.c    | 14 +++
+ 7 files changed, 217 insertions(+), 10 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index facddf6..548e119 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -631,6 +631,11 @@ static struct {
+  * running job (PE runs 18 on: two job faults per present.exe, a read
+  * translation fault, 0x4002c3, every time at the same VA). They are
+  * destroyed after the next wait for idle instead. */
++/* G2b-3 (0045): the runtime devices of this process bound to the GPU; wdevs[] includes ddi.device. */
++#define MAX_WDEVS 16
++static HANDLE wdevs[MAX_WDEVS];
++static unsigned wdevs_n;
++
+ static D3DKMT_HANDLE *wdead;
+ static uint32_t wdead_n, wdead_cap;
+ #define WDEAD_FLUSH 64
+@@ -1146,6 +1151,24 @@ malikm_close_shared(unsigned hAlloc)
+    ReleaseSRWLockExclusive(&wddm_lock);
+ }
+ 
++/* G2b-3 (0045): presents per process, always logged (rate-limited): DWM on Panfrost reached the KMD (179 presents)
++ * but the panel stayed black, and nothing said which path its frames took. kind 0 runtime primary, 1 flip, 2 blt. */
++static void
++present_note(int kind, HRESULT hr, unsigned w, unsigned h)
++{
++   static unsigned ok[3], bad[3];
++   static const char *const names[3] = { "runtime primary", "flip", "blt" };
++   unsigned n;
++   if (hr >= 0)
++      n = ++ok[kind];
++   else
++      n = ++bad[kind];
++   if (n <= 3 || n % 300 == 0)
++      fprintf(stderr, "malikm-wddm: pid %lu: present %s %ux%u %s 0x%08lx (#%u; ok %u/%u/%u failed %u/%u/%u)\n",
++              GetCurrentProcessId(), names[kind], w, h, hr >= 0 ? "ok" : "FAILED", (unsigned long)hr, n,
++              ok[0], ok[1], ok[2], bad[0], bad[1], bad[2]);
++}
++
+ int
+ malikm_primary_present(unsigned hAlloc, unsigned hDst, const void *bgrx, unsigned w, unsigned h, void *dxgi_context)
+ {
+@@ -1166,9 +1189,9 @@ malikm_primary_present(unsigned hAlloc, unsigned hDst, const void *bgrx, unsigne
+       p.hDstAllocation = hDst;        /* G13 0025: the destination resource's allocation, if DXGI named one */
+       p.pDXGIContext = dxgi_context;
+       p.hContext = ddi.context;
+-      ret = ddi.dxgi->pfnPresentCb(ddi.device, &p) >= 0 ? 0 : -1;
+-      if (trace_on() && ret)
+-         fprintf(stderr, "malikm: pfnPresentCb (runtime primary 0x%x) failed\n", hAlloc);
++      HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &p);
++      ret = hr >= 0 ? 0 : -1;
++      present_note(0, hr, w, h);
+       goto out;
+    }
+ out:
+@@ -1251,9 +1274,9 @@ malikm_present_d3dddi(const void *bgrx, unsigned w, unsigned h, void *dxgi_conte
+       fp.hSrcAllocation = ddi.prim[i];
+       fp.pDXGIContext = dxgi_context;
+       fp.hContext = ddi.context;
+-      ret = ddi.dxgi->pfnPresentCb(ddi.device, &fp) >= 0 ? 0 : -1;
+-      if (trace_on() && ret)
+-         fprintf(stderr, "malikm: pfnPresentCb (flip) failed\n");
++      HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &fp);
++      ret = hr >= 0 ? 0 : -1;
++      present_note(1, hr, w, h);
+       goto out;
+    }
+    if (ddi.present && (ddi.present_w != w || ddi.present_h != h)) {
+@@ -1286,9 +1309,9 @@ malikm_present_d3dddi(const void *bgrx, unsigned w, unsigned h, void *dxgi_conte
+    p.hSrcAllocation = ddi.present;
+    p.pDXGIContext = dxgi_context;
+    p.hContext = ddi.context;
+-   ret = ddi.dxgi->pfnPresentCb(ddi.device, &p) >= 0 ? 0 : -1;
+-   if (trace_on() && ret)
+-      fprintf(stderr, "malikm: pfnPresentCb failed\n");
++   HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &p);
++   ret = hr >= 0 ? 0 : -1;
++   present_note(2, hr, w, h);
+ out:
+    ReleaseSRWLockExclusive(&wddm_lock);
+    return ret;
+@@ -1310,6 +1333,19 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+    if (!cb || !cb->pfnEscapeCb || !cb->pfnAllocateCb || !cb->pfnRenderCb || !cb->pfnCreateContextCb)
+       return -1;
+    AcquireSRWLockExclusive(&wddm_lock);
++   /* G2b-3 (0045, run g2b3-4): every Render of Explorer failed (0xC0000001, 382 times) after its second device.
++    * The process has ONE Panfrost screen (u_pipe_screen_lookup_or_create: os_same_file_description cannot tell
++    * two shim fds apart, so the second device gets the first one's screen), so all its BOs are allocations of the
++    * device that was bound first - and binding the new device switched Render to a device that does not own
++    * them. The first device stays the kernel device while it lives; later ones only count. */
++   if (ddi.on && wddm == 1) {
++      if (wdevs_n < MAX_WDEVS)
++         wdevs[wdevs_n++] = hRTDevice;
++      fprintf(stderr, "malikm-wddm: pid %lu: device %p shares the kernel device %p (%u bound)\n",
++              GetCurrentProcessId(), hRTDevice, ddi.device, wdevs_n);
++      ReleaseSRWLockExclusive(&wddm_lock);
++      return 0;
++   }
+    /* Ask the adapter through the callbacks: a software runtime routes them
+     * to d3d10umd's own D3DKMT stubs, which fail. */
+    D3DDDICB_ESCAPE e = {0};
+@@ -1351,6 +1387,8 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+          wgpu = g;
+          wddm = 1;
+          ret = 0;
++         wdevs_n = 0;
++         wdevs[wdevs_n++] = hRTDevice;
+       }
+    }
+    ReleaseSRWLockExclusive(&wddm_lock);
+@@ -1361,6 +1399,44 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+    return ret;
+ }
+ 
++/* G2b-3 (0045): DestroyDevice (d3d10umd), after the device dropped its screen reference. When the last device
++ * bound to the GPU goes, the next CreateDevice binds afresh (its own kernel device and context). */
++void
++malikm_unbind_d3dddi(HANDLE hRTDevice)
++{
++   AcquireSRWLockExclusive(&wddm_lock);
++   if (ddi.on && wddm == 1) {
++      unsigned i;
++      for (i = 0; i < wdevs_n && wdevs[i] != hRTDevice; i++)
++         ;
++      if (i < wdevs_n) {
++         wdevs[i] = wdevs[--wdevs_n];
++         if (hRTDevice == ddi.device) {
++            if (wdevs_n == 0) {
++               wddm_idle();
++               if (ddi.last_event)
++                  CloseHandle(ddi.last_event);
++               ddi.last_event = NULL;
++               ddi.last_unsignalled = 0;
++               ddi.present = 0;
++               ddi.present_cpu = NULL;
++               ddi.prim[0] = ddi.prim[1] = 0;
++               ddi.prim_cpu[0] = ddi.prim_cpu[1] = NULL;
++               ddi.prim_w = ddi.prim_h = 0;
++               ddi.on = 0;
++               fprintf(stderr, "malikm-wddm: pid %lu: kernel device %p destroyed (last bound device)\n",
++                       GetCurrentProcessId(), hRTDevice);
++            } else {
++               fprintf(stderr, "malikm-wddm: pid %lu: kernel device %p destroyed while %u other device(s) still "
++                               "use its screen - their GPU work will fail\n",
++                       GetCurrentProcessId(), hRTDevice, wdevs_n);
++            }
++         }
++      }
++   }
++   ReleaseSRWLockExclusive(&wddm_lock);
++}
++
+ static struct wbo *
+ wddm_bo(uint32_t h)
+ {
+diff --git a/src/gallium/frontends/d3d10umd/Device.cpp b/src/gallium/frontends/d3d10umd/Device.cpp
+index 11b0907..e30307a 100644
+--- a/src/gallium/frontends/d3d10umd/Device.cpp
++++ b/src/gallium/frontends/d3d10umd/Device.cpp
+@@ -55,6 +55,9 @@ d3d10_create_screen(void);
+ EXTERN_C bool
+ d3d10_bind_runtime(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks,
+                    const void *pDXGIBaseCallbacks);
++/* G2b-3 (0045): the device is gone (after its screen reference is dropped). */
++EXTERN_C void
++d3d10_unbind_runtime(HANDLE hRTDevice);
+ 
+ static void APIENTRY DestroyDevice(D3D10DDI_HDEVICE hDevice);
+ static void APIENTRY RelocateDeviceFuncs(D3D10DDI_HDEVICE hDevice,
+@@ -379,6 +382,7 @@ DestroyDevice(D3D10DDI_HDEVICE hDevice)   // IN
+ 
+    pipe->destroy(pipe);
+    pDevice->screen->destroy(pDevice->screen);
++   d3d10_unbind_runtime(pDevice->hDevice);   /* G2b-3 (0045) */
+ }
+ 
+ 
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index 96e8028..ed84509 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -49,6 +49,8 @@ extern "C" __declspec(thread) unsigned d3d10_present_alloc = 0;
+ /* G13 (0025): the kernel allocation of the present's destination resource (DXGI_DDI_ARG_PRESENT.hDstResource), 0
+  * if none - passed on as DXGIDDICB_PRESENT.hDstAllocation. */
+ extern "C" __declspec(thread) unsigned d3d10_present_dst = 0;
++/* G2b-3 (0045): presents so far (all threads) - opened shared resources are refreshed once per frame. */
++extern "C" unsigned d3d10_frame_gen = 1;
+ 
+ 
+ /*
+@@ -80,6 +82,7 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+    d3d10_present_flip = 0;
+    d3d10_present_alloc = 0;
+    d3d10_present_dst = 0;
++   d3d10_frame_gen++;
+ 
+    return S_OK;
+ }
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index 7aad6f8..e2c55e7 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -41,6 +41,7 @@
+ #include "util/u_math.h"
+ #include "util/u_rect.h"
+ #include "util/u_surface.h"
++#include "util/box.h"
+ #include "frontend/winsys_handle.h"   /* G13 0034: OpenResource over external memory */
+ 
+ 
+@@ -207,6 +208,64 @@ extern "C" int malikm_shared_create(void *hRTResource, unsigned w, unsigned h, u
+ /* G13: true when the device is bound to the maliwddm runtime (d3d10_gdi.c d3d10_bind_runtime result >= 0). */
+ extern "C" bool d3d10_runtime_is_maliwddm(void);
+ 
++/* G2b-3 (0045, run g2b3-4): DWM on Panfrost composed black. What it opens (the CDD shared primaries, the shadow
++ * surface) were imported with resource_from_handle(WINSYS_HANDLE_TYPE_SHARED, CPU pointer) - softpipe's
++ * external-memory path (0034); Panfrost takes the handle for a dma-buf fd, the import fails and a blank texture
++ * was used instead. On a GPU screen the texture is now an ordinary one, filled from the locked allocation when it
++ * is opened and again whenever it is sampled or copied from after a frame has been presented. */
++#include <windows.h>
++static SRWLOCK shared_lock = SRWLOCK_INIT;
++static Resource *shared_list[32];
++static unsigned shared_refreshes, shared_opens;
++
++static void
++shared_upload(struct pipe_context *pipe, Resource *r)
++{
++   struct pipe_box box;
++   u_box_2d(0, 0, r->resource->width0, r->resource->height0, &box);
++   pipe->texture_subdata(pipe, r->resource, 0, PIPE_MAP_WRITE | PIPE_MAP_DISCARD_WHOLE_RESOURCE, &box,
++                         r->shared_cpu, r->shared_pitch, 0);
++   r->shared_gen = d3d10_frame_gen;
++   if (++shared_refreshes == 1 || shared_refreshes % 500 == 0)
++      fprintf(stderr, "d3d10umd: pid %lu: shared resource refresh #%u (%ux%u, %u opened)\n",
++              GetCurrentProcessId(), shared_refreshes, r->resource->width0, r->resource->height0, shared_opens);
++}
++
++void
++d3d10_shared_refresh(struct pipe_context *pipe, Resource *pResource)
++{
++   if (pResource && pResource->shared_cpu && pResource->resource && pResource->shared_gen != d3d10_frame_gen)
++      shared_upload(pipe, pResource);
++}
++
++void
++d3d10_shared_refresh_texture(struct pipe_context *pipe, struct pipe_resource *texture)
++{
++   Resource *hit = NULL;
++   if (!texture || !shared_opens)
++      return;
++   AcquireSRWLockShared(&shared_lock);
++   for (unsigned i = 0; i < ARRAY_SIZE(shared_list); i++) {
++      if (shared_list[i] && shared_list[i]->resource == texture) {
++         hit = shared_list[i];
++         break;
++      }
++   }
++   ReleaseSRWLockShared(&shared_lock);
++   d3d10_shared_refresh(pipe, hit);
++}
++
++static void
++shared_forget(Resource *r)
++{
++   AcquireSRWLockExclusive(&shared_lock);
++   for (unsigned i = 0; i < ARRAY_SIZE(shared_list); i++)
++      if (shared_list[i] == r)
++         shared_list[i] = NULL;
++   ReleaseSRWLockExclusive(&shared_lock);
++   r->shared_cpu = NULL;
++}
++
+ void APIENTRY
+ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+                __in const D3D10DDIARG_CREATERESOURCE *pCreateResource,  // IN
+@@ -553,7 +612,36 @@ OpenResource(D3D10DDI_HDEVICE hDevice,                            // IN
+    templat.bind = PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_RENDER_TARGET | PIPE_BIND_DISPLAY_TARGET;
+    templat.usage = PIPE_USAGE_DEFAULT;
+ 
+-   if (cpu) {
++   const char *sname = screen->get_name ? screen->get_name(screen) : NULL;
++   bool gpu_screen = sname && strcmp(sname, "softpipe") != 0 && strcmp(sname, "llvmpipe") != 0;
++   if (cpu && gpu_screen) {
++      /* G2b-3 (0045): a copy the Mali can sample, kept current from the locked allocation */
++      templat.bind &= ~PIPE_BIND_DISPLAY_TARGET;
++      pResource->resource = screen->resource_create(screen, &templat);
++      if (pResource->resource) {
++         pResource->kmt_opened_locked = pOpenResource->pOpenAllocationInfo[0].hAllocation;
++         pResource->shared_cpu = cpu;
++         pResource->shared_pitch = pitch;
++         AcquireSRWLockExclusive(&shared_lock);
++         unsigned slot = ARRAY_SIZE(shared_list);
++         for (unsigned i = 0; i < ARRAY_SIZE(shared_list); i++) {
++            if (!shared_list[i]) {
++               shared_list[i] = pResource;
++               slot = i;
++               break;
++            }
++         }
++         shared_opens++;
++         ReleaseSRWLockExclusive(&shared_lock);
++         if (shared_opens <= 16)
++            fprintf(stderr, "d3d10umd: pid %lu: OpenResource alloc 0x%x %ux%u pitch %u fmt %u -> %s copy (slot %u)\n",
++                    GetCurrentProcessId(), pOpenResource->pOpenAllocationInfo[0].hAllocation, w, h, pitch, fmt,
++                    sname, slot);
++         shared_upload(pipe, pResource);
++      } else {
++         malikm_close_shared(pOpenResource->pOpenAllocationInfo[0].hAllocation);
++      }
++   } else if (cpu) {
+       struct winsys_handle wh;
+       memset(&wh, 0, sizeof wh);
+       wh.type = WINSYS_HANDLE_TYPE_SHARED;
+@@ -568,6 +656,10 @@ OpenResource(D3D10DDI_HDEVICE hDevice,                            // IN
+    if (!pResource->resource) {
+       templat.bind &= ~PIPE_BIND_DISPLAY_TARGET;
+       pResource->resource = screen->resource_create(screen, &templat);
++      if (shared_opens <= 16 || !cpu)
++         fprintf(stderr, "d3d10umd: pid %lu: OpenResource alloc 0x%x %ux%u fmt %u: %s - blank texture\n",
++                 GetCurrentProcessId(), pOpenResource->pOpenAllocationInfo[0].hAllocation, w, h, fmt,
++                 cpu ? "import failed" : "not lockable");
+    }
+    if (!pResource->resource) {
+       SetError(hDevice, E_OUTOFMEMORY);
+@@ -622,6 +714,8 @@ DestroyResource(D3D10DDI_HDEVICE hDevice,       // IN
+       malikm_primary_destroy(pResource->kmt_primary);
+       pResource->kmt_primary = 0;
+    }
++   if (pResource->shared_cpu)
++      shared_forget(pResource);   /* G2b-3 (0045) */
+    pipe_resource_reference(&pResource->resource, NULL);
+    if (pResource->kmt_opened_locked) {
+       /* after the texture that used the locked memory is gone (G13 0034) */
+@@ -832,6 +926,7 @@ ResourceCopy(D3D10DDI_HDEVICE hDevice,          // IN
+    struct pipe_context *pipe = pDevice->pipe;
+    Resource *pDstResource = CastResource(hDstResource);
+    Resource *pSrcResource = CastResource(hSrcResource);
++   d3d10_shared_refresh(pipe, pSrcResource);   /* G2b-3 (0045) */
+    struct pipe_resource *dst_resource = pDstResource->resource;
+    struct pipe_resource *src_resource = pSrcResource->resource;
+    bool compatible;
+@@ -906,6 +1001,7 @@ ResourceCopyRegion(D3D10DDI_HDEVICE hDevice,                // IN
+    struct pipe_context *pipe = pDevice->pipe;
+    Resource *pDstResource = CastResource(hDstResource);
+    Resource *pSrcResource = CastResource(hSrcResource);
++   d3d10_shared_refresh(pipe, pSrcResource);   /* G2b-3 (0045) */
+    struct pipe_resource *dst_resource = pDstResource->resource;
+    struct pipe_resource *src_resource = pSrcResource->resource;
+ 
+diff --git a/src/gallium/frontends/d3d10umd/Shader.cpp b/src/gallium/frontends/d3d10umd/Shader.cpp
+index df6ffa1..85be507 100644
+--- a/src/gallium/frontends/d3d10umd/Shader.cpp
++++ b/src/gallium/frontends/d3d10umd/Shader.cpp
+@@ -237,6 +237,8 @@ SetShaderResources(mesa_shader_stage shader_type,                  // IN
+             CastPipeShaderResourceView(phShaderResourceViews[i]);
+       if (Offset + i < PIPE_MAX_SHADER_SAMPLER_VIEWS) {
+          sampler_views[Offset + i] = sampler_view;
++         if (sampler_view)   /* G2b-3 (0045): an opened shared resource's copy, current */
++            d3d10_shared_refresh_texture(pipe, sampler_view->texture);
+       } else {
+          if (sampler_view) {
+             LOG_UNSUPPORTED(true);
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index 2c79223..03a238b 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -176,8 +176,20 @@ struct Resource
+    unsigned kmt_primary;
+    /* G13 (0034): an opened shared allocation whose lock backs the texture (unlocked in DestroyResource), 0 if none. */
+    unsigned kmt_opened_locked;
++   /* G2b-3 (0045): on a GPU screen (Panfrost) an opened shared allocation cannot back the texture (the Mali only
++    * reads its own BOs): the texture is a copy, refreshed from the locked allocation (shared_cpu, shared_pitch)
++    * when it is used and a frame has been presented since the last refresh (shared_gen, d3d10_frame_gen). */
++   const void *shared_cpu;
++   unsigned shared_pitch;
++   unsigned shared_gen;
+ };
+ 
++/* G2b-3 (0045): Resource.cpp - refresh an opened shared resource's GPU copy (no-op for anything else). */
++void d3d10_shared_refresh(struct pipe_context *pipe, Resource *pResource);
++void d3d10_shared_refresh_texture(struct pipe_context *pipe, struct pipe_resource *texture);
++/* DxgiFns.cpp: incremented by every Present. */
++extern "C" unsigned d3d10_frame_gen;
++
+ 
+ static inline Resource *
+ CastResource(D3D10DDI_HRESOURCE hResource)
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index 3c13520..3d607ed 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -223,6 +223,20 @@ d3d10_bind_runtime(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+ #endif
+ }
+ 
++#ifdef GALLIUM_PANFROST
++void malikm_unbind_d3dddi(HANDLE hRTDevice);
++#endif
++/* G2b-3 (0045): DestroyDevice, after the device dropped its screen. */
++void
++d3d10_unbind_runtime(HANDLE hRTDevice)
++{
++#ifdef GALLIUM_PANFROST
++   malikm_unbind_d3dddi(hRTDevice);
++#else
++   (void)hRTDevice;
++#endif
++}
++
+ 
+ /* exynos-woa G2b-3 (notes/beyond1-port.md 20:26): DWM on Panfrost died in ucrtbase with c0000409 = abort() from a
+  * Mesa assert, and DWM has no console - the message and the place were lost. Every process that creates a screen
+-- 
+2.43.0
+

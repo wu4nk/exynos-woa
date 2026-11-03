@@ -610,3 +610,18 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   slots, live BOs, pid) and every newly failed job (js, fault status/address, jobs done, pid) without MALIKM_TRACE;
   d3d10_gdi.c diag: test-open the log before freopen(stderr) (fixes the UWP crashes).
 - 23:20 release UMD 0042-0044: sha256 3b8533e55886cd62d9d57be3937637cad7d5ccabaa8986b5e52c00ff2a413d5d (base 0x180000000).
+
+### G2b-3 run 4 (UMD 3b8533e5, 2026-11-03) - DEVICE RESULT
+- Panel: black for a long time, then red/green/blue/white = d3dfill exclusive fullscreen drawn by the Mali (first GPU
+  image on the S10 panel). DWM pid 708 on Panfrost: no Render failures, KMD 179 presents (183 blts), still black.
+- Cause 1 (black desktop): OpenResource imported the CDD shared primaries / shadow surface with
+  resource_from_handle(WINSYS_HANDLE_TYPE_SHARED, CPU pointer) - softpipe's external-memory path (0034). Panfrost
+  takes the handle for a dma-buf fd, the import fails, and a blank texture was composed instead.
+- Cause 2 (Explorer 382 x Render 0xC0000001): its second CreateDevice re-bound the shim (single global `ddi`) to the
+  new device while u_pipe_screen_lookup_or_create handed that device the first one's screen
+  ("os_same_file_description couldn't determine ..."): BOs owned by device A submitted on device B.
+- One job fault per boot (0x243002c2 @0x10, before jobs done 75) is KMD-global, seen by every process: still open.
+- Patch 0045 (UMD 12a5e28b): GPU screen -> shared resources are ordinary textures filled from the locked allocation
+  at open and re-filled when sampled / copied from after a Present (d3d10_frame_gen); the first GPU device stays the
+  kernel device, later ones share it, DestroyDevice unbinds (malikm_unbind_d3dddi); per-process present log
+  (runtime primary / flip / blt ok/failed) and OpenResource log.
