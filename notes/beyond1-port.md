@@ -591,3 +591,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   BUFFER, SVIEWINFO on both) -> nir_validate after ttn and after nir_lower_samplers -> RESULT: PASS. Lowered indices:
   (tex 1, samp 0), (tex 3, samp 2), shadow ops shadow=1 with comparator, txd 3 srcs, txf 2D coord+lod, txf BUF coord
   only, txs 2D with lod + query_levels, txs BUF no lod. No deref left.
+- 22:55 release UMD with 0042+0043: sha256 e87c4f4d02320030a84e4e36402afb4c27edde51f19872e915f60588d5add940 (base 0x180000000, subsystem 6.2).
