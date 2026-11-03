@@ -571,3 +571,17 @@ Next: G2b-3 gpu-s10 gpu-dwm (DWM on Panfrost).
   full/gpu/gpu-dwm; s10-log v1.8 + twrp-log v1.1 collect umd-log.txt.
 - 20:34 release UMD built: buildtype release, optimization 3, b_ndebug true (-DNDEBUG on 1214 build lines), base 0x180000000, subsystem 6.2, contains the 0042 diag ('release (asserts off)'), sha256 a2805d23f7af517689035b4f7b460890d8480dc0dd3125c8c7962ed1d4e52369. Debug 9fb3fe45 kept in scratchpad/mali/umd-debug-9fb3fe45.
 - 21:44 gpu-s10 v1.9 gpu-dwm: Clear-NoGpuFlag found no flag on lettered drives, mountvol /s -> 'The parameter is incorrect'. v1.10: fallback over Get-Volume FAT* volumes via \\?\Volume{GUID}\ paths ([IO.File] Exists/Delete) before mountvol.
+
+## G2b-3 run 2 (2026-11-03 22:29, release UMD a2805d23 + 0042 diag) - ROOT CAUSE: tgsi_to_nir lacks SM4 SAMPLE
+umd-log.txt: every dwm.exe (97 x) "screen: driver 'panfrost' ... release (asserts off)" then "unknown TGSI opcode:
+SAMPLE" -> SIGNAL 22 (stack maliumd+0x16e8 -> ucrtbase abort); LogonUI.exe (3 x) "unknown TGSI opcode: SAMPLE_I".
+= tgsi_to_nir.c ttn_emit_instruction default case: fprintf + abort(). d3d10umd (ShaderTGSI.c sample_ureg_emit)
+emits the Shader Model 4 opcodes (separate SVIEW + SAMP operands, TGSI_TEXTURE_UNKNOWN, target in the SVIEW decl);
+softpipe interprets TGSI directly so the S10e softpipe runs never hit it; Panfrost goes through NIR.
+Not an assert at all - the release build changed nothing (abort() is unconditional).
+Mesa patch 0043 (tgsi_to_nir.c): ttn_sample() for SAMPLE/SAMPLE_B/SAMPLE_C/SAMPLE_C_LZ/SAMPLE_D/SAMPLE_L/SAMPLE_I/
+SAMPLE_I_MS, ttn_sviewinfo() for SVIEWINFO; separate "sview" (binding = SVIEW) and bare "samp" (binding = SAMP)
+variables -> nir_lower_samplers gives texture_index/sampler_index; sview_targets[] recorded from DCL SVIEW;
+SAMPLER_VIEW operands return NULL in ttn_get_src (as SAMPLER); result swizzled by the SVIEW operand (tgsi_exec
+semantics); ddx/ddy/offset sizes = dim coordinate components (explicit - nir_tex_instr_src_size needs src_type).
+Cross-compiles clean; native debug test (nir_validate on) being built.
