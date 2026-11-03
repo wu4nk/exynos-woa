@@ -1,0 +1,31 @@
+From 40b8a7a1ce76607198d8be3cbe4e8f0a4f9af7db Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 02:18:39 +0700
+Subject: [PATCH] G2b-3: pin maliumd.dll (handlers outlive an unload)
+
+---
+ src/gallium/targets/d3d10umd/d3d10_gdi.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index d34f8b3..ab88d8f 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -371,6 +371,14 @@ s10_diag_init(const char *driver)
+       }
+    }
+    _set_error_mode(_OUT_TO_STDERR);
++   /* G2b-3 (0049): pin maliumd.dll - the SIGABRT handler and the vectored handler point into it, and a process
++    * that unloads the UMD (DWM recreating its device, run g2b3-10: "dwm.exe maliumd.dll_unloaded c0000005 +0x184c")
++    * then jumped into freed code at its next access violation. */
++   {
++      HMODULE self = NULL;
++      GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
++                         (LPCSTR)(void *)s10_on_exception, &self);
++   }
+    signal(SIGABRT, s10_on_abort);
+    AddVectoredExceptionHandler(1, s10_on_exception);   /* G2b-3 (0047) */
+    s10_log("screen: driver '%s', maliumd built %s %s, %s", driver ? driver : "?", __DATE__, __TIME__,
+-- 
+2.43.0
+

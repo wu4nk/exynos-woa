@@ -12,6 +12,9 @@ F=(-O2 -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Wl,--image-base=0x140000000 -inclu
    -I"$W/ddi" -I"$T/include")
 "$CC" "${F[@]}" -o "$O/m5test.exe" "$T/tools/m5test/m5test.c"
 "$CC" "${F[@]}" -o "$O/d3dfill.exe" "$T/tools/d3dfill/d3dfill.c" -ld3d11 -ldxgi -luser32
+# comprobe (C++: D2D / DComp headers): the D3D11 / DXGI / D2D / DirectComposition steps the XAML shell hosts make
+"$W/tc/zig-c++" -O2 -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Wl,--image-base=0x140000000 -o "$O/comprobe.exe" \
+   "$T/tools/comprobe/comprobe.cpp" -ld3d11 -ldxgi -ld2d1 -ldcomp -luser32
 rm -f "$O"/*.pdb
-python3 -I "$(dirname "$0")/pe-set-subsys.py" "$O/m5test.exe" "$O/d3dfill.exe"
-(cd "$O" && sha256sum m5test.exe d3dfill.exe > SHA256SUMS && cat SHA256SUMS)
+python3 -I "$(dirname "$0")/pe-set-subsys.py" "$O/m5test.exe" "$O/d3dfill.exe" "$O/comprobe.exe"
+(cd "$O" && sha256sum m5test.exe d3dfill.exe comprobe.exe > SHA256SUMS && cat SHA256SUMS)

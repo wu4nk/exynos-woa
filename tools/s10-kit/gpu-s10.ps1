@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.13) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.14) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -37,7 +37,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.13  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.14  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -383,7 +383,7 @@ switch ($Action) {
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
     if ($m.GpuEnable -ne 1) { Fail 'GpuEnable is not 1 - run .\gpu-s10.ps1 gpu first (and m5test / fill)' }
     Set-GalliumDriver $null
-    Set-FaultDump 'dwm.exe,LogonUI.exe,explorer.exe'   # v1.13: decode faulting job chains of these (UMD 0048+)
+    Set-FaultDump 'LogonUI.exe'   # v1.14: DWM's faults are gone (0047 zero UBO); LogonUI keeps one early fault (UMD 0048+)
     Set-TdrDelay $true          # v1.11: the KMD's 2 s job timeout before the TDR (0x7E bugcheck, run g2b3-5)
     Set-GpuWatch $true          # v1.8: make sure the logging tasks exist
     Initialize-UmdLog

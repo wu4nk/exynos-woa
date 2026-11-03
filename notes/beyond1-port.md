@@ -713,3 +713,22 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   110.502 s, CollectDbgInfo 110.540 s) with HB submits == fences (0x33b) 0.9 s before: again no render packet
   outstanding - fits the preemption-timeout reading (EnablePreemption was not yet set: kit v1.11).
 - Re-sent the 0048 kit as UMD-0048-a5c3d572-kit-v1.13.zip.
+
+### G2b-3 run 10 (UMD 0048 a5c3d572, kit v1.13, 2026-11-04 02:07) - DEVICE RESULT
+- User: ran "very long", and FRAGMENTS of a window appeared (the "update driver?" prompt) - first desktop content
+  composed by DWM on the Mali. No bugcheck (EnablePreemption 0 works; the TDR/0x7E is gone).
+- GPU job faults: ONE per boot (LogonUI, jobs done 80) - DWM's are gone with the 0047 zero UBO. LogonUI's decoded
+  chain still shows "ubuf_0[0] = 0x0" in a fragment shader whose ubo_mask evidently lacks bit 0 (pushed?), so the
+  null UBO is not necessarily what faults there; open.
+- "_open(NUL) failed (errno 13)" confirmed in 10 AppContainer processes; the pipe fallback made them Panfrost.
+- No SetError at all in the whole boot. XAML hosts still crash-loop (explorer 13, SearchHost 15, StartMenu 15,
+  TextInputHost 13 instances): Windows.UI.Xaml.dll+0x253ce4 0xC000027B, WER P4 combase.dll, P7 80070057 =
+  E_INVALIDARG originated in combase - from a runtime/DXGI/DComp call, not from the UMD.
+- WindowsTerminal: d3d11.dll+0x46f4 c0000005 (read of 0x8), from dxgi+0xa77c / d2d1 - 4x.
+- DWM: one "maliumd.dll_unloaded" c0000005 +0x184c = the 0047 vectored handler after the UMD was unloaded
+  (fixed: 0049 pins maliumd.dll); one dwmcore c00001ad (out of memory) - watch DWM memory (gpu-watch v1.1).
+- Next: comprobe.exe (drivers/MaliG76Wddm/tools/comprobe) at logon via gpu-fill v1.1 - D3D11 FL, format support,
+  shared / keyed-mutex / NT-handle textures, D2D draw, DComp surfaces, composition swap chain, each HRESULT.
+  Suspect: WDDM 1.3 KMD (adapter.c DXGKDDI_WDDMv1_3) lacks what Win11's composition expects (NT handles etc.).
+- 0049 UMD d9a93d39; kit v1.14 (S10_FAULTDUMP=LogonUI.exe only - DWM no longer waits per job), gpu-fill v1.1,
+  gpu-watch v1.1. Zip: S10-GPU-0049-kit-v1.14.zip.

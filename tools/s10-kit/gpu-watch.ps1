@@ -1,5 +1,5 @@
 <#
-  gpu-watch.ps1 (v1.0) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
+  gpu-watch.ps1 (v1.1) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
   "S10 GPU watch", SYSTEM, at startup). For boots where the phone is too slow to use (G2b-1 2026-11-03: no taskbar
   icons, no touch keyboard): nothing has to be typed, and nothing depends on the PRAM surviving (a TWRP boot destroys
   it). Every 15 s for 10 minutes it appends to C:\S10Prov\gpuwatch.txt (NTFS - readable from TWRP:
@@ -35,7 +35,7 @@ function Mali-Pram {
 
 $up0 = [Environment]::TickCount
 W ''
-W "===== gpu-watch v1.0 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
+W "===== gpu-watch v1.1 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
 try {
   $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters' -ErrorAction Stop
   W ("mode registry: FullAdapter {0} GpuEnable {1}  machine GALLIUM_DRIVER '{2}'" -f $p.FullAdapter, $p.GpuEnable,
@@ -65,6 +65,10 @@ for ($i = 0; $i -lt 40; $i++) {
   }
   $prev = $now
   $out.Add('  top: ' + (($d | Sort-Object D -Descending | Select-Object -First 6 | ForEach-Object { '{0} {1:N1}s' -f $_.N, $_.D }) -join ', '))
+  # v1.1: DWM's memory (run g2b3-10: one DWM died with c00001ad, out of memory) and the shell hosts' restarts
+  $out.Add('  mem: ' + ((Get-Process dwm, explorer, SearchHost, StartMenuExperienceHost, TextInputHost -ErrorAction SilentlyContinue |
+    ForEach-Object { '{0}#{1} priv {2:N0} MB ws {3:N0} MB up {4:N0} s' -f $_.Name, $_.Id, ($_.PrivateMemorySize64 / 1MB), ($_.WorkingSet64 / 1MB),
+      ((Get-Date) - $_.StartTime).TotalSeconds }) -join ' | '))
   ($out -join "`r`n") | Add-Content $Log -Encoding ascii
 
   if (-not $m5done -and $up -ge 60) {
