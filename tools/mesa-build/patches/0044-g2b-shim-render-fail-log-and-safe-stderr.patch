@@ -1,0 +1,88 @@
+From a0edbbac7872c25e0be13c0268c18bd1ec844579 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Tue, 3 Nov 2026 23:05:18 +0700
+Subject: [PATCH] G2b-3: shim always logs Render failures / faulted jobs
+ (rate-limited); diag log only redirects stderr when the file opens
+
+---
+ include/win32-compat/malikm_drm.c        | 25 ++++++++++++++++++------
+ src/gallium/targets/d3d10umd/d3d10_gdi.c | 14 +++++++++++--
+ 2 files changed, 31 insertions(+), 8 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index a81af42..facddf6 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -917,16 +917,18 @@ wddm_idle(void)
+    }
+    if (ret == 0)
+       wdead_flush();
+-   if (ret == 0 && trace_on()) {
++   /* exynos-woa G2b-3 0044: always (not only with MALIKM_TRACE) - DWM's black screen on the S10 had one faulted
++    * job (fault 0x223002c2 @0x10) and nothing else to go on. */
++   if (ret == 0) {
+       /* A job that failed since the last wait, with the BO trace above it
+        * that says which buffer its fault address belongs to. */
+       static uint32_t failed_seen;
+       MW_ESCAPE_STATS_DATA st = {0};
+       st.Code = MW_ESCAPE_STATS;
+       if (w_escape(&st, sizeof(st)) >= 0 && st.JobsFailed != failed_seen) {
+-         fprintf(stderr, "malikm-wddm: %u job(s) failed by now: js 0x%x fault 0x%x @0x%llx\n",
+-                 st.JobsFailed, st.LastJsStatus, st.LastFaultStatus,
+-                 (unsigned long long)st.LastFaultAddress);
++         fprintf(stderr, "malikm-wddm: pid %lu: %u job(s) failed by now: js 0x%x fault 0x%x @0x%llx (jobs done %u)\n",
++                 GetCurrentProcessId(), st.JobsFailed, st.LastJsStatus, st.LastFaultStatus,
++                 (unsigned long long)st.LastFaultAddress, st.JobsDone);
+          failed_seen = st.JobsFailed;
+       }
+    }
+@@ -1493,8 +1495,19 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       c->Jc = a->jc;
+       NTSTATUS st = w_render(sizeof(*c), n);
+       if (st < 0) {
+-         if (trace_on())
+-            fprintf(stderr, "malikm-wddm: Render failed 0x%08lx\n", (unsigned long)st);
++         /* exynos-woa 0044: always, rate-limited - the S10's DWM got 364 x "panfrost_batch_submit failed: 5" and the
++          * status was never printed. */
++         static unsigned render_fails;
++         render_fails++;
++         if (trace_on() || render_fails <= 8 || render_fails % 100 == 0) {
++            uint32_t live = 0;
++            for (uint32_t i = 0; i < wbo_cap; i++)
++               live += wbo[i].h != 0;
++            fprintf(stderr, "malikm-wddm: pid %lu: Render failed 0x%08lx (#%u): jc 0x%llx slot %u, %u BOs named, "
++                    "%u listed of %u slots, %u live BOs, ddi %d\n",
++                    GetCurrentProcessId(), (unsigned long)st, render_fails, (unsigned long long)a->jc, c->Slot,
++                    named, n, walloc_size, live, ddi.on);
++         }
+          return -MK_EIO;
+       }
+       wseq++;
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index ff229e7..3c13520 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -298,8 +298,18 @@ s10_diag_init(const char *driver)
+       return;
+    CreateDirectoryA("C:\\ProgramData\\S10e", NULL);
+    CreateDirectoryA(S10_LOG_DIR, NULL);
+-   if (freopen(S10_LOG, "a", stderr) != NULL)
+-      setvbuf(stderr, NULL, _IONBF, 0);
++   /* 0044: test the file first. freopen() closes stderr even when it then fails to open the file, and the next
++    * fprintf(stderr) hits ucrt's invalid-parameter fail-fast (c0000409 at ucrtbase+0x7550c): AppContainer processes
++    * (TextInputHost - the touch keyboard -, SearchHost, StartMenuExperienceHost) cannot write ProgramData and died
++    * that way on the S10 (2026-11-03 23:02). */
++   {
++      FILE *t = fopen(S10_LOG, "a");
++      if (t != NULL) {
++         fclose(t);
++         if (freopen(S10_LOG, "a", stderr) != NULL)
++            setvbuf(stderr, NULL, _IONBF, 0);
++      }
++   }
+    _set_error_mode(_OUT_TO_STDERR);
+    signal(SIGABRT, s10_on_abort);
+    s10_log("screen: driver '%s', maliumd built %s %s, %s", driver ? driver : "?", __DATE__, __TIME__,
+-- 
+2.43.0
+

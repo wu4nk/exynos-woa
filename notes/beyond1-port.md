@@ -592,3 +592,20 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   (tex 1, samp 0), (tex 3, samp 2), shadow ops shadow=1 with comparator, txd 3 srcs, txf 2D coord+lod, txf BUF coord
   only, txs 2D with lod + query_levels, txs BUF no lod. No deref left.
 - 22:55 release UMD with 0042+0043: sha256 e87c4f4d02320030a84e4e36402afb4c27edde51f19872e915f60588d5add940 (base 0x180000000, subsystem 6.2).
+
+## G2b-3 run 3 (2026-11-03 23:02, UMD e87c4f4d = 0042+0043) - DWM survives, submits fail with EIO
+- umd-log (new build 22:43:22): ONE dwm.exe screen (no crash loop - 0043 fixed the SAMPLE abort), LogonUI, TabTip,
+  Explorer, SearchHost x6, TextInputHost x12 on Panfrost; then 364 x "MESA: error: panfrost_batch_submit failed: 5"
+  (EIO = the shim's MALIKM_NR_PANFROST_SUBMIT when w_render/D3DKMTRender fails - status printed only with
+  MALIKM_TRACE). gpuwatch (that boot, 65 s): KMD "renders 550, jobs done 549 failed 1, js 0x8 fault 0x223002c2
+  @0x10, irqs 550, resets 1", allocations 318, aperture maps 231 (fails 0); m5test still PASS after the fault ->
+  the GPU itself recovered. AS fault 0xC2 = translation fault, access READ, VA 0x10 = NULL + 16 (a NULL descriptor
+  pointer); not explained yet. No Display/TDR event in the System log.
+- UWP crashes TextInputHost / SearchHost / StartMenuExperienceHost: ucrtbase+0x7550c c0000409 = invalid-parameter
+  fail-fast. Cause = OUR 0042: freopen(stderr) closes stderr even when it then fails (AppContainer cannot write
+  C:\ProgramData\S10e\umd), next fprintf(stderr) -> invalid parameter. TextInputHost is the touch keyboard.
+- Ruled out by reading Panfrost: txf without a bound sampler (panfrost_upload_wa_sampler), texture table shorter
+  than the shader's texture_count (alloc MAX2(actual, needed), null textures).
+- Mesa patch 0044: shim prints every Render failure (first 8, then every 100th; NTSTATUS, jc, slot, named/listed/
+  slots, live BOs, pid) and every newly failed job (js, fault status/address, jobs done, pid) without MALIKM_TRACE;
+  d3d10_gdi.c diag: test-open the log before freopen(stderr) (fixes the UWP crashes).
