@@ -409,3 +409,12 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
   UMD/shim (comments only); DDI *_SUPPORTED versions are fixed per DDI, not per WDK header build.
 - umd-test.ps1 v1.0 (display-only mode, no reboot): LoadLibraryEx as datafile + real load, GetLastError,
   OpenAdapter10/_2 exports -> C:\S10Prov\umd-test.txt. Next decision depends on it.
+- 15:30 umd-test on the phone (display-only): process ARM64/64-bit; maliumd.dll sha256 46e5620f... (= the build);
+  "map as data" OK; **LOAD: FAIL error 193 (ERROR_BAD_EXE_FORMAT)**. So the loader rejects the image (or one it
+  pulls in) - the D3D runtime never had a UMD; DWM fell back and died. Not a Mesa/KMD logic problem.
+- Header review (llvm-readobj + pefile): AArch64 0xAA64, DLL|EXEC|LAA, DYNAMIC_BASE|HIGH_ENTROPY|NX, sections
+  page-aligned, raw ranges contiguous up to EOF 0xDE8800, SizeOfImage 0xE20000 consistent, relocs DIR64 only,
+  TLS dir 37 KB, debug dir = .buildid; pefile: no warnings. Import directory RVA odd (0xDB3995, right after the
+  exports) - but the tiny zig test DLLs have the same, so it is lld's normal layout, not proof.
+- Bisect set umd-bisect.zip (same zig 0.13 toolchain): t1-c (plain C), t2-tls (36 KB __thread), t3-cxx (libc++),
+  t4-synch (WaitOnAddress through the dlltool-made libsynchronization.a + gdi32). Each through umd-test.ps1.
