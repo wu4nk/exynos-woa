@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.3) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.4) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -25,7 +25,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.3  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.4  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -43,10 +43,19 @@ $UmdDst = "$env:SystemRoot\System32\maliumd.dll"   # MaliG76Wddm.inf UserModeDri
 # v1.3: \S10EDIAG\nogpu.flg on the ESP hides GPU0 (rescue). 'display' and 'full' remove it, so the next boot
 # shows GPU0 again in the mode just written.
 function Clear-NoGpuFlag {
+  # v1.4: the ESP may already be mounted (an earlier "mountvol S: /s" never undone) - then mountvol /s on another
+  # letter fails. Look on every mounted drive first.
+  foreach ($d in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue) {
+    $f = Join-Path $d.Root 'S10EDIAG\nogpu.flg'
+    if (Test-Path $f) { Remove-Item $f -Force; Ok "nogpu.flg removed ($f) - GPU0 is back on the next boot"; return }
+  }
   $l = @('S', 'R', 'Q', 'P', 'O') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
   if (-not $l) { Warn 'no free drive letter to mount the ESP - delete \S10EDIAG\nogpu.flg by hand'; return }
   mountvol "${l}:" /s 2>$null
-  if (-not (Test-Path "${l}:\")) { Warn 'could not mount the ESP - delete \S10EDIAG\nogpu.flg by hand'; return }
+  if (-not (Test-Path "${l}:\")) {
+    Warn 'could not mount the ESP - if GPU0 was hidden it STAYS hidden: in TWRP run  adb shell rm /cache/S10EDIAG/nogpu.flg'
+    return
+  }
   $f = "${l}:\S10EDIAG\nogpu.flg"
   if (Test-Path $f) { Remove-Item $f -Force; Ok 'nogpu.flg removed from the ESP - GPU0 is back on the next boot' }
   else { Info 'no nogpu.flg on the ESP' }
@@ -164,9 +173,21 @@ switch ($Action) {
     } elseif (Get-Service MaliG76Wddm -ErrorAction SilentlyContinue) {
       Info 'GPU0 hidden (nogpu.flg) but MaliG76Wddm is installed - writing the mode anyway, the flag is removed below'
     } else { Fail 'no GPU0 and MaliG76Wddm not installed - run .\gpu-s10.ps1 display first' }
-    $src = @((Join-Path $PSScriptRoot 'maliumd.dll'), (Join-Path $Out 'maliumd.dll'), (Join-Path $Out 'umd\maliumd.dll')) |
-      Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $src) { Fail 'no maliumd.dll next to this script, in out-gpu\ or out-gpu\umd\ - copy it there first' }
+    # v1.4: every candidate is checked; images based below 4 GB (zig's default 0x10000000, the 46e5620f build)
+    # are refused by Windows ARM64 with LoadLibrary 193 - skip them; of the rest the newest file wins.
+    $cands = @((Join-Path $PSScriptRoot 'maliumd.dll'), (Join-Path $PSScriptRoot 'fix\maliumd.dll'),
+               (Join-Path $Out 'maliumd.dll'), (Join-Path $Out 'umd\maliumd.dll')) | Where-Object { Test-Path $_ }
+    $good = @()
+    foreach ($c in $cands) {
+      $b = [IO.File]::ReadAllBytes($c)
+      $pe = [BitConverter]::ToInt32($b, 0x3C)
+      $base = [BitConverter]::ToUInt64($b, $pe + 24 + 24)
+      $hh = (Get-FileHash $c -Algorithm SHA256).Hash.ToLower().Substring(0, 8)
+      if ($base -lt 0x100000000) { Warn ("skip {0} (sha256 {1}..., image base 0x{2:X} < 4 GB - will not load)" -f $c, $hh, $base) }
+      else { Info ("candidate {0} (sha256 {1}..., base 0x{2:X}, {3})" -f $c, $hh, $base, (Get-Item $c).LastWriteTime.ToString('s')); $good += Get-Item $c }
+    }
+    if (-not $good) { Fail 'no usable maliumd.dll (base >= 4 GB) next to this script, in fix\, out-gpu\ or out-gpu\umd\' }
+    $src = ($good | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
     $sum = Join-Path (Split-Path $src) 'SHA256SUMS'
     $h = (Get-FileHash $src -Algorithm SHA256).Hash.ToLower()
     if ((Test-Path $sum) -and -not (Select-String -Path $sum -Pattern $h -SimpleMatch -Quiet)) {
