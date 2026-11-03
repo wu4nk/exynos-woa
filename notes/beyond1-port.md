@@ -706,3 +706,10 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   of its own -> it is another process's job. 0048: S10_FAULTDUMP takes a list; kit v1.13 sets
   dwm.exe,LogonUI.exe,explorer.exe. Kit v1.13 also prefers the maliumd.dll next to the script (wrong RTC).
 - 0048 UMD a5c3d572.
+
+### G2b-3 run 9 (2026-11-04 01:49) - NOT a 0048 run
+- gpu-report "v1.11 gpu-dwm", System32 maliumd e3697685 (0046): g2b3e-umd.zip unpacked instead of g2b3g (e/g look
+  alike). BUGCHECK 0x7E again at ...011944 (same in-page offset 0x1944 as runs 5 and 8), TDR (QueryCurrentFence
+  110.502 s, CollectDbgInfo 110.540 s) with HB submits == fences (0x33b) 0.9 s before: again no render packet
+  outstanding - fits the preemption-timeout reading (EnablePreemption was not yet set: kit v1.11).
+- Re-sent the 0048 kit as UMD-0048-a5c3d572-kit-v1.13.zip.
