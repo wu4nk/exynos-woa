@@ -1,0 +1,159 @@
+From bf8a43eaf18966f6ce844931366a36ea60e1dcf6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 06:26:20 +0700
+Subject: [PATCH] G2b-3: sampling profiler for dwm.exe (malikm-prof)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ include/win32-compat/malikm_drm.c | 128 ++++++++++++++++++++++++++++++
+ 1 file changed, 128 insertions(+)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 2ae8701..87b9bf4 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -2442,12 +2442,140 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+    }
+ }
+ 
++/* ---- G2b-3 (0059): a sampling profiler for dwm.exe ----
++ * Run g2b3-20 (0058): DWM used one core fully in user mode (cpu user ~10 s per 10 s) for 0.7 presents/s, with
++ * almost no time waiting for the GPU or in the runtime's callbacks - the time goes into maliumd.dll's own code.
++ * Every ~5 ms a thread suspends the thread that last called into the shim, copies its registers and 4 KB of its
++ * stack (no locks, no allocation while it is suspended), resumes it, and files the first code address inside
++ * maliumd.dll (PC, else LR, else the first stack word in the image: a return address) in 64-byte bins. Every 10 s:
++ * the 16 busiest bins as image offsets (symbolize: llvm-symbolizer --obj=libgallium_d3d10.dll 0x180000000+off).
++ * dwm.exe only, or every process with S10_PROF=1. */
++static volatile DWORD wprof_tid;
++#define WPROF_BINS 2048
++static uint32_t wprof_key[WPROF_BINS], wprof_cnt[WPROF_BINS];
++
++static void
++wprof_file(uint32_t off)
++{
++   uint32_t k = (off >> 6) + 1, i = (k * 2654435761u) % WPROF_BINS;
++   for (int n = 0; n < WPROF_BINS; n++, i = (i + 1) % WPROF_BINS) {
++      if (wprof_key[i] == k || !wprof_key[i]) {
++         wprof_key[i] = k;
++         wprof_cnt[i]++;
++         return;
++      }
++   }
++}
++
++static DWORD WINAPI
++wprof_thread(void *arg)
++{
++   (void)arg;
++   HMODULE me = NULL;
++   GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++                      (LPCWSTR)(void *)wprof_thread, &me);
++   if (!me)
++      return 0;
++   const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)me;
++   const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const uint8_t *)me + dos->e_lfanew);
++   uintptr_t lo = (uintptr_t)me, hi = lo + nt->OptionalHeader.SizeOfImage;
++   static uint64_t stack[512];
++   uint32_t samples = 0, inside = 0, idle = 0;
++   DWORD t0 = GetTickCount(), cur = 0;
++   HANDLE th = NULL;
++   for (;;) {
++      Sleep(5);
++      DWORD tid = wprof_tid;
++      if (tid != cur) {
++         if (th)
++            CloseHandle(th);
++         th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, tid);
++         cur = tid;
++      }
++      if (th && SuspendThread(th) != (DWORD)-1) {
++         CONTEXT c;
++         memset(&c, 0, sizeof(c));
++         c.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
++         int ok = GetThreadContext(th, &c);
++         size_t got = 0;
++         if (ok)
++            ReadProcessMemory(GetCurrentProcess(), (void *)(uintptr_t)c.Sp, stack, sizeof(stack), (SIZE_T *)&got);
++         ResumeThread(th);
++         if (ok) {
++            samples++;
++            uintptr_t hit = 0;
++            if (c.Pc >= lo && c.Pc < hi)
++               hit = c.Pc;
++            else if (c.Lr >= lo && c.Lr < hi)
++               hit = c.Lr;
++            else
++               for (size_t i = 0; i < got / 8 && !hit; i++)
++                  if (stack[i] >= lo && stack[i] < hi)
++                     hit = stack[i];
++            if (hit) {
++               inside++;
++               wprof_file((uint32_t)(hit - lo));
++            } else {
++               idle++;
++            }
++         }
++      }
++      if (GetTickCount() - t0 >= 10000) {
++         if (samples) {
++            char line[1400];
++            int n = snprintf(line, sizeof(line), "malikm-prof: pid %lu: %u samples, %u in maliumd (%u elsewhere):",
++                             GetCurrentProcessId(), samples, inside, idle);
++            for (int top = 0; top < 16; top++) {
++               uint32_t best = 0, bi = 0;
++               for (uint32_t i = 0; i < WPROF_BINS; i++)
++                  if (wprof_cnt[i] > best) {
++                     best = wprof_cnt[i];
++                     bi = i;
++                  }
++               if (!best || n >= (int)sizeof(line) - 32)
++                  break;
++               n += snprintf(line + n, sizeof(line) - n, " +0x%x x%u", (wprof_key[bi] - 1) << 6, best);
++               wprof_cnt[bi] = 0;
++            }
++            fprintf(stderr, "%s\n", line);
++         }
++         memset(wprof_key, 0, sizeof(wprof_key));
++         memset(wprof_cnt, 0, sizeof(wprof_cnt));
++         samples = inside = idle = 0;
++         t0 = GetTickCount();
++      }
++   }
++}
++
++static void
++wprof_note(void)
++{
++   static int on = -1;
++   if (on < 0) {
++      char exe[MAX_PATH] = "";
++      GetModuleFileNameA(NULL, exe, sizeof(exe));
++      const char *b = strrchr(exe, '\\');
++      const char *e = getenv("S10_PROF");
++      on = (e && *e == '1') || _stricmp(b ? b + 1 : exe, "dwm.exe") == 0;
++      if (on) {
++         HANDLE t = CreateThread(NULL, 0, wprof_thread, NULL, 0, NULL);
++         if (t)
++            CloseHandle(t);
++         else
++            on = 0;
++      }
++   }
++   if (on)
++      wprof_tid = GetCurrentThreadId();
++}
++
+ static void
+ wddm_ioctl(int fd, DWORD code, void *buf, DWORD len)
+ {
+    MALIKM_DRM_HEADER *h = buf;
+    (void)len;
+ 
++   wprof_note();   /* 0059 */
+    AcquireSRWLockExclusive(&wddm_lock);
+    wcur = fd_ctx(fd);   /* 0053 */
+    switch (code) {
+-- 
+2.43.0
+

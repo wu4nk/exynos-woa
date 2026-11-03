@@ -896,3 +896,17 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   (0057 alone built too: 0b2a04ce). Kit zip S10-GPU-0058-umd-kit-v1.16.zip (maliumd.dll, SHA256SUMS,
   gpu-s10.ps1 v1.16). Run 20 asks for: gpu + gpu-dwm, reboot, ~3 min of use, s10-log; read the malikm-perf
   lines of dwm.exe first (presents/s, ms in RenderCb, waits, cpu user/kernel, compiles, tiled MB).
+
+### G2b-3 run 20 (UMD 0058 6a32cc30, 2026-11-04 06:20) - DEVICE RESULT: STILL LAGS; DWM IS CPU-BOUND IN maliumd
+- User: "vẫn lag". dwm.exe malikm-perf lines: 0.3-1.0 presents/s; cpu USER 7-10.6 s per ~10 s (one core full),
+  kernel 0.0-0.5 s; waits 1-16 per 10 s totalling 1-20 ms, polls almost never busy, drains 0, in flight 0;
+  RenderCb 0.16-4 ms per submit (3-40 submits per present); PresentCb 0.1 ms; 0-28 compiles (<=262 ms);
+  0 MB tiled on the CPU. BO churn large: +24..+87 BOs and 100-270 MB allocated per 10 s (live ~110 BOs, 140 MB).
+- So 0057 removed the GPU stalls (waits are now negligible) but the lag is CPU work inside the UMD itself,
+  ~1 s+ per frame, not shader compiles nor CPU tiling. Suspects: CPU copies/reads of WC aperture memory
+  (copy_resource on WRITE_DISCARD reallocation, util_resource_copy_region fallbacks, AFBC header init), CPU
+  fallbacks in d3d10umd.
+- 0059 (UMD c501d5ee): sampling profiler in dwm.exe (S10_PROF=1 for others) - every ~5 ms the shim's last
+  caller thread is suspended, its PC/LR/stack copied, the first maliumd.dll address binned (64 B); every 10 s a
+  "malikm-prof" line with the 16 busiest image offsets. Symbolize with llvm-symbolizer --obj=
+  build-arm64/src/gallium/targets/d3d10umd/libgallium_d3d10.dll 0x180000000+off (same build only).
