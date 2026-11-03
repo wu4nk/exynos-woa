@@ -507,3 +507,21 @@ JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never 
   once at uptime >= 60 s (60 s limit, killed on timeout). Appends to C:\S10Prov\gpuwatch.txt - NTFS, survives a
   forced reset, get-logs-twrp grabs S10Prov\*.txt. No keyboard needed on the slow boot, no PRAM/UEFI ordering.
   Both scripts parse clean (pwsh). Kit lists (push-to-windows, make-kit) include gpu-watch.ps1.
+
+## DEVICE RESULT 2026-11-03 17:34 - G2b-1: m5test PASS (first WDDM-submitted Mali job, any device)
+gpuwatch.txt (gpu-watch v1.0, boot with FullAdapter 1 GpuEnable 1, GALLIUM_DRIVER=softpipe):
+- m5test at uptime ~77 s: adapter GPU_ID 0x7211, stats before "gpu 1 renders 0 presents 151 submits 90 fence 90/90",
+  allocations 29, aperture maps 5 (fails 0), paging ops [5]=7 [6]=2; job: device/context/allocation at GPU VA
+  0x56f6000 -> rendered -> "jobs done 1 failed 0 timedout 0 js 0x0 fault 0x0 irqs 1 resets 0", target 0xc0ffee52 =
+  want, job header status 1, after 219 ms -> **PASS: the Mali ran a job submitted through WDDM**. The KMD GPU half
+  (soft reset, power, AS0/MMU, aperture map, JS0 submit, IRQ, fence) works on the S10 - the S10e never ran it.
+  (exit code line empty: Start-Process -NoNewWindow ExitCode not populated - cosmetic.)
+- Lag: HB p 0xac@77 s -> 0xe2@126 s = 54 presents / 49 s ~ 1.1 fps (G2a 2.3 fps); CPU _Total 26-44 %, interrupt
+  <=0.5 %, DPC <=8.5 %, 4-8k interrupts/s, ISR i=1 (only m5test's job) - no storm, no starvation by the KMD.
+  Cause (by reading memory.c:33-42): in GPU mode allocations live in the aperture segment with CacheCoherent FALSE
+  -> CPU mappings uncached/WC; DWM's softpipe renders on the CPU straight into them (reads included) -> crawls.
+  Expected to go away when the Mali renders (Panfrost). The KMD's CPU present blt (presents: 155 blts) also reads
+  uncached memory: a later performance item.
+- Next (no typing possible in this mode): gpu-fill.ps1 + gpu-s10 v1.7 register task "S10 GPU fill" (AtLogOn,
+  BUILTIN\Users, Limited): +45 s d3dfill.exe 3 with GALLIUM_DRIVER=panfrost (process env only) ->
+  C:\S10Prov\d3dfill-auto.txt incl. per-phase readback. Then G2b-3 (gpu-dwm).

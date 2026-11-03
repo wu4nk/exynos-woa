@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.6) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.7) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -34,7 +34,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.6  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.7  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -70,6 +70,20 @@ function Set-GpuWatch([bool]$On) {
     Ok "task '$name': every GPU-mode boot logs to C:\S10Prov\gpuwatch.txt (TWRP: adb pull /data/S10Prov/gpuwatch.txt)"
   } elseif (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $name -Confirm:$false; Ok "task '$name' removed"
+  }
+  # v1.7: G2b-2 at logon, in the user's session (d3dfill needs the interactive desktop): gpu-fill.ps1
+  $fname = 'S10 GPU fill'
+  if ($On) {
+    $ps1 = Join-Path $PSScriptRoot 'gpu-fill.ps1'
+    if (-not (Test-Path $ps1)) { Warn 'no gpu-fill.ps1 next to this script - no automatic d3dfill at logon'; return }
+    $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ps1`""
+    $trg = New-ScheduledTaskTrigger -AtLogOn
+    $prn = New-ScheduledTaskPrincipal -GroupId 'BUILTIN\Users' -RunLevel Limited
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+    Register-ScheduledTask -TaskName $fname -Action $act -Trigger $trg -Principal $prn -Settings $set -Force | Out-Null
+    Ok "task '$fname': 45 s after logon d3dfill draws red/green/blue/white on the Mali -> C:\S10Prov\d3dfill-auto.txt"
+  } elseif (Get-ScheduledTask -TaskName $fname -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $fname -Confirm:$false; Ok "task '$fname' removed"
   }
 }
 function Find-Tool($n) {
