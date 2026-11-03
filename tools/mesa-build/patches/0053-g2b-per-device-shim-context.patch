@@ -1,0 +1,699 @@
+From dc743ff77a58364a5eb4a1e4678d4796ab5a111f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 04:12:01 +0700
+Subject: [PATCH] G2b-3: one shim context and one Panfrost screen per runtime
+ device
+
+---
+ include/win32-compat/malikm_drm.c           | 307 +++++++++++++++-----
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp  |   3 +
+ src/gallium/frontends/d3d10umd/Resource.cpp |   4 +
+ src/util/os_file.c                          |  21 ++
+ 4 files changed, 255 insertions(+), 80 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 0449221..73a1869 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -37,7 +37,8 @@
+ /* The maliwddm backend, below. */
+ static int wddm_on(void);
+ static int wddm_init(void);
+-static void wddm_ioctl(DWORD code, void *buf, DWORD len);
++static void wddm_ioctl(int fd, DWORD code, void *buf, DWORD len);
++static void wtls_bind_fd(int fd);   /* below (0053) */
+ 
+ /* Linux errno, as the driver reports it, to the CRT's. Most agree. */
+ static int
+@@ -100,7 +101,9 @@ malikm_open(void)
+       if (wddm_init() == 0) {
+          if (trace_on())
+             fprintf(stderr, "malikm: no \\\\.\\MaliG52; using the maliwddm adapter\n");
+-         return token_fd();
++         int tfd = token_fd();
++         wtls_bind_fd(tfd);   /* 0053: this screen belongs to the device bound just before on this thread */
++         return tfd;
+       }
+       fprintf(stderr, "malikm: cannot open \\\\.\\MaliG52 (error %lu), and no maliwddm adapter\n",
+               (unsigned long)err);
+@@ -170,7 +173,7 @@ call(int fd, DWORD code, void *buf, DWORD len)
+       if (fake_on())
+          fake_ioctl(code, buf, len);
+       else
+-         wddm_ioctl(code, buf, len);
++         wddm_ioctl(fd, code, buf, len);
+       int r = ((MALIKM_DRM_HEADER *)buf)->Result;
+       if (r < 0) {
+          errno = crt_errno(-r);
+@@ -317,7 +320,7 @@ drmGetVersion(int fd)
+    if (fake_on())
+       fake_ioctl(IOCTL_MALIKM_VERSION, &v, sizeof(v));
+    else if (wddm_on())
+-      wddm_ioctl(IOCTL_MALIKM_VERSION, &v, sizeof(v));
++      wddm_ioctl(fd, IOCTL_MALIKM_VERSION, &v, sizeof(v));
+    else if (h == INVALID_HANDLE_VALUE ||
+             !DeviceIoControl(h, IOCTL_MALIKM_VERSION, &v, sizeof(v), &v, sizeof(v), &got, NULL) ||
+             got < sizeof(v)) {
+@@ -369,14 +372,13 @@ drmPrimeHandleToFD(int fd, uint32_t handle, uint32_t flags, int *prime_fd)
+    return -ENOSYS;
+ }
+ 
+-static int wddm_prime_to_handle(int prime_fd, uint32_t *handle);
++static int wddm_prime_to_handle(int fd, int prime_fd, uint32_t *handle);
+ 
+ int
+ drmPrimeFDToHandle(int fd, int prime_fd, uint32_t *handle)
+ {
+-   (void)fd;
+    /* G2b-3 (0046): an opened allocation (malikm_import_alloc) */
+-   int r = wddm_prime_to_handle(prime_fd, handle);
++   int r = wddm_prime_to_handle(fd, prime_fd, handle);
+    if (r < 0) {
+       errno = crt_errno(-r);
+       return -1;
+@@ -609,7 +611,7 @@ static struct {
+           Lock, Unlock, Render, Escape, EnumAdapters2, WaitForIdle;
+ } kmt;
+ 
+-struct wbo {
++struct wbo_s {
+    D3DKMT_HANDLE h;
+    uint64_t size, va;
+    void *cpu;
+@@ -622,17 +624,8 @@ struct wbo {
+ };
+ #define WBO_OPENED  1
+ #define WBO_RUNTIME 2
+-static struct wbo *wbo;
+-static uint32_t wbo_cap;
+ static D3DKMT_HANDLE wadapter, wdevice, wcontext;
+-static void *wcmd;
+-static UINT wcmd_size;
+-static D3DDDI_ALLOCATIONLIST *walloc;
+-static UINT walloc_size;
+-static D3DDDI_PATCHLOCATIONLIST *wpatch;
+-static UINT wpatch_size;
+ static MW_ESCAPE_GPU_INFO_DATA wgpu;
+-static uint64_t wseq;
+ static int wddm = -1;
+ static SRWLOCK wddm_lock = SRWLOCK_INIT;
+ 
+@@ -640,7 +633,7 @@ static SRWLOCK wddm_lock = SRWLOCK_INIT;
+  * its kernel callbacks replace the D3DKMT calls: the buffers then are the
+  * runtime device's allocations, which Present needs. malikm_bind_d3dddi()
+  * switches over before the device's screen is created. */
+-static struct {
++struct wddi {
+    int on;
+    HANDLE adapter, device, context;
+    D3DDDI_DEVICECALLBACKS cb;
+@@ -661,7 +654,7 @@ static struct {
+     * last_event is older than it and waiting on it alone would return
+     * early. wddm_idle() polls the KMD's fences instead while this is set. */
+    int last_unsignalled;
+-} ddi;
++};
+ 
+ /* Allocations whose BO is closed but which a job submitted earlier may
+  * still use. Linux's panfrost keeps a BO alive until its jobs are done,
+@@ -670,15 +663,151 @@ static struct {
+  * running job (PE runs 18 on: two job faults per present.exe, a read
+  * translation fault, 0x4002c3, every time at the same VA). They are
+  * destroyed after the next wait for idle instead. */
+-/* G2b-3 (0045): the runtime devices of this process bound to the GPU; wdevs[] includes ddi.device. */
+-#define MAX_WDEVS 16
+-static HANDLE wdevs[MAX_WDEVS];
+-static unsigned wdevs_n;
+-
+-static D3DKMT_HANDLE *wdead;
+-static uint32_t wdead_n, wdead_cap;
+ #define WDEAD_FLUSH 64
+ 
++/* G2b-3 (0053): ONE CONTEXT PER RUNTIME DEVICE. Until 0052 a process had one shim state (and, since
++ * os_same_file_description cannot compare Windows descriptors, one Panfrost screen) for all its D3D devices; 0045
++ * then routed every device's kernel work through the first device. Allocations tied to a runtime resource (shared
++ * swap-chain buffers, composition surfaces, primaries) were thus created through a device that does not own the
++ * resource: run g2b3-15, Windows Terminal's composition swap chain (its second device) was still refused with
++ * D3DDDIERR_INVALIDHANDLE when presented as its own allocation, and the XAML hosts - which also run two devices -
++ * kept dying with E_INVALIDARG. Now every device gets its own screen (os_file.c compares handles, 0053) and its
++ * own wctx: callbacks, context, command/allocation lists, BO table. A descriptor finds its wctx by the kernel
++ * object behind it (dup'ed descriptors from Panfrost match too); the frontend's calls by malikm_use_device(). */
++#define MAX_KPRIM 16
++struct wkprim { D3DKMT_HANDLE h; void *cpu; unsigned w, hgt; };
++struct wctx {
++   int used;
++   HANDLE fdh;                       /* OS handle behind the descriptor malikm_open gave this device's screen */
++   struct wddi d;
++   struct wbo_s *bo;
++   uint32_t bo_cap;
++   void *cmd;
++   UINT cmd_size;
++   D3DDDI_ALLOCATIONLIST *alist;
++   UINT alist_size;
++   D3DDDI_PATCHLOCATIONLIST *plist;
++   UINT plist_size;
++   uint64_t seq;
++   D3DKMT_HANDLE *dead;
++   uint32_t dead_n, dead_cap;
++   struct wkprim kp[MAX_KPRIM];
++};
++#define MAX_WCTX 16
++static struct wctx wctxs[MAX_WCTX];   /* [0] also serves the D3DKMT path (tools without a runtime device) */
++static struct wctx *wcur = &wctxs[0];
++#define ddi         (wcur->d)
++#define wbo         (wcur->bo)
++#define wbo_cap     (wcur->bo_cap)
++#define wcmd        (wcur->cmd)
++#define wcmd_size   (wcur->cmd_size)
++#define walloc      (wcur->alist)
++#define walloc_size (wcur->alist_size)
++#define wpatch      (wcur->plist)
++#define wpatch_size (wcur->plist_size)
++#define wseq        (wcur->seq)
++#define wdead       (wcur->dead)
++#define wdead_n     (wcur->dead_n)
++#define wdead_cap   (wcur->dead_cap)
++#define kprim       (wcur->kp)
++
++static __declspec(thread) struct wctx *wtls_bound;   /* the wctx malikm_bind_d3dddi made last on this thread */
++static __declspec(thread) HANDLE wtls_dev;          /* malikm_use_device() */
++
++/* Same kernel object? (CompareObjectHandles, Windows 10 1607+; looked up at run time) */
++static int
++same_object(HANDLE a, HANDLE b)
++{
++   static BOOL (WINAPI *cmp)(HANDLE, HANDLE);
++   static int looked;
++   if (a == b)
++      return 1;
++   if (!looked) {
++      HMODULE k = GetModuleHandleW(L"kernelbase.dll");
++      if (!k)
++         k = GetModuleHandleW(L"kernel32.dll");
++      cmp = k ? (BOOL (WINAPI *)(HANDLE, HANDLE))(void *)GetProcAddress(k, "CompareObjectHandles") : NULL;
++      looked = 1;
++   }
++   return cmp && a && b && a != INVALID_HANDLE_VALUE && b != INVALID_HANDLE_VALUE && cmp(a, b);
++}
++
++/* The wctx of a descriptor (the screen's fd or Panfrost's dup of it); wctxs[0] if none matches. wddm_lock held. */
++static struct { int fd; HANDLE h; struct wctx *c; } fdcache[32];   /* entries of a freed wctx are cleared */
++#define cache fdcache
++static struct wctx *
++fd_ctx(int fd)
++{
++   HANDLE h = (HANDLE)_get_osfhandle(fd);
++   if (h == INVALID_HANDLE_VALUE)
++      return &wctxs[0];
++   for (int i = 0; i < 32; i++)
++      if (cache[i].c && cache[i].fd == fd && cache[i].h == h && cache[i].c->used)
++         return cache[i].c;
++   struct wctx *only = NULL;
++   unsigned used = 0;
++   for (int i = 0; i < MAX_WCTX; i++) {
++      if (wctxs[i].used) {
++         used++;
++         only = &wctxs[i];
++      }
++      if (wctxs[i].used && wctxs[i].fdh && same_object(h, wctxs[i].fdh)) {
++         static unsigned next;
++         unsigned k = next++ % 32;
++         cache[k].fd = fd;
++         cache[k].h = h;
++         cache[k].c = &wctxs[i];
++         return &wctxs[i];
++      }
++   }
++   if (used == 1)
++      return only;
++   if (used > 1) {
++      static unsigned warned;
++      if (warned++ < 4)
++         fprintf(stderr, "malikm-wddm: pid %lu: fd %d matches none of %u device contexts - using the first\n",
++                 GetCurrentProcessId(), fd, used);
++   }
++   return &wctxs[0];
++}
++
++/* The wctx of a runtime device (malikm_use_device), else the first one in use, else wctxs[0]. wddm_lock held. */
++static struct wctx *
++dev_ctx(HANDLE dev)
++{
++   struct wctx *first = NULL;
++   for (int i = 0; i < MAX_WCTX; i++) {
++      if (!wctxs[i].used)
++         continue;
++      if (dev && wctxs[i].d.device == dev)
++         return &wctxs[i];
++      if (!first)
++         first = &wctxs[i];
++   }
++   return first ? first : &wctxs[0];
++}
++
++static void
++wtls_bind_fd(int fd)
++{
++   AcquireSRWLockExclusive(&wddm_lock);
++   /* a duplicate of the handle: d3d10_create_screen closes its descriptor once Panfrost has dup'ed it, and the
++    * kernel object must stay comparable for the screen's lifetime */
++   HANDLE h = fd >= 0 ? (HANDLE)_get_osfhandle(fd) : INVALID_HANDLE_VALUE, keep = NULL;
++   if (h != INVALID_HANDLE_VALUE && wtls_bound && wtls_bound->used && !wtls_bound->fdh &&
++       DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &keep, 0, FALSE, DUPLICATE_SAME_ACCESS))
++      wtls_bound->fdh = keep;
++   ReleaseSRWLockExclusive(&wddm_lock);
++}
++
++/* The frontend names the runtime device its next shim calls are for (CreateResource, OpenResource,
++ * DestroyResource, Present, SetDisplayMode). */
++void
++malikm_use_device(void *hRTDevice)
++{
++   wtls_dev = hRTDevice;
++}
++
+ static KMT_FN
+ kmt_resolve(const char *name)
+ {
+@@ -988,8 +1117,6 @@ wddm_idle(void)
+  * pPrimaryDesc): allocated through the bound runtime's pfnAllocateCb WITH the runtime resource handle and
+  * Flags.Primary, so dxgkrnl ties them to the swap-chain resource; kept locked for CPU writes. */
+ static int present_copy(D3DKMT_HANDLE h, const void *bgrx, unsigned w, unsigned hgt);   /* below (G13 0024) */
+-#define MAX_KPRIM 16
+-static struct { D3DKMT_HANDLE h; void *cpu; unsigned w, hgt; } kprim[MAX_KPRIM];
+ 
+ int
+ malikm_primary_create(void *hRTResource, unsigned vidpn, unsigned w, unsigned h, unsigned *hAlloc, int scanout)
+@@ -997,6 +1124,7 @@ malikm_primary_create(void *hRTResource, unsigned vidpn, unsigned w, unsigned h,
+    int ret = -1;
+ 
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (!ddi.on || !ddi.cb.pfnAllocateCb)
+       goto out;
+    for (int i = 0; i < MAX_KPRIM; i++) {
+@@ -1047,6 +1175,7 @@ void
+ malikm_primary_destroy(unsigned hAlloc)
+ {
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    for (int i = 0; i < MAX_KPRIM; i++) {
+       if (kprim[i].h != hAlloc)
+          continue;
+@@ -1081,6 +1210,7 @@ malikm_shared_create(void *hRTResource, unsigned w, unsigned h, unsigned cpp, un
+    if (w == 0 || h == 0 || cpp == 0 || hRTResource == NULL)
+       return -1;
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (!ddi.on || !ddi.cb.pfnAllocateCb)
+       goto out;
+    pi.Version = MW_ABI_VERSION;
+@@ -1126,6 +1256,7 @@ malikm_set_display_mode(unsigned hAlloc)
+    long hr = 1;
+ 
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (ddi.on && ddi.cb.pfnSetDisplayModeCb && hAlloc) {
+       D3DDDICB_SETDISPLAYMODE m = {0};
+       m.hPrimaryAllocation = hAlloc;
+@@ -1159,6 +1290,7 @@ malikm_open_shared(const void *priv, unsigned size, unsigned hAlloc, unsigned *w
+    *pitch = pi->Pitch ? pi->Pitch : pi->Width * 4;
+    *d3dfmt = pi->Format;
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (ddi.on && ddi.cb.pfnLockCb) {
+       D3DDDICB_LOCK l = {0};
+       HRESULT hr;
+@@ -1181,6 +1313,7 @@ malikm_close_shared(unsigned hAlloc)
+ {
+    D3DKMT_HANDLE hk = hAlloc;
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (ddi.on && ddi.cb.pfnUnlockCb) {
+       D3DDDICB_UNLOCK u = {0};
+       u.NumAllocations = 1;
+@@ -1215,6 +1348,7 @@ malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned
+ {
+    int ret = -1;
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (ddi.on && ddi.dxgi && ddi.dxgi->pfnPresentCb) {
+       DXGIDDICB_PRESENT p = {0};
+       p.hSrcAllocation = hSrc;
+@@ -1235,6 +1369,7 @@ malikm_primary_present(unsigned hAlloc, unsigned hDst, const void *bgrx, unsigne
+    int ret = -1;
+ 
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (!ddi.on || !ddi.dxgi || !ddi.dxgi->pfnPresentCb)
+       goto out;
+    for (int i = 0; i < MAX_KPRIM; i++) {
+@@ -1320,6 +1455,7 @@ malikm_present_d3dddi(const void *bgrx, unsigned w, unsigned h, void *dxgi_conte
+    int ret = -1;
+ 
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (!ddi.on || !ddi.dxgi || !ddi.dxgi->pfnPresentCb)
+       goto out;
+    if (primary) {
+@@ -1393,19 +1529,19 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+    if (!cb || !cb->pfnEscapeCb || !cb->pfnAllocateCb || !cb->pfnRenderCb || !cb->pfnCreateContextCb)
+       return -1;
+    AcquireSRWLockExclusive(&wddm_lock);
+-   /* G2b-3 (0045, run g2b3-4): every Render of Explorer failed (0xC0000001, 382 times) after its second device.
+-    * The process has ONE Panfrost screen (u_pipe_screen_lookup_or_create: os_same_file_description cannot tell
+-    * two shim fds apart, so the second device gets the first one's screen), so all its BOs are allocations of the
+-    * device that was bound first - and binding the new device switched Render to a device that does not own
+-    * them. The first device stays the kernel device while it lives; later ones only count. */
+-   if (ddi.on && wddm == 1) {
+-      if (wdevs_n < MAX_WDEVS)
+-         wdevs[wdevs_n++] = hRTDevice;
+-      fprintf(stderr, "malikm-wddm: pid %lu: device %p shares the kernel device %p (%u bound)\n",
+-              GetCurrentProcessId(), hRTDevice, ddi.device, wdevs_n);
++   /* G2b-3 (0053): every runtime device gets its own wctx (0045 shared the first one - see struct wctx). */
++   struct wctx *nc = NULL;
++   for (int i = 0; i < MAX_WCTX && !nc; i++)
++      if (!wctxs[i].used)
++         nc = &wctxs[i];
++   if (!nc) {
++      fprintf(stderr, "malikm-wddm: pid %lu: device %p: all %d shim contexts in use\n", GetCurrentProcessId(),
++              hRTDevice, MAX_WCTX);
+       ReleaseSRWLockExclusive(&wddm_lock);
+-      return 0;
++      return -1;
+    }
++   memset(nc, 0, sizeof(*nc));
++   wcur = nc;
+    /* Ask the adapter through the callbacks: a software runtime routes them
+     * to d3d10umd's own D3DKMT stubs, which fail. */
+    D3DDDICB_ESCAPE e = {0};
+@@ -1426,6 +1562,8 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+          ddi.cb = *cb;
+          ddi.dxgi = pDXGIBaseCallbacks;
+          ret = 1;
++         nc->used = 1;
++         wtls_bound = nc;
+       }
+    } else if (es >= 0 && g.Count != 0 && g.Valid != 0) {
+       D3DDDICB_CREATECONTEXT c = {0};
+@@ -1447,8 +1585,14 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+          wgpu = g;
+          wddm = 1;
+          ret = 0;
+-         wdevs_n = 0;
+-         wdevs[wdevs_n++] = hRTDevice;
++         nc->used = 1;
++         wtls_bound = nc;
++         unsigned in_use = 0;
++         for (int i = 0; i < MAX_WCTX; i++)
++            in_use += wctxs[i].used;
++         if (in_use > 1)
++            fprintf(stderr, "malikm-wddm: pid %lu: device %p has its own shim context (%u in this process)\n",
++                    GetCurrentProcessId(), hRTDevice, in_use);
+       }
+    }
+    ReleaseSRWLockExclusive(&wddm_lock);
+@@ -1464,40 +1608,40 @@ malikm_bind_d3dddi(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+ void
+ malikm_unbind_d3dddi(HANDLE hRTDevice)
+ {
++   /* 0053: the device's own wctx goes with it (its screen is already destroyed: DestroyDevice drops it first). */
+    AcquireSRWLockExclusive(&wddm_lock);
+-   if (ddi.on && wddm == 1) {
+-      unsigned i;
+-      for (i = 0; i < wdevs_n && wdevs[i] != hRTDevice; i++)
+-         ;
+-      if (i < wdevs_n) {
+-         wdevs[i] = wdevs[--wdevs_n];
+-         if (hRTDevice == ddi.device) {
+-            if (wdevs_n == 0) {
+-               wddm_idle();
+-               if (ddi.last_event)
+-                  CloseHandle(ddi.last_event);
+-               ddi.last_event = NULL;
+-               ddi.last_unsignalled = 0;
+-               ddi.present = 0;
+-               ddi.present_cpu = NULL;
+-               ddi.prim[0] = ddi.prim[1] = 0;
+-               ddi.prim_cpu[0] = ddi.prim_cpu[1] = NULL;
+-               ddi.prim_w = ddi.prim_h = 0;
+-               ddi.on = 0;
+-               fprintf(stderr, "malikm-wddm: pid %lu: kernel device %p destroyed (last bound device)\n",
+-                       GetCurrentProcessId(), hRTDevice);
+-            } else {
+-               fprintf(stderr, "malikm-wddm: pid %lu: kernel device %p destroyed while %u other device(s) still "
+-                               "use its screen - their GPU work will fail\n",
+-                       GetCurrentProcessId(), hRTDevice, wdevs_n);
+-            }
+-         }
+-      }
++   for (int i = 0; i < MAX_WCTX; i++) {
++      struct wctx *c = &wctxs[i];
++      if (!c->used || !c->d.on || c->d.device != hRTDevice)
++         continue;
++      wcur = c;
++      wddm_idle();
++      wdead_flush();
++      if (ddi.last_event)
++         CloseHandle(ddi.last_event);
++      uint32_t live = 0;
++      for (uint32_t j = 0; j < wbo_cap; j++)
++         live += wbo[j].h != 0;
++      if (live)
++         fprintf(stderr, "malikm-wddm: pid %lu: device %p destroyed with %u BOs still open\n", GetCurrentProcessId(),
++                 hRTDevice, live);
++      free(c->bo);
++      free(c->dead);
++      if (c->fdh)
++         CloseHandle(c->fdh);
++      for (int k = 0; k < 32; k++)
++         if (fdcache[k].c == c)
++            fdcache[k].c = NULL;
++      if (wtls_bound == c)
++         wtls_bound = NULL;
++      memset(c, 0, sizeof(*c));
++      wcur = &wctxs[0];
++      break;
+    }
+    ReleaseSRWLockExclusive(&wddm_lock);
+ }
+ 
+-static struct wbo *
++static struct wbo_s *
+ wddm_bo(uint32_t h)
+ {
+    return h && h <= wbo_cap && wbo[h - 1].h ? &wbo[h - 1] : NULL;
+@@ -1511,7 +1655,7 @@ wbo_slot(void)
+       if (!wbo[i].h)
+          return i + 1;
+    uint32_t cap = wbo_cap ? wbo_cap * 2 : 256;
+-   struct wbo *n = realloc(wbo, cap * sizeof(*n));
++   struct wbo_s *n = realloc(wbo, cap * sizeof(*n));
+    if (!n)
+       return 0;
+    memset(n + wbo_cap, 0, (cap - wbo_cap) * sizeof(*n));
+@@ -1569,6 +1713,7 @@ malikm_import_alloc(unsigned hAlloc)
+    MW_ESCAPE_ALLOC_INFO_DATA where = {0};
+ 
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = dev_ctx(wtls_dev);   /* 0053 */
+    if (!ddi.on || wddm != 1)
+       goto out;
+    where.Code = MW_ESCAPE_ALLOC_INFO;
+@@ -1620,10 +1765,11 @@ malikm_prime_size(int fd)
+ }
+ 
+ static int
+-wddm_prime_to_handle(int prime_fd, uint32_t *handle)
++wddm_prime_to_handle(int fd, int prime_fd, uint32_t *handle)
+ {
+    int ret = -MK_EINVAL;
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = fd_ctx(fd);   /* 0053 */
+    for (int i = 0; i < MAX_PRIMES; i++) {
+       if (primes[i].fd != prime_fd || prime_fd <= 0)
+          continue;
+@@ -1640,7 +1786,7 @@ wddm_prime_to_handle(int prime_fd, uint32_t *handle)
+          ret = -MK_ENOMEM;
+          goto out;
+       }
+-      wbo[h - 1] = (struct wbo){primes[i].h, primes[i].size, primes[i].va, NULL};
++      wbo[h - 1] = (struct wbo_s){primes[i].h, primes[i].size, primes[i].va, NULL};
+       wbo[h - 1].foreign = WBO_OPENED;
+       *handle = h;
+       ret = 0;
+@@ -1708,7 +1854,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       uint32_t h = wbo_slot();
+       if (!h)
+          return -MK_ENOMEM;
+-      wbo[h - 1] = (struct wbo){ai.hAllocation, where.Size, where.GpuVa, NULL};
++      wbo[h - 1] = (struct wbo_s){ai.hAllocation, where.Size, where.GpuVa, NULL};
+       wbo[h - 1].foreign = foreign;
+       a->handle = h;
+       a->offset = where.GpuVa;
+@@ -1730,7 +1876,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+    }
+    case MALIKM_NR_PANFROST_GET_BO_OFFSET: {
+       struct drm_panfrost_get_bo_offset *a = (void *)b;
+-      struct wbo *bo = wddm_bo(a->handle);
++      struct wbo_s *bo = wddm_bo(a->handle);
+       if (!bo)
+          return -MK_ENOENT;
+       a->offset = bo->va;
+@@ -1754,7 +1900,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       uint32_t n = 0;
+       mark++;
+       for (uint32_t i = 0; i < a->bo_handle_count; i++) {
+-         struct wbo *bo = wddm_bo(bos[i]);
++         struct wbo_s *bo = wddm_bo(bos[i]);
+          if (!bo)
+             return -MK_ENOENT;
+          if (bo->listed == mark)
+@@ -1773,7 +1919,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+        * the first byte of a 64 KiB BO, in every present.exe run. */
+       uint32_t named = n;
+       for (uint32_t i = 0; i < wbo_cap && n < walloc_size; i++) {
+-         struct wbo *bo = &wbo[i];
++         struct wbo_s *bo = &wbo[i];
+          if (!bo->h || bo->listed == mark)
+             continue;
+          bo->listed = mark;
+@@ -1810,7 +1956,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       return 0;
+    }
+    case MALIKM_NR_GEM_CLOSE: {
+-      struct wbo *bo = wddm_bo(((struct drm_gem_close *)b)->handle);
++      struct wbo_s *bo = wddm_bo(((struct drm_gem_close *)b)->handle);
+       if (!bo)
+          return -MK_EINVAL;
+       if (trace_on())
+@@ -1866,12 +2012,13 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+ }
+ 
+ static void
+-wddm_ioctl(DWORD code, void *buf, DWORD len)
++wddm_ioctl(int fd, DWORD code, void *buf, DWORD len)
+ {
+    MALIKM_DRM_HEADER *h = buf;
+    (void)len;
+ 
+    AcquireSRWLockExclusive(&wddm_lock);
++   wcur = fd_ctx(fd);   /* 0053 */
+    switch (code) {
+    case IOCTL_MALIKM_VERSION: {
+       MALIKM_VERSION *v = buf;
+@@ -1885,7 +2032,7 @@ wddm_ioctl(DWORD code, void *buf, DWORD len)
+       /* A persistent mapping: Panfrost keeps BOs mapped for their lifetime.
+        * IgnoreSync: the GPU may still use the BO; ordering is Panfrost's. */
+       MALIKM_MAP *m = (MALIKM_MAP *)(h + 1);
+-      struct wbo *bo = wddm_bo(MALIKM_MMAP_HANDLE(m->Offset));
++      struct wbo_s *bo = wddm_bo(MALIKM_MMAP_HANDLE(m->Offset));
+       h->Result = -MK_EINVAL;
+       if (bo && m->Size <= bo->size && bo->foreign != WBO_OPENED) {
+          if (!bo->cpu)
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index 7fa2ff3..e9fd9a7 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -52,6 +52,7 @@ extern "C" __declspec(thread) unsigned d3d10_present_dst = 0;
+ /* G2b-3 (0045): presents so far (all threads) - opened shared resources are refreshed once per frame. */
+ extern "C" unsigned d3d10_frame_gen = 1;
+ /* G2b-3 (0052, malikm_drm.c): present an allocation as it is; 0 if the runtime took it. */
++extern "C" void malikm_use_device(void *hRTDevice);
+ extern "C" int malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned w, unsigned h);
+ 
+ 
+@@ -71,6 +72,7 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+ {
+ 
+    LOG_ENTRYPOINT();
++   malikm_use_device(CastDevice(pPresentData->hDevice)->hDevice);   /* G2b-3 (0053) */
+ 
+    struct Device *device = CastDevice(pPresentData->hDevice);
+    Resource *pSrcResource = CastResource(pPresentData->hSurfaceToPresent);
+@@ -158,6 +160,7 @@ HRESULT APIENTRY
+ _SetDisplayMode( DXGI_DDI_ARG_SETDISPLAYMODE *SetDisplayMode )
+ {
+    LOG_ENTRYPOINT();
++   malikm_use_device(CastDevice(SetDisplayMode->hDevice)->hDevice);   /* G2b-3 (0053) */
+ 
+    Resource *pResource = SetDisplayMode->hResource ? CastResource(SetDisplayMode->hResource) : NULL;
+    long hr = malikm_set_display_mode(pResource ? pResource->kmt_primary : 0);
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index 47d76b0..b3204b3 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -214,6 +214,7 @@ extern "C" void malikm_shared_bo_begin(void *hRTResource, unsigned w, unsigned h
+ extern "C" unsigned malikm_shared_bo_end(void);
+ extern "C" int malikm_import_alloc(unsigned hAlloc);
+ extern "C" void malikm_import_done(int fd);
++extern "C" void malikm_use_device(void *hRTDevice);
+ 
+ /* G2b-3 (0045, run g2b3-4): DWM on Panfrost composed black. What it opens (the CDD shared primaries, the shadow
+  * surface) were imported with resource_from_handle(WINSYS_HANDLE_TYPE_SHARED, CPU pointer) - softpipe's
+@@ -280,6 +281,7 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+                D3D10DDI_HRTRESOURCE hRTResource)                        // IN
+ {
+    LOG_ENTRYPOINT();
++   malikm_use_device(CastDevice(hDevice)->hDevice);   /* G2b-3 (0053): the shim context of this device */
+ 
+    if ((pCreateResource->MiscFlags & D3D10_DDI_RESOURCE_MISC_SHARED) ||
+        (pCreateResource->pPrimaryDesc &&
+@@ -626,6 +628,7 @@ OpenResource(D3D10DDI_HDEVICE hDevice,                            // IN
+     * D3D10DDIARG_OPENRESOURCE carry no format or size); its texture storage is the allocation itself, locked
+     * read-only, when the runtime allows the opener to lock it (GDI non-managed primaries), else a blank texture. */
+    LOG_ENTRYPOINT();
++   malikm_use_device(CastDevice(hDevice)->hDevice);   /* G2b-3 (0053): the shim context of this device */
+ 
+    struct pipe_context *pipe = CastPipeContext(hDevice);
+    struct pipe_screen *screen = pipe->screen;
+@@ -777,6 +780,7 @@ DestroyResource(D3D10DDI_HDEVICE hDevice,       // IN
+                 D3D10DDI_HRESOURCE hResource)   // IN
+ {
+    LOG_ENTRYPOINT();
++   malikm_use_device(CastDevice(hDevice)->hDevice);   /* G2b-3 (0053): the shim context of this device */
+ 
+    struct pipe_context *pipe = CastPipeContext(hDevice);
+    Resource *pResource = CastResource(hResource);
+diff --git a/src/util/os_file.c b/src/util/os_file.c
+index 7d99383..cb70451 100644
+--- a/src/util/os_file.c
++++ b/src/util/os_file.c
+@@ -15,6 +15,7 @@
+ #if DETECT_OS_WINDOWS
+ #include <direct.h>
+ #include <io.h>
++#include <windows.h>
+ #define open _open
+ #define fdopen _fdopen
+ #define close _close
+@@ -243,6 +244,26 @@ os_same_file_description(int fd1, int fd2)
+    if (fd1 == fd2)
+       return 0;
+ 
++#ifdef _WIN32
++   /* exynos-woa G2b-3 (0053): the same kernel object behind both descriptors (dup'ed CRT descriptors share it).
++    * Without this the answer was "unknown" and u_pipe_screen_lookup_or_create gave every D3D device of a process
++    * the first device's screen. */
++   {
++      static BOOL (WINAPI *cmp)(HANDLE, HANDLE);
++      static int looked;
++      if (!looked) {
++         HMODULE k = GetModuleHandleW(L"kernelbase.dll");
++         if (!k)
++            k = GetModuleHandleW(L"kernel32.dll");
++         cmp = k ? (BOOL (WINAPI *)(HANDLE, HANDLE))(void *)GetProcAddress(k, "CompareObjectHandles") : NULL;
++         looked = 1;
++      }
++      HANDLE h1 = (HANDLE)_get_osfhandle(fd1), h2 = (HANDLE)_get_osfhandle(fd2);
++      if (cmp && h1 != INVALID_HANDLE_VALUE && h2 != INVALID_HANDLE_VALUE)
++         return cmp(h1, h2) ? 0 : 1;
++   }
++#endif
++
+ #if DETECT_OS_LINUX
+    /* Use F_DUPFD_QUERY if available. */
+    int r = fcntl(fd1, F_DUPFD_QUERY, fd2);
+-- 
+2.43.0
+

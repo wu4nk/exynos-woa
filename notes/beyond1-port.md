@@ -796,3 +796,16 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   private surface; dxgkrnl refuses that handle for composition presents. The buffers are MISC_SHARED resources whose
   BO IS a runtime allocation (0046) -> 0052: such sources are presented directly (hSrcAllocation = that allocation,
   no read-back), logged as "present shared allocation". UMD 2eff63ee.
+
+### G2b-3 run 15 (UMD 0052 2eff63ee, 2026-11-04 03:49) - DEVICE RESULT
+- Still black. 0052 works where the swap chain lives on the process's first device: "present shared allocation
+  1024x1024 / 1376x1376 ok" x20 each (no read-back any more). Windows Terminal's 1372x1260 composition swap chain
+  still FAILED 0x88760873 (D3DDDIERR_INVALIDHANDLE) when presented as its own allocation - Terminal (like the
+  XAML hosts) runs TWO devices, and since 0045 every kernel call went through the first one: the buffer's
+  allocation was created through a device that does not own the swap-chain resource.
+- 0053 (UMD 1c8d577d): one shim context per runtime device (struct wctx: callbacks, context, command / allocation
+  / patch lists, BO table, dead list, primaries), selected by the descriptor's kernel object (CompareObjectHandles;
+  a duplicate of the screen's original handle is kept, d3d10_create_screen closes its descriptor) or, for the
+  frontend's calls, by malikm_use_device() (CreateResource / OpenResource / DestroyResource / Present /
+  SetDisplayMode). util/os_file.c os_same_file_description compares handles on Windows, so every device gets its
+  own Panfrost screen (no more u_pipe_screen_lookup_or_create sharing). DestroyDevice frees the device's context.
