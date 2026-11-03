@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.4) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.5) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -23,7 +23,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.4 -> $dir"
+Write-Host "s10-log v1.5 -> $dir"
 
 # 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
 #    state, config, logs; a stopped service is started here and the exact error is recorded.
@@ -76,6 +76,7 @@ function Pram($addr, $len, $name) {
 }
 Pram '0x8FE0E000' 4096  'touch-pram'
 Pram '0x8FE0A000' 16384 'diag-marks'
+Pram '0x8FE04000' 16384 'mali-pram'      # v1.5: MaliG76Wddm (mode, DDI calls, HB heartbeat = interrupts/DPCs/vsync)
 Write-Host '[ OK ] PRAM'
 
 # 2. device state + driver counters (S10Touch S10t*, HSI2C telemetry, everything in Device Parameters)
@@ -90,6 +91,16 @@ Save 'devices.txt' {
       Get-ChildItem $dp -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.Name; Get-ItemProperty $_.PSPath | Format-List }
     }
   }
+}
+# v1.5: where the CPU goes (G2b lag): interrupt / DPC time per CPU and the busiest processes, 5 x 1 s
+Save 'cpu.txt' {
+  try {
+    (Get-Counter -Counter '\Processor(*)\% Processor Time', '\Processor(*)\% Interrupt Time', '\Processor(*)\% DPC Time',
+      '\Processor(_Total)\Interrupts/sec' -SampleInterval 1 -MaxSamples 5 -ErrorAction Stop).CounterSamples |
+      Group-Object Path | ForEach-Object { '{0,-60} avg {1,8:N1}' -f $_.Name, (($_.Group | Measure-Object CookedValue -Average).Average) }
+  } catch { "Get-Counter failed: $_" }
+  '===== top processes (CPU seconds since start)'
+  Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, WorkingSet64 | Format-Table -AutoSize
 }
 Save 'problem-devices.txt' { pnputil /enum-devices /problem }
 Save 'drivers.txt' { pnputil /enum-drivers }

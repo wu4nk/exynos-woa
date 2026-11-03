@@ -479,3 +479,9 @@ JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never 
   All edited .ps1 (+ s10-log's PS part) parse clean with pwsh 7 (conda-forge `powershell`, ~/pwsh-env).
 - tools/mesa-build/build-gpu-tools.sh: m5test.exe 1815a3dc..., d3dfill.exe 8e4c8d13... (zig, base 0x140000000,
   subsystem 6.2). d3dprobe skipped (MSVC __try).
+- 16:28 G2b-1 boot (gpu-s10 gpu): user - lag so bad the taskbar shows no app icons and Search never opens.
+  Read: MkIsr clears JOB/MMU/GPU INT_STAT it reads (no obvious storm); PollDpc 1 ms only while QCount != 0;
+  job timeout MW_JOB_TIMEOUT_MS 2000. Suspects: (a) DWM did not inherit the machine GALLIUM_DRIVER=softpipe and runs
+  Panfrost -> jobs time out 2 s each; (b) an interrupt storm on a line MkIsr does not own (returns FALSE);
+  (c) the HB/vsync DPCs. s10-log v1.5: + MaliG76Wddm PRAM slice (0x8FE04000, HB i/d/v/s/p), + cpu.txt
+  (per-CPU % processor / interrupt / DPC time, interrupts/s, top processes).
