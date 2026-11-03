@@ -585,3 +585,9 @@ variables -> nir_lower_samplers gives texture_index/sampler_index; sview_targets
 SAMPLER_VIEW operands return NULL in ttn_get_src (as SAMPLER); result swizzled by the SVIEW operand (tgsi_exec
 semantics); ddx/ddy/offset sizes = dim coordinate components (explicit - nir_tex_instr_src_size needs src_type).
 Cross-compiles clean; native debug test (nir_validate on) being built.
+- 0043 verified natively (build-ttn: panfrost config, buildtype debug -> nir_validate on): tools/mesa-build/tests/
+  ttn-sm4-sample-test.c translates two D3D10-style TGSI shaders (SAMPLE / SAMPLE_C / SAMPLE_C_LZ / SAMPLE_B /
+  SAMPLE_L / SAMPLE_D on 2D + 2D_ARRAY with SVIEW != SAMP indices and an SVIEW swizzle; SAMPLE_I on 2D UINT and
+  BUFFER, SVIEWINFO on both) -> nir_validate after ttn and after nir_lower_samplers -> RESULT: PASS. Lowered indices:
+  (tex 1, samp 0), (tex 3, samp 2), shadow ops shadow=1 with comparator, txd 3 srcs, txf 2D coord+lod, txf BUF coord
+  only, txs 2D with lod + query_levels, txs BUF no lod. No deref left.
