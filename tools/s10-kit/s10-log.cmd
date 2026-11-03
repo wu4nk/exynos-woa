@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.5) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.6) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -23,7 +23,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.5 -> $dir"
+Write-Host "s10-log v1.6 -> $dir"
 
 # 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
 #    state, config, logs; a stopped service is started here and the exact error is recorded.
@@ -130,15 +130,24 @@ Copy-Item C:\Windows\INF\setupapi.dev.log $dir -ErrorAction SilentlyContinue
 Copy-Item C:\Windows\System32\LogFiles\Exynos*.txt, C:\Windows\System32\LogFiles\S10*.txt, C:\Windows\System32\LogFiles\MaliG76*.txt, C:\S10Prov\gpu-report.txt $dir -ErrorAction SilentlyContinue
 Write-Host '[ OK ] devices, counters, events'
 
-# 3. firmware log + saved PRAM dumps from the ESP
-$esp = @('S', 'R', 'Q', 'P') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
-if ($esp) {
-  mountvol "${esp}:" /s 2>$null
-  if (Test-Path "${esp}:\") {
-    foreach ($f in 'UEFILOG.TXT', 'WINPRAM.BIN', 'WINPRAM-RESTART.BIN') { Copy-Item "${esp}:\$f" $dir -ErrorAction SilentlyContinue }
-    Copy-Item "${esp}:\S10EDIAG\out\agent.log" (Join-Path $dir 'esp-agent.log') -ErrorAction SilentlyContinue
-    mountvol "${esp}:" /d 2>$null
-    Write-Host '[ OK ] UEFILOG / WINPRAM from the ESP'
+# 3. firmware log + saved PRAM dumps from the ESP. v1.6: use an ESP that is already mounted (an earlier
+#    "mountvol S: /s" left in place makes a second mountvol /s fail - the v1.5 run silently copied nothing).
+function Copy-Esp($root) {
+  foreach ($f in 'UEFILOG.TXT', 'WINPRAM.BIN', 'WINPRAM-RESTART.BIN') { Copy-Item (Join-Path $root $f) $dir -ErrorAction SilentlyContinue }
+  Copy-Item (Join-Path $root 'S10EDIAG\out\agent.log') (Join-Path $dir 'esp-agent.log') -ErrorAction SilentlyContinue
+  Get-ChildItem $root -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length, LastWriteTime |
+    Out-File -Encoding utf8 (Join-Path $dir 'esp-listing.txt')
+  Write-Host "[ OK ] UEFILOG / WINPRAM from the ESP ($root)"
+}
+$mounted = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+  Where-Object { (Test-Path (Join-Path $_.Root 'UEFILOG.TXT')) -or (Test-Path (Join-Path $_.Root 'S10EDIAG')) } | Select-Object -First 1
+if ($mounted) { Copy-Esp $mounted.Root }
+else {
+  $esp = @('S', 'R', 'Q', 'P', 'O') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+  if ($esp) {
+    mountvol "${esp}:" /s 2>$null
+    if (Test-Path "${esp}:\") { Copy-Esp "${esp}:\"; mountvol "${esp}:" /d 2>$null }
+    else { Write-Host '[WARN] could not mount the ESP - in TWRP: adb pull /cache/WINPRAM.BIN' -ForegroundColor Yellow }
   }
 }
 

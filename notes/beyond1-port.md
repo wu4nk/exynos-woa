@@ -492,3 +492,7 @@ JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never 
   G2b-1 boot = System rec 3642: logon (7001) at +21 s, events until +170 s, NO WER, no dwm crash, no display/TDR
   event, ended by the forced reset. => not crashing, starved/stalled. Need its PRAM (HB i/d/s/p, job counters).
   Note: Windows clock is synced by NTP during a boot (rec 3621 at 09:20:39 UTC = real time), boots start 2026-11-01.
+- 17:03 log.zip (nogpu boot, s10-log v1.5): GPU0 hidden, live Mali PRAM all zero (= UEFI saved+cleared it ->
+  the G2b-1 boot's PRAM is in ESP \WINPRAM.BIN), but s10-log copied nothing from the ESP: same "ESP already
+  mounted on S:" failure as gpu-s10 v1.3 -> s10-log v1.6 uses a mounted ESP first. Asked for adb pull /cache/WINPRAM.BIN.
+  cpu.txt (nogpu boot, idle): interrupt/DPC time 0, 1432 interrupts/s total; dwm 157 CPU-s, MsMpEng 103 CPU-s.
