@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.15) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.16) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -25,6 +25,8 @@
                             v1.11: also TdrDelay 10 s (the KMD's own 2 s job timeout recovers a hung job before
                             dxgkrnl's TDR, whose path bugchecked 0x7E on 2026-11-03) and S10_FAULTDUMP=dwm.exe
                             (a DWM job chain that faults is decoded into umd-log.txt; DWM waits for every job).
+                            v1.16: S10_FAULTDUMP is REMOVED again (its processes waited for every GPU job - run
+                            g2b3-19 lagged badly); UMD 0057 logs one "malikm-perf" line per process every 10 s.
     .\gpu-s10.ps1 off       remove both GPU packages; Microsoft Basic Display takes the screen back - reboot
 
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
@@ -37,7 +39,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.15  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.16  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -383,9 +385,12 @@ switch ($Action) {
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
     if ($m.GpuEnable -ne 1) { Fail 'GpuEnable is not 1 - run .\gpu-s10.ps1 gpu first (and m5test / fill)' }
     Set-GalliumDriver $null
-    # v1.15: LogonUI and the XAML hosts (13 faults @0x10 in run g2b3-11, none of them DWM's); UMD 0050 decodes one
-    # chain per executable name (marker files dumped-<exe>.flag, cleared here)
-    Set-FaultDump 'LogonUI.exe,explorer.exe,SearchHost.exe,StartMenuExperienceHost.exe,TextInputHost.exe'
+    # v1.16: no S10_FAULTDUMP - every process in its list ran Panfrost's PAN_DBG_SYNC (a wait after each job);
+    # run g2b3-19 composed the whole desktop and lagged badly. Faulted jobs are still counted in umd-log.txt.
+    Set-FaultDump $null
+    if ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).S10_THUMBS) {
+      Remove-ItemProperty $EnvKey S10_THUMBS; Ok 'machine S10_THUMBS removed (no frame-*.ppm thumbnails)'
+    }
     Remove-Item 'C:\ProgramData\S10e\umd\dumped-*.flag' -Force -ErrorAction SilentlyContinue
     Set-TdrDelay $true          # v1.11: the KMD's 2 s job timeout before the TDR (0x7E bugcheck, run g2b3-5)
     Set-GpuWatch $true          # v1.8: make sure the logging tasks exist
