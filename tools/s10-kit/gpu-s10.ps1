@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.9) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.10) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -34,7 +34,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.9  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.10  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -120,6 +120,15 @@ function Clear-NoGpuFlag {
   foreach ($d in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue) {
     $f = Join-Path $d.Root 'S10EDIAG\nogpu.flg'
     if (Test-Path $f) { Remove-Item $f -Force; Ok "nogpu.flg removed ($f) - GPU0 is back on the next boot"; return }
+  }
+  # v1.10: every FAT volume through its \\?\Volume{GUID}\ path - no drive letter, no mountvol ("The parameter
+  # is incorrect" when the ESP is mounted elsewhere, 2026-11-03 21:44).
+  foreach ($v in @(Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.FileSystemType -like 'FAT*' -and $_.Path })) {
+    $f = $v.Path + 'S10EDIAG\nogpu.flg'
+    try {
+      if ([IO.File]::Exists($f)) { [IO.File]::Delete($f); Ok "nogpu.flg removed ($f) - GPU0 is back on the next boot"; return }
+      if ([IO.Directory]::Exists($v.Path + 'S10EDIAG')) { Info "no nogpu.flg on the ESP ($($v.Path))"; return }
+    } catch { Info "volume $($v.Path): $($_.Exception.Message)" }
   }
   $l = @('S', 'R', 'Q', 'P', 'O') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
   if (-not $l) { Warn 'no free drive letter to mount the ESP - delete \S10EDIAG\nogpu.flg by hand'; return }
