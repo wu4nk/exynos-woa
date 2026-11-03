@@ -1,0 +1,128 @@
+From 9c8826534dee40f8413c73b08e68d0bd7fda6f85 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 03:40:42 +0700
+Subject: [PATCH] G2b-3: present shared swap-chain buffers through their own
+ allocation
+
+---
+ include/win32-compat/malikm_drm.c           | 29 ++++++++++++++++++---
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp  | 20 ++++++++++++++
+ src/gallium/frontends/d3d10umd/Resource.cpp |  2 ++
+ src/gallium/frontends/d3d10umd/State.h      |  3 +++
+ 4 files changed, 50 insertions(+), 4 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index bd5d377..0449221 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -1195,17 +1195,38 @@ malikm_close_shared(unsigned hAlloc)
+ static void
+ present_note(int kind, HRESULT hr, unsigned w, unsigned h)
+ {
+-   static unsigned ok[3], bad[3];
+-   static const char *const names[3] = { "runtime primary", "flip", "blt" };
++   static unsigned ok[4], bad[4];
++   static const char *const names[4] = { "runtime primary", "flip", "blt", "shared allocation" };
+    unsigned n;
+    if (hr >= 0)
+       n = ++ok[kind];
+    else
+       n = ++bad[kind];
+    if (n <= 3 || n % 300 == 0)
+-      fprintf(stderr, "malikm-wddm: pid %lu: present %s %ux%u %s 0x%08lx (#%u; ok %u/%u/%u failed %u/%u/%u)\n",
++      fprintf(stderr, "malikm-wddm: pid %lu: present %s %ux%u %s 0x%08lx (#%u; ok %u/%u/%u/%u failed %u/%u/%u/%u)\n",
+               GetCurrentProcessId(), names[kind], w, h, hr >= 0 ? "ok" : "FAILED", (unsigned long)hr, n,
+-              ok[0], ok[1], ok[2], bad[0], bad[1], bad[2]);
++              ok[0], ok[1], ok[2], ok[3], bad[0], bad[1], bad[2], bad[3]);
++}
++
++/* G2b-3 (0052): present an allocation that already holds the frame (a shared swap-chain buffer, rendered by the GPU
++ * into its own runtime allocation). 0 if the runtime accepted it. */
++int
++malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned w, unsigned h)
++{
++   int ret = -1;
++   AcquireSRWLockExclusive(&wddm_lock);
++   if (ddi.on && ddi.dxgi && ddi.dxgi->pfnPresentCb) {
++      DXGIDDICB_PRESENT p = {0};
++      p.hSrcAllocation = hSrc;
++      p.hDstAllocation = hDst;
++      p.pDXGIContext = dxgi_context;
++      p.hContext = ddi.context;
++      HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &p);
++      ret = hr >= 0 ? 0 : -1;
++      present_note(3, hr, w, h);
++   }
++   ReleaseSRWLockExclusive(&wddm_lock);
++   return ret;
+ }
+ 
+ int
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index ed84509..7fa2ff3 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -51,6 +51,8 @@ extern "C" __declspec(thread) unsigned d3d10_present_alloc = 0;
+ extern "C" __declspec(thread) unsigned d3d10_present_dst = 0;
+ /* G2b-3 (0045): presents so far (all threads) - opened shared resources are refreshed once per frame. */
+ extern "C" unsigned d3d10_frame_gen = 1;
++/* G2b-3 (0052, malikm_drm.c): present an allocation as it is; 0 if the runtime took it. */
++extern "C" int malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned w, unsigned h);
+ 
+ 
+ /*
+@@ -74,6 +76,24 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+    Resource *pSrcResource = CastResource(pPresentData->hSurfaceToPresent);
+ 
+    device->pipe->flush(device->pipe, NULL, 0);
++
++   /* G2b-3 (0052): a source whose GPU BO is its own runtime allocation (the buffers of flip-model and composition
++    * swap chains are MISC_SHARED resources) is handed to the runtime as it is - no read-back, no copy into a shim
++    * surface. Run g2b3-14: presenting composition swap chains through the shim's private surface was refused with
++    * D3DDDIERR_INVALIDHANDLE (0x88760873) - comprobe's CreateSwapChainForComposition and Windows Terminal's XAML
++    * SwapChainPanel (1372x1260) - and their apps died with a stowed E_INVALIDARG. */
++   if (pSrcResource && pSrcResource->kmt_shared && !pSrcResource->kmt_primary) {
++      unsigned dst = 0;
++      if (pPresentData->hDstResource) {
++         Resource *d = CastResource(pPresentData->hDstResource);
++         dst = d->kmt_primary ? d->kmt_primary : d->kmt_shared;
++      }
++      if (malikm_present_alloc(pSrcResource->kmt_shared, dst, pPresentData->pDXGIContext,
++                               pSrcResource->resource->width0, pSrcResource->resource->height0) == 0) {
++         d3d10_frame_gen++;
++         return S_OK;
++      }
++   }
+    d3d10_present_flip = pPresentData->Flags.Flip;
+    d3d10_present_alloc = pSrcResource ? pSrcResource->kmt_primary : 0;
+    d3d10_present_dst = pPresentData->hDstResource ? CastResource(pPresentData->hDstResource)->kmt_primary : 0;
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index fa07f58..47d76b0 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -434,6 +434,8 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+                                        &stride);
+          if (pResource->resource && !hShared)
+             pipe_resource_reference(&pResource->resource, NULL);   /* not shareable: the runtime has no allocation */
++         else if (pResource->resource)
++            pResource->kmt_shared = hShared;   /* 0052: presented directly */
+       }
+       if (++shared_creates <= 24 || !pResource->resource || stride != pitch)
+          fprintf(stderr, "d3d10umd: pid %lu: shared resource %ux%u fmt %u pitch %u (Panfrost stride %llu): %s\n",
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index eeb5cf9..8f48e4b 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -194,6 +194,9 @@ struct Resource
+    const void *shared_cpu;
+    unsigned shared_pitch;
+    unsigned shared_gen;
++   /* G2b-3 (0052): the runtime allocation that IS this texture's GPU BO (MISC_SHARED on the GPU screen, 0046) -
++    * swap-chain buffers of flip-model / composition swap chains are such resources and are presented as they are. */
++   unsigned kmt_shared;
+ };
+ 
+ /* G2b-3 (0045): Resource.cpp - refresh an opened shared resource's GPU copy (no-op for anything else). */
+-- 
+2.43.0
+

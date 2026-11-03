@@ -782,3 +782,17 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Also 0051: S10_GPU_DENY=<exe list> refuses OpenAdapter to those processes (WARP fallback experiment, off by
   default); the vectored handler now unwinds the faulting thread from its CONTEXT (RtlVirtualUnwind) - the
   RtlCaptureStackBackTrace stack stopped at ntdll's dispatcher. UMD a99f832b.
+
+### G2b-3 run 14 (UMD 0051 a99f832b, 2026-11-04 03:33) - DEVICE RESULT
+- Still black; XAML hosts still restart (SearchHost 16, explorer 15, StartMenu 15 instances). Only ONE GPU job
+  fault in the boot. No access violation in comprobe any more (the fake-user-VB crash is gone).
+- comprobe (user session) output stopped after "CreateRenderTargetView" again, but its umd-log lines show it went on:
+  DComp atlas 1024x1024 (x2), "present blt 1024x1024 ok", a composition swap chain (256x256 x2) whose present
+  FAILED 0x88760873, the hwnd flip swap chain (400x300 x2) "present blt ok". Task result 0xC000013A. stdout lost
+  (buffering suspected) -> comprobe v1.2: unbuffered stdout, progress lines before Clear / EndDraw.
+- 0x88760873 = D3DDDIERR_INVALIDHANDLE (d3dumddi.h MAKE_D3DDDIHRESULT(2163)). Same as WindowsTerminal's
+  "present blt 1372x1260 FAILED" (its XAML SwapChainPanel = a composition swap chain) - followed by d3d11.dll+0x46f4
+  read of 0x8 and an E_INVALIDARG MoAppCrash. The UMD presented those buffers by copying them into the shim's own
+  private surface; dxgkrnl refuses that handle for composition presents. The buffers are MISC_SHARED resources whose
+  BO IS a runtime allocation (0046) -> 0052: such sources are presented directly (hSrcAllocation = that allocation,
+  no read-back), logged as "present shared allocation". UMD 2eff63ee.

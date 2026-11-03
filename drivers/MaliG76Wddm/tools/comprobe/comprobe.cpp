@@ -75,7 +75,8 @@ texture(ID3D11Device *dev, const char *what, DXGI_FORMAT fmt, UINT bind, UINT mi
 int
 main(void)
 {
-   printf("comprobe v1.1 - D3D11 / DXGI / D2D / DComp on the Mali adapter, session %lu\n", sess());
+   setvbuf(stdout, NULL, _IONBF, 0);   /* v1.2: run g2b3-14 lost every line after a point - nothing buffered now */
+   printf("comprobe v1.2 - D3D11 / DXGI / D2D / DComp on the Mali adapter, session %lu\n", sess());
 
    IDXGIFactory2 *fac = NULL;
    if (FAILED(step("CreateDXGIFactory1 (IDXGIFactory2)", CreateDXGIFactory1(__uuidof(IDXGIFactory2), (void **)&fac))))
@@ -309,10 +310,12 @@ main(void)
                ID3D11RenderTargetView *rtv = NULL;
                if (SUCCEEDED(step("    CreateRenderTargetView", dev->CreateRenderTargetView(t, NULL, &rtv)))) {
                   const float col[4] = {0.0f, 0.5f, 1.0f, 1.0f};
+                  printf("    .. ClearRenderTargetView\n");
                   ctx->ClearRenderTargetView(rtv, col);
                   rtv->Release();
                }
                t->Release();
+               printf("    .. EndDraw\n");
                step("  Surface::EndDraw", sf->EndDraw());
             }
             sf->Release();
@@ -429,6 +432,6 @@ main(void)
    dev->Release();
    ad->Release();
    fac->Release();
-   printf("comprobe: %d step(s) failed\n", fails);
+   printf("comprobe: %d step(s) failed - done\n", fails);
    return fails ? 3 : 0;
 }
