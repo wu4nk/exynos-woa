@@ -529,3 +529,21 @@ gpuwatch.txt (gpu-watch v1.0, boot with FullAdapter 1 GpuEnable 1, GALLIUM_DRIVE
   gpu-report.txt is still "gpu-s10.ps1 v1.6 gpu" -> v1.7 (fill task) was not run, so no d3dfill-auto.txt yet.
   The gpuwatch.txt head (passes 13-16, empty pram = MaliG76Wddm not loaded = a nogpu boot where the watch task
   still ran) shows 11-17k interrupts/s with 50-70 % CPU while the user worked in Basic Display; idle 707/s.
+
+## DEVICE RESULT 2026-11-03 18:25 - G2b-2 PASS: Mesa Panfrost renders on the Mali through WDDM (d3dfill)
+d3dfill-auto.txt (task "S10 GPU fill", GALLIUM_DRIVER=panfrost in d3dfill's env only, DWM on softpipe):
+- adapter "Arm Mali-G76 MP12", D3D11CreateDevice S_OK FL 0xa000, 1440x3040 window, swap chain S_OK.
+- Run A (boot @23:18:07): SetFullscreenState(TRUE) S_OK = EXCLUSIVE FULLSCREEN (S10e g53/g54: always 0x887A0022).
+  readback (0,0): red 0xffff0000, green 0xff00ff00, blue 0xff0000ff, white 0xffffffff - all exact; 3 frames per
+  ~3.7-4.1 s per phase (~0.8 fps); KMD ISR count 1 -> 0x19 (25) during the run = Panfrost jobs; exit 0.
+- Run B (another boot): windowed (SetFullscreenState 0x887a0022), same 4 exact readbacks, 11-13 frames / ~3.1 s
+  (~4 fps), exit 0. Run C: a nogpu boot - only Basic Render adapters, "no Mali adapter" (expected).
+- m5test PASS in every GPU boot (3 boots, 219-250 ms).
+=> The whole stack works on hardware: D3D11 runtime -> maliumd.dll (Linux/zig build) -> Panfrost (Bifrost v7
+   compiler, libpan precomp) -> libdrm shim -> MaliG76Wddm escapes/render/paging -> Mali G76 jobs -> IRQ -> fences.
+- Slow frames: present = CPU copy of the Panfrost back buffer (malikm_present_d3dddi / d3d10_gdi: map for reading
+  + GDI/DXGI blit) out of the aperture segment, which the CPU maps uncached/WC (memory.c CacheCoherent FALSE):
+  17.5 MB uncached reads per 1440x3040 frame. Performance item for after G2b-3 (cached CPU view + explicit cache
+  maintenance, or scanout/flip of the Mali-rendered surface instead of copying).
+- WerFault.exe shows in a pass-1 CPU top list of run A's boot - something crashed once; not investigated (no WER copy).
+Next: G2b-3 gpu-s10 gpu-dwm (DWM on Panfrost).
