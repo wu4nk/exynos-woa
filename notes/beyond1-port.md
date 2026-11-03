@@ -569,3 +569,4 @@ Next: G2b-3 gpu-s10 gpu-dwm (DWM on Panfrost).
 - linux-build-g76.sh MESA_BUILDTYPE=release -> -Dbuildtype=release -Db_ndebug=true (asserts off). Building.
 - gpu-s10.ps1 v1.9 Initialize-UmdLog (folder + icacls Everyone:M, DWM runs as Window Manager\DWM-n) in
   full/gpu/gpu-dwm; s10-log v1.8 + twrp-log v1.1 collect umd-log.txt.
+- 20:34 release UMD built: buildtype release, optimization 3, b_ndebug true (-DNDEBUG on 1214 build lines), base 0x180000000, subsystem 6.2, contains the 0042 diag ('release (asserts off)'), sha256 a2805d23f7af517689035b4f7b460890d8480dc0dd3125c8c7962ed1d4e52369. Debug 9fb3fe45 kept in scratchpad/mali/umd-debug-9fb3fe45.
