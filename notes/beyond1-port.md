@@ -441,3 +441,4 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
   to map ARM64 images based below 4 GB with ERROR_BAD_EXE_FORMAT (MSVC's ARM64 default is 0x180000000; LNK4281 warns
   for low bases). Subsystem version, TLS, imports, import-dir alignment, .buildid: all irrelevant.
 - Fix: linux-build-g76.sh cross file c/cpp_link_args += -Wl,--image-base=0x180000000. Rebuild running.
+- 15:50 rebuilt maliumd.dll: ImageBase 0x180000000, OS/subsystem 6.2, exports OpenAdapter10/_2, sha256 9fb3fe45fff80432b961d164f254265365e625c0eb82d5a818d44b96c6bff306. Next: umd-test on the phone, then gpu-s10 full.
