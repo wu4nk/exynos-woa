@@ -547,3 +547,6 @@ d3dfill-auto.txt (task "S10 GPU fill", GALLIUM_DRIVER=panfrost in d3dfill's env 
   maintenance, or scanout/flip of the Mali-rendered surface instead of copying).
 - WerFault.exe shows in a pass-1 CPU top list of run A's boot - something crashed once; not investigated (no WER copy).
 Next: G2b-3 gpu-s10 gpu-dwm (DWM on Panfrost).
+- 18:34 G2b-3 attempt: the boot had machine GALLIUM_DRIVER '' (gpu-dwm applied) but MaliG76Wddm never loaded (empty
+  PRAM, m5test/d3dfill see only Basic Render) - gpu-dwm was run in a nogpu rescue boot and, unlike gpu/full/display,
+  did not remove \S10EDIAG\nogpu.flg. gpu-s10.ps1 v1.8: gpu-dwm also Clear-NoGpuFlag + Set-GpuWatch $true.
