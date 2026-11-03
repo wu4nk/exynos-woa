@@ -550,3 +550,9 @@ Next: G2b-3 gpu-s10 gpu-dwm (DWM on Panfrost).
 - 18:34 G2b-3 attempt: the boot had machine GALLIUM_DRIVER '' (gpu-dwm applied) but MaliG76Wddm never loaded (empty
   PRAM, m5test/d3dfill see only Basic Render) - gpu-dwm was run in a nogpu rescue boot and, unlike gpu/full/display,
   did not remove \S10EDIAG\nogpu.flg. gpu-s10.ps1 v1.8: gpu-dwm also Clear-NoGpuFlag + Set-GpuWatch $true.
+- 20:22 G2b-3 (gpu-dwm v1.8): user - the screen comes up, Windows boots, then BLACK. User has no PC now.
+  twrp-log.sh v1.0 (TWRP terminal, no PC): ESP UEFILOG/WINPRAM, C:\S10Prov\*.txt/*.log (gpuwatch, d3dfill-auto,
+  gpu-report), Exynos/S10/Mali LogFiles, System+Application.evtx, WER Report.wer texts -> /cache/S10LOG/
+  s10log-<date>.tar.gz; `nogpu` arg creates the flag. Simulated on a fake tree (bash): archive complete.
+  s10-log v1.7: + gpuwatch.txt, d3dfill-auto.txt, m5test.txt, d3dfill.txt, umd-test.txt. Easiest path without a
+  PC: TWRP `touch /cache/S10EDIAG/nogpu.flg` -> Windows (Basic Display) -> s10-log -> upload C:\log.zip by browser.
