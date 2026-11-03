@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.5) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.6) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -34,7 +34,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.5  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.6  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -53,6 +53,23 @@ function Set-GalliumDriver($v) {
   if ($v) { Set-ItemProperty $EnvKey GALLIUM_DRIVER $v -Type String; Ok "machine GALLIUM_DRIVER = $v (DWM uses it from the next boot)" }
   elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).GALLIUM_DRIVER) {
     Remove-ItemProperty $EnvKey GALLIUM_DRIVER; Ok 'machine GALLIUM_DRIVER removed (Mesa picks its default: Panfrost when the GPU is up)'
+  }
+}
+# v1.6: "S10 GPU watch" (gpu-watch.ps1, SYSTEM, at startup) logs the Mali driver's counters, CPU interrupt/DPC
+# time and m5test into C:\S10Prov\gpuwatch.txt in every GPU-mode boot - no typing needed on a boot too slow to use.
+function Set-GpuWatch([bool]$On) {
+  $name = 'S10 GPU watch'
+  if ($On) {
+    $ps1 = Join-Path $PSScriptRoot 'gpu-watch.ps1'
+    if (-not (Test-Path $ps1)) { Warn "no gpu-watch.ps1 next to this script - no automatic log in GPU-mode boots"; return }
+    $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ps1`""
+    $trg = New-ScheduledTaskTrigger -AtStartup
+    $prn = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
+    Register-ScheduledTask -TaskName $name -Action $act -Trigger $trg -Principal $prn -Settings $set -Force | Out-Null
+    Ok "task '$name': every GPU-mode boot logs to C:\S10Prov\gpuwatch.txt (TWRP: adb pull /data/S10Prov/gpuwatch.txt)"
+  } elseif (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $name -Confirm:$false; Ok "task '$name' removed"
   }
 }
 function Find-Tool($n) {
@@ -205,10 +222,12 @@ function Set-FullMode([int]$Gpu) {
   if ($Gpu) {
     Ok 'mode: full adapter WITH the GPU half (FullAdapter 1, GpuEnable 1)'
     Set-GalliumDriver 'softpipe'
+    Set-GpuWatch $true
     Info 'after the reboot: .\gpu-s10.ps1 status, then .\gpu-s10.ps1 m5test'
   } else {
     Ok 'mode: full adapter, GPU half off (FullAdapter 1, GpuEnable 0) - Mesa softpipe draws on the CPU'
     Set-GalliumDriver $null
+    Set-GpuWatch $false
   }
   Clear-NoGpuFlag
   Info 'reboot, then run: .\gpu-s10.ps1 status   and collect logs (s10-log.cmd)'
@@ -237,6 +256,8 @@ switch ($Action) {
       Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
       Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
       Ok 'GPU0 hidden (nogpu.flg) - mode written anyway: display-only (GpuEnable 0, FullAdapter 0)'
+      Set-GalliumDriver $null
+      Set-GpuWatch $false
       Clear-NoGpuFlag
       Info 'reboot now'
       Info "report: $Report"
@@ -249,6 +270,7 @@ switch ($Action) {
     Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
     Ok 'mode: display-only (GpuEnable 0, FullAdapter 0)'
     Set-GalliumDriver $null
+    Set-GpuWatch $false
     Clear-NoGpuFlag
     Info 'reboot, then run: .\gpu-s10.ps1 status   (FbMatchesGop = 1 is the good sign)'
     Info 'black screen after reboot -> TWRP, create \S10EDIAG\nogpu.flg on the ESP (or flash v0.1.2)'

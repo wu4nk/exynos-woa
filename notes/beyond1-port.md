@@ -501,3 +501,9 @@ JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never 
   interesting Windows boot and the next UEFI boot DESTROYS the PRAM (TWRP's Linux reuses 0x8FE00000). To capture a
   boot's PRAM: forced reset -> let it boot through OUR UEFI (it saves \WINPRAM.BIN) -> only then TWRP.
   The G2b-1 counters are lost; re-run needed.
+- 17:20 gpu-watch.ps1 v1.0 + gpu-s10.ps1 v1.6: task "S10 GPU watch" (SYSTEM, AtStartup, 15 min limit) registered
+  by `gpu`, removed by `full`/`display` (also the nogpu rescue branch). Every 15 s x 40: Mali PRAM HB/ST + last 6
+  trace lines (s10ediag peek 0x8FE04000), _Total % processor/interrupt/DPC + interrupts/s, top 6 CPU deltas; m5test
+  once at uptime >= 60 s (60 s limit, killed on timeout). Appends to C:\S10Prov\gpuwatch.txt - NTFS, survives a
+  forced reset, get-logs-twrp grabs S10Prov\*.txt. No keyboard needed on the slow boot, no PRAM/UEFI ordering.
+  Both scripts parse clean (pwsh). Kit lists (push-to-windows, make-kit) include gpu-watch.ps1.
