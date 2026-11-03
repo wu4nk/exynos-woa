@@ -1,0 +1,120 @@
+From a10c48e2f94d8c5aedaa1ac900c2c2c8ce5d8e15 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Tue, 3 Nov 2026 20:29:15 +0700
+Subject: [PATCH] G2b-3: UMD diagnostics - stderr + SIGABRT stack to
+ C:\ProgramData\S10e\umd\umd-log.txt
+
+---
+ src/gallium/targets/d3d10umd/d3d10_gdi.c | 89 ++++++++++++++++++++++++
+ 1 file changed, 89 insertions(+)
+
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index 6e628c0..ff229e7 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -223,6 +223,94 @@ d3d10_bind_runtime(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks
+ #endif
+ }
+ 
++
++/* exynos-woa G2b-3 (notes/beyond1-port.md 20:26): DWM on Panfrost died in ucrtbase with c0000409 = abort() from a
++ * Mesa assert, and DWM has no console - the message and the place were lost. Every process that creates a screen
++ * now appends to C:\ProgramData\S10e\umd\umd-log.txt (gpu-s10.ps1 creates the folder writable for DWM's account):
++ * a "screen" line, everything Mesa writes to stderr (mesa_loge, assert texts - _set_error_mode(_OUT_TO_STDERR)),
++ * and on SIGABRT (assert, unreachable, abort) a stack trace as module+offset, symbolised offline with the build's
++ * PDB/DWARF. No behaviour change otherwise. */
++#include <signal.h>
++#include <stdarg.h>
++#include <time.h>
++#define S10_LOG_DIR "C:\\ProgramData\\S10e\\umd"
++#define S10_LOG     S10_LOG_DIR "\\umd-log.txt"
++static volatile LONG s10_diag_once;
++
++static void
++s10_log(const char *fmt, ...)
++{
++   char buf[1024], exe[MAX_PATH] = "?";
++   int n;
++   va_list ap;
++   HANDLE h;
++   DWORD wr;
++   SYSTEMTIME st;
++
++   GetLocalTime(&st);
++   GetModuleFileNameA(NULL, exe, sizeof(exe));
++   n = snprintf(buf, sizeof(buf), "%02u:%02u:%02u.%03u pid %lu %s | ", st.wHour, st.wMinute, st.wSecond,
++                st.wMilliseconds, GetCurrentProcessId(), strrchr(exe, '\\') ? strrchr(exe, '\\') + 1 : exe);
++   va_start(ap, fmt);
++   if (n > 0 && n < (int)sizeof(buf))
++      n += vsnprintf(buf + n, sizeof(buf) - n, fmt, ap);
++   va_end(ap);
++   if (n < 0 || n >= (int)sizeof(buf) - 2)
++      n = (int)sizeof(buf) - 3;
++   buf[n++] = '\r';
++   buf[n++] = '\n';
++   h = CreateFileA(S10_LOG, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS,
++                   FILE_ATTRIBUTE_NORMAL, NULL);
++   if (h != INVALID_HANDLE_VALUE) {
++      WriteFile(h, buf, (DWORD)n, &wr, NULL);
++      CloseHandle(h);
++   }
++}
++
++static void __cdecl
++s10_on_abort(int sig)
++{
++   void *frames[48];
++   USHORT count, i;
++
++   s10_log("SIGNAL %d (abort / assert / unreachable) - stack:", sig);
++   fflush(stderr);
++   count = RtlCaptureStackBackTrace(0, 48, frames, NULL);
++   for (i = 0; i < count; i++) {
++      HMODULE mod = NULL;
++      char name[MAX_PATH] = "?";
++      if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++                             (LPCSTR)frames[i], &mod)) {
++         GetModuleFileNameA(mod, name, sizeof(name));
++         s10_log("  #%02u %s+0x%llx", i, strrchr(name, '\\') ? strrchr(name, '\\') + 1 : name,
++                 (unsigned long long)((ULONG_PTR)frames[i] - (ULONG_PTR)mod));
++      } else {
++         s10_log("  #%02u %p", i, frames[i]);
++      }
++   }
++   s10_log("  (maliumd.dll image base 0x180000000: add the offset for llvm-symbolizer)");
++}
++
++static void
++s10_diag_init(const char *driver)
++{
++   if (InterlockedCompareExchange(&s10_diag_once, 1, 0) != 0)
++      return;
++   CreateDirectoryA("C:\\ProgramData\\S10e", NULL);
++   CreateDirectoryA(S10_LOG_DIR, NULL);
++   if (freopen(S10_LOG, "a", stderr) != NULL)
++      setvbuf(stderr, NULL, _IONBF, 0);
++   _set_error_mode(_OUT_TO_STDERR);
++   signal(SIGABRT, s10_on_abort);
++   s10_log("screen: driver '%s', maliumd built %s %s, %s", driver ? driver : "?", __DATE__, __TIME__,
++#ifdef NDEBUG
++           "release (asserts off)"
++#else
++           "debug (asserts on)"
++#endif
++           );
++}
++
+ struct pipe_screen *
+ d3d10_create_screen(void)
+ {
+@@ -248,6 +336,7 @@ d3d10_create_screen(void)
+ #endif
+ 
+    driver = debug_get_option("GALLIUM_DRIVER", default_driver);
++   s10_diag_init(driver);
+ 
+ #ifdef GALLIUM_LLVMPIPE
+    if (strcmp(driver, "llvmpipe") == 0) {
+-- 
+2.43.0
+

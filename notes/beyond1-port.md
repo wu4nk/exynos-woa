@@ -556,3 +556,16 @@ Next: G2b-3 gpu-s10 gpu-dwm (DWM on Panfrost).
   s10log-<date>.tar.gz; `nogpu` arg creates the flag. Simulated on a fake tree (bash): archive complete.
   s10-log v1.7: + gpuwatch.txt, d3dfill-auto.txt, m5test.txt, d3dfill.txt, umd-test.txt. Easiest path without a
   PC: TWRP `touch /cache/S10EDIAG/nogpu.flg` -> Windows (Basic Display) -> s10-log -> upload C:\log.zip by browser.
+
+## G2b-3 run 1 (2026-11-03 20:26): DWM on Panfrost - maliumd LOADED, DWM aborts on a Mesa assert
+- User: Windows boots, then black. log.zip (s10-log v1.6 from the nogpu boot after): 19 WER AppCrash_dwm.exe, new
+  bucket 6ffe1143..., every ~4-5 s 16:34:52 -> 16:36:18: fault module ucrtbase.dll offset 0x76d8c, c0000409
+  (= abort() -> __fastfail), and maliumd.dll IS in DWM's modules (index 61, next to D3D10Warp) - first time DWM
+  runs on our UMD with the GPU up. Debugoptimized build = asserts on; message lost (DWM has no console).
+  Likely: nir_validate (on in debug builds) or a d3d10umd/Panfrost assert on DWM's shaders/formats.
+- Mesa patch 0042 (d3d10_gdi.c): s10_diag_init() at screen creation: freopen(stderr) to
+  C:\ProgramData\S10e\umd\umd-log.txt, _set_error_mode(_OUT_TO_STDERR) (assert text to stderr), SIGABRT handler
+  with RtlCaptureStackBackTrace module+offset lines; "screen" line with driver + build type. Compiled clean.
+- linux-build-g76.sh MESA_BUILDTYPE=release -> -Dbuildtype=release -Db_ndebug=true (asserts off). Building.
+- gpu-s10.ps1 v1.9 Initialize-UmdLog (folder + icacls Everyone:M, DWM runs as Window Manager\DWM-n) in
+  full/gpu/gpu-dwm; s10-log v1.8 + twrp-log v1.1 collect umd-log.txt.

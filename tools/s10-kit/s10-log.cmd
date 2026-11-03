@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.7) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.8) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -23,7 +23,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.7 -> $dir"
+Write-Host "s10-log v1.8 -> $dir"
 
 # 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
 #    state, config, logs; a stopped service is started here and the exact error is recorded.
@@ -129,7 +129,7 @@ Get-ChildItem C:\Windows\LiveKernelReports -Recurse -File -ErrorAction SilentlyC
 Copy-Item C:\Windows\INF\setupapi.dev.log $dir -ErrorAction SilentlyContinue
 Copy-Item C:\Windows\System32\LogFiles\Exynos*.txt, C:\Windows\System32\LogFiles\S10*.txt, C:\Windows\System32\LogFiles\MaliG76*.txt, C:\S10Prov\gpu-report.txt $dir -ErrorAction SilentlyContinue
 # v1.7: the G2b logs the automatic tasks write (gpu-watch / gpu-fill) and the manual m5test / d3dfill runs
-Copy-Item C:\S10Prov\gpuwatch.txt, C:\S10Prov\d3dfill-auto.txt, C:\S10Prov\m5test.txt, C:\S10Prov\d3dfill.txt, C:\S10Prov\umd-test.txt $dir -ErrorAction SilentlyContinue
+Copy-Item C:\S10Prov\gpuwatch.txt, C:\S10Prov\d3dfill-auto.txt, C:\S10Prov\m5test.txt, C:\S10Prov\d3dfill.txt, C:\S10Prov\umd-test.txt, C:\ProgramData\S10e\umd\umd-log.txt $dir -ErrorAction SilentlyContinue
 Write-Host '[ OK ] devices, counters, events'
 
 # 3. firmware log + saved PRAM dumps from the ESP. v1.6: use an ESP that is already mounted (an earlier

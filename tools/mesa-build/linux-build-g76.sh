@@ -65,6 +65,12 @@ if want host; then
 fi
 
 if want cross; then
+  # MESA_BUILDTYPE: debugoptimized (default, asserts on - the S10e g54 UMD) or release (-Db_ndebug=true: asserts off;
+  # G2b-3 2026-11-03: DWM on Panfrost aborted on a Mesa assert every ~5 s).
+  case "${MESA_BUILDTYPE:-debugoptimized}" in
+    release) BT_OPTS="-Dbuildtype=release -Db_ndebug=true" ;;
+    *)       BT_OPTS="-Dbuildtype=debugoptimized" ;;
+  esac
   TC=$W/tc; mkdir -p $TC xlib ddi
   for t in cc c++; do printf '#!/bin/sh\nexec %s %s -target aarch64-windows-gnu "$@"\n' "$ZIG" $t > $TC/zig-$t; done
   for t in ar rc dlltool; do printf '#!/bin/sh\nexec %s %s "$@"\n' "$ZIG" $t > $TC/zig-$t; done
@@ -123,7 +129,7 @@ EOF
   ( export PATH=$W/build-host/src/panfrost/clc:$W/ref-pin/ci/clc-stubs:$ENV/bin:$PATH LIBPAN_PREBUILT=$W/libpan-prebuilt
     unset CC CXX PKG_CONFIG_PATH
     rm -rf build-arm64
-    meson setup build-arm64 mesa-26.2-g76 --backend=ninja --cross-file $TC/arm64-mingw-zig.cross -Dbuildtype=debugoptimized \
+    meson setup build-arm64 mesa-26.2-g76 --backend=ninja --cross-file $TC/arm64-mingw-zig.cross $BT_OPTS \
       -Dprecomp-compiler=system -Dplatforms=windows -Dgallium-drivers=softpipe,panfrost -Dgallium-d3d10umd=true \
       -Dmesa-clc=system -Dvulkan-drivers= -Dllvm=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled \
       -Degl=disabled -Dglx=disabled -Dgbm=disabled -Dvideo-codecs= -Dmicrosoft-clc=disabled -Dspirv-to-dxil=false \
