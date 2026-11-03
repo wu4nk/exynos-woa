@@ -463,3 +463,19 @@ no WER dir entries). User: desktop works but laggy (right-click slow) - expected
 interpreter, CPU) draws everything DWM composes, vs Basic Display + WARP (JIT, multi-threaded) in display-only.
 So the S10 now matches the S10e g54 state, with a UMD built on Linux (zig + 0x180000000 base).
 Advice given: use display-only for daily use; full mode is the base for G2b (GpuEnable 1, Mali jobs).
+
+## G2b plan (2026-11-03 16:15) - GpuEnable 1 in three isolated steps
+Basis: KMD GPU half (maligpu.c, G11 retarget) reviewed vs panfrost/kbase in notes/gpu-s10-review.md (Fix 1-3, in the
+S10 kit build - committed 11-02 15:15, kit built after; INF version still 1.0.34.1, so the proof is the
+JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never run on any device (S10e stopped at G13).
+- G2b-1 `gpu-s10.ps1 gpu`: FullAdapter 1 + GpuEnable 1, machine GALLIUM_DRIVER=softpipe (DWM keeps softpipe, desktop
+  as G2a), reboot; `gpu-s10.ps1 m5test`: m5test.exe = one WRITE_VALUE job through D3DKMT only (no Mesa) - the KMD job
+  path (CreateContext/Allocation/Render/Lock -> MkJobStart -> IRQ/poll -> fence). PASS line + KMD trace.
+- G2b-2 `gpu-s10.ps1 fill`: d3dfill.exe 3 with GALLIUM_DRIVER=panfrost in its own process (Mesa Panfrost on the
+  Mali, DWM untouched): 4 colours, readback per phase.
+- G2b-3 `gpu-s10.ps1 gpu-dwm`: drop the machine variable -> DWM on Panfrost (0020 default when the GPU is up).
+- gpu-s10.ps1 v1.5 (Set-FullMode shared by full/gpu, Set-GalliumDriver, Find-Tool, Show-KmdTrace; display/full clear
+  the variable; native calls run with ErrorActionPreference Continue so stderr does not throw in PS 5.1).
+  All edited .ps1 (+ s10-log's PS part) parse clean with pwsh 7 (conda-forge `powershell`, ~/pwsh-env).
+- tools/mesa-build/build-gpu-tools.sh: m5test.exe 1815a3dc..., d3dfill.exe 8e4c8d13... (zig, base 0x140000000,
+  subsystem 6.2). d3dprobe skipped (MSVC __try).
