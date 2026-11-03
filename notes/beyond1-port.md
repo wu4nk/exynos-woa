@@ -485,3 +485,10 @@ JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never 
   Panfrost -> jobs time out 2 s each; (b) an interrupt storm on a line MkIsr does not own (returns FALSE);
   (c) the HB/vsync DPCs. s10-log v1.5: + MaliG76Wddm PRAM slice (0x8FE04000, HB i/d/v/s/p), + cpu.txt
   (per-CPU % processor / interrupt / DPC time, interrupts/s, top processes).
+- 16:32 TWRP logs: registry GpuEnable 1 / FullAdapter 1 / machine GALLIUM_DRIVER=softpipe (written 16:19:47 local).
+  The saved WINPRAM.BIN Mali slice is an OLDER mode-1 boot (Params 00010311 = GpuEnable 0; HB i0 d219f v2136 s6b
+  p15b at 152 s = 347 presents / 152 s = 2.3 fps softpipe) - entering TWRP straight from a forced reset skips our
+  UEFI, so the G2b-1 boot's PRAM is saved only at the NEXT UEFI boot (if TWRP leaves 0x8FE00000 alone).
+  G2b-1 boot = System rec 3642: logon (7001) at +21 s, events until +170 s, NO WER, no dwm crash, no display/TDR
+  event, ended by the forced reset. => not crashing, starved/stalled. Need its PRAM (HB i/d/s/p, job counters).
+  Note: Windows clock is synced by NTP during a boot (rec 3621 at 09:20:39 UTC = real time), boots start 2026-11-01.
