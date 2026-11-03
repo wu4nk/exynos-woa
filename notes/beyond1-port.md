@@ -391,3 +391,10 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
   was not rewritten - s10-log v1.3 did not run (or did not reach its zip step) in that boot. No evidence for G2a yet.
 - Side finding: every boot's System-log time starts at 2026-11-01 23:17:08 (OS start event 12) - the Windows clock
   is reset to the same value each boot (no RTC / time sync).
+- 15:09 TWRP logs (get-logs-twrp v1.0): no evidence of the full-mode boot. WINPRAM-RESTART +0x4000 = a display-only
+  boot (LOAD mode 0, Presents ~3.5k); WINPRAM.BIN slice empty. System.evtx: boots rec 2494 / 2620 ended abnormally
+  (6008 on the next boot) = the two black-screen full boots; both reached Winlogon 7001 (user logon notification at
+  ~20 s) - so logon itself ran, like S10e g52 ("logon completes, panel dark"). No dxgkrnl/Display events; Win32k 263
+  (generic) in every boot. User-mode crash evidence (Application.evtx, WER) was not collected by v1.0.
+- get-logs-twrp v1.1: + Application.evtx, + WER Report.wer texts (ReportArchive/ReportQueue, no dumps), + the newest
+  C:\S10Prov\logs\<stamp> s10-log run folder.

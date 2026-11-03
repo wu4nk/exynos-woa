@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem get-logs-twrp.cmd (v1.0) - collect the Galaxy S10 Windows-port logs WITHOUT booting Windows.
+rem get-logs-twrp.cmd (v1.1) - collect the Galaxy S10 Windows-port logs WITHOUT booting Windows.
 rem Phone in TWRP, USB cable in, run on the PC:   get-logs-twrp.cmd
 rem Reads only (works when TWRP mounts Windows read-only):
 rem   ESP (cache): UEFILOG.TXT (firmware log: TouchChip / TouchPower / WLAN / audio), WINPRAM*.BIN
@@ -33,7 +33,7 @@ echo [ OK ] %CD%\%D%.zip - send this file
 exit /b 0
 #__SH__
 #!/system/bin/sh
-# get-logs-twrp.sh (v1.0) - run ON THE PHONE (TWRP, root) by get-logs-twrp.cmd. Read-only on every partition.
+# get-logs-twrp.sh (v1.1) - run ON THE PHONE (TWRP, root) by get-logs-twrp.cmd. Read-only on every partition.
 O=/tmp/s10logs
 rm -rf "$O"; mkdir -p "$O/esp" "$O/windows"
 ci() {   # case-insensitive path resolution (NTFS / FAT names under Linux)
@@ -47,7 +47,7 @@ ci() {   # case-insensitive path resolution (NTFS / FAT names under Linux)
 }
 grab() { [ -f "$1" ] && cp -f "$1" "$2"/ && echo "[ OK ] $(basename "$1") ($(wc -c < "$1") B)"; }
 
-{ echo "get-logs-twrp v1.0  $(date)"; getprop ro.boot.bootloader; uname -a; cat /proc/mounts; } > "$O/twrp.txt" 2>&1
+{ echo "get-logs-twrp v1.1  $(date)"; getprop ro.boot.bootloader; uname -a; cat /proc/mounts; } > "$O/twrp.txt" 2>&1
 
 # --- ESP = cache partition (FAT32) ---
 ED=$(readlink -f /dev/block/by-name/cache 2>/dev/null)
@@ -72,10 +72,24 @@ if [ -d "$S32" ]; then
   done
   for f in SYSTEM SYSTEM.LOG1 SYSTEM.LOG2; do grab "$(ci "$S32" "config/$f")" "$O/windows"; done
   grab "$(ci "$S32" "winevt/Logs/System.evtx")" "$O/windows"
+  # v1.1: who crashed in user mode (dwm / LogonUI / the Mesa UMD) - Application log + the WER report texts (no dumps)
+  grab "$(ci "$S32" "winevt/Logs/Application.evtx")" "$O/windows"
+  WER=$(ci "$W" "ProgramData/Microsoft/Windows/WER")
+  if [ -d "$WER" ]; then
+    mkdir -p "$O/windows/wer"
+    find "$WER" -iname 'Report.wer' 2>/dev/null | while read -r r; do
+      cp -f "$r" "$O/windows/wer/$(basename "$(dirname "$r")").wer.txt" 2>/dev/null
+    done
+    ls -laR "$WER" > "$O/windows/wer/listing.txt" 2>&1
+    echo "[ OK ] WER: $(ls "$O/windows/wer" | wc -l) files"
+  fi
   grab "$(ci "$W" "Windows/INF/setupapi.dev.log")" "$O/windows"
   P=$(ci "$W" "S10Prov")
   for f in "$P"/*.log "$P"/*.txt; do grab "$f" "$O/windows/S10Prov"; done
   Z=$(ls -t "$P"/s10-logs-*.zip 2>/dev/null | head -n 1); [ -n "$Z" ] && grab "$Z" "$O/windows/S10Prov"
+  # v1.1: the newest s10-log.cmd run folder (C:\S10Prov\logs\<stamp>), even if its zip never reached C:\log.zip
+  L=$(ls -td "$(ci "$P" "logs")"/*/ 2>/dev/null | head -n 1)
+  [ -n "$L" ] && cp -rf "$L" "$O/windows/S10Prov/" && echo "[ OK ] s10-log run $(basename "$L")"
   ls -la "$(ci "$P" "kit/out")" > "$O/windows/kit-out-listing.txt" 2>&1
 else
   echo "[WARN] /data is not the Windows volume - only the ESP part was collected"
