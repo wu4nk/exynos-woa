@@ -1,0 +1,175 @@
+From cae9c7f15d56a47328b4faedbce73f8b29b6f2fb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 04:29:15 +0700
+Subject: [PATCH] G2b-3: DXGI primaries rendered by the GPU into the kernel
+ primary, present refusal log
+
+---
+ include/win32-compat/malikm_drm.c           | 18 +++++++++++
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp  | 16 ++++++++--
+ src/gallium/frontends/d3d10umd/Resource.cpp | 34 +++++++++++++++++++--
+ src/gallium/frontends/d3d10umd/State.h      |  2 ++
+ 4 files changed, 64 insertions(+), 6 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 73a1869..e2e9db7 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -1681,6 +1681,8 @@ static __declspec(thread) struct {
+    void *hres;
+    unsigned w, h, pitch, fmt;
+    D3DKMT_HANDLE got;
++   int primary;          /* 0054: a DXGI primary - Flags.Primary on VidPN source vidpn, MW_ALLOC_PRIMARY */
++   unsigned vidpn;
+ } wshared;
+ 
+ void
+@@ -1695,6 +1697,17 @@ malikm_shared_bo_begin(void *hRTResource, unsigned w, unsigned h, unsigned pitch
+    wshared.got = 0;
+ }
+ 
++/* G2b-3 (0054): the same for a DXGI primary (DWM's swap chain): the BO is the kernel primary allocation, created
++ * as malikm_primary_create does (Flags.Primary, the VidPN source, MW_ALLOC_PRIMARY, A8R8G8B8, pitch w * 4), so the
++ * GPU renders straight into what the KMD scans out or blts - no read-back, no CPU copy per frame. */
++void
++malikm_primary_bo_begin(void *hRTResource, unsigned vidpn, unsigned w, unsigned h)
++{
++   malikm_shared_bo_begin(hRTResource, w, h, w * 4, D3DDDIFMT_A8R8G8B8);
++   wshared.primary = 1;
++   wshared.vidpn = vidpn;
++}
++
+ unsigned
+ malikm_shared_bo_end(void)
+ {
+@@ -1829,6 +1842,11 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+          pi.Height = wshared.h;
+          pi.Pitch = wshared.pitch;
+          pi.Format = wshared.fmt;
++         if (wshared.primary) {
++            pi.Flags |= MW_ALLOC_PRIMARY;
++            ai.VidPnSourceId = wshared.vidpn;
++            ai.Flags.Primary = 1;
++         }
+          ra.hResource = wshared.hres;
+          ra.NumAllocations = 1;
+          ra.pAllocationInfo = &ai;
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index e9fd9a7..b3828b0 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -84,17 +84,27 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+     * surface. Run g2b3-14: presenting composition swap chains through the shim's private surface was refused with
+     * D3DDDIERR_INVALIDHANDLE (0x88760873) - comprobe's CreateSwapChainForComposition and Windows Terminal's XAML
+     * SwapChainPanel (1372x1260) - and their apps died with a stowed E_INVALIDARG. */
+-   if (pSrcResource && pSrcResource->kmt_shared && !pSrcResource->kmt_primary) {
++   if (pSrcResource && ((pSrcResource->kmt_shared && !pSrcResource->kmt_primary) || pSrcResource->gpu_primary)) {
+       unsigned dst = 0;
+       if (pPresentData->hDstResource) {
+          Resource *d = CastResource(pPresentData->hDstResource);
+          dst = d->kmt_primary ? d->kmt_primary : d->kmt_shared;
+       }
+-      if (malikm_present_alloc(pSrcResource->kmt_shared, dst, pPresentData->pDXGIContext,
+-                               pSrcResource->resource->width0, pSrcResource->resource->height0) == 0) {
++      unsigned src = pSrcResource->gpu_primary ? pSrcResource->kmt_primary : pSrcResource->kmt_shared;
++      if (malikm_present_alloc(src, dst, pPresentData->pDXGIContext, pSrcResource->resource->width0,
++                               pSrcResource->resource->height0) == 0) {
+          d3d10_frame_gen++;
+          return S_OK;
+       }
++      /* 0054: what DXGI asked for, when the runtime refused it (composition swap chains: INVALIDHANDLE) */
++      static unsigned refused;
++      if (++refused <= 4)
++         fprintf(stderr, "d3d10umd: pid %lu: Present refused: src %ux%u alloc 0x%x%s, dst resource %p (alloc 0x%x), "
++                         "subresources %u/%u, flags 0x%x, interval %u, DXGI context %p\n", GetCurrentProcessId(),
++                 pSrcResource->resource->width0, pSrcResource->resource->height0, src,
++                 pSrcResource->gpu_primary ? " (GPU primary)" : "", (void *)pPresentData->hDstResource, dst,
++                 pPresentData->SrcSubResourceIndex, pPresentData->DstSubResourceIndex, pPresentData->Flags.Value,
++                 (unsigned)pPresentData->FlipInterval, pPresentData->pDXGIContext);
+    }
+    d3d10_present_flip = pPresentData->Flags.Flip;
+    d3d10_present_alloc = pSrcResource ? pSrcResource->kmt_primary : 0;
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index b3204b3..fc7f1fd 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -211,6 +211,7 @@ extern "C" bool d3d10_runtime_is_maliwddm(void);
+  * runtime allocation (begin/end, end returns its handle or 0); an opened allocation as a "dma-buf" fd for
+  * resource_from_handle (import_alloc, -1 if it has no GPU address; import_done closes the fd). */
+ extern "C" void malikm_shared_bo_begin(void *hRTResource, unsigned w, unsigned h, unsigned pitch, unsigned d3dfmt);
++extern "C" void malikm_primary_bo_begin(void *hRTResource, unsigned vidpn, unsigned w, unsigned h);
+ extern "C" unsigned malikm_shared_bo_end(void);
+ extern "C" int malikm_import_alloc(unsigned hAlloc);
+ extern "C" void malikm_import_done(int fd);
+@@ -445,6 +446,33 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+                  pResource->resource ? (stride == pitch ? "GPU BO = shared allocation" : "PITCH MISMATCH") :
+                  d3dfmt ? "FAILED" : "format not shareable");
+    }
++   /* G2b-3 (0054): a DXGI primary on the GPU screen renders into its kernel primary allocation directly */
++   if (!pResource->resource && pCreateResource->pPrimaryDesc && cr_gpu && templat.target == PIPE_TEXTURE_2D &&
++       pCreateResource->MipLevels == 1 && pCreateResource->ArraySize == 1 && d3d10_runtime_is_maliwddm() &&
++       util_format_get_blocksize(templat.format) == 4 && (templat.width0 * 4) % 64 == 0 &&
++       !getenv("S10_PRIMARY_COPY")) {
++      struct pipe_resource t = templat;
++      t.bind |= PIPE_BIND_SHARED | PIPE_BIND_LINEAR | PIPE_BIND_SCANOUT;
++      malikm_primary_bo_begin(hRTResource.handle, pCreateResource->pPrimaryDesc->VidPnSourceId, templat.width0,
++                              templat.height0);
++      pResource->resource = screen->resource_create(screen, &t);
++      unsigned hp = malikm_shared_bo_end();
++      uint64_t stride = 0;
++      if (pResource->resource && screen->resource_get_param)
++         screen->resource_get_param(screen, pipe, pResource->resource, 0, 0, 0, PIPE_RESOURCE_PARAM_STRIDE, 0, &stride);
++      if (pResource->resource && hp && stride == templat.width0 * 4u) {
++         pResource->kmt_primary = hp;
++         pResource->gpu_primary = true;
++      } else if (pResource->resource) {
++         pipe_resource_reference(&pResource->resource, NULL);
++      }
++      static unsigned gp;
++      if (++gp <= 8 || !pResource->gpu_primary)
++         fprintf(stderr, "d3d10umd: pid %lu: primary %ux%u %s source %u (stride %llu): %s\n", GetCurrentProcessId(),
++                 templat.width0, templat.height0, util_format_name(templat.format),
++                 pCreateResource->pPrimaryDesc->VidPnSourceId, (unsigned long long)stride,
++                 pResource->gpu_primary ? "GPU BO = kernel primary" : "FAILED - CPU copy path");
++   }
+    if (!pResource->resource && (pCreateResource->MiscFlags & D3D10_DDI_RESOURCE_MISC_SHARED) &&
+        !pCreateResource->pPrimaryDesc && !cr_gpu &&
+        templat.target == PIPE_TEXTURE_2D && pCreateResource->MipLevels == 1 && pCreateResource->ArraySize == 1 &&
+@@ -511,7 +539,7 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+    /* G13 (patch 0025): a NO_SCANOUT primary gets one too: run g28full, DWM's Blt presents named the shim's private
+     * surface (not the presented resource's allocation) and never reached the KMD. Since patch 0026 it is a kernel
+     * primary (Flags.Primary) whatever the scanout argument: dxgkrnl refuses a Blt whose destination is not one. */
+-   if (pCreateResource->pPrimaryDesc && templat.target == PIPE_TEXTURE_2D) {
++   if (pCreateResource->pPrimaryDesc && templat.target == PIPE_TEXTURE_2D && !pResource->gpu_primary) {
+       unsigned h = 0;
+       if (malikm_primary_create(hRTResource.handle, pCreateResource->pPrimaryDesc->VidPnSourceId,
+                                 templat.width0, templat.height0, &h, !no_scanout) == 0)
+@@ -801,10 +829,10 @@ DestroyResource(D3D10DDI_HDEVICE hDevice,       // IN
+    }
+    free(pResource->transfers);
+ 
+-   if (pResource->kmt_primary) {
++   if (pResource->kmt_primary && !pResource->gpu_primary) {   /* 0054: a GPU primary dies with its BO / resource */
+       malikm_primary_destroy(pResource->kmt_primary);
+-      pResource->kmt_primary = 0;
+    }
++   pResource->kmt_primary = 0;
+    if (pResource->shared_cpu)
+       shared_forget(pResource);   /* G2b-3 (0045) */
+    pipe_resource_reference(&pResource->resource, NULL);
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index 8f48e4b..a3bfe14 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -197,6 +197,8 @@ struct Resource
+    /* G2b-3 (0052): the runtime allocation that IS this texture's GPU BO (MISC_SHARED on the GPU screen, 0046) -
+     * swap-chain buffers of flip-model / composition swap chains are such resources and are presented as they are. */
+    unsigned kmt_shared;
++   /* G2b-3 (0054): kmt_primary is this texture's own GPU BO (the GPU renders into the primary), not a kprim copy */
++   bool gpu_primary;
+ };
+ 
+ /* G2b-3 (0045): Resource.cpp - refresh an opened shared resource's GPU copy (no-op for anything else). */
+-- 
+2.43.0
+

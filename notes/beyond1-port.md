@@ -809,3 +809,18 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   frontend's calls, by malikm_use_device() (CreateResource / OpenResource / DestroyResource / Present /
   SetDisplayMode). util/os_file.c os_same_file_description compares handles on Windows, so every device gets its
   own Panfrost screen (no more u_pipe_screen_lookup_or_create sharing). DestroyDevice frees the device's context.
+
+### G2b-3 run 16 (UMD 0053 1c8d577d, 2026-11-04 04:22) - DEVICE RESULT: XAML CRASH LOOP GONE
+- With one shim context per device ("device ... has its own shim context (2 in this process)" x8) the shell hosts
+  start ONCE and stay up: in the GPU boot explorer#3856 up 106 s, SearchHost, StartMenuExperienceHost,
+  TextInputHost all one instance each (runs 10-15: 13-30 restarts each). CPU calm (dwm 6 s / 26 s interval,
+  explorer 0.7 s) - no more heat. No bugcheck.
+- comprobe (user session): every step OK except BC1/BC3 textures - DComp windowed tree commits, composition and
+  hwnd swap chains Present S_OK.
+- Still refused with D3DDDIERR_INVALIDHANDLE: composition swap-chain presents (Terminal 1372x1260 x7, comprobe
+  256x256), both as their own allocation and through the blt fallback.
+- DWM presented its primary only a few times ("runtime primary" < 300; KMD p 0xb4 -> 0xbc in 26 s).
+- 0054 (UMD a39b0a1f): DXGI primaries on the GPU screen are linear Panfrost resources whose BO is the kernel
+  primary allocation (Flags.Primary, VidPN source, MW_ALLOC_PRIMARY, pitch w*4) and are presented directly -
+  no read-back + convert + memcpy of 17.5 MB per DWM frame (S10_PRIMARY_COPY=1 restores the copy path); refused
+  presents log their DXGI_DDI_ARG_PRESENT (flags, dst, subresources, interval).
