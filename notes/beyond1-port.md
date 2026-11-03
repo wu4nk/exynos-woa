@@ -418,3 +418,10 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
   exports) - but the tiny zig test DLLs have the same, so it is lld's normal layout, not proof.
 - Bisect set umd-bisect.zip (same zig 0.13 toolchain): t1-c (plain C), t2-tls (36 KB __thread), t3-cxx (libc++),
   t4-synch (WaitOnAddress through the dlltool-made libsynchronization.a + gdi32). Each through umd-test.ps1.
+- 15:36 bisect on the phone: t1-c, t2-tls, t3-cxx, t4-synch ALL "LOAD: FAIL 193" -> the toolchain, not Mesa.
+  Common header fact: zig 0.13 writes OperatingSystemVersion/SubsystemVersion 6.0 for aarch64-windows-gnu and
+  ignores --major/minor-subsystem-version, --subsystem console:6.02 (rejected) and win10 target versions.
+  ARM/ARM64 images need subsystem >= 6.2 (MSVC / stock lld-link default ARM64 to 6.02) - working hypothesis.
+- tools/mesa-build/pe-set-subsys.py: sets OS + subsystem version (default 6.2) and recomputes the PE checksum
+  (matches pefile.generate_checksum). linux-build-g76.sh collect runs it on the UMD. Patched maliumd sha256
+  dacaf32c0658ff56ab91d08ccfa649df2d4038a0788b17f3ef00023883ceaf34; f1-c/f3-cxx patched for the device check.

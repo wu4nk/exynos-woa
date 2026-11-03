@@ -135,6 +135,8 @@ if want collect; then
   D=build-arm64/src/gallium/targets/d3d10umd/libgallium_d3d10.dll
   O=$W/out-umd; rm -rf $O; mkdir -p $O
   cp $D $O/libgallium_d3d10.dll; cp $D $O/maliumd.dll
+  # zig writes OS/subsystem version 6.0; Windows refuses ARM64 images below 6.2 (LoadLibrary 193). Fix the header.
+  python3 -I "$HERE/pe-set-subsys.py" $O/libgallium_d3d10.dll $O/maliumd.dll
   ( cd $O; sha256sum maliumd.dll > SHA256SUMS )
   llvm-readobj-18 --coff-imports $D | grep -E 'Name:' | sort -u > $O/imports.txt || true
   llvm-readobj-18 --coff-exports $D | grep -E 'Name:' > $O/exports.txt || true
