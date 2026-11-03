@@ -31,7 +31,7 @@ if not exist "bcm4375\bcmdhd_sta.bin_b1" echo [WARN] no bcm4375\ - WiFi needs ge
 set "S=/tmp/s10kit"
 adb shell "rm -rf %S% && mkdir -p %S%" || (echo [FAIL] adb shell & exit /b 1)
 for %%D in (out setup bcm4375 out-gpu) do if exist "%%D\" (adb push "%%D" %S%/ >nul || (echo [FAIL] push %%D & exit /b 1))
-for %%F in (install-in-windows.ps1 auto-install.ps1 collect-logs.ps1 kit-watch.ps1 s10-log.cmd gpu-s10.ps1) do if exist "%%F" (adb push "%%F" %S%/ >nul || (echo [FAIL] push %%F & exit /b 1))
+for %%F in (install-in-windows.ps1 auto-install.ps1 collect-logs.ps1 kit-watch.ps1 s10-log.cmd gpu-s10.ps1 umd-test.ps1) do if exist "%%F" (adb push "%%F" %S%/ >nul || (echo [FAIL] push %%F & exit /b 1))
 echo [ OK ] kit staged on the phone
 set "L="
 for /f "delims=:" %%N in ('findstr /n /x /c:"#__SH__" "%~f0"') do set "L=%%N"

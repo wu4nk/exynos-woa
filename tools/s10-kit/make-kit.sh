@@ -13,7 +13,7 @@ case "$(basename "$UEFI")" in beyond1lte-uefi-v*.img) ;; *) echo "UEFI must be n
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 D="$TMP/s10-woa-kit-v$VER"
 mkdir -p "$D"
-cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,collect-logs.ps1,push-to-windows.cmd,get-logs-twrp.cmd,s10-log.cmd,kit-watch.ps1,auto-install.ps1} "$D/"
+cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,collect-logs.ps1,push-to-windows.cmd,get-logs-twrp.cmd,s10-log.cmd,kit-watch.ps1,auto-install.ps1,gpu-s10.ps1,umd-test.ps1} "$D/"
 mkdir -p "$D/setup" && cp "$KIT/setup/SetupComplete.cmd" "$KIT/setup/S10-install-once.cmd" "$D/setup/"
 cp "$UEFI" "$D/"
 for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio S10eDiag include; do

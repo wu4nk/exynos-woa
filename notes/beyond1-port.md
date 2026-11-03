@@ -398,3 +398,14 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
   (generic) in every boot. User-mode crash evidence (Application.evtx, WER) was not collected by v1.0.
 - get-logs-twrp v1.1: + Application.evtx, + WER Report.wer texts (ReportArchive/ReportQueue, no dumps), + the newest
   C:\S10Prov\logs\<stamp> s10-log run folder.
+- 15:16 TWRP logs (get-logs-twrp v1.1) - CAUSE NARROWED: 47 WER AppCrash_dwm.exe reports, all the same: dwmcore.dll
+  10.0.22621.1635, exception 0x8898008D (UCEERR_RENDERTHREADFAILURE), offset 0xdc6a0; Application log Dwminit
+  "0x8898008d ... Arm Mali-G76 MP12" (DWM did pick our adapter). DWM restarts every few seconds (crash loop =
+  black screen + cursor). In ALL 47 reports DWM's loaded modules have D3D10Warp.dll but NOT maliumd.dll - on the
+  S10e (gpu-full-adapter-hang.md:540) DWM had both. So the runtime never kept our UMD: either LoadLibrary fails
+  (mingw build: import / CRT DllMain / TLS) or it loads and something after OpenAdapter fails and it is unloaded
+  (OpenAdapterCommon is only a calloc - cannot fail). This error code never occurred on the S10e.
+- Ruled out by reading: MW_GOP_* S10 values exist (only FbMatchesGop uses them); no 1080/2280 constants in the
+  UMD/shim (comments only); DDI *_SUPPORTED versions are fixed per DDI, not per WDK header build.
+- umd-test.ps1 v1.0 (display-only mode, no reboot): LoadLibraryEx as datafile + real load, GetLastError,
+  OpenAdapter10/_2 exports -> C:\S10Prov\umd-test.txt. Next decision depends on it.
