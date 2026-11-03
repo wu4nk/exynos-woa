@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """pe-set-subsys.py - set a PE image's OS and subsystem version (default 6.2) and refresh its checksum.
 
-Why (G2, 2026-11-03): zig 0.13 (`zig cc -target aarch64-windows-gnu`) always writes OperatingSystemVersion and
+Note (G2, 2026-11-03): this was NOT the cause of LoadLibrary 193 - that was zig's image base 0x10000000
+(fixed with -Wl,--image-base=0x180000000, see linux-build-g76.sh). Kept for MSVC parity. Original reasoning: zig 0.13 (`zig cc -target aarch64-windows-gnu`) always writes OperatingSystemVersion and
 SubsystemVersion 6.0 and ignores every linker option to change them. Windows does not load ARM/ARM64 images that
 claim a subsystem older than 6.2 (Windows 8, the first Windows on ARM): LoadLibrary fails with 193
 ERROR_BAD_EXE_FORMAT even for a one-function C DLL (umd-bisect t1-c..t4-synch on the S10, all 193). MSVC link.exe

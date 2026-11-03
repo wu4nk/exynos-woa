@@ -434,3 +434,10 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
   r1-nocrt (zig, -nostdlib, no imports/TLS/buildid, 3 sections), r2-nocrt-base (r1 + base 0x180000000),
   r3-nocrt-imp (r1 + KERNEL32 import, import RVA 0x208C), r4-nocrt-62 (r1 + subsystem 6.2), c2-crt-base (CRT +
   base 0x180000000). Plus a positive control: a copy of System32\dbghelp.dll.
+- 15:44 bisect 2 RESULT: ctl-system (System32 dbghelp copy) LOAD OK; m1-msvc-ref 126 (header accepted, python312
+  missing - as expected); r1-nocrt 193; **r2-nocrt-base (r1 + --image-base=0x180000000) LOAD OK**; r3-nocrt-imp 193;
+  r4-nocrt-62 193; **c2-crt-base (normal CRT DLL + base 0x180000000) LOAD OK**.
+  => ROOT CAUSE: zig 0.13's default DLL image base 0x10000000 (below 4 GB). This Windows 11 22621 ARM64 refuses
+  to map ARM64 images based below 4 GB with ERROR_BAD_EXE_FORMAT (MSVC's ARM64 default is 0x180000000; LNK4281 warns
+  for low bases). Subsystem version, TLS, imports, import-dir alignment, .buildid: all irrelevant.
+- Fix: linux-build-g76.sh cross file c/cpp_link_args += -Wl,--image-base=0x180000000. Rebuild running.

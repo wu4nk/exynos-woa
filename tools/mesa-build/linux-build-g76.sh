@@ -111,8 +111,8 @@ pkg_config_libdir = ['$Z/lib/pkgconfig']
 [built-in options]
 c_args = ['-include', '$W/ddi/ddi_mingw_compat.h', '-Wno-error=missing-prototypes', '-mms-bitfields', '-DHAVE_FUNC_ATTRIBUTE_PACKED', '-I$W/ddi']
 cpp_args = ['-include', '$W/ddi/ddi_mingw_compat.h', '-Wno-error=missing-prototypes', '-mms-bitfields', '-DHAVE_FUNC_ATTRIBUTE_PACKED', '-I$W/ddi']
-c_link_args = ['-L$W/xlib']
-cpp_link_args = ['-L$W/xlib']
+c_link_args = ['-L$W/xlib', '-Wl,--image-base=0x180000000']
+cpp_link_args = ['-L$W/xlib', '-Wl,--image-base=0x180000000']
 
 [host_machine]
 system = 'windows'
@@ -135,7 +135,8 @@ if want collect; then
   D=build-arm64/src/gallium/targets/d3d10umd/libgallium_d3d10.dll
   O=$W/out-umd; rm -rf $O; mkdir -p $O
   cp $D $O/libgallium_d3d10.dll; cp $D $O/maliumd.dll
-  # zig writes OS/subsystem version 6.0; Windows refuses ARM64 images below 6.2 (LoadLibrary 193). Fix the header.
+  # zig writes OS/subsystem version 6.0; MSVC/lld-link write 6.2 for ARM64. Not what broke loading (that was the
+  # image base, see --image-base above) - kept so the header matches what MSVC produces.
   python3 -I "$HERE/pe-set-subsys.py" $O/libgallium_d3d10.dll $O/maliumd.dll
   ( cd $O; sha256sum maliumd.dll > SHA256SUMS )
   llvm-readobj-18 --coff-imports $D | grep -E 'Name:' | sort -u > $O/imports.txt || true
