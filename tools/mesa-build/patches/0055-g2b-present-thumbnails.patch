@@ -1,0 +1,109 @@
+From a8bedfb0ae0daa64f9c47d8111eb4d26a3a5bf65 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 04:47:27 +0700
+Subject: [PATCH] G2b-3: thumbnails of DWM's presented primaries
+
+---
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp | 79 ++++++++++++++++++++++
+ 1 file changed, 79 insertions(+)
+
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index b3828b0..14ec3dc 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -39,6 +39,77 @@
+ #include "Debug.h"
+ 
+ #include "util/format/u_format.h"
++#include "util/u_inlines.h"
++#include "util/box.h"
++
++/* G2b-3 (0055): what DWM presents, seen from inside. Run g2b3-17: DWM rendered into its GPU primaries and the KMD
++ * blted 182 presents, and the panel stayed black - is the composed frame itself black? A 1/8-scale thumbnail of a
++ * few presented primaries (the 1st, 5th, 20th, 60th, 150th, 400th) goes to C:\ProgramData\S10e\umd\
++ * frame-<pid>-<n>.ppm (s10-log v1.9 / twrp-log v1.2 collect them), with the share of non-black pixels and the mean
++ * colour in the UMD log. A GPU blit into a small linear texture, mapped once - the primary itself is never locked
++ * (dxgkrnl does not run a present whose source is CPU-locked). */
++static void
++s10_thumbnail(struct pipe_context *pipe, struct pipe_resource *src, unsigned n)
++{
++   struct pipe_screen *screen = pipe->screen;
++   const unsigned tw = MAX2(src->width0 / 8, 1), th = MAX2(src->height0 / 8, 1);
++   struct pipe_resource t;
++   memset(&t, 0, sizeof t);
++   t.target = PIPE_TEXTURE_2D;
++   t.format = PIPE_FORMAT_B8G8R8A8_UNORM;
++   t.width0 = tw;
++   t.height0 = th;
++   t.depth0 = 1;
++   t.array_size = 1;
++   t.bind = PIPE_BIND_RENDER_TARGET | PIPE_BIND_LINEAR;
++   t.usage = PIPE_USAGE_STAGING;
++   struct pipe_resource *dst = screen->resource_create(screen, &t);
++   if (!dst)
++      return;
++   struct pipe_blit_info b;
++   memset(&b, 0, sizeof b);
++   b.src.resource = src;
++   b.src.format = src->format;
++   u_box_2d(0, 0, src->width0, src->height0, &b.src.box);
++   b.dst.resource = dst;
++   b.dst.format = t.format;
++   u_box_2d(0, 0, tw, th, &b.dst.box);
++   b.mask = PIPE_MASK_RGBA;
++   b.filter = PIPE_TEX_FILTER_LINEAR;
++   pipe->blit(pipe, &b);
++   struct pipe_transfer *x = NULL;
++   const uint8_t *m = (const uint8_t *)pipe_texture_map(pipe, dst, 0, 0, PIPE_MAP_READ, 0, 0, tw, th, &x);
++   if (m) {
++      char path[MAX_PATH];
++      snprintf(path, sizeof path, "C:\\ProgramData\\S10e\\umd\\frame-%lu-%u.ppm", GetCurrentProcessId(), n);
++      FILE *f = fopen(path, "wb");
++      uint64_t sum[3] = {0, 0, 0}, lit = 0;
++      if (f)
++         fprintf(f, "P6\n%u %u\n255\n", tw, th);
++      for (unsigned y = 0; y < th; y++) {
++         const uint8_t *row = m + (size_t)y * x->stride;
++         for (unsigned i = 0; i < tw; i++) {
++            const uint8_t *px = row + i * 4;   /* B G R A */
++            uint8_t rgb[3] = {px[2], px[1], px[0]};
++            sum[0] += rgb[0];
++            sum[1] += rgb[1];
++            sum[2] += rgb[2];
++            lit += (rgb[0] | rgb[1] | rgb[2]) > 8;
++            if (f)
++               fwrite(rgb, 1, 3, f);
++         }
++      }
++      if (f)
++         fclose(f);
++      const uint64_t px = (uint64_t)tw * th;
++      fprintf(stderr, "d3d10umd: pid %lu: present #%u of %ux%u %s: %.1f%% non-black, mean rgb %u/%u/%u -> %s%s\n",
++              GetCurrentProcessId(), n, src->width0, src->height0, util_format_name(src->format),
++              100.0 * (double)lit / (double)px, (unsigned)(sum[0] / px), (unsigned)(sum[1] / px),
++              (unsigned)(sum[2] / px), path, f ? "" : " (file not written)");
++      pipe_texture_unmap(pipe, x);
++   }
++   pipe_resource_reference(&dst, NULL);
++}
+ 
+ /* G13 (exynos-woa): whether the present being carried out is a flip (DXGI_DDI_PRESENT_FLAGS.Flip). The target's
+  * flush_frontbuffer (d3d10_gdi.c) reads it: dxgkrnl only flips to allocations created as primaries ("Source of Flip
+@@ -91,6 +162,14 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+          dst = d->kmt_primary ? d->kmt_primary : d->kmt_shared;
+       }
+       unsigned src = pSrcResource->gpu_primary ? pSrcResource->kmt_primary : pSrcResource->kmt_shared;
++      if (pSrcResource->gpu_primary) {   /* 0055 */
++         static unsigned nprim;
++         nprim++;
++         if (nprim == 1 || nprim == 5 || nprim == 20 || nprim == 60 || nprim == 150 || nprim == 400) {
++            s10_thumbnail(device->pipe, pSrcResource->resource, nprim);
++            device->pipe->flush(device->pipe, NULL, 0);
++         }
++      }
+       if (malikm_present_alloc(src, dst, pPresentData->pDXGIContext, pSrcResource->resource->width0,
+                                pSrcResource->resource->height0) == 0) {
+          d3d10_frame_gen++;
+-- 
+2.43.0
+

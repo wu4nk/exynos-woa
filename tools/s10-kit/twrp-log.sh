@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# twrp-log.sh (v1.1) - collect the S10 Windows-port logs ON THE PHONE in TWRP, no PC needed.
+# twrp-log.sh (v1.2) - collect the S10 Windows-port logs ON THE PHONE in TWRP, no PC needed.
 # Run in TWRP: Advanced > Terminal:   sh /cache/twrp-log.sh        (or wherever you put it, e.g. /usb_otg/twrp-log.sh)
 #   sh twrp-log.sh nogpu   also creates \S10EDIAG\nogpu.flg (next Windows boot hides the GPU = normal screen + keyboard)
 # Output: /cache/S10LOG/s10log-<date>.tar.gz on the ESP (FAT, writable in TWRP). Windows reads it after
@@ -24,7 +24,7 @@ ci() {
 }
 grab() { [ -f "$1" ] && cp -f "$1" "$2"/ && say "[ OK ] $(basename "$1") ($(wc -c < "$1") B)"; }
 
-say "twrp-log v1.1  $D  $(getprop ro.boot.bootloader)"
+say "twrp-log v1.2  $D  $(getprop ro.boot.bootloader)"
 
 # ESP = cache partition (FAT32). TWRP mounts it at /cache.
 E=/cache
@@ -43,6 +43,8 @@ if [ -d "$S32" ]; then
   for f in "$P"/*.txt "$P"/*.log; do grab "$f" "$O/win/S10Prov"; done
   # v1.1: the UMD's own log (Mesa stderr + abort stacks, patch 0042)
   grab "$(ci "$W" "ProgramData/S10e/umd/umd-log.txt")" "$O/win/S10Prov"
+  # v1.2: the UMD's thumbnails of what DWM presented (UMD 0055)
+  for f in "$(ci "$W" "ProgramData/S10e/umd")"/frame-*.ppm; do grab "$f" "$O/win/S10Prov"; done
   for f in "$(ci "$S32" "LogFiles")"/*; do
     case "$(basename "$f" | tr 'A-Z' 'a-z')" in exynos*|s10*|mali*) grab "$f" "$O/win/LogFiles" ;; esac
   done

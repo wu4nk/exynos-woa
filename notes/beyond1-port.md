@@ -824,3 +824,14 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   primary allocation (Flags.Primary, VidPN source, MW_ALLOC_PRIMARY, pitch w*4) and are presented directly -
   no read-back + convert + memcpy of 17.5 MB per DWM frame (S10_PRIMARY_COPY=1 restores the copy path); refused
   presents log their DXGI_DDI_ARG_PRESENT (flags, dst, subresources, interval).
+
+### G2b-3 run 17 (UMD 0054 a39b0a1f, 2026-11-04 04:41) - DEVICE RESULT
+- Black. GPU primaries work: "primary 1440x3040 B8G8R8A8 source 0 (stride 5760): GPU BO = kernel primary" x3 and
+  "present shared allocation 1440x3040 ok"; KMD: 182 presents, all blts, by 70 s - then DWM goes idle (30 s later
+  submits +1, presents +0): it believes the screen is up to date. XAML hosts stable (one instance each).
+- Composition swap chain refused presents logged: "src 1372x1260 alloc 0x40000900, dst 0, subresources 0/0,
+  flags 0x1 (Blt), interval 0" - a plain Blt present with no destination, refused D3DDDIERR_INVALIDHANDLE.
+- Unknown now: is DWM's composed frame black, or does the KMD's blt not reach the panel? 0055 (UMD fe480a1d):
+  1/8-scale thumbnails of DWM's 1st/5th/20th/60th/150th/400th presented primary (GPU blit into a small linear
+  texture) -> C:\ProgramData\S10e\umd\frame-<pid>-<n>.ppm + "% non-black, mean rgb" in the UMD log;
+  s10-log v1.9 / twrp-log v1.2 collect them.
