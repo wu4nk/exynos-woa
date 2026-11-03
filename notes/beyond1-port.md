@@ -525,3 +525,7 @@ gpuwatch.txt (gpu-watch v1.0, boot with FullAdapter 1 GpuEnable 1, GALLIUM_DRIVE
 - Next (no typing possible in this mode): gpu-fill.ps1 + gpu-s10 v1.7 register task "S10 GPU fill" (AtLogOn,
   BUILTIN\Users, Limited): +45 s d3dfill.exe 3 with GALLIUM_DRIVER=panfrost (process env only) ->
   C:\S10Prov\d3dfill-auto.txt incl. per-phase readback. Then G2b-3 (gpu-dwm).
+- 17:58 second G2b-1 boot (gpu-watch): m5test PASS again (235 ms, jobs done 1, irqs 1) - reproducible.
+  gpu-report.txt is still "gpu-s10.ps1 v1.6 gpu" -> v1.7 (fill task) was not run, so no d3dfill-auto.txt yet.
+  The gpuwatch.txt head (passes 13-16, empty pram = MaliG76Wddm not loaded = a nogpu boot where the watch task
+  still ran) shows 11-17k interrupts/s with 50-70 % CPU while the user worked in Basic Display; idle 707/s.
