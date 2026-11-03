@@ -680,3 +680,11 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - 0047 (UMD b7328d16): zero UBO; SetError logs DDI + line + HRESULT; unsupported-format, failed resource_create and
   failed Map logged with the template; vectored handler logs the first 4 access violations per process (pc/lr/stack
   as module+offset). Kit v1.12: UMD log folder also writable for ALL APPLICATION PACKAGES (AppContainer XAML hosts).
+
+### G2b-3 run 7 (2026-11-04 01:15) - NOT a 0047 run
+- gpu-report.txt: "gpu-s10.ps1 v1.11 gpu-dwm", System32\maliumd.dll sha256 e3697685 (0046, mtime 2026-11-01 23:32 by
+  the device's wrong clock): g2b3f-umd.zip (0047 + v1.12) never reached the kit folder that was run
+  (C:\S10Prov\kit). Same picture as run 6: black, explorer restarting every ~10 s (with SearchHost/TextInputHost),
+  @0x10 faults in DWM. User: phone warmer than usual (XAML crash loop + S10_FAULTDUMP's per-job waits).
+- Note for gpu-s10 Set-FullMode: the newest-LastWriteTime rule is fragile on this device (RTC reset to
+  2026-11-01 23:17 every boot, extracted files may carry either the zip's or the device's time).
