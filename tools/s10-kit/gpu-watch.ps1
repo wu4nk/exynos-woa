@@ -1,5 +1,5 @@
 <#
-  gpu-watch.ps1 (v1.1) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
+  gpu-watch.ps1 (v1.2) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
   "S10 GPU watch", SYSTEM, at startup). For boots where the phone is too slow to use (G2b-1 2026-11-03: no taskbar
   icons, no touch keyboard): nothing has to be typed, and nothing depends on the PRAM surviving (a TWRP boot destroys
   it). Every 15 s for 10 minutes it appends to C:\S10Prov\gpuwatch.txt (NTFS - readable from TWRP:
@@ -35,7 +35,7 @@ function Mali-Pram {
 
 $up0 = [Environment]::TickCount
 W ''
-W "===== gpu-watch v1.1 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
+W "===== gpu-watch v1.2 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
 try {
   $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters' -ErrorAction Stop
   W ("mode registry: FullAdapter {0} GpuEnable {1}  machine GALLIUM_DRIVER '{2}'" -f $p.FullAdapter, $p.GpuEnable,
@@ -44,6 +44,7 @@ try {
 $prev = @{}
 Get-Process | ForEach-Object { $prev[$_.Id] = $_.CPU }
 $m5done = $false
+$cpdone = $false
 
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 15
@@ -82,6 +83,21 @@ for ($i = 0; $i -lt 40; $i++) {
       else { W "  m5test exit $($pp.ExitCode)" }
       Get-Content $o, "$o.err" -ErrorAction SilentlyContinue | ForEach-Object { W "  m5> $_" }
     } else { W '  m5test: no tools\m5test.exe' }
+  }
+
+  # v1.2: comprobe (D3D11 / DXGI / D2D / DComp steps of the XAML hosts) once, after m5test - from here (SYSTEM,
+  # session 0) because the logon task "S10 GPU fill" did not run in the GPU boots of runs g2b3-10/11. DComp may
+  # refuse session 0; the D3D11 / D2D / shared-texture steps do not need a desktop.
+  if ($m5done -and -not $cpdone -and $up -ge 90) {
+    $cpdone = $true
+    $exe = @((Join-Path $Kit 'tools\comprobe.exe'), (Join-Path $Kit 'out-gpu\tools\comprobe.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($exe) {
+      $o = Join-Path $env:TEMP 'comprobe-out.txt'
+      $pp = Start-Process -FilePath $exe -NoNewWindow -PassThru -RedirectStandardOutput $o -RedirectStandardError "$o.err"
+      if (-not $pp.WaitForExit(90000)) { $pp.Kill(); W '  comprobe: TIMEOUT after 90 s (killed)' }
+      else { W "  comprobe exit $($pp.ExitCode) (0 = all OK, 3 = a step failed)" }
+      Get-Content $o, "$o.err" -ErrorAction SilentlyContinue | ForEach-Object { W "  probe> $_" }
+    } else { W '  comprobe: no tools\comprobe.exe' }
   }
 }
 W "===== gpu-watch done (uptime $([int]([Environment]::TickCount / 1000)) s)"

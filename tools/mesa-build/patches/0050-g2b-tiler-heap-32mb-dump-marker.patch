@@ -1,0 +1,92 @@
+From 32240f5efdcbaf4acaaa2afc1df816862db0f05a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 02:41:50 +0700
+Subject: [PATCH] G2b-3: 32 MB tiler heap on Windows (S10_TILER_HEAP_MB), one
+ fault decode per executable
+
+---
+ src/gallium/drivers/panfrost/pan_device.c | 18 +++++++++++++++++-
+ src/gallium/drivers/panfrost/pan_jm.c     | 23 ++++++++++++++++++++++-
+ 2 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/src/gallium/drivers/panfrost/pan_device.c b/src/gallium/drivers/panfrost/pan_device.c
+index 962f8a0..6dbc30f 100644
+--- a/src/gallium/drivers/panfrost/pan_device.c
++++ b/src/gallium/drivers/panfrost/pan_device.c
+@@ -3,6 +3,7 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include <stdlib.h>
+ #include <xf86drm.h>
+ 
+ #include "drm-uapi/panfrost_drm.h"
+@@ -98,8 +99,23 @@ panfrost_open_device(void *memctx, int fd, struct panfrost_device *dev)
+     */
+ 
+    if (dev->arch < 10) {
++      size_t heap_size = 128 * 1024 * 1024;
++#ifdef _WIN32
++      /* exynos-woa G2b-3 (0050): WDDM has no growable BOs - the shim allocates (and VidMm backs) the whole heap
++       * at once, in every process with a screen. Run g2b3-11: each XAML host reached 300-380 MB private bytes
++       * within seconds of starting (85 MB on the software path), DWM 370 MB, one DWM died out of memory
++       * (c00001ad), and the KMD's 1 GB aperture segment holds only ~8 such heaps. 32 MB by default (a desktop
++       * frame's polygon lists are far smaller); S10_TILER_HEAP_MB overrides (4..128). */
++      {
++         const char *mb = getenv("S10_TILER_HEAP_MB");
++         unsigned v = mb ? (unsigned)atoi(mb) : 32;
++         if (v < 4 || v > 128)
++            v = 32;
++         heap_size = (size_t)v * 1024 * 1024;
++      }
++#endif
+       dev->tiler_heap = panfrost_bo_create(
+-         dev, 128 * 1024 * 1024, PAN_BO_INVISIBLE | PAN_BO_GROWABLE, "Tiler heap");
++         dev, heap_size, PAN_BO_INVISIBLE | PAN_BO_GROWABLE, "Tiler heap");
+       if (!dev->tiler_heap)
+          goto err_free_kmod_dev;
+    }
+diff --git a/src/gallium/drivers/panfrost/pan_jm.c b/src/gallium/drivers/panfrost/pan_jm.c
+index b97b760..ba6726a 100644
+--- a/src/gallium/drivers/panfrost/pan_jm.c
++++ b/src/gallium/drivers/panfrost/pan_jm.c
+@@ -6,6 +6,12 @@
+  */
+ 
+ #include "decode.h"
++#include "util/u_process.h"
++#ifdef _WIN32
++#include <io.h>
++#include <fcntl.h>
++#include <sys/stat.h>
++#endif
+ 
+ #include "drm-uapi/panfrost_drm.h"
+ 
+@@ -185,7 +191,22 @@ jm_submit_jc(struct panfrost_batch *batch, uint64_t first_job_desc,
+             fprintf(stderr, "panfrost: FAULTED chain 0x%llx (reqs 0x%x): job %d exception status 0x%x (fault #%u)%s\n",
+                     (unsigned long long)submit.jc, reqs, j, st, faults,
+                     dumped < dev->s10_faultdump ? " - decode follows" : "");
+-            if (dumped < dev->s10_faultdump) {
++            /* 0050: one decode per executable name across all its instances (the XAML hosts restart every few
++             * seconds): a marker file in the UMD log folder, removed by gpu-s10.ps1 gpu-dwm */
++            bool first_here = true;
++#ifdef _WIN32
++            if (dumped == 0) {
++               char mk[300];
++               const char *pn = util_get_process_name();
++               snprintf(mk, sizeof(mk), "C:\\ProgramData\\S10e\\umd\\dumped-%s.flag", pn ? pn : "unknown");
++               int mfd = _open(mk, _O_CREAT | _O_EXCL | _O_WRONLY, _S_IREAD | _S_IWRITE);
++               if (mfd >= 0)
++                  _close(mfd);
++               else
++                  first_here = false;
++            }
++#endif
++            if (first_here && dumped < dev->s10_faultdump) {
+                dumped++;
+                pandecode_jc(dev->decode_ctx, submit.jc, panfrost_device_gpu_id(dev));
+                fprintf(stderr, "panfrost: end of decode of chain 0x%llx\n", (unsigned long long)submit.jc);
+-- 
+2.43.0
+

@@ -732,3 +732,17 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   Suspect: WDDM 1.3 KMD (adapter.c DXGKDDI_WDDMv1_3) lacks what Win11's composition expects (NT handles etc.).
 - 0049 UMD d9a93d39; kit v1.14 (S10_FAULTDUMP=LogonUI.exe only - DWM no longer waits per job), gpu-fill v1.1,
   gpu-watch v1.1. Zip: S10-GPU-0049-kit-v1.14.zip.
+
+### G2b-3 run 11 (UMD 0049 d9a93d39, kit v1.14, 2026-11-04 02:34) - DEVICE RESULT
+- No bugcheck, m5test PASS mid-boot (GPU_ID 0x7211, renders 1288, presents 220, fence 1438/1438).
+- comprobe never ran: no "gpu-fill v1.1" header in d3dfill-auto.txt in any boot - the logon task "S10 GPU fill"
+  did not fire (last entries are older v1.0 ones). gpu-watch v1.2 now runs comprobe itself (SYSTEM, session 0).
+- MEMORY (gpu-watch v1.1 mem lines): in the GPU boot every Panfrost process is huge right after start -
+  explorer 362-382 MB private / ~490 MB WS within 8-9 s, SearchHost ~338 MB, TextInputHost 296 MB, StartMenu 180 MB,
+  DWM ~370 MB; in the software boot explorer 56, SearchHost 85, TextInputHost 34, DWM 95 MB. Cause found in
+  pan_device.c: a 128 MB PAN_BO_GROWABLE tiler heap per process - on WDDM the shim allocates it whole (no growable
+  BOs), and the KMD's aperture segment is 1 GB (MW_SEGMENT_SIZE). 0050: 32 MB on _WIN32, S10_TILER_HEAP_MB 4..128.
+- XAML hosts still crash-loop (explorer restarts every ~9 s). 13 job faults @0x10 during the boot, none decoded
+  (only LogonUI dumped); 0050: one decode per executable (marker dumped-<exe>.flag), kit v1.15 dumps LogonUI +
+  the 4 XAML hosts.
+- 0050 UMD eefdf678; kit v1.15, gpu-watch v1.2. Zip S10-GPU-0050-kit-v1.15.zip.
