@@ -448,3 +448,9 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
 User: boots to the desktop in full mode; "still ok, not very laggy" (16:03). Better than the S10e g54 user boots
 (extreme lag). Not yet confirmed from logs that DWM really runs on our UMD (expect: KMD trace Mode 1, maliumd.dll
 in dwm.exe's modules, no AppCrash_dwm). s10-log v1.4 (PowerShell-extracted, CRLF) sent for that.
+- 16:03 log.zip CORRECTION: that "desktop up" boot was NOT full mode. gpu-report (gpu-s10 v1.3 full): it copied the
+  OLD maliumd 46e5620f (base 0x10000000) - an old copy was found before the new one - and "could not mount the
+  ESP", so nogpu.flg stayed: GPU0 CM_PROB_PHANTOM, Basic Display drew the desktop (hence "not laggy"). Registry
+  FullAdapter 1 / GpuEnable 0 is set; KMD trace in the registry is stale (Mode 1 from the black-screen boot).
+- gpu-s10.ps1 v1.4: refuses UMD candidates with ImageBase < 4 GB (reads PE+48), newest good one wins, also looks in
+  fix\; Clear-NoGpuFlag first searches every mounted drive for \S10EDIAG\nogpu.flg (ESP already mounted case).
