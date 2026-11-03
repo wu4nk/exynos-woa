@@ -845,3 +845,14 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   descriptors at all (pandecode "XXX: UBOs referenced but not specified", runs 6/10) and its shaders read zeros:
   transforms of 0 -> nothing drawn. d3dfill only cleared, so it was unaffected.
 - 0056 (UMD 30e08d7d): on _WIN32 nothing but the sysval UBO is pushable; cb0 is read with LD_UBO from its buffer.
+
+### G2b-3 run 19 (UMD 0056 30e08d7d, 2026-11-04 05:37) - DEVICE RESULT: DWM COMPOSES THE DESKTOP ON THE MALI
+- DWM pid 672 thumbnails (notes/img/g2b3-run19-dwm-frames.png): #1 black (boot), #5 the lock screen (100%
+  non-black, mean rgb 12/34/128), #20 / #60 the desktop - Bloom wallpaper, taskbar with icons, desktop icons,
+  a Windows Terminal window (its content black), a dialog - #150 Brave with a page, an Explorer file dialog over
+  it, taskbar. The user worked in this boot (brave, consent.exe x4 = UAC prompts, WindowsTerminal x9).
+- 0056 was the missing piece: with cb0 read through LD_UBO instead of a failed push, DWM's draws have their
+  transforms and textures. Shell hosts stable (one instance each, up 200+ s). No bugcheck.
+- KMD: presents 0xb4 -> 0x16a between 69 s and 257 s (DWM presents on change), all blts, fences = submits.
+- Still open: composition swap-chain presents refused (Terminal 1372x1260, 23x INVALIDHANDLE, the window content
+  stays black); BC1/BC3 textures; performance (DWM 15-28 s CPU per ~25 s interval).
