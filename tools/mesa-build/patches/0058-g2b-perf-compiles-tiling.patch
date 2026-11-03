@@ -1,0 +1,154 @@
+From cecef28aa4822ecfefb1bdb6a1287f5d9cc0b564 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 06:06:17 +0700
+Subject: [PATCH] G2b-3: shader compiles and CPU tiling in the perf line
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ include/win32-compat/malikm_drm.c           | 19 +++++++++++++++++++
+ src/gallium/drivers/panfrost/pan_resource.c | 18 ++++++++++++++++++
+ src/gallium/drivers/panfrost/pan_shader.c   | 12 ++++++++++++
+ 3 files changed, 49 insertions(+)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index c57d33c..2ae8701 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -1024,6 +1024,11 @@ static struct {
+    int k_ok;
+ } wperf;
+ 
++/* G2b-3 (0058): Panfrost's own CPU work, added up where it happens (pan_shader.c, pan_resource.c) and taken by
++ * perf_tick: [0] shader variants compiled, [1] their ns, [2] bytes tiled/untiled on the CPU (texture uploads and
++ * read-backs through pan_store/load_tiled_image), [3] their ns. Atomics: any thread, no lock. */
++int64_t s10_perf_mesa[4];
++
+ static int64_t
+ perf_now(void)
+ {
+@@ -1338,6 +1343,8 @@ perf_cpu(uint64_t *user, uint64_t *kernel)
+    }
+ }
+ 
++static int wperf_started;
++
+ /* The 0057 line, when 10 s have passed. wddm_lock held, wcur set. */
+ static void
+ perf_tick(void)
+@@ -1390,11 +1397,23 @@ perf_tick(void)
+                  ks.JobsTimedOut - wperf.k.JobsTimedOut, ks.PresentBlts - wperf.k.PresentBlts,
+                  ks.Submits - wperf.k.Submits, ks.Irqs - wperf.k.Irqs, paging, ks.Queued);
+       }
++      int64_t mc = InterlockedExchange64((volatile LONG64 *)&s10_perf_mesa[0], 0);
++      int64_t mct = InterlockedExchange64((volatile LONG64 *)&s10_perf_mesa[1], 0);
++      int64_t mtb = InterlockedExchange64((volatile LONG64 *)&s10_perf_mesa[2], 0);
++      int64_t mtt = InterlockedExchange64((volatile LONG64 *)&s10_perf_mesa[3], 0);
++      fprintf(stderr, " | Mesa: %lld compiles (%.0f ms), %.1f MB tiled on the CPU (%.0f ms)", (long long)mc,
++              mct / 1e6, mtb / 1048576.0, mtt / 1e6);
+       fprintf(stderr, "\n");
+       if (k_ok)
+          report_failed(&ks);
+    }
+    memset(&wperf, 0, sizeof(wperf));
++   if (!wperf_started) {
++      /* 0058: the first interval starts clean (compiles before it would be counted in it otherwise) */
++      for (int i = 0; i < 4; i++)
++         InterlockedExchange64((volatile LONG64 *)&s10_perf_mesa[i], 0);
++      wperf_started = 1;
++   }
+    wperf.t0 = now;
+    perf_cpu(&wperf.cpu_user, &wperf.cpu_kernel);
+    wperf.k.Code = MW_ESCAPE_STATS;
+diff --git a/src/gallium/drivers/panfrost/pan_resource.c b/src/gallium/drivers/panfrost/pan_resource.c
+index 6a5f4dc..795d1ad 100644
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -46,6 +46,20 @@
+ #include "pan_tiling.h"
+ #include "pan_trace.h"
+ #include "pan_util.h"
++#ifdef _WIN32
++#include "util/os_time.h"
++#include "util/u_atomic.h"
++extern int64_t s10_perf_mesa[4];   /* exynos-woa G2b-3 0058: malikm_drm.c's perf line */
++#define S10_TILED_BEGIN() int64_t s10_t0 = os_time_get_nano()
++#define S10_TILED_END(bytes)                                                  \
++   do {                                                                        \
++      p_atomic_add(&s10_perf_mesa[2], (int64_t)(bytes));                       \
++      p_atomic_add(&s10_perf_mesa[3], os_time_get_nano() - s10_t0);            \
++   } while (0)
++#else
++#define S10_TILED_BEGIN() do { } while (0)
++#define S10_TILED_END(bytes) do { } while (0)
++#endif
+ 
+ static void
+ panfrost_clear_depth_stencil(struct pipe_context *pipe,
+@@ -1410,6 +1424,7 @@ panfrost_load_tiled_images(struct panfrost_transfer *transfer,
+    if (!BITSET_TEST(rsrc->valid.data, level))
+       return;
+ 
++   S10_TILED_BEGIN();
+    struct panfrost_bo *bo = rsrc->bo;
+    unsigned stride =
+       rsrc->image.props.dim == MALI_TEXTURE_DIMENSION_3D
+@@ -1430,6 +1445,7 @@ panfrost_load_tiled_images(struct panfrost_transfer *transfer,
+          rsrc->plane.layout.slices[level].tiled_or_linear.row_stride_B,
+          rsrc->image.props.format, PAN_INTERLEAVE_NONE);
+    }
++   S10_TILED_END((uint64_t)ptrans->layer_stride * ptrans->box.depth);
+ }
+ 
+ #if MESA_DEBUG
+@@ -1532,6 +1548,7 @@ panfrost_store_tiled_images(struct panfrost_transfer *transfer,
+          ? rsrc->plane.layout.slices[level].tiled_or_linear.surface_stride_B
+          : rsrc->plane.layout.array_stride_B;
+ 
++   S10_TILED_BEGIN();
+    /* Otherwise, store each layer separately, required to store to 3D and
+     * array textures.
+     */
+@@ -1546,6 +1563,7 @@ panfrost_store_tiled_images(struct panfrost_transfer *transfer,
+          rsrc->plane.layout.slices[level].tiled_or_linear.row_stride_B,
+          ptrans->stride, rsrc->image.props.format, PAN_INTERLEAVE_NONE);
+    }
++   S10_TILED_END((uint64_t)ptrans->layer_stride * ptrans->box.depth);
+ }
+ 
+ static bool
+diff --git a/src/gallium/drivers/panfrost/pan_shader.c b/src/gallium/drivers/panfrost/pan_shader.c
+index 1439ac6..3141026 100644
+--- a/src/gallium/drivers/panfrost/pan_shader.c
++++ b/src/gallium/drivers/panfrost/pan_shader.c
+@@ -8,6 +8,11 @@
+  */
+ 
+ #include "pan_shader.h"
++#ifdef _WIN32
++#include "util/os_time.h"
++#include "util/u_atomic.h"
++extern int64_t s10_perf_mesa[4];   /* exynos-woa G2b-3 0058: malikm_drm.c's perf line */
++#endif
+ #include "nir/tgsi_to_nir.h"
+ #include "util/u_memory.h"
+ #include "util/u_prim.h"
+@@ -272,8 +277,15 @@ panfrost_shader_get(struct pipe_screen *pscreen,
+                         state->key.fs.vs_varying_layout.known != 0;
+       const struct pan_varying_layout *varying_layout =
+          use_layout ? &uncompiled->vs_varying_layout : NULL;
++#ifdef _WIN32
++      int64_t s10_t0 = os_time_get_nano();
++#endif
+       panfrost_shader_compile(screen, uncompiled->nir, dbg, varying_layout,
+                               &state->key, req_local_mem, &res);
++#ifdef _WIN32
++      p_atomic_add(&s10_perf_mesa[0], 1);
++      p_atomic_add(&s10_perf_mesa[1], os_time_get_nano() - s10_t0);
++#endif
+ 
+       panfrost_disk_cache_store(screen->disk_cache, uncompiled, &state->key,
+                                 &res);
+-- 
+2.43.0
+

@@ -881,3 +881,18 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   per process every 10 s: presents/s, ms in PresentCb, submits per present, named/listed BOs, ms in RenderCb,
   waits/polls/drains, BO churn, CPU user/kernel, KMD deltas (jobs, blts, irqs, paging ops). Thumbnails only
   with S10_THUMBS=1. Kit gpu-s10.ps1 v1.16: gpu-dwm removes S10_FAULTDUMP.
+- 0057 review (commit 6b68460, adversarial pass): unlocked waits keep no table pointers (WAIT_BO / SYNCOBJ_WAIT
+  re-select wcur after re-locking; the event is a DuplicateHandle copy, so a concurrent retire that closes it is
+  harmless); every seq > done has a ring entry with seq' >= seq (pend_pop is the only way done advances, besides
+  "KMD idle" which retires all); dead allocations are taken out of wbo before any later list is built, so
+  w_retire's destroys at the start of SUBMIT never hit the list being filled. Known gap, unchanged from before:
+  the no-event fallback trusts the KMD's adapter-wide idle, which does not see DMA buffers still in VidSch's
+  software queue. Open risk: more submissions in flight than before (no drains) - the KMD holds 16
+  (MW_QUEUE_DEPTH) and SyncSubmit fails past that; VidSch is believed to feed the hardware queue only "when there
+  is room" (GPUView docs), not verified for this KMD. The perf line prints the KMD's "queued".
+- 0058: Mesa's CPU work in the same line - shader variants compiled (count, ms; no disk cache: -Dshader-cache=
+  disabled) and bytes tiled/untiled on the CPU by pan_store/load_tiled_image (texture uploads, read-backs).
+- Build: UMD 0057+0058 = maliumd.dll sha256 6a32cc30d8adb8d4aa43760d280879db7141e181216204b4b7ceaca1fb61b0bb
+  (0057 alone built too: 0b2a04ce). Kit zip S10-GPU-0058-umd-kit-v1.16.zip (maliumd.dll, SHA256SUMS,
+  gpu-s10.ps1 v1.16). Run 20 asks for: gpu + gpu-dwm, reboot, ~3 min of use, s10-log; read the malikm-perf
+  lines of dwm.exe first (presents/s, ms in RenderCb, waits, cpu user/kernel, compiles, tiled MB).
