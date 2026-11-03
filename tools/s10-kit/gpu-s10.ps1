@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.2) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.3) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -25,7 +25,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.2  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.3  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -39,6 +39,19 @@ if (-not (Test-Path $Out)) { $Out = Join-Path $PSScriptRoot 'out' }
 $ProbeLog = "$env:SystemRoot\System32\LogFiles\MaliG76Probe-run.txt"
 $SvcParams = 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters'
 $UmdDst = "$env:SystemRoot\System32\maliumd.dll"   # MaliG76Wddm.inf UserModeDriverName = maliumd.dll x4
+
+# v1.3: \S10EDIAG\nogpu.flg on the ESP hides GPU0 (rescue). 'display' and 'full' remove it, so the next boot
+# shows GPU0 again in the mode just written.
+function Clear-NoGpuFlag {
+  $l = @('S', 'R', 'Q', 'P', 'O') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+  if (-not $l) { Warn 'no free drive letter to mount the ESP - delete \S10EDIAG\nogpu.flg by hand'; return }
+  mountvol "${l}:" /s 2>$null
+  if (-not (Test-Path "${l}:\")) { Warn 'could not mount the ESP - delete \S10EDIAG\nogpu.flg by hand'; return }
+  $f = "${l}:\S10EDIAG\nogpu.flg"
+  if (Test-Path $f) { Remove-Item $f -Force; Ok 'nogpu.flg removed from the ESP - GPU0 is back on the next boot' }
+  else { Info 'no nogpu.flg on the ESP' }
+  mountvol "${l}:" /d 2>$null
+}
 
 function Get-Gpu0 { Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'ACPI\SAMS9828\*' } | Select-Object -First 1 }
 
@@ -128,7 +141,8 @@ switch ($Action) {
       Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
       Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
       Ok 'GPU0 hidden (nogpu.flg) - mode written anyway: display-only (GpuEnable 0, FullAdapter 0)'
-      Info 'delete \S10EDIAG\nogpu.flg on the ESP (mountvol S: /s, del S:\S10EDIAG\nogpu.flg, mountvol S: /d), then reboot'
+      Clear-NoGpuFlag
+      Info 'reboot now'
       Info "report: $Report"
       exit 0
     }
@@ -138,14 +152,18 @@ switch ($Action) {
     Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
     Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
     Ok 'mode: display-only (GpuEnable 0, FullAdapter 0)'
+    Clear-NoGpuFlag
     Info 'reboot, then run: .\gpu-s10.ps1 status   (FbMatchesGop = 1 is the good sign)'
     Info 'black screen after reboot -> TWRP, create \S10EDIAG\nogpu.flg on the ESP (or flash v0.1.2)'
   }
   'full' {
-    if (-not (Show-Status)) { Fail 'no GPU0 - flash beyond1lte-uefi v0.1.3+ first' }
-    $g = Get-Gpu0
-    $svc = (Get-PnpDeviceProperty -InstanceId $g.InstanceId -KeyName DEVPKEY_Device_Service -ErrorAction SilentlyContinue).Data
-    if ($svc -ne 'MaliG76Wddm') { Fail "GPU0 runs '$svc', not MaliG76Wddm - run .\gpu-s10.ps1 display first, reboot, check status" }
+    if (Show-Status) {
+      $g = Get-Gpu0
+      $svc = (Get-PnpDeviceProperty -InstanceId $g.InstanceId -KeyName DEVPKEY_Device_Service -ErrorAction SilentlyContinue).Data
+      if ($svc -ne 'MaliG76Wddm') { Fail "GPU0 runs '$svc', not MaliG76Wddm - run .\gpu-s10.ps1 display first, reboot, check status" }
+    } elseif (Get-Service MaliG76Wddm -ErrorAction SilentlyContinue) {
+      Info 'GPU0 hidden (nogpu.flg) but MaliG76Wddm is installed - writing the mode anyway, the flag is removed below'
+    } else { Fail 'no GPU0 and MaliG76Wddm not installed - run .\gpu-s10.ps1 display first' }
     $src = @((Join-Path $PSScriptRoot 'maliumd.dll'), (Join-Path $Out 'maliumd.dll'), (Join-Path $Out 'umd\maliumd.dll')) |
       Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $src) { Fail 'no maliumd.dll next to this script, in out-gpu\ or out-gpu\umd\ - copy it there first' }
@@ -167,6 +185,7 @@ switch ($Action) {
     Set-ItemProperty $SvcParams FullAdapter 1 -Type DWord
     Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
     Ok 'mode: full adapter, GPU half off (FullAdapter 1, GpuEnable 0) - Mesa softpipe draws on the CPU'
+    Clear-NoGpuFlag
     Info 'reboot, then run: .\gpu-s10.ps1 status   and collect logs (s10-log.cmd)'
     Info 'back: .\gpu-s10.ps1 display + reboot.  Hang: TWRP -> \S10EDIAG\nogpu.flg on the ESP, boot, "display", delete the flag'
   }
