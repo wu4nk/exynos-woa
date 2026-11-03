@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.12) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.13) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -37,7 +37,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.12  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.13  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -71,11 +71,20 @@ function Set-FaultDump($v) {
 # (MW_JOB_TIMEOUT_MS) - the same as dxgkrnl's default TdrDelay, so the TDR won the race. TdrDelay 10 s / TdrDdiDelay
 # 20 s lets the KMD's recovery act first. Read at boot. $false restores the defaults (values removed).
 $TdrKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
+# v1.13: run g2b3-8 - the TDR (and its 0x7E) came exactly TdrDelay (10.0 s) after dxgkrnl's first
+# DxgkDdiPreemptCommand (26.960 s -> 36.961 s in the PRAM trace): MaliG76Wddm accepts preemption requests but never
+# reports DXGK_INTERRUPT_DMA_PREEMPTED (the INF's EnablePreemption=0 is not where dxgkrnl looks). MS Learn
+# "Changing the behavior of the GPU scheduler for debugging": GraphicsDrivers\Scheduler EnablePreemption = 0 stops
+# the scheduler's preemption requests. Read at boot.
+$SchedKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Scheduler'
 function Set-TdrDelay([bool]$Long) {
   if ($Long) {
     Set-ItemProperty $TdrKey TdrDelay 10 -Type DWord
     Set-ItemProperty $TdrKey TdrDdiDelay 20 -Type DWord
     Ok 'TdrDelay 10 s, TdrDdiDelay 20 s (GraphicsDrivers) - the KMD recovers a hung GPU job before Windows does'
+    if (-not (Test-Path $SchedKey)) { New-Item $SchedKey | Out-Null }   # not -Force: that would recreate the key
+    Set-ItemProperty $SchedKey EnablePreemption 0 -Type DWord
+    Ok 'GPU preemption off (GraphicsDrivers\Scheduler EnablePreemption 0) - MaliG76Wddm never answers a preemption request'
   } else {
     foreach ($n in 'TdrDelay', 'TdrDdiDelay') {
       if ($null -ne (Get-ItemProperty $TdrKey -ErrorAction SilentlyContinue).$n) { Remove-ItemProperty $TdrKey $n }
@@ -263,7 +272,10 @@ function Set-FullMode([int]$Gpu) {
     else { Info ("candidate {0} (sha256 {1}..., base 0x{2:X}, {3})" -f $c, $hh, $base, (Get-Item $c).LastWriteTime.ToString('s')); $good += Get-Item $c }
   }
   if (-not $good) { Fail 'no usable maliumd.dll (base >= 4 GB) next to this script, in fix\, out-gpu\ or out-gpu\umd\' }
-  $src = ($good | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+  # v1.13: the copy next to this script wins (that is where a UMD zip is unpacked); only without one the newest file.
+  # The phone's clock restarts at 2026-11-01 23:17 every boot, so "newest" alone picked an older build (run g2b3-7).
+  $own = $good | Where-Object { $_.DirectoryName -eq $PSScriptRoot } | Select-Object -First 1
+  if ($own) { $src = $own.FullName } else { $src = ($good | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName }
   $sum = Join-Path (Split-Path $src) 'SHA256SUMS'
   $h = (Get-FileHash $src -Algorithm SHA256).Hash.ToLower()
   if ((Test-Path $sum) -and -not (Select-String -Path $sum -Pattern $h -SimpleMatch -Quiet)) {
@@ -371,7 +383,7 @@ switch ($Action) {
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
     if ($m.GpuEnable -ne 1) { Fail 'GpuEnable is not 1 - run .\gpu-s10.ps1 gpu first (and m5test / fill)' }
     Set-GalliumDriver $null
-    Set-FaultDump 'dwm.exe'     # v1.11: decode DWM's faulting job chains (UMD 0046+)
+    Set-FaultDump 'dwm.exe,LogonUI.exe,explorer.exe'   # v1.13: decode faulting job chains of these (UMD 0048+)
     Set-TdrDelay $true          # v1.11: the KMD's 2 s job timeout before the TDR (0x7E bugcheck, run g2b3-5)
     Set-GpuWatch $true          # v1.8: make sure the logging tasks exist
     Initialize-UmdLog

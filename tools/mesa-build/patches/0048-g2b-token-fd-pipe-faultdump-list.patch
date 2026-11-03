@@ -1,0 +1,114 @@
+From ee9cf37f2518edf5df78936a68f8ed5ec3b42e85 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 01:37:53 +0700
+Subject: [PATCH] G2b-3: token fds fall back to a pipe (AppContainer),
+ S10_FAULTDUMP process list
+
+---
+ include/win32-compat/malikm_drm.c         | 33 ++++++++++++++++++++---
+ src/gallium/drivers/panfrost/pan_screen.c | 16 ++++++++---
+ 2 files changed, 42 insertions(+), 7 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index bda755a..bd5d377 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -63,6 +63,31 @@ static SRWLOCK dev_lock = SRWLOCK_INIT;
+ 
+ static int trace_on(void);
+ 
++/* G2b-3 (0048): a CRT descriptor that only stands for something (the device, a syncobj file, an imported
++ * allocation). Run g2b3-8: SearchHost and StartMenuExperienceHost (AppContainers) logged "Panfrost found no Mali
++ * device, using softpipe" although their device was bound to the Mali - malikm_open's only failure left is this
++ * _open("NUL") (SUSPECTED: NUL not openable from an AppContainer; the log line below confirms or refutes it). So fall
++ * back to the read end of an anonymous pipe, which any process may create. -1 if neither works. */
++static int
++token_fd(void)
++{
++   int fd = _open("NUL", _O_RDWR | _O_NOINHERIT);
++   if (fd >= 0)
++      return fd;
++   HANDLE r = NULL, w = NULL;
++   static int said;
++   if (!said++)
++      fprintf(stderr, "malikm: pid %lu: _open(NUL) failed (errno %d) - a pipe stands for the device instead\n",
++              GetCurrentProcessId(), errno);
++   if (!CreatePipe(&r, &w, NULL, 0))
++      return -1;
++   CloseHandle(w);
++   fd = _open_osfhandle((intptr_t)r, _O_RDONLY);
++   if (fd < 0)
++      CloseHandle(r);
++   return fd;
++}
++
+ int
+ malikm_open(void)
+ {
+@@ -75,14 +100,14 @@ malikm_open(void)
+       if (wddm_init() == 0) {
+          if (trace_on())
+             fprintf(stderr, "malikm: no \\\\.\\MaliG52; using the maliwddm adapter\n");
+-         return _open("NUL", _O_RDWR | _O_NOINHERIT);
++         return token_fd();
+       }
+       fprintf(stderr, "malikm: cannot open \\\\.\\MaliG52 (error %lu), and no maliwddm adapter\n",
+               (unsigned long)err);
+       errno = err == ERROR_FILE_NOT_FOUND ? ENOENT : ENODEV;
+       return -1;
+    }
+-   int fd = _open("NUL", _O_RDWR | _O_NOINHERIT);
++   int fd = token_fd();
+    if (fd < 0) {
+       CloseHandle(h);
+       return -1;
+@@ -465,7 +490,7 @@ drmSyncobjExportSyncFile(int fd, uint32_t handle, int *sync_file_fd)
+ 
+    if (call(fd, IOCTL_MALIKM_DRM, &m, sizeof(m)))
+       return -1;
+-   int sfd = _open("NUL", _O_RDWR | _O_NOINHERIT);
++   int sfd = token_fd();
+    if (sfd < 0)
+       return -1;
+    AcquireSRWLockExclusive(&sync_lock);
+@@ -1533,7 +1558,7 @@ malikm_import_alloc(unsigned hAlloc)
+    }
+    for (int i = 0; i < MAX_PRIMES; i++) {
+       if (primes[i].fd == 0) {
+-         fd = _open("NUL", _O_RDWR | _O_NOINHERIT);
++         fd = token_fd();
+          if (fd < 0)
+             break;
+          primes[i].fd = fd;
+diff --git a/src/gallium/drivers/panfrost/pan_screen.c b/src/gallium/drivers/panfrost/pan_screen.c
+index 91d53c0..bb2f876 100644
+--- a/src/gallium/drivers/panfrost/pan_screen.c
++++ b/src/gallium/drivers/panfrost/pan_screen.c
+@@ -1023,11 +1023,21 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
+    dev->debug =
+       debug_get_flags_option("PAN_MESA_DEBUG", panfrost_debug_options, 0);
+    {
+-      /* exynos-woa G2b-3 (0046): S10_FAULTDUMP=1 (every process) or a process name (dwm.exe) */
++      /* exynos-woa G2b-3 (0046): S10_FAULTDUMP=1 (every process) or process names (0048: a comma-separated
++       * list, dwm.exe,LogonUI.exe - run g2b3-8's one early fault came from a process other than DWM) */
+       const char *fd_opt = getenv("S10_FAULTDUMP");
+       const char *pname = util_get_process_name();
+-      if (fd_opt && *fd_opt && *fd_opt != '0' &&
+-          (!strcmp(fd_opt, "1") || (pname && !_stricmp(fd_opt, pname)))) {
++      bool fd_match = fd_opt && !strcmp(fd_opt, "1");
++      if (fd_opt && pname && !fd_match) {
++         size_t pl = strlen(pname);
++         for (const char *p = fd_opt; *p && !fd_match;) {
++            const char *e = strchr(p, ',');
++            size_t l = e ? (size_t)(e - p) : strlen(p);
++            fd_match = l == pl && !_strnicmp(p, pname, l);
++            p += l + (e ? 1 : 0);
++         }
++      }
++      if (fd_match) {
+          dev->debug |= PAN_DBG_SYNC;
+          dev->s10_faultdump = 2;
+          fprintf(stderr, "panfrost: S10_FAULTDUMP on for %s: each job waited for, faulted chains decoded\n",
+-- 
+2.43.0
+

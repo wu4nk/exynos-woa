@@ -688,3 +688,21 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   @0x10 faults in DWM. User: phone warmer than usual (XAML crash loop + S10_FAULTDUMP's per-job waits).
 - Note for gpu-s10 Set-FullMode: the newest-LastWriteTime rule is fragile on this device (RTC reset to
   2026-11-01 23:17 every boot, extracted files may carry either the zip's or the device's time).
+
+### G2b-3 run 8 (UMD 0047 b7328d16, kit v1.12, 2026-11-04 01:28) - DEVICE RESULT
+- Black again; the boot lasted ~37 s: BUGCHECK 0x7E c0000005 at ...e31944 (run 5: ...261944 - same offset in a
+  page, same instruction, other KASLR base). MaliG76Wddm PRAM trace: the first DxgkDdiPreemptCommand at 26.960 s,
+  QueryCurrentFence + CollectDbgInfo (TDR) at 36.961 s = exactly TdrDelay (10 s, kit v1.11+) later; HB at 36.633 s
+  had submits == completed fences (0xd8), i.e. no render packet outstanding. => The TDRs are PREEMPTION timeouts:
+  command.c MwPreemptCommand returns success and never reports DXGK_INTERRUPT_DMA_PREEMPTED ("Preemption is off
+  (EnablePreemption=0 in the INF)" - not where dxgkrnl reads it). Run 5 fits too (TdrDelay 2 s then).
+  Fix without a KMD rebuild: kit v1.13 sets GraphicsDrivers\Scheduler EnablePreemption = 0 (MS Learn, "Changing the
+  behavior of the GPU scheduler for debugging"). KMD follow-up (needs the PC/EWDK): report DMA_PREEMPTED or set
+  PreemptionAware 0.
+- AppContainer XAML hosts (SearchHost, StartMenuExperienceHost) now write to the log (v1.12 ACL) and say
+  "d3d10umd: Panfrost found no Mali device, using softpipe" - their device is bound to the GPU, so malikm_open's
+  _open("NUL") is the suspect (UNVERIFIED). 0048: token fds fall back to an anonymous pipe, with a log line.
+- One fault @0x10 at jobs done 83 again, first reported by LogonUI's wait; DWM's S10_FAULTDUMP saw no faulted chain
+  of its own -> it is another process's job. 0048: S10_FAULTDUMP takes a list; kit v1.13 sets
+  dwm.exe,LogonUI.exe,explorer.exe. Kit v1.13 also prefers the maliumd.dll next to the script (wrong RTC).
+- 0048 UMD a5c3d572.
