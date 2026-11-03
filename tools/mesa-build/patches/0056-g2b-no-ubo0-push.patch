@@ -1,0 +1,34 @@
+From a6c097585723442274f4fb110ca69b89d04de4be Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 05:13:56 +0700
+Subject: [PATCH] G2b-3: do not push D3D constant buffer 0 as GL default
+ uniforms
+
+---
+ src/gallium/drivers/panfrost/pan_shader.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/gallium/drivers/panfrost/pan_shader.c b/src/gallium/drivers/panfrost/pan_shader.c
+index 920be21..1439ac6 100644
+--- a/src/gallium/drivers/panfrost/pan_shader.c
++++ b/src/gallium/drivers/panfrost/pan_shader.c
+@@ -198,7 +198,16 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
+     * When we switch to pushing UBOs with a compute kernel (or CSF instructions)
+     * we can relax this. */
+    assert(s->info.first_ubo_is_default_ubo);
++#ifdef _WIN32
++   /* exynos-woa G2b-3 (0056): under d3d10umd, UBO 0 is D3D constant buffer 0 - a real buffer, not GL's CPU-side
++    * default uniform block. panfrost_emit_const_buf can only push from user buffers: for a real one it took
++    * cb->user_buffer (NULL) and returned 0, so the draw went out with NO UBO descriptors at all (pandecode "XXX: UBOs
++    * referenced but not specified", runs g2b3-6/10) and its shaders read zeros - DWM composed an all-black frame
++    * (run g2b3-18 thumbnails: 0.0% non-black). Only the sysval UBO is pushed; cb0 is read with LD_UBO. */
++   inputs.fau.pushable_ubos = 0;
++#else
+    inputs.fau.pushable_ubos = BITFIELD_BIT(0);
++#endif
+ 
+    if (out->sysvals.sysval_count != 0) {
+       inputs.fau.pushable_ubos |= BITFIELD_BIT(PAN_UBO_SYSVALS);
+-- 
+2.43.0
+

@@ -835,3 +835,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   1/8-scale thumbnails of DWM's 1st/5th/20th/60th/150th/400th presented primary (GPU blit into a small linear
   texture) -> C:\ProgramData\S10e\umd\frame-<pid>-<n>.ppm + "% non-black, mean rgb" in the UMD log;
   s10-log v1.9 / twrp-log v1.2 collect them.
+
+### G2b-3 run 18 (UMD 0055 fe480a1d, 2026-11-04 05:07) - DEVICE RESULT: DWM'S FRAME IS BLACK
+- Thumbnails of DWM's presented primaries #1/#5/#20/#60 (frame-1060-*.ppm): 0.0% non-black, mean rgb 0/0/0. The
+  composed frame itself is black (not a KMD / panel problem).
+- Cause (read in the source): pan_shader.c lets the Bifrost compiler push UBO 0 into the FAU, because in GL UBO 0
+  is the CPU-side default uniform block (a user buffer). Under d3d10umd UBO 0 is D3D cb0, a real buffer;
+  panfrost_emit_const_buf's push loop then took cb->user_buffer (NULL) and RETURNED 0 - the draw had no UBO
+  descriptors at all (pandecode "XXX: UBOs referenced but not specified", runs 6/10) and its shaders read zeros:
+  transforms of 0 -> nothing drawn. d3dfill only cleared, so it was unaffected.
+- 0056 (UMD 30e08d7d): on _WIN32 nothing but the sysval UBO is pushable; cb0 is read with LD_UBO from its buffer.
