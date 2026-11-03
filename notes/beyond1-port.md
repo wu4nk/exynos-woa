@@ -910,3 +910,15 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   caller thread is suspended, its PC/LR/stack copied, the first maliumd.dll address binned (64 B); every 10 s a
   "malikm-prof" line with the 16 busiest image offsets. Symbolize with llvm-symbolizer --obj=
   build-arm64/src/gallium/targets/d3d10umd/libgallium_d3d10.dll 0x180000000+off (same build only).
+
+### G2b-3 run 21 (UMD 0059 c501d5ee, 2026-11-04 06:39) - DEVICE RESULT: LAG = memcpy; UI PIECES MISSING
+- User: lag; not drawn: UAC dialog text, taskbar battery and clock, user avatar icon.
+- malikm-prof (dwm.exe, 16 lines, ~1100-1650 samples each): +0xbbbc0 x1050-1530 (65-98%) = zig compiler_rt memcpy
+  (memcpy.zig: byte loop, auto-vectorized to unaligned 32 B ldp/stp), +0x9b800 x229-552 in later lines = drmIoctl
+  (malikm_drm.c:311). memcpy is a leaf, so the caller is not in the sample; by elimination with the BO churn
+  (+100-270 MB/10 s): pan_resource.c "Shadow resource creation" - a write map of a resource a pending batch reads
+  makes a new BO and memcpy's the WHOLE old one, reading WDDM aperture memory (write-combined for the CPU).
+- Same path swaps the BO of PIPE_BIND_SHARED resources (their BO is the runtime allocation other processes open,
+  0046; PAN_BO_SHARED is only set on export) - suspected cause of the missing UI pieces.
+- 0060 (UMD 80ab38e0): on _WIN32 no shadow copies (flush + wait instead) and BIND_SHARED resources never get a
+  new BO on map. Next if still slow: profiler should attribute leaf memcpy to LR; replace zig's memcpy.

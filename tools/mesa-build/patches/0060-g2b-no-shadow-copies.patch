@@ -1,0 +1,49 @@
+From 9dc111d04616e32219b70282535ca94b5a67dc8d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 06:45:27 +0700
+Subject: [PATCH] G2b-3: no shadow BO copies on Windows, shared resources keep
+ their BO
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ src/gallium/drivers/panfrost/pan_resource.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/drivers/panfrost/pan_resource.c b/src/gallium/drivers/panfrost/pan_resource.c
+index 795d1ad..3e66e21 100644
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -1690,7 +1690,15 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
+    bool create_new_bo = usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE;
+    bool copy_resource = false;
+ 
+-   if (!(usage & PIPE_MAP_UNSYNCHRONIZED) &&
++#ifdef _WIN32
++   /* exynos-woa G2b-3 (0060): no shadow copies on Windows. Run g2b3-21 (malikm-prof): 75% of dwm.exe's CPU was this
++    * memcpy of the whole BO - BOs are WDDM aperture allocations, write-combined for the CPU, so reading one is
++    * very slow (100-270 MB of new BOs per 10 s, 0.3-1 presents/s). A flush + wait (below) is far cheaper. */
++   const bool s10_shadow = false;
++#else
++   const bool s10_shadow = true;
++#endif
++   if (s10_shadow && !(usage & PIPE_MAP_UNSYNCHRONIZED) &&
+        !(resource->flags & PIPE_RESOURCE_FLAG_MAP_PERSISTENT) &&
+        (usage & PIPE_MAP_WRITE) && panfrost_any_batch_reads_rsrc(ctx, rsrc)) {
+       /* When a resource to be modified is already being used by a
+@@ -1705,6 +1713,12 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
+       copy_resource = !(usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE);
+    }
+ 
++#ifdef _WIN32
++   /* 0060: a shared resource's BO is the runtime allocation other processes open (0046): swapping it for a fresh BO
++    * hid the new content from DWM (run g2b3-21: UAC text, taskbar clock/battery, user avatar not drawn). */
++   if (resource->bind & PIPE_BIND_SHARED)
++      create_new_bo = false;
++#endif
+    /* Shadowing with separate stencil may require additional accounting.
+     * Bail in these exotic cases.
+     */
+-- 
+2.43.0
+
