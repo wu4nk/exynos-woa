@@ -16,6 +16,14 @@
 
 static int fails;
 
+static DWORD
+sess(void)
+{
+   DWORD s = 0;
+   ProcessIdToSessionId(GetCurrentProcessId(), &s);
+   return s;
+}
+
 static HRESULT
 step(const char *what, HRESULT hr)
 {
@@ -67,7 +75,7 @@ texture(ID3D11Device *dev, const char *what, DXGI_FORMAT fmt, UINT bind, UINT mi
 int
 main(void)
 {
-   printf("comprobe v1.0 - D3D11 / DXGI / D2D / DComp on the Mali adapter\n");
+   printf("comprobe v1.1 - D3D11 / DXGI / D2D / DComp on the Mali adapter, session %lu\n", sess());
 
    IDXGIFactory2 *fac = NULL;
    if (FAILED(step("CreateDXGIFactory1 (IDXGIFactory2)", CreateDXGIFactory1(__uuidof(IDXGIFactory2), (void **)&fac))))
@@ -146,6 +154,58 @@ main(void)
          r1->Release();
       }
       nt->Release();
+   }
+   /* v1.1: opening shared textures on a second device of the same adapter - how a composition surface DWM made
+    * reaches the app (legacy handle) and how NT-handle surfaces do */
+   {
+      ID3D11Device *dev2 = NULL;
+      ID3D11DeviceContext *ctx2 = NULL;
+      D3D_FEATURE_LEVEL fl2;
+      if (SUCCEEDED(step("second D3D11 device", D3D11CreateDevice(ad, D3D_DRIVER_TYPE_UNKNOWN, NULL,
+                                                                  D3D11_CREATE_DEVICE_BGRA_SUPPORT, fls,
+                                                                  sizeof(fls) / sizeof(fls[0]), D3D11_SDK_VERSION,
+                                                                  &dev2, &fl2, &ctx2)))) {
+         ID3D11Texture2D *ls = NULL;
+         texture(dev, "  texture MISC_SHARED (legacy handle)", DXGI_FORMAT_B8G8R8A8_UNORM, rtsrv,
+                 D3D11_RESOURCE_MISC_SHARED, D3D11_USAGE_DEFAULT, 0, &ls);
+         if (ls) {
+            IDXGIResource *r = NULL;
+            HANDLE h = NULL;
+            if (SUCCEEDED(step("    GetSharedHandle", ls->QueryInterface(__uuidof(IDXGIResource), (void **)&r))) &&
+                SUCCEEDED(step("    IDXGIResource::GetSharedHandle", r->GetSharedHandle(&h)))) {
+               ID3D11Texture2D *o = NULL;
+               if (SUCCEEDED(step("    dev2->OpenSharedResource(legacy)", dev2->OpenSharedResource(h, __uuidof(ID3D11Texture2D), (void **)&o))))
+                  o->Release();
+            }
+            if (r)
+               r->Release();
+            ls->Release();
+         }
+         ID3D11Texture2D *ns = NULL;
+         texture(dev, "  texture SHARED|SHARED_NTHANDLE", DXGI_FORMAT_B8G8R8A8_UNORM, rtsrv,
+                 D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_USAGE_DEFAULT, 0, &ns);
+         if (ns) {
+            IDXGIResource1 *r1 = NULL;
+            HANDLE h = NULL;
+            ID3D11Device1 *d1 = NULL;
+            if (SUCCEEDED(step("    QI IDXGIResource1", ns->QueryInterface(__uuidof(IDXGIResource1), (void **)&r1))) &&
+                SUCCEEDED(step("    CreateSharedHandle", r1->CreateSharedHandle(NULL, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, NULL, &h))) &&
+                SUCCEEDED(step("    QI ID3D11Device1 (dev2)", dev2->QueryInterface(__uuidof(ID3D11Device1), (void **)&d1)))) {
+               ID3D11Texture2D *o = NULL;
+               if (SUCCEEDED(step("    dev2->OpenSharedResource1(NT handle)", d1->OpenSharedResource1(h, __uuidof(ID3D11Texture2D), (void **)&o))))
+                  o->Release();
+            }
+            if (h)
+               CloseHandle(h);
+            if (d1)
+               d1->Release();
+            if (r1)
+               r1->Release();
+            ns->Release();
+         }
+         ctx2->Release();
+         dev2->Release();
+      }
    }
    texture(dev, "texture A8_UNORM RT|SRV", DXGI_FORMAT_A8_UNORM, rtsrv, 0);
    texture(dev, "texture R8_UNORM RT|SRV", DXGI_FORMAT_R8_UNORM, rtsrv, 0);
@@ -265,6 +325,51 @@ main(void)
          step("  Commit", dc->Commit());
          dc->Release();
       }
+      /* v1.1: a DComp tree on a real window (WS_EX_NOREDIRECTIONBITMAP, as XAML islands), drawn and committed */
+      WNDCLASSW wc = {};
+      wc.lpfnWndProc = DefWindowProcW;
+      wc.hInstance = GetModuleHandleW(NULL);
+      wc.lpszClassName = L"comprobe";
+      RegisterClassW(&wc);
+      HWND hw = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST, L"comprobe", L"comprobe", WS_POPUP | WS_VISIBLE,
+                                100, 300, 400, 300, NULL, NULL, wc.hInstance, NULL);
+      printf("window %p (error %lu)\n", (void *)hw, hw ? 0ul : GetLastError());
+      IDCompositionDesktopDevice *dd = NULL;
+      if (hw && SUCCEEDED(step("DCompositionCreateDevice2(IDXGIDevice) desktop", DCompositionCreateDevice2(xdev, __uuidof(IDCompositionDesktopDevice), (void **)&dd)))) {
+         IDCompositionTarget *tg = NULL;
+         IDCompositionVisual2 *vis = NULL;
+         IDCompositionSurface *sf = NULL;
+         if (SUCCEEDED(step("  CreateTargetForHwnd", dd->CreateTargetForHwnd(hw, TRUE, &tg))) &&
+             SUCCEEDED(step("  CreateVisual", dd->CreateVisual(&vis))) &&
+             SUCCEEDED(step("  CreateSurface 400x300", dd->CreateSurface(400, 300, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED, &sf)))) {
+            ID3D11Texture2D *t = NULL;
+            POINT off = {};
+            if (SUCCEEDED(step("  Surface::BeginDraw", sf->BeginDraw(NULL, __uuidof(ID3D11Texture2D), (void **)&t, &off)))) {
+               ID3D11RenderTargetView *rtv = NULL;
+               if (SUCCEEDED(dev->CreateRenderTargetView(t, NULL, &rtv))) {
+                  const float col[4] = {1.0f, 0.0f, 1.0f, 1.0f};
+                  ctx->ClearRenderTargetView(rtv, col);
+                  rtv->Release();
+               }
+               t->Release();
+               step("  Surface::EndDraw", sf->EndDraw());
+            }
+            step("  Visual::SetContent", vis->SetContent(sf));
+            step("  Target::SetRoot", tg->SetRoot(vis));
+            step("  Commit", dd->Commit());
+            step("  WaitForCommitCompletion", dd->WaitForCommitCompletion());
+            Sleep(1500);   /* a magenta 400x300 rectangle should be on the screen now */
+         }
+         if (sf)
+            sf->Release();
+         if (vis)
+            vis->Release();
+         if (tg)
+            tg->Release();
+         dd->Release();
+      }
+      if (hw)
+         DestroyWindow(hw);
    }
 
    /* a composition swap chain (XAML's SwapChainPanel, D2D-backed islands) */
@@ -284,6 +389,38 @@ main(void)
          step("  Present(0)", sc->Present(0, 0));
          sc->Release();
       }
+   }
+
+   /* v1.1: a flip-model swap chain for a window */
+   {
+      HWND hw = CreateWindowExW(WS_EX_TOPMOST, L"comprobe", L"comprobe2", WS_POPUP | WS_VISIBLE, 100, 700, 400, 300, NULL,
+                                NULL, GetModuleHandleW(NULL), NULL);
+      DXGI_SWAP_CHAIN_DESC1 sd = {};
+      sd.Width = 400;
+      sd.Height = 300;
+      sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+      sd.SampleDesc.Count = 1;
+      sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+      sd.BufferCount = 2;
+      sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+      IDXGISwapChain1 *sc = NULL;
+      if (hw && SUCCEEDED(step("CreateSwapChainForHwnd flip-sequential x2", fac->CreateSwapChainForHwnd(dev, hw, &sd, NULL, NULL, &sc)))) {
+         ID3D11Texture2D *bb = NULL;
+         if (SUCCEEDED(step("  GetBuffer(0)", sc->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&bb)))) {
+            ID3D11RenderTargetView *rtv = NULL;
+            if (SUCCEEDED(dev->CreateRenderTargetView(bb, NULL, &rtv))) {
+               const float col[4] = {0.0f, 1.0f, 0.0f, 1.0f};
+               ctx->ClearRenderTargetView(rtv, col);
+               rtv->Release();
+            }
+            bb->Release();
+         }
+         step("  Present(1)", sc->Present(1, 0));
+         Sleep(1500);   /* green 400x300 */
+         sc->Release();
+      }
+      if (hw)
+         DestroyWindow(hw);
    }
 
    if (xdev)

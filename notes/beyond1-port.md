@@ -746,3 +746,21 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   (only LogonUI dumped); 0050: one decode per executable (marker dumped-<exe>.flag), kit v1.15 dumps LogonUI +
   the 4 XAML hosts.
 - 0050 UMD eefdf678; kit v1.15, gpu-watch v1.2. Zip S10-GPU-0050-kit-v1.15.zip.
+
+### G2b-3 run 12 (UMD 0050 eefdf678, kit v1.15, 2026-11-04 02:55) - DEVICE RESULT
+- Tiler heap 32 MB halves the per-process memory: explorer 189 MB private (was 380), SearchHost ~150 (338),
+  TextInputHost 104 (296), StartMenu 83 (180), DWM 267-287 (370). Only ONE job fault in the boot (LogonUI, decoded)
+  - the 13 of run 11 went with the memory pressure.
+- XAML hosts still crash-loop (WER: 92x explorer APPCRASH, stowed E_INVALIDARG originated at combase+0x51a94;
+  WindowsTerminal MoAppCrash E_INVALIDARG + d3d11 c0000005).
+- comprobe (gpu-watch v1.2, SYSTEM, session 0): Mali adapter "Arm Mali-G76 MP12 (Galaxy S10e, G10/G11)", shared
+  1024 MB; D3D11 device FL 10_0 (BGRA support); B8G8R8A8/R8G8B8A8/A8/R8/R8G8/R16G16B16A16F/R10G10B10A2 TEX2D RT
+  SAMPLE BLEND (+DISPLAY for 32bpp); B5G6R5 and NV12 not supported (E_FAIL); BC1-3 reported TEX2D SAMPLE but
+  CreateTexture2D BC1/BC3 -> E_OUTOFMEMORY (Panfrost: no DXT on the G76; the UMD's CheckFormatSupport claims SAMPLE -
+  FL10 requires BC1-3: emulate later); shared / keyed-mutex / NT-handle textures, CreateSharedHandle, staging Map,
+  dynamic Map, D2D device + draw: all OK. DCompositionCreateDevice E_ACCESSDENIED and CreateSwapChainForComposition
+  DXGI_ERROR_NOT_CURRENTLY_AVAILABLE - expected in session 0.
+- gpu-watch v1.3 runs comprobe v1.1 a second time in the console user's session (one-shot interactive task):
+  + OpenSharedResource (legacy) / OpenSharedResource1 (NT handle) on a second device, DComp desktop device on a
+  WS_EX_NOREDIRECTIONBITMAP window (target, visual, surface draw, commit - magenta 400x300 for 1.5 s), and a flip
+  swap chain for a window (green 400x300 for 1.5 s).

@@ -1,5 +1,5 @@
 <#
-  gpu-watch.ps1 (v1.2) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
+  gpu-watch.ps1 (v1.3) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
   "S10 GPU watch", SYSTEM, at startup). For boots where the phone is too slow to use (G2b-1 2026-11-03: no taskbar
   icons, no touch keyboard): nothing has to be typed, and nothing depends on the PRAM surviving (a TWRP boot destroys
   it). Every 15 s for 10 minutes it appends to C:\S10Prov\gpuwatch.txt (NTFS - readable from TWRP:
@@ -35,7 +35,7 @@ function Mali-Pram {
 
 $up0 = [Environment]::TickCount
 W ''
-W "===== gpu-watch v1.2 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
+W "===== gpu-watch v1.3 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
 try {
   $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters' -ErrorAction Stop
   W ("mode registry: FullAdapter {0} GpuEnable {1}  machine GALLIUM_DRIVER '{2}'" -f $p.FullAdapter, $p.GpuEnable,
@@ -45,6 +45,33 @@ $prev = @{}
 Get-Process | ForEach-Object { $prev[$_.Id] = $_.CPU }
 $m5done = $false
 $cpdone = $false
+$cpudone = $false
+# v1.3: comprobe once more IN THE LOGGED-ON USER'S SESSION (run g2b3-12: from session 0 DComp gave E_ACCESSDENIED and
+# the composition swap chain DXGI_ERROR_NOT_CURRENTLY_AVAILABLE - no desktop there). A one-shot task for the console
+# user, interactive token, output to C:\S10Prov\comprobe-user.txt, removed afterwards.
+function Invoke-ComprobeUser($exe) {
+  $u = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).UserName
+  if (-not $u) { W '  comprobe(user): nobody logged on yet'; return $false }
+  $out = 'C:\S10Prov\comprobe-user.txt'
+  Remove-Item $out -Force -ErrorAction SilentlyContinue
+  $name = 'S10 comprobe once'
+  try {
+    $act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c ""' + $exe + '" > "' + $out + '" 2>&1"')
+    $prn = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited
+    $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 3)
+    Register-ScheduledTask -TaskName $name -Action $act -Principal $prn -Settings $set -Force | Out-Null
+    Start-ScheduledTask -TaskName $name
+    for ($k = 0; $k -lt 60; $k++) {
+      Start-Sleep -Seconds 2
+      $st = (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue).State
+      if ($k -ge 2 -and "$st" -ne 'Running') { break }
+    }
+    W "  comprobe(user $u): task state $st, last result $((Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue).LastTaskResult)"
+    Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+  } catch { W "  comprobe(user): $_"; return $true }
+  Get-Content $out -ErrorAction SilentlyContinue | ForEach-Object { W "  uprobe> $_" }
+  return $true
+}
 
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 15
@@ -98,6 +125,10 @@ for ($i = 0; $i -lt 40; $i++) {
       else { W "  comprobe exit $($pp.ExitCode) (0 = all OK, 3 = a step failed)" }
       Get-Content $o, "$o.err" -ErrorAction SilentlyContinue | ForEach-Object { W "  probe> $_" }
     } else { W '  comprobe: no tools\comprobe.exe' }
+  }
+  if ($cpdone -and -not $cpudone -and $up -ge 120) {
+    $exe = @((Join-Path $Kit 'tools\comprobe.exe'), (Join-Path $Kit 'out-gpu\tools\comprobe.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($exe) { $cpudone = Invoke-ComprobeUser $exe } else { $cpudone = $true }
   }
 }
 W "===== gpu-watch done (uptime $([int]([Environment]::TickCount / 1000)) s)"
