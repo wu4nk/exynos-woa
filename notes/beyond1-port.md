@@ -454,3 +454,12 @@ in dwm.exe's modules, no AppCrash_dwm). s10-log v1.4 (PowerShell-extracted, CRLF
   FullAdapter 1 / GpuEnable 0 is set; KMD trace in the registry is stale (Mode 1 from the black-screen boot).
 - gpu-s10.ps1 v1.4: refuses UMD candidates with ImageBase < 4 GB (reads PE+48), newest good one wins, also looks in
   fix\; Clear-NoGpuFlag first searches every mounted drive for \S10EDIAG\nogpu.flg (ESP already mounted case).
+
+## DEVICE RESULT 2026-11-03 16:12 - G2a PASS on the S10 (real full mode, maliumd 9fb3fe45)
+gpu-s10 v1.4: skipped nothing bad, copied 9fb3fe45 (base 0x180000000), nogpu.flg removed (S:\, the ESP was still
+mounted). Next boot: Win32_VideoController = "Arm Mali-G76 MP12", status OK, InstalledDisplayDrivers maliumd.dll x4,
+1440x3040; KMD Mode 1, Started 1; registry FullAdapter 1 GpuEnable 0; NO new WER AppCrash_dwm (s10-log v1.4 found
+no WER dir entries). User: desktop works but laggy (right-click slow) - expected: GpuEnable 0 = Mesa softpipe (TGSI
+interpreter, CPU) draws everything DWM composes, vs Basic Display + WARP (JIT, multi-threaded) in display-only.
+So the S10 now matches the S10e g54 state, with a UMD built on Linux (zig + 0x180000000 base).
+Advice given: use display-only for daily use; full mode is the base for G2b (GpuEnable 1, Mali jobs).
