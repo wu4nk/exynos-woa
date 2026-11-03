@@ -856,3 +856,28 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - KMD: presents 0xb4 -> 0x16a between 69 s and 257 s (DWM presents on change), all blts, fences = submits.
 - Still open: composition swap-chain presents refused (Terminal 1372x1260, 23x INVALIDHANDLE, the window content
   stays black); BC1/BC3 textures; performance (DWM 15-28 s CPU per ~25 s interval).
+- User (2026-11-04): "nó lên, đúng như ảnh nhưng nó lag khủng bố luôn" - the desktop is on the panel, exactly
+  as in the thumbnails, but it lags terribly. KMD presents 0xb4 -> 0x16a in 188 s = ~1 present/s while the user
+  was working.
+
+### G2b-3 lag analysis (2026-11-04, read in the source)
+- Shim waits drained everything: wddm_drm WAIT_BO and SYNCOBJ_WAIT both `return wddm_idle()`, ignoring the
+  timeout. Panfrost polls with timeout 0 in hot paths - panfrost_bo_cache_fetch (`panfrost_bo_wait(entry, 0)`
+  for every cached BO it looks at) and the WRITE_DISCARD map in pan_resource.c (`!panfrost_bo_wait(bo, 0, true)`
+  -> allocate a fresh BO instead of waiting). Each became a full GPU round trip, and wddm_lock (process-wide)
+  was held through it: every other thread / device of the process stopped too.
+- GEM_CLOSE drained the queue every 64 closes (WDEAD_FLUSH).
+- S10_FAULTDUMP (kit v1.15 gpu-dwm) put LogonUI/explorer/SearchHost/StartMenu/TextInputHost in PAN_DBG_SYNC:
+  a drmSyncobjWait(INT64_MAX) after every job (plus a chain walk).
+- KMD (no rebuild possible without a PC): DoPresent is a full-frame CPU blt (1440x3040x4 = 17.5 MB) inside
+  DxgkDdiSubmitCommand - DXGIDDICB_PRESENT carries no dirty rects in WDDM 1.3, SubRectCnt is the whole rect;
+  the source is VidMm aperture memory (CacheCoherent FALSE: likely write-combined, slow to read). One chain
+  at a time across both job slots (Kick: `while (!A->Running ...)`). Interrupts do work (m5test: irqs = jobs).
+- Every submission lists every live BO (up to 256) for residency (0040): its cost in RenderCb is unknown.
+- 0057 (this step): per-submission sequence numbers with their EnqueueCpuEvent events (ring of 64);
+  WAIT_BO waits for the BO's newest NAMING submission within its timeout (0 = poll -> -EBUSY), syncobjs carry
+  the seq of their fence (real per-descriptor table, WAIT_ALL / any, -ETIME), blocking waits release wddm_lock;
+  closed allocations are destroyed once their seq is done (drain only past 2048). Always-on "malikm-perf" line
+  per process every 10 s: presents/s, ms in PresentCb, submits per present, named/listed BOs, ms in RenderCb,
+  waits/polls/drains, BO churn, CPU user/kernel, KMD deltas (jobs, blts, irqs, paging ops). Thumbnails only
+  with S10_THUMBS=1. Kit gpu-s10.ps1 v1.16: gpu-dwm removes S10_FAULTDUMP.

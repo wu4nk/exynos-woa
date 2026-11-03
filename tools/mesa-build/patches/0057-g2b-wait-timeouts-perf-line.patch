@@ -1,0 +1,841 @@
+From b8412e36692f8b71cbc3d21e6ac26cccd2191100 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 06:01:21 +0700
+Subject: [PATCH] G2b-3: waits honour their timeout and wait for their own
+ submission, per-process perf line
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ include/win32-compat/malikm_drm.c          | 568 +++++++++++++++++----
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp |   9 +-
+ 2 files changed, 489 insertions(+), 88 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index e2e9db7..c57d33c 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -600,8 +600,9 @@ munmap(void *addr, size_t len)
+  *   SUBMIT         one MW_CMD_JOB through Render, the BOs as the allocation
+  *                  list (the KMD patches each, which makes VidMm map them)
+  *   WAIT_BO, syncobj waits
+- *                  WaitForIdle: the KMD runs one queue in order, so
+- *                  everything submitted before the wait is done after it
++ *                  the sequence number of the submission they wait for,
++ *                  done when its CPU event is set (the KMD runs one queue
++ *                  in order); D3DKMT tools: WaitForIdle (0057)
+  *   GET_PARAM      MW_ESCAPE_GPU_INFO
+  */
+ 
+@@ -621,6 +622,9 @@ struct wbo_s {
+     * resource, created with the runtime resource handle (malikm_shared_bo_begin): the runtime frees it with the
+     * resource, so GEM_CLOSE only unlocks it. */
+    int foreign;
++   /* G2b-3 (0057): the newest submission that NAMED it (Panfrost's bo_handles, not the residency extras):
++    * WAIT_BO waits for that one only, as Linux's implicit fences do. */
++   uint64_t busy;
+ };
+ #define WBO_OPENED  1
+ #define WBO_RUNTIME 2
+@@ -649,11 +653,6 @@ struct wddi {
+    D3DKMT_HANDLE prim[2];
+    void *prim_cpu[2];
+    unsigned prim_w, prim_h, prim_next;
+-   HANDLE last_event;          /* signalled when the last submission is done */
+-   /* The newest submission has no event (the signal callback failed), so
+-    * last_event is older than it and waiting on it alone would return
+-    * early. wddm_idle() polls the KMD's fences instead while this is set. */
+-   int last_unsignalled;
+ };
+ 
+ /* Allocations whose BO is closed but which a job submitted earlier may
+@@ -662,8 +661,18 @@ struct wddi {
+  * Destroying the allocation at GEM_CLOSE let VidMm unmap pages under a
+  * running job (PE runs 18 on: two job faults per present.exe, a read
+  * translation fault, 0x4002c3, every time at the same VA). They are
+- * destroyed after the next wait for idle instead. */
+-#define WDEAD_FLUSH 64
++ * destroyed once the newest submission at their close is done (0057; until then: after the next wait for idle). */
++struct wdead_s { D3DKMT_HANDLE h; uint64_t seq; };
++#define WDEAD_MAX 2048   /* this many still waiting: drain the queue */
++
++/* G2b-3 (0057): SUBMISSIONS IN FLIGHT. Until 0056 every WAIT_BO and syncobj wait drained this context's whole
++ * queue, whatever its timeout: Panfrost's polls (timeout 0 - the BO cache looking for an idle buffer, a
++ * WRITE_DISCARD map asking "busy?") became full GPU round trips, and wddm_lock was held through them, so every
++ * other thread and device of the process stopped too. Run g2b3-19: DWM composed the desktop and lagged badly.
++ * Now each submission has a sequence number and the CPU event the scheduler sets when the context reaches it;
++ * the queue is in order, so the newest signalled event retires everything up to it. */
++#define WPEND 64
++struct wpend { uint64_t seq; HANDLE ev; };   /* ev NULL: none could be enqueued; the KMD's fences tell */
+ 
+ /* G2b-3 (0053): ONE CONTEXT PER RUNTIME DEVICE. Until 0052 a process had one shim state (and, since
+  * os_same_file_description cannot compare Windows descriptors, one Panfrost screen) for all its D3D devices; 0045
+@@ -688,8 +697,13 @@ struct wctx {
+    UINT alist_size;
+    D3DDDI_PATCHLOCATIONLIST *plist;
+    UINT plist_size;
+-   uint64_t seq;
+-   D3DKMT_HANDLE *dead;
++   uint64_t seq;                     /* the newest submission's sequence number */
++   uint64_t done;                    /* 0057: every submission up to this one has completed */
++   struct wpend pend[WPEND];         /* 0057: the ones not known complete, oldest first */
++   uint32_t pend_head, pend_n;
++   uint64_t *sobj;                   /* 0057: syncobj h -> (seq of its fence) + 1 at [h - 1]; 0 = free */
++   uint32_t sobj_cap;
++   struct wdead_s *dead;
+    uint32_t dead_n, dead_cap;
+    struct wkprim kp[MAX_KPRIM];
+ };
+@@ -706,6 +720,7 @@ static struct wctx *wcur = &wctxs[0];
+ #define wpatch      (wcur->plist)
+ #define wpatch_size (wcur->plist_size)
+ #define wseq        (wcur->seq)
++#define wdone       (wcur->done)
+ #define wdead       (wcur->dead)
+ #define wdead_n     (wcur->dead_n)
+ #define wdead_cap   (wcur->dead_cap)
+@@ -988,24 +1003,116 @@ w_unlock(D3DKMT_HANDLE h)
+    kmt.Unlock(&u);
+ }
+ 
++/* ---- G2b-3 (0057): where the time goes ----
++ * Run g2b3-19 lagged badly and nothing said where. One line per process for every 10 s it used the GPU, always
++ * (stderr is the UMD log): presents, submissions and their allocation lists, time inside the runtime's Render and
++ * Present callbacks, blocking waits and polls, BO churn, the process's CPU time, and the KMD's own counters over the
++ * same 10 s (adapter-wide: every process's jobs). wddm_lock held for all of it. */
++static struct {
++   int64_t t0;                         /* QPC at the start of the interval; 0 = not started */
++   uint32_t submits, named, listed, render_fails;
++   int64_t render_t;                   /* in pfnRenderCb and the completion event's enqueue */
++   uint32_t polls, polls_busy;         /* timeout-0 waits, and those that found the GPU still busy */
++   uint32_t waits, waits_late, drains; /* blocking waits, those that timed out, waits for everything */
++   int64_t wait_t;
++   uint32_t bo_new, bo_close;
++   uint64_t bo_new_bytes;
++   uint32_t presents, present_fails;
++   int64_t present_t;                  /* in pfnPresentCb */
++   uint64_t cpu_user, cpu_kernel;      /* 100 ns units, at t0 */
++   MW_ESCAPE_STATS_DATA k;             /* the KMD's counters at t0 */
++   int k_ok;
++} wperf;
++
++static int64_t
++perf_now(void)
++{
++   LARGE_INTEGER t;
++   QueryPerformanceCounter(&t);
++   return t.QuadPart;
++}
++
++static double
++perf_ms(int64_t ticks)
++{
++   static LARGE_INTEGER f;
++   if (!f.QuadPart)
++      QueryPerformanceFrequency(&f);
++   return f.QuadPart ? (double)ticks * 1000.0 / (double)f.QuadPart : 0.0;
++}
++
++/* Everything the KMD was given has completed (every process's): its fences agree and nothing is queued or
++ * running. 1 yes, 0 no, -1 the escape failed. For submissions without an event. */
++static int
++w_kmd_idle(void)
++{
++   MW_ESCAPE_STATS_DATA st = {0};
++   st.Code = MW_ESCAPE_STATS;
++   if (w_escape(&st, sizeof(st)) < 0)
++      return -1;
++   return st.LastCompletedFence == st.LastSubmittedFence && !st.Queued && !st.Running;
++}
++
++/* The oldest submission in flight is done (or given up on): retire it. */
++static void
++pend_pop(void)
++{
++   struct wpend *p = &wcur->pend[wcur->pend_head];
++   if (p->ev)
++      CloseHandle(p->ev);
++   if (p->seq > wdone)
++      wdone = p->seq;
++   p->ev = NULL;
++   wcur->pend_head = (wcur->pend_head + 1) % WPEND;
++   wcur->pend_n--;
++}
++
++/* File the newest submission (wseq) with its event. A full ring waits for its oldest entry first. */
++static void
++pend_push(HANDLE ev)
++{
++   if (wcur->pend_n == WPEND) {
++      struct wpend *p = &wcur->pend[wcur->pend_head];
++      int64_t t0 = perf_now();
++      if (p->ev) {
++         WaitForSingleObject(p->ev, 10000);
++      } else {
++         for (int ms = 0; ms < 10000 && w_kmd_idle() == 0; ms++)
++            Sleep(1);
++      }
++      wperf.waits++;
++      wperf.wait_t += perf_now() - t0;
++      pend_pop();
++   }
++   struct wpend *n = &wcur->pend[(wcur->pend_head + wcur->pend_n) % WPEND];
++   n->seq = wseq;
++   n->ev = ev;
++   wcur->pend_n++;
++}
++
+ /* Render what is in the command buffer and allocation list; on return the
+- * buffers are the new ones the runtime handed back. */
++ * buffers are the new ones the runtime handed back. A submission that went
++ * through is wseq from here on. */
+ static NTSTATUS
+ w_render(UINT commandLength, UINT allocations)
+ {
+    if (ddi.on) {
+       D3DDDICB_RENDER r = {0};
++      int64_t t0 = perf_now();
+       r.hContext = ddi.context;
+       r.CommandLength = commandLength;
+       r.NumAllocations = allocations;
+-      if (ddi.cb.pfnRenderCb(ddi.device, &r) < 0)
++      if (ddi.cb.pfnRenderCb(ddi.device, &r) < 0) {
++         wperf.render_t += perf_now() - t0;
+          return (NTSTATUS)0xC0000001;
++      }
+       wcmd = r.pNewCommandBuffer;
+       wcmd_size = r.NewCommandBufferSize;
+       walloc = r.pNewAllocationList;
+       walloc_size = r.NewAllocationListSize;
+       wpatch = r.pNewPatchLocationList;
+       wpatch_size = r.NewPatchLocationListSize;
++      wseq++;
+ 
+       /* A CPU event the scheduler sets when the context gets here. */
+       HANDLE ev = CreateEventW(NULL, TRUE, FALSE, NULL);
+@@ -1015,18 +1122,18 @@ w_render(UINT commandLength, UINT allocations)
+          sig.Flags.EnqueueCpuEvent = 1;
+          sig.CpuEventHandle = ev;
+          if (ddi.cb.pfnSignalSynchronizationObject2Cb(ddi.device, &sig) >= 0) {
+-            if (ddi.last_event)
+-               CloseHandle(ddi.last_event);
+-            ddi.last_event = ev;
+-            ddi.last_unsignalled = 0;
++            pend_push(ev);
++            wperf.render_t += perf_now() - t0;
+             return 0;
+          }
+          CloseHandle(ev);
+       }
+-      if (!ddi.last_unsignalled || trace_on())
+-         fprintf(stderr, "malikm-wddm: no completion event for this submission;"
+-                 " waits poll the KMD until it catches up\n");
+-      ddi.last_unsignalled = 1;
++      static unsigned no_event;
++      if (no_event++ < 3 || trace_on())
++         fprintf(stderr, "malikm-wddm: pid %lu: no completion event for submission %llu;"
++                 " its waits poll the KMD until it catches up\n", GetCurrentProcessId(), (unsigned long long)wseq);
++      pend_push(NULL);
++      wperf.render_t += perf_now() - t0;
+       return 0;
+    }
+    D3DKMT_RENDER r = {0};
+@@ -1042,72 +1149,258 @@ w_render(UINT commandLength, UINT allocations)
+    walloc_size = r.NewAllocationListSize;
+    wpatch = r.pNewPatchLocationList;
+    wpatch_size = r.NewPatchLocationListSize;
++   wseq++;
+    return 0;
+ }
+ 
+-/* Everything the KMD was given has completed: its fences agree and nothing
+- * is queued or running. For when there is no event to wait on. */
++/* Destroy the closed allocations no submission in flight can use any more. */
++static void
++wdead_flush(void)
++{
++   uint32_t kept = 0, gone = 0;
++   for (uint32_t i = 0; i < wdead_n; i++) {
++      if (wdead[i].seq <= wdone) {
++         w_destroy(wdead[i].h);
++         gone++;
++      } else {
++         wdead[kept++] = wdead[i];
++      }
++   }
++   wdead_n = kept;
++   if (gone && trace_on())
++      fprintf(stderr, "malikm-wddm: destroyed %u closed allocations, %u wait for their jobs\n", gone, kept);
++}
++
++/* Retire, without waiting, the submissions that are done. */
++static void
++w_retire(void)
++{
++   uint64_t was = wdone;
++   if (wcur->pend_n > 1) {
++      /* the newest done means all are (one queue, in order) */
++      struct wpend *t = &wcur->pend[(wcur->pend_head + wcur->pend_n - 1) % WPEND];
++      if (t->ev && WaitForSingleObject(t->ev, 0) == WAIT_OBJECT_0) {
++         while (wcur->pend_n)
++            pend_pop();
++      }
++   }
++   while (wcur->pend_n) {
++      struct wpend *p = &wcur->pend[wcur->pend_head];
++      if (p->ev) {
++         if (WaitForSingleObject(p->ev, 0) != WAIT_OBJECT_0)
++            break;
++         pend_pop();
++      } else {
++         if (w_kmd_idle() != 1)
++            break;
++         while (wcur->pend_n)
++            pend_pop();
++         wdone = wseq;
++      }
++   }
++   if (wdone != was && wdead_n)
++      wdead_flush();
++}
++
++/* Submission seq is done, waiting at most timeout_ns (relative; MALIKM_TIMEOUT_INFINITE waits up to 10 s, then
++ * -ETIMEDOUT as before). Timeout 0 is a poll: -EBUSY at once if it is not done, as Linux's WAIT_BO answers.
++ * unlock: let go of wddm_lock while blocked, so the process's other threads and devices go on (only for callers
++ * that keep no pointer into the shim's tables across the call). */
+ static int
+-wddm_poll_idle(void)
++w_wait_seq(uint64_t seq, int64_t timeout_ns, int unlock)
+ {
+-   for (int ms = 0; ms < 10000; ms++) {
+-      MW_ESCAPE_STATS_DATA st = {0};
+-      st.Code = MW_ESCAPE_STATS;
+-      if (w_escape(&st, sizeof(st)) < 0)
+-         return -MK_EIO;
+-      if (st.LastCompletedFence == st.LastSubmittedFence && !st.Queued && !st.Running)
++   if (seq > wseq)
++      seq = wseq;
++   if (!ddi.on) {
++      /* D3DKMT (tools): no events; the device's WaitForIdle covers everything */
++      if (seq <= wdone)
+          return 0;
+-      Sleep(1);
++      if (timeout_ns == 0) {
++         wperf.polls++;
++         if (w_kmd_idle() == 1) {
++            wdone = wseq;
++            wdead_flush();
++            return 0;
++         }
++         wperf.polls_busy++;
++         return -MK_EBUSY;
++      }
++      D3DKMT_WAITFORIDLE w = {0};
++      w.hDevice = wdevice;
++      int64_t t0 = perf_now();
++      int ok = kmt.WaitForIdle(&w) >= 0;
++      wperf.waits++;
++      wperf.wait_t += perf_now() - t0;
++      if (!ok)
++         return -MK_EIO;
++      wdone = wseq;
++      wdead_flush();
++      return 0;
++   }
++   if (timeout_ns == 0)
++      wperf.polls++;
++   if (seq <= wdone)
++      return 0;
++   w_retire();
++   if (seq <= wdone)
++      return 0;
++   if (timeout_ns == 0) {
++      wperf.polls_busy++;
++      return -MK_EBUSY;
++   }
++   DWORD ms = 10000;
++   if (timeout_ns < MALIKM_TIMEOUT_INFINITE && timeout_ns / 1000000 < 10000)
++      ms = (DWORD)((timeout_ns + 999999) / 1000000);
++   struct wpend *p = NULL;
++   for (uint32_t k = 0; k < wcur->pend_n; k++) {
++      struct wpend *q = &wcur->pend[(wcur->pend_head + k) % WPEND];
++      if (q->seq >= seq) {
++         p = q;
++         break;
++      }
++   }
++   int64_t t0 = perf_now();
++   wperf.waits++;
++   if (p && p->ev) {
++      struct wctx *me = wcur;
++      HANDLE dup = NULL;
++      if (unlock && DuplicateHandle(GetCurrentProcess(), p->ev, GetCurrentProcess(), &dup, SYNCHRONIZE, FALSE, 0)) {
++         ReleaseSRWLockExclusive(&wddm_lock);
++         WaitForSingleObject(dup, ms);
++         AcquireSRWLockExclusive(&wddm_lock);
++         CloseHandle(dup);
++         wcur = me;
++      } else {
++         WaitForSingleObject(p->ev, ms);
++      }
++   } else {
++      /* no event to wait on: the KMD's fences, every ms */
++      for (DWORD i = 0; i < ms; i++) {
++         int r = w_kmd_idle();
++         if (r < 0)
++            break;
++         if (r == 1) {
++            while (wcur->pend_n)
++               pend_pop();
++            wdone = wseq;
++            break;
++         }
++         Sleep(1);
++      }
+    }
++   wperf.wait_t += perf_now() - t0;
++   w_retire();
++   if (seq <= wdone)
++      return 0;
++   wperf.waits_late++;
+    return -MK_ETIMEDOUT;
+ }
+ 
++/* A job that failed since the last report (KMD-wide), with the BO trace above it that says which buffer its fault
++ * address belongs to. exynos-woa G2b-3 0044: always (not only with MALIKM_TRACE) - DWM's black screen on the S10
++ * had one faulted job (fault 0x223002c2 @0x10) and nothing else to go on. */
+ static void
+-wdead_flush(void)
++report_failed(const MW_ESCAPE_STATS_DATA *st)
+ {
+-   for (uint32_t i = 0; i < wdead_n; i++)
+-      w_destroy(wdead[i]);
+-   if (wdead_n && trace_on())
+-      fprintf(stderr, "malikm-wddm: destroyed %u closed allocations after idle\n", wdead_n);
+-   wdead_n = 0;
++   static uint32_t failed_seen;
++   if (st->JobsFailed != failed_seen) {
++      fprintf(stderr, "malikm-wddm: pid %lu: %u job(s) failed by now: js 0x%x fault 0x%x @0x%llx (jobs done %u)\n",
++              GetCurrentProcessId(), st->JobsFailed, st->LastJsStatus, st->LastFaultStatus,
++              (unsigned long long)st->LastFaultAddress, st->JobsDone);
++      failed_seen = st->JobsFailed;
++   }
+ }
+ 
+ /* Everything submitted so far is done (one in-order queue in the KMD). */
+ static int
+ wddm_idle(void)
+ {
+-   int ret = 0;
+-
+-   if (ddi.on) {
+-      if (ddi.last_event && WaitForSingleObject(ddi.last_event, 10000) != WAIT_OBJECT_0)
+-         ret = -MK_ETIMEDOUT;
+-      else if (ddi.last_unsignalled)
+-         ret = wddm_poll_idle();
+-   } else {
+-      D3DKMT_WAITFORIDLE w = {0};
+-      w.hDevice = wdevice;
+-      ret = kmt.WaitForIdle(&w) >= 0 ? 0 : -MK_EIO;
+-   }
+-   if (ret == 0)
+-      wdead_flush();
+-   /* exynos-woa G2b-3 0044: always (not only with MALIKM_TRACE) - DWM's black screen on the S10 had one faulted
+-    * job (fault 0x223002c2 @0x10) and nothing else to go on. */
++   wperf.drains++;
++   int ret = w_wait_seq(wseq, MALIKM_TIMEOUT_INFINITE, 0);
+    if (ret == 0) {
+-      /* A job that failed since the last wait, with the BO trace above it
+-       * that says which buffer its fault address belongs to. */
+-      static uint32_t failed_seen;
++      wdead_flush();
+       MW_ESCAPE_STATS_DATA st = {0};
+       st.Code = MW_ESCAPE_STATS;
+-      if (w_escape(&st, sizeof(st)) >= 0 && st.JobsFailed != failed_seen) {
+-         fprintf(stderr, "malikm-wddm: pid %lu: %u job(s) failed by now: js 0x%x fault 0x%x @0x%llx (jobs done %u)\n",
+-                 GetCurrentProcessId(), st.JobsFailed, st.LastJsStatus, st.LastFaultStatus,
+-                 (unsigned long long)st.LastFaultAddress, st.JobsDone);
+-         failed_seen = st.JobsFailed;
+-      }
++      if (w_escape(&st, sizeof(st)) >= 0)
++         report_failed(&st);
+    }
+    return ret;
+ }
+ 
++static void
++perf_cpu(uint64_t *user, uint64_t *kernel)
++{
++   FILETIME c, e, k, u;
++   *user = *kernel = 0;
++   if (GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u)) {
++      *user = ((uint64_t)u.dwHighDateTime << 32) | u.dwLowDateTime;
++      *kernel = ((uint64_t)k.dwHighDateTime << 32) | k.dwLowDateTime;
++   }
++}
++
++/* The 0057 line, when 10 s have passed. wddm_lock held, wcur set. */
++static void
++perf_tick(void)
++{
++   int64_t now = perf_now();
++   if (wperf.t0 && perf_ms(now - wperf.t0) < 10000.0)
++      return;
++   if (wperf.t0 && (wperf.submits || wperf.presents)) {
++      uint64_t u, k;
++      perf_cpu(&u, &k);
++      MW_ESCAPE_STATS_DATA ks = {0};
++      ks.Code = MW_ESCAPE_STATS;
++      int k_ok = wperf.k_ok && w_escape(&ks, sizeof(ks)) >= 0;
++      uint32_t live = 0, dead = 0, ctxs = 0, inflight = 0;
++      uint64_t live_bytes = 0;
++      for (int i = 0; i < MAX_WCTX; i++) {
++         const struct wctx *c = &wctxs[i];
++         for (uint32_t j = 0; j < c->bo_cap; j++) {
++            if (c->bo[j].h) {
++               live++;
++               live_bytes += c->bo[j].size;
++            }
++         }
++         dead += c->dead_n;
++         ctxs += c->used;
++         inflight += c->pend_n;
++      }
++      char exe[MAX_PATH] = "?";
++      GetModuleFileNameA(NULL, exe, sizeof(exe));
++      const char *base = strrchr(exe, '\\');
++      base = base ? base + 1 : exe;
++      double s = perf_ms(now - wperf.t0) / 1000.0;
++      unsigned subs = wperf.submits ? wperf.submits : 1, pres = wperf.presents ? wperf.presents : 1;
++      fprintf(stderr, "malikm-perf: pid %lu %s %.1fs: %u presents (%.1f/s, %.2f ms each in PresentCb, %u failed) | "
++              "%u submits (%.1f per present, %.1f named + %.1f listed BOs, %.2f ms each in RenderCb, %u failed) | "
++              "waits %u (%.1f ms, %u late), polls %u (%u busy), drains %u, in flight %u | "
++              "BOs +%u (%.1f MB) -%u, live %u (%.0f MB), dead %u, contexts %u | cpu user %.2fs kernel %.2fs",
++              GetCurrentProcessId(), base, s, wperf.presents, wperf.presents / s, perf_ms(wperf.present_t) / pres,
++              wperf.present_fails, wperf.submits, (double)wperf.submits / pres, (double)wperf.named / subs,
++              (double)(wperf.listed - wperf.named) / subs, perf_ms(wperf.render_t) / subs, wperf.render_fails,
++              wperf.waits, perf_ms(wperf.wait_t), wperf.waits_late, wperf.polls, wperf.polls_busy, wperf.drains,
++              inflight, wperf.bo_new, wperf.bo_new_bytes / 1048576.0, wperf.bo_close, live,
++              live_bytes / 1048576.0, dead, ctxs, (u - wperf.cpu_user) / 1e7, (k - wperf.cpu_kernel) / 1e7);
++      if (k_ok) {
++         uint32_t paging = 0;
++         for (int i = 0; i < 16; i++)
++            paging += ks.PagingOps[i] - wperf.k.PagingOps[i];
++         fprintf(stderr, " | KMD (all processes): %u jobs, %u failed, %u timed out, %u blts, %u submits, %u irqs, "
++                 "%u paging ops, queued %u", ks.JobsDone - wperf.k.JobsDone, ks.JobsFailed - wperf.k.JobsFailed,
++                 ks.JobsTimedOut - wperf.k.JobsTimedOut, ks.PresentBlts - wperf.k.PresentBlts,
++                 ks.Submits - wperf.k.Submits, ks.Irqs - wperf.k.Irqs, paging, ks.Queued);
++      }
++      fprintf(stderr, "\n");
++      if (k_ok)
++         report_failed(&ks);
++   }
++   memset(&wperf, 0, sizeof(wperf));
++   wperf.t0 = now;
++   perf_cpu(&wperf.cpu_user, &wperf.cpu_kernel);
++   wperf.k.Code = MW_ESCAPE_STATS;
++   wperf.k_ok = w_escape(&wperf.k, sizeof(wperf.k)) >= 0;
++}
++
+ /* Present for d3d10umd on the hardware runtime: Bgrx is the frame, linear
+  * and top-down; it is copied into a surface of the runtime device and
+  * handed to DXGI, which has maliwddm blt it (on the CPU, for now) to the
+@@ -1355,9 +1648,14 @@ malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned
+       p.hDstAllocation = hDst;
+       p.pDXGIContext = dxgi_context;
+       p.hContext = ddi.context;
++      int64_t t0 = perf_now();
+       HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &p);
++      wperf.present_t += perf_now() - t0;
++      wperf.presents++;
++      wperf.present_fails += hr < 0;
+       ret = hr >= 0 ? 0 : -1;
+       present_note(3, hr, w, h);
++      perf_tick();   /* 0057 */
+    }
+    ReleaseSRWLockExclusive(&wddm_lock);
+    return ret;
+@@ -1384,9 +1682,14 @@ malikm_primary_present(unsigned hAlloc, unsigned hDst, const void *bgrx, unsigne
+       p.hDstAllocation = hDst;        /* G13 0025: the destination resource's allocation, if DXGI named one */
+       p.pDXGIContext = dxgi_context;
+       p.hContext = ddi.context;
++      int64_t t0 = perf_now();
+       HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &p);
++      wperf.present_t += perf_now() - t0;
++      wperf.presents++;
++      wperf.present_fails += hr < 0;
+       ret = hr >= 0 ? 0 : -1;
+       present_note(0, hr, w, h);
++      perf_tick();   /* 0057 */
+       goto out;
+    }
+ out:
+@@ -1470,9 +1773,14 @@ malikm_present_d3dddi(const void *bgrx, unsigned w, unsigned h, void *dxgi_conte
+       fp.hSrcAllocation = ddi.prim[i];
+       fp.pDXGIContext = dxgi_context;
+       fp.hContext = ddi.context;
++      int64_t t0 = perf_now();
+       HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &fp);
++      wperf.present_t += perf_now() - t0;
++      wperf.presents++;
++      wperf.present_fails += hr < 0;
+       ret = hr >= 0 ? 0 : -1;
+       present_note(1, hr, w, h);
++      perf_tick();   /* 0057 */
+       goto out;
+    }
+    if (ddi.present && (ddi.present_w != w || ddi.present_h != h)) {
+@@ -1505,9 +1813,14 @@ malikm_present_d3dddi(const void *bgrx, unsigned w, unsigned h, void *dxgi_conte
+    p.hSrcAllocation = ddi.present;
+    p.pDXGIContext = dxgi_context;
+    p.hContext = ddi.context;
++   int64_t t0 = perf_now();
+    HRESULT hr = ddi.dxgi->pfnPresentCb(ddi.device, &p);
++   wperf.present_t += perf_now() - t0;
++   wperf.presents++;
++   wperf.present_fails += hr < 0;
+    ret = hr >= 0 ? 0 : -1;
+    present_note(2, hr, w, h);
++   perf_tick();   /* 0057 */
+ out:
+    ReleaseSRWLockExclusive(&wddm_lock);
+    return ret;
+@@ -1616,9 +1929,11 @@ malikm_unbind_d3dddi(HANDLE hRTDevice)
+          continue;
+       wcur = c;
+       wddm_idle();
++      while (c->pend_n)   /* 0057: done or given up on; their events closed */
++         pend_pop();
++      wdone = wseq;
+       wdead_flush();
+-      if (ddi.last_event)
+-         CloseHandle(ddi.last_event);
++      free(c->sobj);
+       uint32_t live = 0;
+       for (uint32_t j = 0; j < wbo_cap; j++)
+          live += wbo[j].h != 0;
+@@ -1876,6 +2191,8 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       wbo[h - 1].foreign = foreign;
+       a->handle = h;
+       a->offset = where.GpuVa;
++      wperf.bo_new++;
++      wperf.bo_new_bytes += where.Size;
+       /* Where every BO lives, so a GPU fault address can be traced back to
+        * the buffer it fell in (the 0x4002c3 faults at a fixed VA). */
+       if (trace_on())
+@@ -1903,10 +2220,14 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+    case MALIKM_NR_PANFROST_MADVISE:
+       ((struct drm_panfrost_madvise *)b)->retained = 1;
+       return 0;
+-   case MALIKM_NR_PANFROST_WAIT_BO:
+-      if (!wddm_bo(((struct drm_panfrost_wait_bo *)b)->handle))
++   case MALIKM_NR_PANFROST_WAIT_BO: {
++      /* 0057: the BO's own newest submission, within the timeout (0 = "busy?") - no longer a full drain */
++      struct drm_panfrost_wait_bo *a = (void *)b;
++      struct wbo_s *bo = wddm_bo(a->handle);
++      if (!bo)
+          return -MK_ENOENT;
+-      return wddm_idle();
++      return w_wait_seq(bo->busy, a->timeout_ns, 1);
++   }
+    case MALIKM_NR_PANFROST_SUBMIT: {
+       struct drm_panfrost_submit *a = (void *)b;
+       const uint32_t *bos = (const uint32_t *)(b + a->bo_handles);
+@@ -1914,6 +2235,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+          return -MK_EINVAL;
+       if (a->bo_handle_count > walloc_size || sizeof(MW_COMMAND) > wcmd_size)
+          return -MK_E2BIG;
++      w_retire();   /* 0057: frees the closed allocations whose jobs are done */
+       static uint64_t mark;
+       uint32_t n = 0;
+       mark++;
+@@ -1959,6 +2281,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+           * status was never printed. */
+          static unsigned render_fails;
+          render_fails++;
++         wperf.render_fails++;
+          if (trace_on() || render_fails <= 8 || render_fails % 100 == 0) {
+             uint32_t live = 0;
+             for (uint32_t i = 0; i < wbo_cap; i++)
+@@ -1970,7 +2293,17 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+          }
+          return -MK_EIO;
+       }
+-      wseq++;
++      /* 0057: what this submission is the fence of (w_render made it wseq) */
++      for (uint32_t i = 0; i < a->bo_handle_count; i++) {
++         struct wbo_s *bo = wddm_bo(bos[i]);
++         if (bo)
++            bo->busy = wseq;
++      }
++      if (a->out_sync && a->out_sync <= wcur->sobj_cap && wcur->sobj[a->out_sync - 1])
++         wcur->sobj[a->out_sync - 1] = wseq + 1;
++      wperf.submits++;
++      wperf.named += named;
++      wperf.listed += n;
+       return 0;
+    }
+    case MALIKM_NR_GEM_CLOSE: {
+@@ -1980,6 +2313,7 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       if (trace_on())
+          fprintf(stderr, "malikm-wddm: close bo %u va 0x%llx\n",
+                  ((struct drm_gem_close *)b)->handle, (unsigned long long)bo->va);
++      wperf.bo_close++;
+       if (bo->cpu)
+          w_unlock(bo->h);
+       if (bo->foreign) {
+@@ -1987,42 +2321,102 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+          memset(bo, 0, sizeof(*bo));
+          return 0;
+       }
+-      /* Not destroyed yet: see wdead. The handle number is free at once. */
++      D3DKMT_HANDLE h = bo->h;
++      memset(bo, 0, sizeof(*bo));   /* the handle number is free at once */
++      /* 0057: nothing in flight could use it - destroyed now; else when the newest submission is done (wdead) */
++      w_retire();
++      if (wseq <= wdone) {
++         w_destroy(h);
++         return 0;
++      }
+       if (wdead_n == wdead_cap) {
+-         uint32_t cap = wdead_cap ? wdead_cap * 2 : WDEAD_FLUSH;
+-         D3DKMT_HANDLE *n = realloc(wdead, cap * sizeof(*n));
++         uint32_t cap = wdead_cap ? wdead_cap * 2 : 64;
++         struct wdead_s *n = realloc(wdead, cap * sizeof(*n));
+          if (!n) {
+             wddm_idle();
+-            w_destroy(bo->h);
+-            memset(bo, 0, sizeof(*bo));
++            w_destroy(h);
+             return 0;
+          }
+          wdead = n;
+          wdead_cap = cap;
+       }
+-      wdead[wdead_n++] = bo->h;
+-      memset(bo, 0, sizeof(*bo));
+-      if (wdead_n >= WDEAD_FLUSH)
++      wdead[wdead_n].h = h;
++      wdead[wdead_n].seq = wseq;
++      wdead_n++;
++      if (wdead_n >= WDEAD_MAX)
+          wddm_idle();
+       return 0;
+    }
++   /* 0057: syncobjs carry the sequence number of their fence (0 = signalled), per descriptor as on Linux; a wait
++    * waits for that submission only, within its timeout. Handles are slots, reused once destroyed (Panfrost makes
++    * one per fence). */
+    case MALIKM_NR_SYNCOBJ_CREATE: {
+-      static uint32_t next = 1;
+-      ((struct drm_syncobj_create *)b)->handle = next++;
++      uint32_t i = 0;
++      while (i < wcur->sobj_cap && wcur->sobj[i])
++         i++;
++      if (i == wcur->sobj_cap) {
++         uint32_t cap = wcur->sobj_cap ? wcur->sobj_cap * 2 : 64;
++         uint64_t *n = realloc(wcur->sobj, cap * sizeof(*n));
++         if (!n)
++            return -MK_ENOMEM;
++         memset(n + wcur->sobj_cap, 0, (cap - wcur->sobj_cap) * sizeof(*n));
++         wcur->sobj = n;
++         wcur->sobj_cap = cap;
++      }
++      wcur->sobj[i] = 1;   /* seq 0: signalled (unsignalled ones are not waited on before a submit sets them) */
++      ((struct drm_syncobj_create *)b)->handle = i + 1;
++      return 0;
++   }
++   case MALIKM_NR_SYNCOBJ_WAIT: {
++      struct drm_syncobj_wait *a = (void *)b;
++      const uint32_t *hs = (const uint32_t *)(b + a->handles);
++      int any = !(a->flags & DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL) && a->count_handles > 1;
++      uint64_t target = any ? UINT64_MAX : 0;
++      uint32_t first = 0;
++      for (uint32_t i = 0; i < a->count_handles; i++) {
++         uint32_t h = hs[i];
++         /* one this descriptor never made: everything so far */
++         uint64_t s = h && h <= wcur->sobj_cap && wcur->sobj[h - 1] ? wcur->sobj[h - 1] - 1 : wseq;
++         if (any ? s < target : s > target) {
++            target = s;
++            first = i;
++         }
++      }
++      if (!a->count_handles)
++         target = 0;
++      a->first_signaled = any ? first : 0;
++      int r = w_wait_seq(target, a->timeout_nsec, 1);
++      return r == -MK_ETIMEDOUT || r == -MK_EBUSY ? -MK_ETIME : r;   /* Linux: -ETIME */
++   }
++   case MALIKM_NR_SYNCOBJ_DESTROY: {
++      uint32_t h = ((struct drm_syncobj_destroy *)b)->handle;
++      if (!h || h > wcur->sobj_cap || !wcur->sobj[h - 1])
++         return -MK_EINVAL;
++      wcur->sobj[h - 1] = 0;
+       return 0;
+    }
+-   case MALIKM_NR_SYNCOBJ_WAIT:
+-      ((struct drm_syncobj_wait *)b)->first_signaled = 0;
+-      return wddm_idle();
+-   case MALIKM_NR_SYNCOBJ_DESTROY:
+    case MALIKM_NR_SYNCOBJ_RESET:
+-   case MALIKM_NR_SYNCOBJ_SIGNAL:
++   case MALIKM_NR_SYNCOBJ_SIGNAL: {
++      struct drm_syncobj_array *a = (void *)b;
++      const uint32_t *hs = (const uint32_t *)(b + a->handles);
++      for (uint32_t i = 0; i < a->count_handles; i++)
++         if (hs[i] && hs[i] <= wcur->sobj_cap && wcur->sobj[hs[i] - 1])
++            wcur->sobj[hs[i] - 1] = 1;
+       return 0;
+-   case MALIKM_NR_SYNCOBJ_EXPORT_SEQ:
+-      ((MALIKM_SYNCOBJ_SEQ *)b)->Seq = wseq;
++   }
++   case MALIKM_NR_SYNCOBJ_EXPORT_SEQ: {
++      MALIKM_SYNCOBJ_SEQ *s = (MALIKM_SYNCOBJ_SEQ *)b;
++      uint32_t h = s->Handle;
++      s->Seq = h && h <= wcur->sobj_cap && wcur->sobj[h - 1] ? wcur->sobj[h - 1] - 1 : wseq;
+       return 0;
+-   case MALIKM_NR_SYNCOBJ_IMPORT_SEQ:
++   }
++   case MALIKM_NR_SYNCOBJ_IMPORT_SEQ: {
++      MALIKM_SYNCOBJ_SEQ *s = (MALIKM_SYNCOBJ_SEQ *)b;
++      uint32_t h = s->Handle;
++      if (h && h <= wcur->sobj_cap && wcur->sobj[h - 1])
++         wcur->sobj[h - 1] = (s->Seq == MALIKM_SEQ_LATEST || s->Seq > wseq ? wseq : s->Seq) + 1;
+       return 0;
++   }
+    default:
+       (void)size;
+       return -MK_ENOSYS;
+@@ -2074,6 +2468,8 @@ wddm_ioctl(int fd, DWORD code, void *buf, DWORD len)
+    }
+    if (trace_on() && code == IOCTL_MALIKM_DRM)
+       fprintf(stderr, "malikm-wddm: nr 0x%x -> %d\n", h->Nr, h->Result);
++   if (code == IOCTL_MALIKM_DRM)
++      perf_tick();   /* 0057 */
+    ReleaseSRWLockExclusive(&wddm_lock);
+ }
+ 
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index 14ec3dc..bc0d92d 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -162,10 +162,15 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+          dst = d->kmt_primary ? d->kmt_primary : d->kmt_shared;
+       }
+       unsigned src = pSrcResource->gpu_primary ? pSrcResource->kmt_primary : pSrcResource->kmt_shared;
+-      if (pSrcResource->gpu_primary) {   /* 0055 */
++      if (pSrcResource->gpu_primary) {   /* 0055; 0057: only with S10_THUMBS=1 (run g2b3-19 answered it) */
+          static unsigned nprim;
++         static int thumbs = -1;
++         if (thumbs < 0) {
++            const char *e = getenv("S10_THUMBS");
++            thumbs = e && *e == '1';
++         }
+          nprim++;
+-         if (nprim == 1 || nprim == 5 || nprim == 20 || nprim == 60 || nprim == 150 || nprim == 400) {
++         if (thumbs && (nprim == 1 || nprim == 5 || nprim == 20 || nprim == 60 || nprim == 150 || nprim == 400)) {
+             s10_thumbnail(device->pipe, pSrcResource->resource, nprim);
+             device->pipe->flush(device->pipe, NULL, 0);
+          }
+-- 
+2.43.0
+
