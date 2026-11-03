@@ -496,3 +496,8 @@ JobStartRefused/PartialMaps trace keys that only the fixed build writes). Never 
   the G2b-1 boot's PRAM is in ESP \WINPRAM.BIN), but s10-log copied nothing from the ESP: same "ESP already
   mounted on S:" failure as gpu-s10 v1.3 -> s10-log v1.6 uses a mounted ESP first. Asked for adb pull /cache/WINPRAM.BIN.
   cpu.txt (nogpu boot, idle): interrupt/DPC time 0, 1432 interrupts/s total; dwm 157 CPU-s, MsMpEng 103 CPU-s.
+- 17:10 ESP WINPRAM.BIN + UEFILOG from TWRP: UEFILOG "BootLog: progress prev=0x0" (no valid PRAM -> no save) and the
+  WINPRAM.BIN on the ESP is 64 KiB of noise (no MALIG76T / S10TOUCH anywhere). LESSON: a TWRP boot between the
+  interesting Windows boot and the next UEFI boot DESTROYS the PRAM (TWRP's Linux reuses 0x8FE00000). To capture a
+  boot's PRAM: forced reset -> let it boot through OUR UEFI (it saves \WINPRAM.BIN) -> only then TWRP.
+  The G2b-1 counters are lost; re-run needed.
