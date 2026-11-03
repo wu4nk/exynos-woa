@@ -1,0 +1,641 @@
+From ab8c124d7dafba3e467310c16d99fd838284a2e2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 00:39:31 +0700
+Subject: [PATCH] G2b-3: DXGI shared resources on the GPU (export into runtime
+ allocation, import opened allocation), null VB zero record, no caching of
+ shareable BOs, S10_FAULTDUMP
+
+---
+ include/win32-compat/malikm_drm.c            | 219 +++++++++++++++++--
+ src/gallium/drivers/panfrost/pan_bo.c        |   4 +-
+ src/gallium/drivers/panfrost/pan_cmdstream.c |  25 ++-
+ src/gallium/drivers/panfrost/pan_device.h    |   3 +
+ src/gallium/drivers/panfrost/pan_jm.c        |  19 +-
+ src/gallium/drivers/panfrost/pan_screen.c    |  12 +
+ src/gallium/frontends/d3d10umd/Resource.cpp  |  76 ++++++-
+ src/panfrost/genxml/decode.h                 |  10 +-
+ src/panfrost/genxml/decode_common.c          |  13 ++
+ src/panfrost/genxml/decode_jm.c              |  23 ++
+ src/panfrost/lib/kmod/pan_kmod.c             |   6 +
+ src/panfrost/lib/wrap.h                      |   4 +
+ 12 files changed, 383 insertions(+), 31 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 548e119..bda755a 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -344,12 +344,19 @@ drmPrimeHandleToFD(int fd, uint32_t handle, uint32_t flags, int *prime_fd)
+    return -ENOSYS;
+ }
+ 
++static int wddm_prime_to_handle(int prime_fd, uint32_t *handle);
++
+ int
+ drmPrimeFDToHandle(int fd, int prime_fd, uint32_t *handle)
+ {
+-   (void)fd; (void)prime_fd; (void)handle;
+-   errno = ENOSYS;
+-   return -ENOSYS;
++   (void)fd;
++   /* G2b-3 (0046): an opened allocation (malikm_import_alloc) */
++   int r = wddm_prime_to_handle(prime_fd, handle);
++   if (r < 0) {
++      errno = crt_errno(-r);
++      return -1;
++   }
++   return 0;
+ }
+ 
+ /* ---- syncobjs: return conventions as libdrm's ---- */
+@@ -582,7 +589,14 @@ struct wbo {
+    uint64_t size, va;
+    void *cpu;
+    uint64_t listed;     /* submit that last put it in the allocation list */
++   /* G2b-3 (0046): WBO_OPENED - another process's allocation this one opened (drmPrimeFDToHandle on a
++    * malikm_import_alloc fd): never locked, never destroyed here. WBO_RUNTIME - the allocation of a MISC_SHARED
++    * resource, created with the runtime resource handle (malikm_shared_bo_begin): the runtime frees it with the
++    * resource, so GEM_CLOSE only unlocks it. */
++   int foreign;
+ };
++#define WBO_OPENED  1
++#define WBO_RUNTIME 2
+ static struct wbo *wbo;
+ static uint32_t wbo_cap;
+ static D3DKMT_HANDLE wadapter, wdevice, wcontext;
+@@ -1443,6 +1457,154 @@ wddm_bo(uint32_t h)
+    return h && h <= wbo_cap && wbo[h - 1].h ? &wbo[h - 1] : NULL;
+ }
+ 
++/* A free BO handle (1-based), growing the table; 0 if out of memory. wddm_lock held. */
++static uint32_t
++wbo_slot(void)
++{
++   for (uint32_t i = 0; i < wbo_cap; i++)
++      if (!wbo[i].h)
++         return i + 1;
++   uint32_t cap = wbo_cap ? wbo_cap * 2 : 256;
++   struct wbo *n = realloc(wbo, cap * sizeof(*n));
++   if (!n)
++      return 0;
++   memset(n + wbo_cap, 0, (cap - wbo_cap) * sizeof(*n));
++   wbo = n;
++   uint32_t h = wbo_cap + 1;
++   wbo_cap = cap;
++   return h;
++}
++
++/* ---- G2b-3 (0046): DXGI shared resources on the GPU ----
++ * Run g2b3-5 (UMD 12a5e28b): every allocation DWM opened was "not lockable" (Explorer's, the terminal's, the CDD
++ * surfaces), so the 0045 CPU copy never ran and DWM composed blank textures; the creators' side was no better (their
++ * MISC_SHARED textures were Panfrost textures unrelated to the shared allocation). The KMD gives every allocation
++ * one GPU address for its whole life in the one address space all processes share (memory.c NewAllocation), so
++ * neither side needs a copy:
++ *  - the creator's texture BO is the shared allocation itself: malikm_shared_bo_begin() before resource_create, and
++ *    the next CREATE_BO of that thread allocates with the runtime resource handle and the surface description;
++ *  - an opener imports the allocation as a BO: malikm_import_alloc() returns a CRT fd standing for it, which
++ *    Panfrost's resource_from_handle(WINSYS_HANDLE_TYPE_FD) takes through drmPrimeFDToHandle (below) and
++ *    pan_kmod_bo_import's size query (malikm_prime_size). */
++static __declspec(thread) struct {
++   int on;
++   void *hres;
++   unsigned w, h, pitch, fmt;
++   D3DKMT_HANDLE got;
++} wshared;
++
++void
++malikm_shared_bo_begin(void *hRTResource, unsigned w, unsigned h, unsigned pitch, unsigned d3dfmt)
++{
++   wshared.on = 1;
++   wshared.hres = hRTResource;
++   wshared.w = w;
++   wshared.h = h;
++   wshared.pitch = pitch;
++   wshared.fmt = d3dfmt;
++   wshared.got = 0;
++}
++
++unsigned
++malikm_shared_bo_end(void)
++{
++   unsigned got = wshared.got;
++   memset(&wshared, 0, sizeof(wshared));
++   return got;
++}
++
++#define MAX_PRIMES 16
++static struct { int fd; D3DKMT_HANDLE h; uint64_t va, size; } primes[MAX_PRIMES];
++
++int
++malikm_import_alloc(unsigned hAlloc)
++{
++   int fd = -1;
++   MW_ESCAPE_ALLOC_INFO_DATA where = {0};
++
++   AcquireSRWLockExclusive(&wddm_lock);
++   if (!ddi.on || wddm != 1)
++      goto out;
++   where.Code = MW_ESCAPE_ALLOC_INFO;
++   where.hAllocation = hAlloc;
++   if (w_escape(&where, sizeof(where)) < 0 || where.GpuVa == 0 || where.Size == 0) {
++      fprintf(stderr, "malikm-wddm: pid %lu: opened allocation 0x%x: no GPU address\n", GetCurrentProcessId(), hAlloc);
++      goto out;
++   }
++   for (int i = 0; i < MAX_PRIMES; i++) {
++      if (primes[i].fd == 0) {
++         fd = _open("NUL", _O_RDWR | _O_NOINHERIT);
++         if (fd < 0)
++            break;
++         primes[i].fd = fd;
++         primes[i].h = hAlloc;
++         primes[i].va = where.GpuVa;
++         primes[i].size = where.Size;
++         break;
++      }
++   }
++out:
++   ReleaseSRWLockExclusive(&wddm_lock);
++   return fd;
++}
++
++void
++malikm_import_done(int fd)
++{
++   AcquireSRWLockExclusive(&wddm_lock);
++   for (int i = 0; i < MAX_PRIMES; i++)
++      if (primes[i].fd == fd && fd > 0)
++         memset(&primes[i], 0, sizeof(primes[i]));
++   ReleaseSRWLockExclusive(&wddm_lock);
++   if (fd >= 0)
++      _close(fd);
++}
++
++/* pan_kmod_bo_import's dma-buf size (lseek(fd, 0, SEEK_END) on Linux). 0 if fd is not an import. */
++uint64_t
++malikm_prime_size(int fd)
++{
++   uint64_t size = 0;
++   AcquireSRWLockShared(&wddm_lock);
++   for (int i = 0; i < MAX_PRIMES; i++)
++      if (primes[i].fd == fd && fd > 0)
++         size = primes[i].size;
++   ReleaseSRWLockShared(&wddm_lock);
++   return size;
++}
++
++static int
++wddm_prime_to_handle(int prime_fd, uint32_t *handle)
++{
++   int ret = -MK_EINVAL;
++   AcquireSRWLockExclusive(&wddm_lock);
++   for (int i = 0; i < MAX_PRIMES; i++) {
++      if (primes[i].fd != prime_fd || prime_fd <= 0)
++         continue;
++      /* the same allocation imported twice is the same BO, as with a dma-buf */
++      for (uint32_t j = 0; j < wbo_cap; j++) {
++         if (wbo[j].h == primes[i].h) {
++            *handle = j + 1;
++            ret = 0;
++            goto out;
++         }
++      }
++      uint32_t h = wbo_slot();
++      if (!h) {
++         ret = -MK_ENOMEM;
++         goto out;
++      }
++      wbo[h - 1] = (struct wbo){primes[i].h, primes[i].size, primes[i].va, NULL};
++      wbo[h - 1].foreign = WBO_OPENED;
++      *handle = h;
++      ret = 0;
++      goto out;
++   }
++out:
++   ReleaseSRWLockExclusive(&wddm_lock);
++   return ret;
++}
++
+ static int
+ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+ {
+@@ -1466,30 +1628,42 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+       D3DDDI_ALLOCATIONINFO ai = {0};
+       ai.pPrivateDriverData = &pi;
+       ai.PrivateDriverDataSize = sizeof(pi);
+-      if (w_create(&ai) < 0)
++      int foreign = 0;
++      if (wshared.on && !wshared.got && ddi.on && sz >= (uint64_t)wshared.pitch * wshared.h) {
++         /* G2b-3 (0046): the BO of a MISC_SHARED resource IS its runtime allocation (created with the resource
++          * handle, so the runtime can share it), described for openers: size, pitch, format. */
++         D3DDDICB_ALLOCATE ra = {0};
++         pi.Width = wshared.w;
++         pi.Height = wshared.h;
++         pi.Pitch = wshared.pitch;
++         pi.Format = wshared.fmt;
++         ra.hResource = wshared.hres;
++         ra.NumAllocations = 1;
++         ra.pAllocationInfo = &ai;
++         HRESULT hr = ddi.cb.pfnAllocateCb(ddi.device, &ra);
++         if (hr < 0) {
++            fprintf(stderr, "malikm-wddm: pid %lu: shared BO %ux%u for resource %p: allocate 0x%08lx\n",
++                    GetCurrentProcessId(), wshared.w, wshared.h, wshared.hres, (unsigned long)hr);
++            wshared.on = 0;
++            return -MK_ENOMEM;
++         }
++         wshared.got = ai.hAllocation;
++         foreign = WBO_RUNTIME;
++      } else if (w_create(&ai) < 0)
+          return -MK_ENOMEM;
+       MW_ESCAPE_ALLOC_INFO_DATA where = {0};
+       where.Code = MW_ESCAPE_ALLOC_INFO;
+       where.hAllocation = ai.hAllocation;
+       if (w_escape(&where, sizeof(where)) < 0 || where.GpuVa == 0) {
+-         w_destroy(ai.hAllocation);
++         if (!foreign)
++            w_destroy(ai.hAllocation);
+          return -MK_ENOMEM;
+       }
+-      uint32_t h = 0;
+-      for (uint32_t i = 0; i < wbo_cap && !h; i++)
+-         if (!wbo[i].h)
+-            h = i + 1;
+-      if (!h) {
+-         uint32_t cap = wbo_cap ? wbo_cap * 2 : 256;
+-         struct wbo *n = realloc(wbo, cap * sizeof(*n));
+-         if (!n)
+-            return -MK_ENOMEM;
+-         memset(n + wbo_cap, 0, (cap - wbo_cap) * sizeof(*n));
+-         wbo = n;
+-         h = wbo_cap + 1;
+-         wbo_cap = cap;
+-      }
++      uint32_t h = wbo_slot();
++      if (!h)
++         return -MK_ENOMEM;
+       wbo[h - 1] = (struct wbo){ai.hAllocation, where.Size, where.GpuVa, NULL};
++      wbo[h - 1].foreign = foreign;
+       a->handle = h;
+       a->offset = where.GpuVa;
+       /* Where every BO lives, so a GPU fault address can be traced back to
+@@ -1598,6 +1772,11 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+                  ((struct drm_gem_close *)b)->handle, (unsigned long long)bo->va);
+       if (bo->cpu)
+          w_unlock(bo->h);
++      if (bo->foreign) {
++         /* G2b-3 (0046): not this process's to destroy (the runtime closes or frees it with the resource) */
++         memset(bo, 0, sizeof(*bo));
++         return 0;
++      }
+       /* Not destroyed yet: see wdead. The handle number is free at once. */
+       if (wdead_n == wdead_cap) {
+          uint32_t cap = wdead_cap ? wdead_cap * 2 : WDEAD_FLUSH;
+@@ -1662,7 +1841,7 @@ wddm_ioctl(DWORD code, void *buf, DWORD len)
+       MALIKM_MAP *m = (MALIKM_MAP *)(h + 1);
+       struct wbo *bo = wddm_bo(MALIKM_MMAP_HANDLE(m->Offset));
+       h->Result = -MK_EINVAL;
+-      if (bo && m->Size <= bo->size) {
++      if (bo && m->Size <= bo->size && bo->foreign != WBO_OPENED) {
+          if (!bo->cpu)
+             bo->cpu = w_lock(bo->h);
+          if (bo->cpu) {
+diff --git a/src/gallium/drivers/panfrost/pan_bo.c b/src/gallium/drivers/panfrost/pan_bo.c
+index d0ce95c..c00ed71 100644
+--- a/src/gallium/drivers/panfrost/pan_bo.c
++++ b/src/gallium/drivers/panfrost/pan_bo.c
+@@ -263,7 +263,9 @@ panfrost_bo_cache_put(struct panfrost_bo *bo)
+ {
+    struct panfrost_device *dev = bo->dev;
+ 
+-   if (bo->flags & PAN_BO_SHARED || dev->debug & PAN_DBG_NO_CACHE)
++   /* exynos-woa G2b-3 (0046): nor a shareable one - on Windows it is a runtime allocation (malikm_drm.c
++    * WBO_RUNTIME) that dies with its D3D resource, and the next shared resource must get a fresh BO. */
++   if (bo->flags & (PAN_BO_SHARED | PAN_BO_SHAREABLE) || dev->debug & PAN_DBG_NO_CACHE)
+       return false;
+ 
+    /* Must be first */
+diff --git a/src/gallium/drivers/panfrost/pan_cmdstream.c b/src/gallium/drivers/panfrost/pan_cmdstream.c
+index bcb3abe..218a03e 100644
+--- a/src/gallium/drivers/panfrost/pan_cmdstream.c
++++ b/src/gallium/drivers/panfrost/pan_cmdstream.c
+@@ -2372,15 +2372,26 @@ panfrost_emit_vertex_data(struct panfrost_batch *batch, uint64_t *buffers)
+       unsigned divisor = so->buffers[i].divisor;
+       attrib_to_buffer[i] = k;
+ 
+-      if (!(ctx->vb_mask & (1 << vbi)))
+-         continue;
+-
+       struct pipe_vertex_buffer *buf = &ctx->vertex_buffers[vbi];
+-      struct panfrost_resource *rsrc;
+-
+-      rsrc = pan_resource(buf->buffer.resource);
+-      if (!rsrc)
++      struct panfrost_resource *rsrc =
++         (ctx->vb_mask & (1 << vbi)) ? pan_resource(buf->buffer.resource) : NULL;
++
++      if (!rsrc) {
++         /* exynos-woa G2b-3 (0046): D3D10 lets an input layout name a slot with no vertex buffer, and reads
++          * from it return 0. Skipping the record (as GL never needs) left this attribute pointing at the next
++          * buffer's record, or at none: a zero buffer of its own, stride 0, big enough for any D3D10 element
++          * offset (2048 + 16 bytes). */
++         struct pan_ptr z = pan_pool_alloc_aligned(&batch->pool.base, 4096, 64);
++         if (z.cpu)
++            memset(z.cpu, 0, 4096);
++         pan_pack(bufs + k, ATTRIBUTE_BUFFER, cfg) {
++            cfg.pointer = z.cpu ? z.gpu : 0;
++            cfg.stride = 0;
++            cfg.size = z.cpu ? 4096 : 0;
++         }
++         ++k;
+          continue;
++      }
+ 
+       panfrost_batch_read_rsrc(batch, rsrc, MESA_SHADER_VERTEX);
+ 
+diff --git a/src/gallium/drivers/panfrost/pan_device.h b/src/gallium/drivers/panfrost/pan_device.h
+index 34c239c..356a1c0 100644
+--- a/src/gallium/drivers/panfrost/pan_device.h
++++ b/src/gallium/drivers/panfrost/pan_device.h
+@@ -108,6 +108,9 @@ struct panfrost_device {
+ 
+    /* debug flags, see pan_util.h how to interpret */
+    unsigned debug;
++   /* exynos-woa G2b-3 (0046): S10_FAULTDUMP - PAN_DBG_SYNC without the abort: a job chain that faults is decoded
++    * to stderr (the UMD log), at most s10_faultdump times per process. */
++   unsigned s10_faultdump;
+ 
+    /* The GPU fault injection rate. If zero, no faults are injected. */
+    unsigned fault_injection_rate;
+diff --git a/src/gallium/drivers/panfrost/pan_jm.c b/src/gallium/drivers/panfrost/pan_jm.c
+index 57ba7b3..b97b760 100644
+--- a/src/gallium/drivers/panfrost/pan_jm.c
++++ b/src/gallium/drivers/panfrost/pan_jm.c
+@@ -175,7 +175,24 @@ jm_submit_jc(struct panfrost_batch *batch, uint64_t first_job_desc,
+          pandecode_dump_mappings(dev->decode_ctx);
+ 
+       /* Jobs won't be complete if blackhole rendering, that's ok */
+-      if (!ctx->is_noop && dev->debug & PAN_DBG_SYNC)
++      if (!ctx->is_noop && dev->debug & PAN_DBG_SYNC && dev->s10_faultdump) {
++         /* exynos-woa G2b-3 (0046): S10_FAULTDUMP */
++         static unsigned dumped, faults;
++         unsigned st = 0;
++         int j = pandecode_job_faulted(dev->decode_ctx, submit.jc, panfrost_device_gpu_id(dev), &st);
++         if (j >= 0) {
++            faults++;
++            fprintf(stderr, "panfrost: FAULTED chain 0x%llx (reqs 0x%x): job %d exception status 0x%x (fault #%u)%s\n",
++                    (unsigned long long)submit.jc, reqs, j, st, faults,
++                    dumped < dev->s10_faultdump ? " - decode follows" : "");
++            if (dumped < dev->s10_faultdump) {
++               dumped++;
++               pandecode_jc(dev->decode_ctx, submit.jc, panfrost_device_gpu_id(dev));
++               fprintf(stderr, "panfrost: end of decode of chain 0x%llx\n", (unsigned long long)submit.jc);
++            }
++            fflush(stderr);
++         }
++      } else if (!ctx->is_noop && dev->debug & PAN_DBG_SYNC)
+          pandecode_abort_on_fault(dev->decode_ctx, submit.jc, panfrost_device_gpu_id(dev));
+    }
+ 
+diff --git a/src/gallium/drivers/panfrost/pan_screen.c b/src/gallium/drivers/panfrost/pan_screen.c
+index 23659ae..91d53c0 100644
+--- a/src/gallium/drivers/panfrost/pan_screen.c
++++ b/src/gallium/drivers/panfrost/pan_screen.c
+@@ -1022,6 +1022,18 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
+    /* Debug must be set first for pandecode to work correctly */
+    dev->debug =
+       debug_get_flags_option("PAN_MESA_DEBUG", panfrost_debug_options, 0);
++   {
++      /* exynos-woa G2b-3 (0046): S10_FAULTDUMP=1 (every process) or a process name (dwm.exe) */
++      const char *fd_opt = getenv("S10_FAULTDUMP");
++      const char *pname = util_get_process_name();
++      if (fd_opt && *fd_opt && *fd_opt != '0' &&
++          (!strcmp(fd_opt, "1") || (pname && !_stricmp(fd_opt, pname)))) {
++         dev->debug |= PAN_DBG_SYNC;
++         dev->s10_faultdump = 2;
++         fprintf(stderr, "panfrost: S10_FAULTDUMP on for %s: each job waited for, faulted chains decoded\n",
++                 pname ? pname : "?");
++      }
++   }
+    dev->fault_injection_rate =
+       debug_get_num_option("PAN_FAULT_INJECTION_RATE", 0);
+    screen->max_afbc_packing_ratio = debug_get_num_option(
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index e2c55e7..71014ca 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -207,6 +207,13 @@ extern "C" int malikm_shared_create(void *hRTResource, unsigned w, unsigned h, u
+                                     unsigned *hAlloc, void **cpu, unsigned *pitch);
+ /* G13: true when the device is bound to the maliwddm runtime (d3d10_gdi.c d3d10_bind_runtime result >= 0). */
+ extern "C" bool d3d10_runtime_is_maliwddm(void);
++/* G2b-3 (0046, malikm_drm.c): shared resources on the GPU - the next BO this thread creates is the resource's
++ * runtime allocation (begin/end, end returns its handle or 0); an opened allocation as a "dma-buf" fd for
++ * resource_from_handle (import_alloc, -1 if it has no GPU address; import_done closes the fd). */
++extern "C" void malikm_shared_bo_begin(void *hRTResource, unsigned w, unsigned h, unsigned pitch, unsigned d3dfmt);
++extern "C" unsigned malikm_shared_bo_end(void);
++extern "C" int malikm_import_alloc(unsigned hAlloc);
++extern "C" void malikm_import_done(int fd);
+ 
+ /* G2b-3 (0045, run g2b3-4): DWM on Panfrost composed black. What it opens (the CDD shared primaries, the shadow
+  * surface) were imported with resource_from_handle(WINSYS_HANDLE_TYPE_SHARED, CPU pointer) - softpipe's
+@@ -390,7 +397,46 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+     * kept locked and softpipe renders into it (gdi winsys external memory, patch 0035), so what the creator draws is
+     * what an opener of the allocation sees. Single-mip, single-slice only (the shareable case, MS Learn
+     * D3D11_RESOURCE_MISC_SHARED: "2D non-mipmapped textures"); anything else keeps the plain path. */
++   /* G2b-3 (0046): on the GPU screen the shared texture's BO is the runtime allocation itself (linear, pitch
++    * aligned as Panfrost lays it out), so what the Mali draws into it is what DWM's import of it reads; no CPU
++    * lock, no copy. The CPU path below stays for softpipe. */
++   const char *cr_sname = screen->get_name ? screen->get_name(screen) : NULL;
++   const bool cr_gpu = cr_sname && strcmp(cr_sname, "softpipe") != 0 && strcmp(cr_sname, "llvmpipe") != 0;
+    if ((pCreateResource->MiscFlags & D3D10_DDI_RESOURCE_MISC_SHARED) && !pCreateResource->pPrimaryDesc &&
++       templat.target == PIPE_TEXTURE_2D && pCreateResource->MipLevels == 1 && pCreateResource->ArraySize == 1 &&
++       d3d10_runtime_is_maliwddm() && cr_gpu) {
++      static unsigned shared_creates;
++      unsigned d3dfmt = 0;
++      if (templat.format == PIPE_FORMAT_B8G8R8A8_UNORM)
++         d3dfmt = D3DDDIFMT_A8R8G8B8;
++      else if (templat.format == PIPE_FORMAT_B8G8R8X8_UNORM)
++         d3dfmt = D3DDDIFMT_X8R8G8B8;
++      else if (templat.format == PIPE_FORMAT_R8G8B8A8_UNORM)
++         d3dfmt = D3DDDIFMT_A8B8G8R8;
++      unsigned cpp = util_format_get_blocksize(templat.format);
++      unsigned pitch = (templat.width0 * cpp + 63) & ~63u;
++      unsigned hShared = 0;
++      uint64_t stride = 0;
++      if (d3dfmt) {
++         struct pipe_resource t = templat;
++         t.bind |= PIPE_BIND_SHARED | PIPE_BIND_LINEAR;
++         malikm_shared_bo_begin(hRTResource.handle, templat.width0, templat.height0, pitch, d3dfmt);
++         pResource->resource = screen->resource_create(screen, &t);
++         hShared = malikm_shared_bo_end();
++         if (pResource->resource && screen->resource_get_param)
++            screen->resource_get_param(screen, pipe, pResource->resource, 0, 0, 0, PIPE_RESOURCE_PARAM_STRIDE, 0,
++                                       &stride);
++         if (pResource->resource && !hShared)
++            pipe_resource_reference(&pResource->resource, NULL);   /* not shareable: the runtime has no allocation */
++      }
++      if (++shared_creates <= 24 || !pResource->resource || stride != pitch)
++         fprintf(stderr, "d3d10umd: pid %lu: shared resource %ux%u fmt %u pitch %u (Panfrost stride %llu): %s\n",
++                 GetCurrentProcessId(), templat.width0, templat.height0, d3dfmt, pitch, (unsigned long long)stride,
++                 pResource->resource ? (stride == pitch ? "GPU BO = shared allocation" : "PITCH MISMATCH") :
++                 d3dfmt ? "FAILED" : "format not shareable");
++   }
++   if (!pResource->resource && (pCreateResource->MiscFlags & D3D10_DDI_RESOURCE_MISC_SHARED) &&
++       !pCreateResource->pPrimaryDesc && !cr_gpu &&
+        templat.target == PIPE_TEXTURE_2D && pCreateResource->MipLevels == 1 && pCreateResource->ArraySize == 1 &&
+        d3d10_runtime_is_maliwddm()) {
+       unsigned d3dfmt = 0, hAlloc = 0, pitch = 0;
+@@ -614,7 +660,35 @@ OpenResource(D3D10DDI_HDEVICE hDevice,                            // IN
+ 
+    const char *sname = screen->get_name ? screen->get_name(screen) : NULL;
+    bool gpu_screen = sname && strcmp(sname, "softpipe") != 0 && strcmp(sname, "llvmpipe") != 0;
+-   if (cpu && gpu_screen) {
++   const unsigned hOpened = pOpenResource->pOpenAllocationInfo[0].hAllocation;
++   if (gpu_screen) {
++      /* G2b-3 (0046): the Mali reads the opened allocation where it is (its GPU address is the same in every
++       * process): imported as a linear BO with the creator's pitch. */
++      int pfd = malikm_import_alloc(hOpened);
++      if (pfd >= 0) {
++         struct winsys_handle wh;
++         memset(&wh, 0, sizeof wh);
++         wh.type = WINSYS_HANDLE_TYPE_FD;
++         wh.handle = (HANDLE)(intptr_t)pfd;
++         wh.stride = pitch;
++         wh.modifier = 0;   /* DRM_FORMAT_MOD_LINEAR */
++         struct pipe_resource t = templat;
++         t.bind &= ~PIPE_BIND_DISPLAY_TARGET;
++         pResource->resource = screen->resource_from_handle(screen, &t, &wh, 0);
++         malikm_import_done(pfd);
++      }
++      shared_opens++;
++      if (shared_opens <= 24 || !pResource->resource)
++         fprintf(stderr, "d3d10umd: pid %lu: OpenResource alloc 0x%x %ux%u pitch %u fmt %u: %s\n",
++                 GetCurrentProcessId(), hOpened, w, h, pitch, fmt,
++                 pResource->resource ? "imported (GPU reads it in place)" :
++                 pfd < 0 ? "no GPU address" : "import refused");
++      if (pResource->resource && cpu) {
++         malikm_close_shared(hOpened);   /* no CPU lock while the GPU uses it */
++         cpu = NULL;
++      }
++   }
++   if (!pResource->resource && cpu && gpu_screen) {
+       /* G2b-3 (0045): a copy the Mali can sample, kept current from the locked allocation */
+       templat.bind &= ~PIPE_BIND_DISPLAY_TARGET;
+       pResource->resource = screen->resource_create(screen, &templat);
+diff --git a/src/panfrost/genxml/decode.h b/src/panfrost/genxml/decode.h
+index a817c24..f765906 100644
+--- a/src/panfrost/genxml/decode.h
++++ b/src/panfrost/genxml/decode.h
+@@ -64,7 +64,10 @@ __pandecode_fetch_gpu_mem(struct pandecode_context *ctx, uint64_t gpu_va,
+       fprintf(stderr, "Access to unknown memory %" PRIx64 " in %s:%d\n", gpu_va,
+               filename, line);
+       fflush(ctx->dump_stream);
+-      assert(0);
++      /* exynos-woa G2b-3 (0046): decoding a faulted job (S10_FAULTDUMP) must not take the process down when a
++       * descriptor points nowhere - which is what faulted. Zeros instead (asserts are off in release). */
++      static uint8_t pandecode_zeros[65536];
++      return pandecode_zeros;
+    }
+ 
+    assert(size + (gpu_va - mem->gpu_va) <= mem->length);
+@@ -113,6 +116,11 @@ void pandecode_abort_on_fault_v7(struct pandecode_context *ctx,
+ void pandecode_abort_on_fault_v9(struct pandecode_context *ctx,
+                                  uint64_t jc_gpu_va);
+ 
++/* exynos-woa (0046): index (0-based) of the first job of the chain that is not COMPLETE, -1 if all are; *status
++ * its exception status. */
++int pandecode_job_faulted_v6(struct pandecode_context *ctx, uint64_t jc_gpu_va, unsigned *status);
++int pandecode_job_faulted_v7(struct pandecode_context *ctx, uint64_t jc_gpu_va, unsigned *status);
++
+ void pandecode_interpret_cs_v10(struct pandecode_context *ctx, uint64_t queue,
+                                 uint32_t size, uint64_t gpu_id, uint32_t *regs);
+ void pandecode_cs_binary_v10(struct pandecode_context *ctx, uint64_t bin,
+diff --git a/src/panfrost/genxml/decode_common.c b/src/panfrost/genxml/decode_common.c
+index 26a8026..5085a2c 100644
+--- a/src/panfrost/genxml/decode_common.c
++++ b/src/panfrost/genxml/decode_common.c
+@@ -379,6 +379,19 @@ pandecode_abort_on_fault(struct pandecode_context *ctx, uint64_t jc_gpu_va,
+    simple_mtx_unlock(&ctx->lock);
+ }
+ 
++int
++pandecode_job_faulted(struct pandecode_context *ctx, uint64_t jc_gpu_va, uint64_t gpu_id, unsigned *status)
++{
++   int r = -1;
++   simple_mtx_lock(&ctx->lock);
++   if (pan_arch(gpu_id) == 6)
++      r = pandecode_job_faulted_v6(ctx, jc_gpu_va, status);
++   else if (pan_arch(gpu_id) == 7)
++      r = pandecode_job_faulted_v7(ctx, jc_gpu_va, status);
++   simple_mtx_unlock(&ctx->lock);
++   return r;
++}
++
+ void
+ pandecode_jc(struct pandecode_context *ctx, uint64_t jc_gpu_va, uint64_t gpu_id)
+ {
+diff --git a/src/panfrost/genxml/decode_jm.c b/src/panfrost/genxml/decode_jm.c
+index 4fab8b7..c051d62 100644
+--- a/src/panfrost/genxml/decode_jm.c
++++ b/src/panfrost/genxml/decode_jm.c
+@@ -662,6 +662,29 @@ GENX(pandecode_jc)(struct pandecode_context *ctx, uint64_t jc_gpu_va,
+    pandecode_map_read_write(ctx);
+ }
+ 
++void
++GENX(pandecode_abort_on_fault)(struct pandecode_context *ctx,
++                               uint64_t jc_gpu_va);
++
++#if PAN_ARCH == 6 || PAN_ARCH == 7
++int
++GENX(pandecode_job_faulted)(struct pandecode_context *ctx, uint64_t jc_gpu_va, unsigned *status)
++{
++   int i = 0;
++   uint64_t next_job;
++   do {
++      pan_unpack(PANDECODE_PTR(ctx, jc_gpu_va, struct mali_job_header_packed), JOB_HEADER, h);
++      next_job = h.next;
++      if (h.exception_status != 0x1) {
++         *status = h.exception_status;
++         return i;
++      }
++      i++;
++   } while ((jc_gpu_va = next_job) && i < 100000);
++   return -1;
++}
++#endif
++
+ void
+ GENX(pandecode_abort_on_fault)(struct pandecode_context *ctx,
+                                uint64_t jc_gpu_va)
+diff --git a/src/panfrost/lib/kmod/pan_kmod.c b/src/panfrost/lib/kmod/pan_kmod.c
+index eac10b2..728e382 100644
+--- a/src/panfrost/lib/kmod/pan_kmod.c
++++ b/src/panfrost/lib/kmod/pan_kmod.c
+@@ -169,7 +169,13 @@ pan_kmod_bo_import(struct pan_kmod_dev *dev, int fd)
+ 
+       p_atomic_inc(&bo->refcnt);
+    } else {
++#ifdef _WIN32
++      /* exynos-woa G2b-3 (0046): the "dma-buf" is an opened WDDM allocation (malikm_drm.c malikm_import_alloc) */
++      extern uint64_t malikm_prime_size(int fd);
++      size_t size = (size_t)malikm_prime_size(fd);
++#else
+       size_t size = lseek(fd, 0, SEEK_END);
++#endif
+       if (size == 0 || size == (size_t)-1) {
+          mesa_loge("invalid dmabuf size");
+          goto err_close_handle;
+diff --git a/src/panfrost/lib/wrap.h b/src/panfrost/lib/wrap.h
+index 8e15c2e..8db4bad 100644
+--- a/src/panfrost/lib/wrap.h
++++ b/src/panfrost/lib/wrap.h
+@@ -61,4 +61,8 @@ void pandecode_cs_trace(struct pandecode_context *ctx, uint64_t trace_gpu_va,
+ void pandecode_abort_on_fault(struct pandecode_context *ctx, uint64_t jc_gpu_va,
+                               uint64_t gpu_id);
+ 
++/* exynos-woa (0046): first job of the chain that did not complete, -1 if none (Bifrost v6/v7 only). */
++int pandecode_job_faulted(struct pandecode_context *ctx, uint64_t jc_gpu_va,
++                          uint64_t gpu_id, unsigned *status);
++
+ #endif /* __MMAP_TRACE_H__ */
+-- 
+2.43.0
+

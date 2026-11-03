@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.10) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.11) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -22,6 +22,9 @@
     .\gpu-s10.ps1 fill      G2b-2: d3dfill.exe with GALLIUM_DRIVER=panfrost in ITS OWN process: red/green/blue/white
                             drawn by the Mali through Mesa, DWM untouched. Watch the screen.
     .\gpu-s10.ps1 gpu-dwm   G2b-3: drop the machine GALLIUM_DRIVER - DWM itself renders on the Mali - reboot.
+                            v1.11: also TdrDelay 10 s (the KMD's own 2 s job timeout recovers a hung job before
+                            dxgkrnl's TDR, whose path bugchecked 0x7E on 2026-11-03) and S10_FAULTDUMP=dwm.exe
+                            (a DWM job chain that faults is decoded into umd-log.txt; DWM waits for every job).
     .\gpu-s10.ps1 off       remove both GPU packages; Microsoft Basic Display takes the screen back - reboot
 
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
@@ -34,7 +37,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.10  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.11  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -53,6 +56,30 @@ function Set-GalliumDriver($v) {
   if ($v) { Set-ItemProperty $EnvKey GALLIUM_DRIVER $v -Type String; Ok "machine GALLIUM_DRIVER = $v (DWM uses it from the next boot)" }
   elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).GALLIUM_DRIVER) {
     Remove-ItemProperty $EnvKey GALLIUM_DRIVER; Ok 'machine GALLIUM_DRIVER removed (Mesa picks its default: Panfrost when the GPU is up)'
+  }
+}
+# v1.11: S10_FAULTDUMP (UMD 0046): $v = a process name (dwm.exe) or 1 (every process) - Panfrost waits for each
+# job of that process and decodes the first two chains that fault into the UMD log; $null removes it.
+function Set-FaultDump($v) {
+  if ($v) { Set-ItemProperty $EnvKey S10_FAULTDUMP $v -Type String; Ok "machine S10_FAULTDUMP = $v (from the next boot: faulted GPU jobs decoded into umd-log.txt)" }
+  elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).S10_FAULTDUMP) {
+    Remove-ItemProperty $EnvKey S10_FAULTDUMP; Ok 'machine S10_FAULTDUMP removed'
+  }
+}
+# v1.11: TDR. Run g2b3-5 (2026-11-03) ended in BUGCHECK 0x7E (c0000005) inside dxgkrnl's timeout handling, right
+# after DxgkDdiCollectDbgInfo and before DxgkDdiResetFromTimeout. MaliG76Wddm stops a hung job itself after 2 s
+# (MW_JOB_TIMEOUT_MS) - the same as dxgkrnl's default TdrDelay, so the TDR won the race. TdrDelay 10 s / TdrDdiDelay
+# 20 s lets the KMD's recovery act first. Read at boot. $false restores the defaults (values removed).
+$TdrKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
+function Set-TdrDelay([bool]$Long) {
+  if ($Long) {
+    Set-ItemProperty $TdrKey TdrDelay 10 -Type DWord
+    Set-ItemProperty $TdrKey TdrDdiDelay 20 -Type DWord
+    Ok 'TdrDelay 10 s, TdrDdiDelay 20 s (GraphicsDrivers) - the KMD recovers a hung GPU job before Windows does'
+  } else {
+    foreach ($n in 'TdrDelay', 'TdrDdiDelay') {
+      if ($null -ne (Get-ItemProperty $TdrKey -ErrorAction SilentlyContinue).$n) { Remove-ItemProperty $TdrKey $n }
+    }
   }
 }
 # v1.6: "S10 GPU watch" (gpu-watch.ps1, SYSTEM, at startup) logs the Mali driver's counters, CPU interrupt/DPC
@@ -255,11 +282,14 @@ function Set-FullMode([int]$Gpu) {
   if ($Gpu) {
     Ok 'mode: full adapter WITH the GPU half (FullAdapter 1, GpuEnable 1)'
     Set-GalliumDriver 'softpipe'
+    Set-FaultDump $null
+    Set-TdrDelay $true
     Set-GpuWatch $true
     Info 'after the reboot: .\gpu-s10.ps1 status, then .\gpu-s10.ps1 m5test'
   } else {
     Ok 'mode: full adapter, GPU half off (FullAdapter 1, GpuEnable 0) - Mesa softpipe draws on the CPU'
     Set-GalliumDriver $null
+    Set-FaultDump $null
     Set-GpuWatch $false
   }
   Clear-NoGpuFlag
@@ -290,6 +320,7 @@ switch ($Action) {
       Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
       Ok 'GPU0 hidden (nogpu.flg) - mode written anyway: display-only (GpuEnable 0, FullAdapter 0)'
       Set-GalliumDriver $null
+      Set-FaultDump $null
       Set-GpuWatch $false
       Clear-NoGpuFlag
       Info 'reboot now'
@@ -303,6 +334,7 @@ switch ($Action) {
     Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
     Ok 'mode: display-only (GpuEnable 0, FullAdapter 0)'
     Set-GalliumDriver $null
+    Set-FaultDump $null
     Set-GpuWatch $false
     Clear-NoGpuFlag
     Info 'reboot, then run: .\gpu-s10.ps1 status   (FbMatchesGop = 1 is the good sign)'
@@ -336,6 +368,8 @@ switch ($Action) {
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
     if ($m.GpuEnable -ne 1) { Fail 'GpuEnable is not 1 - run .\gpu-s10.ps1 gpu first (and m5test / fill)' }
     Set-GalliumDriver $null
+    Set-FaultDump 'dwm.exe'     # v1.11: decode DWM's faulting job chains (UMD 0046+)
+    Set-TdrDelay $true          # v1.11: the KMD's 2 s job timeout before the TDR (0x7E bugcheck, run g2b3-5)
     Set-GpuWatch $true          # v1.8: make sure the logging tasks exist
     Initialize-UmdLog
     Clear-NoGpuFlag             # v1.8: run from a nogpu rescue boot, GPU0 stayed hidden (18:34)

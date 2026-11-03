@@ -625,3 +625,38 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   at open and re-filled when sampled / copied from after a Present (d3d10_frame_gen); the first GPU device stays the
   kernel device, later ones share it, DestroyDevice unbinds (malikm_unbind_d3dddi); per-process present log
   (runtime primary / flip / blt ok/failed) and OpenResource log.
+
+### G2b-3 run 5 (UMD 0045 12a5e28b, 2026-11-03 ~23:45) - DEVICE RESULT
+- User: a blue screen flashed by, too fast to read. Three boots on 0045 in umd-log (DWM pids 1080, 1748, 636), the
+  log collected from a 4th boot in Basic Render (nogpu rescue).
+- BUGCHECK (ESP WINPRAM.BIN, UFS bugcheck callback): BC 0x7E SYSTEM_THREAD_EXCEPTION_NOT_HANDLED, c0000005 at
+  fffff80962261944 (module unknown - no base map in PRAM). MaliG76Wddm PRAM trace at the end: QueryCurrentFence,
+  CollectDbgInfo (= dxgkrnl TDR handling), then SystemDisplayEnable (bugcheck screen); ResetFromTimeout never
+  entered. So: a TDR, and the crash inside Windows' TDR path, 67 ms after CollectDbgInfo. The KMD's own job timeout
+  (command.c MW_JOB_TIMEOUT_MS 2000) equals the default TdrDelay (2 s), so the TDR wins the race.
+  Mitigation without a KMD rebuild (no PC): kit v1.11 gpu-dwm sets GraphicsDrivers TdrDelay 10 / TdrDdiDelay 20.
+- 0045 worked as designed where it applied: Explorer's second device "shares the kernel device" (no Render
+  failures any more), LogonUI's device unbound cleanly ("kernel device ... destroyed (last bound device)"), DWM
+  presents "runtime primary 1440x3040 ok", apps run (Explorer, WindowsTerminal, Taskmgr, SearchHost, TextInputHost).
+- But EVERY OpenResource in DWM: "not lockable - blank texture" (1024x1024, 992x2048, 704x704, 1440x3072 ...):
+  in GPU mode no opened allocation can be CPU-locked, so the 0045 CPU copy never ran. And the creators' MISC_SHARED
+  textures (0037 path) were Panfrost textures unrelated to the shared allocation (resource_from_handle with a CPU
+  pointer fails on Panfrost: "WSI pitch not properly aligned" for the terminal's 1372-wide surface, bogus fd else).
+  This also explains G2a's missing taskbar icons / search / touch keyboard: shared surfaces never worked.
+- Job faults grew: 1 at boot -> 65 by the end of boot C, all fault 0x..3002c2 (translation, READ) @0x10, mostly
+  DWM after logon. Still unexplained (candidates: an attribute record for an unbound vertex buffer - panfrost
+  skipped it and left the attribute on the next record / none; a NULL constant buffer).
+- Explorer restarted every ~10 s in boot C (new pid each time, "65 job(s) failed" lines per pid) - cause unknown.
+- WindowsTerminal: present blt 1372x1260 FAILED 0x88760873 (x3).
+- WER AppCrash dwm.exe x20 in the zip are OLD (2026-11-03 14:56-14:58 UTC, the 0042 "unknown TGSI opcode" run).
+- Plan 0046: (1) shared resources on the GPU - the creator's texture BO IS the runtime allocation (created with the
+  resource handle, linear, pitch align 64, described in MW_ALLOCATION_INFO), and DWM imports an opened allocation
+  as a BO at its fixed GPU VA (the KMD's VA space is global) via a fake dma-buf fd (drmPrimeFDToHandle +
+  malikm_prime_size); (2) panfrost: unbound vertex buffer -> zero record; shareable BOs never cached;
+  (3) S10_FAULTDUMP=<process>: PAN_DBG_SYNC without abort, first 2 faulted chains pandecoded into umd-log.
+- 0046 built: UMD e3697685 (release, base 0x180000000), kit gpu-s10.ps1 v1.11. Review before shipping: shim lock
+  not taken recursively (w_escape / wddm_idle take none; drmPrimeFDToHandle and malikm_prime_size run outside the
+  ioctl lock); shim reports DRM 1.1 so pan_kmod never sends QUERY_BO_INFO (unsupported); import pitch must be
+  64-byte aligned for Panfrost's strict linear import (CDD 1440 -> 5760 ok; odd pitches are refused and logged).
+  Test: gpu-dwm (sets TdrDelay + S10_FAULTDUMP=dwm.exe), reboot, s10-log. Look for "imported (GPU reads it in
+  place)", "GPU BO = shared allocation", "FAULTED chain" + decode in umd-log.
