@@ -425,3 +425,12 @@ install-in-windows: copies a newer s10-log.cmd to the Public Desktop and gpu-s10
 - tools/mesa-build/pe-set-subsys.py: sets OS + subsystem version (default 6.2) and recomputes the PE checksum
   (matches pefile.generate_checksum). linux-build-g76.sh collect runs it on the UMD. Patched maliumd sha256
   dacaf32c0658ff56ab91d08ccfa649df2d4038a0788b17f3ef00023883ceaf34; f1-c/f3-cxx patched for the device check.
+- 15:40 subsystem 6.2 patch: f1-c, f3-cxx, maliumd (patched) still 193 -> hypothesis WRONG (patch harmless, kept
+  in the build for MSVC parity but not the fix).
+- Reference: an MSVC-built ARM64 DLL from PyPI (markupsafe 3.0.4 win_arm64 _speedups.pyd). Header diff vs zig:
+  ImageBase 0x180000000 vs 0x10000000, MSVC has a LoadConfig (0x140, GuardFlags 0x100) / zig none, zig has a TLS
+  directory (mingw CRT) and .buildid, zig import dir RVA odd, OS/subsystem 6.2 vs 6.0.
+- Bisect set 2 (umd-bisect2.zip): m1-msvc-ref (expect 126 = header accepted, python312.dll missing),
+  r1-nocrt (zig, -nostdlib, no imports/TLS/buildid, 3 sections), r2-nocrt-base (r1 + base 0x180000000),
+  r3-nocrt-imp (r1 + KERNEL32 import, import RVA 0x208C), r4-nocrt-62 (r1 + subsystem 6.2), c2-crt-base (CRT +
+  base 0x180000000). Plus a positive control: a copy of System32\dbghelp.dll.
