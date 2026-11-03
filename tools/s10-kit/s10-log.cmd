@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.3) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.4) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -8,9 +8,9 @@ rem Put it on the Desktop once:  TWRP: adb push s10-log.cmd /cache/   ->  Window
 rem   copy S:\s10-log.cmd %PUBLIC%\Desktop\   ->  mountvol S: /d
 rem ---------------------------------------------------------------------------
 net session >nul 2>&1 || (powershell -NoProfile -Command "Start-Process -Verb RunAs -FilePath '%~f0'" & exit /b)
-set "L="
-for /f "delims=:" %%N in ('findstr /n /x /c:"#__PS__" "%~f0"') do set "L=%%N"
-more +%L% "%~f0" > "%TEMP%\s10-log.ps1"
+rem v1.4: the PowerShell part (after the marker line at the end) is cut out by PowerShell itself - findstr/more
+rem broke on a copy with LF line endings ("more +" with no line number -> "cannot access ...\System32\+").
+powershell -NoProfile -Command "$t = [IO.File]::ReadAllText('%~f0'); $i = $t.IndexOf([string][char]10 + '#__' + 'PS__'); if ($i -lt 0) { exit 1 }; $j = $t.IndexOf([char]10, $i + 1); [IO.File]::WriteAllText('%TEMP%\s10-log.ps1', $t.Substring($j + 1))" || (echo [FAIL] s10-log: PowerShell part not found in %~f0 & pause & exit /b 1)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\s10-log.ps1"
 del "%TEMP%\s10-log.ps1" >nul 2>&1
 echo.
@@ -23,7 +23,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $dir   = "C:\S10Prov\logs\$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 function Save($name, [scriptblock]$b) { try { & $b 2>&1 | Out-File -Encoding utf8 -Width 400 (Join-Path $dir $name) } catch { "ERROR: $_" | Out-File (Join-Path $dir $name) } }
-Write-Host "s10-log v1.3 -> $dir"
+Write-Host "s10-log v1.4 -> $dir"
 
 # 0. S10eDiag (kernel helper, needed for the PRAM read below and for the keys / Reboot to TWRP) and S10eAgent:
 #    state, config, logs; a stopped service is started here and the exact error is recorded.
