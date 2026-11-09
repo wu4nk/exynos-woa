@@ -980,3 +980,27 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   BO of the PE run-18 fault is consistent with mempools.desc). S10_LIST_ALL=1 restores the old rule.
   RISK (unverified on device): an unnamed, used, non-pinned BO that VidMm evicts would fault its next job.
 - Not verified here: nothing of 0063 has run (cross-build only). Unwinder path is new code inside dwm.exe.
+
+### G2b-3 run 25 (UMD 0063 a83694a8, 2026-11-10 02:54) - PROBES WORK; DWM IS IDLE, NOT BLOCKED; XAML TEXT MISSING
+- User: "nó vẫn lỗi, không hiện chữ ở bàn phím, cài đặt không có 1 chữ nào" (touch keyboard has no letters,
+  Settings shows no text at all). Earlier (run 21): UAC text, taskbar clock/battery, avatar. All of these are XAML.
+- dwm.exe pid 1004 perf: 5.2-9.2 presents/s, cpu user 0.8-2.4 s + kernel 0.4-1.2 s per 10 s; listed BOs 240 -> 26-31
+  per submit (pinned ones), no job failed/timed out, RenderCb 0.26-1.5 ms; callbacks per 10 s: allocate 20-141 ms,
+  escape/deallocate/lock/unlock a few ms, wddm_lock waited <= 1.6 ms. Flushes per 10 s: 'Blit' x345-606 (6-8 per
+  present), 'another batch writes a resource this one uses' x40-207, 'another batch uses a resource this one
+  writes' x43-296, 'AFBC write staging blit' x25-150, 'Gallium flush' x19-59.
+- Present packet timing (profiler thread): 0.0-1.1 ms from max(call, last render done) to done -> the KMD blt is NOT
+  the cost (the "90 ms per present" fit in run 24 was wrong). Last render done 15-42 ms after the present call.
+- Profiler (real unwinding works): 45-75 % of the render thread's samples are
+  ntdll!NtWaitForMultipleObjects < KERNELBASE!WaitForMultipleObjectsEx < dwmcore+0xe1c54 = DWM's own frame loop
+  waiting; NtGdiDdDDIRender (inside pfnRenderCb) ~10 %. So DWM is not blocked in the driver: the present rate is
+  what DWM chooses to produce (content updates / its pacing), not a driver stall.
+- malikm-bigbo chains are EMPTY (RtlCaptureStackBackTrace returns no frame inside maliumd: the image is built
+  with -fomit-frame-pointer and the fast walker follows frame pointers) - 54-92 BOs >= 4 MB per 10 s in DWM
+  (~one 17.5 MB BO per present) still unattributed. Fix: use the RtlVirtualUnwind walk there too.
+- No "Present refused", no SetError lines, no job faults in this boot. Shared surfaces logged are all fmt 21
+  (A8R8G8B8): 1024x1024 atlas pages created by DWM (x13) and opened by the apps (x12).
+- Missing text: hypothesis H1 = Direct2D-rendered content (XAML text, font-glyph icons, masks) is broken with
+  Panfrost independent of 0057 (run-19 thumbnails only prove Win32/GDI text). To check: A8_UNORM / R8 texture
+  sampling (pan_format.c: A8_UNORM = BFMT2(A8_UNORM, R8G8B8A8, R8, 0)), D2D's blend states / dual-source blending,
+  texture uploads to tiled A8.
