@@ -1,0 +1,168 @@
+From d922246025e4e724d3cead6b05494b17c5c73b64 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 06:48:42 +0700
+Subject: [PATCH] G2b-3: log unsupported frontend paths and dual-source blend
+ states; big-BO chains by unwind data
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ include/win32-compat/malikm_drm.c             | 30 +++++++++++++++----
+ src/gallium/frontends/d3d10umd/Debug.cpp      |  7 +++++
+ src/gallium/frontends/d3d10umd/Debug.h        | 22 ++++++++++++--
+ .../frontends/d3d10umd/OutputMerger.cpp       | 18 +++++++++++
+ 4 files changed, 69 insertions(+), 8 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 2963cf5..e8e240d 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -971,18 +971,36 @@ static struct { uint64_t key; uint32_t n, len; uint64_t bytes; uint32_t fr[WBIG_
+ static void
+ wbig_note(uint64_t size)
+ {
+-   void *fr[62];
+    uint32_t chain[WBIG_FR], m = 0;
+    uint64_t key = 1469598103934665603ull;
+    wimg_init();
+-   USHORT n = RtlCaptureStackBackTrace(1, 62, fr, NULL);
+-   for (USHORT i = 0; i < n && m < WBIG_FR; i++) {
+-      uintptr_t a = (uintptr_t)fr[i];
+-      if (a >= wimg_lo && a < wimg_hi) {
+-         chain[m] = (uint32_t)(a - wimg_lo);
++   /* 0065: walk with the unwind data. RtlCaptureStackBackTrace found no frame of ours (run g2b3-25: every chain
++    * empty) - it follows frame pointers and the image is built without them. This is the calling thread's own
++    * live stack, so the plain walk is safe. */
++   CONTEXT c;
++   RtlCaptureContext(&c);
++   for (int depth = 0; depth < 96 && m < WBIG_FR; depth++) {
++      DWORD64 base = 0, est = 0, pc = c.Pc;
++      void *hd = NULL;
++      if (!pc)
++         break;
++      if (depth && pc >= wimg_lo && pc < wimg_hi) {
++         chain[m] = (uint32_t)(pc - wimg_lo);
+          key = (key ^ chain[m]) * 1099511628211ull;
+          m++;
+       }
++      DWORD64 look = depth ? pc - 4 : pc;
++      PRUNTIME_FUNCTION fe = RtlLookupFunctionEntry(look, &base, NULL);
++      if (!fe) {
++         if (depth || !c.Lr || c.Lr == pc)
++            break;
++         c.Pc = c.Lr;
++      } else {
++         DWORD64 sp = c.Sp;
++         RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, look, fe, &c, &hd, &est, NULL);
++         if (c.Sp <= sp && depth)
++            break;   /* no progress: stop rather than loop */
++      }
+    }
+    key |= 1;
+    for (int i = 0; i < 32; i++) {
+diff --git a/src/gallium/frontends/d3d10umd/Debug.cpp b/src/gallium/frontends/d3d10umd/Debug.cpp
+index 9b68dee..bd8a2d4 100644
+--- a/src/gallium/frontends/d3d10umd/Debug.cpp
++++ b/src/gallium/frontends/d3d10umd/Debug.cpp
+@@ -37,6 +37,13 @@ DebugPrintf(const char *format, ...)
+ }
+ 
+ 
++void
++DebugLogUnsupported(const char *function, int line, const char *what)
++{
++   fprintf(stderr, "d3d10umd: pid %lu: UNSUPPORTED %s:%d %s\n", GetCurrentProcessId(), function, line, what);
++}
++
++
+ /**
+  * Produce a human readable message from HRESULT.
+  *
+diff --git a/src/gallium/frontends/d3d10umd/Debug.h b/src/gallium/frontends/d3d10umd/Debug.h
+index efdf318..0536dd9 100644
+--- a/src/gallium/frontends/d3d10umd/Debug.h
++++ b/src/gallium/frontends/d3d10umd/Debug.h
+@@ -66,10 +66,28 @@ AssertFail(const char *expr, const char *file, unsigned line, const char *functi
+ #define LOG_ENTRYPOINT() (void)0
+ #endif
+ 
+-#define LOG_UNSUPPORTED_ENTRYPOINT() DebugPrintf("%s XXX\n", __func__)
++/* exynos-woa G2b-3 (0065): what the frontend does not implement goes to the UMD log too (the first two times per
++ * site and process) - OutputDebugString was the only trace of an unsupported entry point, shader operand or state. */
++void
++DebugLogUnsupported(const char *function, int line, const char *what);
++
++#define LOG_UNSUPPORTED_ENTRYPOINT() \
++   do { \
++      static unsigned s10_unsupported_; \
++      if (s10_unsupported_++ < 2) \
++         DebugLogUnsupported(__func__, 0, "entry point"); \
++      DebugPrintf("%s XXX\n", __func__); \
++   } while (0)
+ 
+ #define LOG_UNSUPPORTED(expr) \
+-   do { if (expr) DebugPrintf("%s:%d XXX %s\n", __func__, __LINE__, #expr); } while(0)
++   do { \
++      if (expr) { \
++         static unsigned s10_unsupported_; \
++         if (s10_unsupported_++ < 2) \
++            DebugLogUnsupported(__func__, __LINE__, #expr); \
++         DebugPrintf("%s:%d XXX %s\n", __func__, __LINE__, #expr); \
++      } \
++   } while(0)
+ 
+ 
+ #ifdef __cplusplus
+diff --git a/src/gallium/frontends/d3d10umd/OutputMerger.cpp b/src/gallium/frontends/d3d10umd/OutputMerger.cpp
+index ccda02e..0c12907 100644
+--- a/src/gallium/frontends/d3d10umd/OutputMerger.cpp
++++ b/src/gallium/frontends/d3d10umd/OutputMerger.cpp
+@@ -38,6 +38,7 @@
+ #include "Format.h"
+ 
+ #include "util/u_framebuffer.h"
++#include "util/u_dual_blend.h"
+ #include "util/format/u_format.h"
+ 
+ 
+@@ -439,6 +440,21 @@ CalcPrivateBlendStateSize1(D3D10DDI_HDEVICE hDevice,                     // IN
+  *
+  * ----------------------------------------------------------------------
+  */
++/* exynos-woa G2b-3 (0065): say once or twice per process that an application uses dual-source blending (Direct2D
++ * text does; 0064 made it work on Panfrost). */
++static void
++NoteDualSourceBlend(Device *pDevice, const struct pipe_blend_state *state)
++{
++   static unsigned notes;
++   if (!util_blend_state_is_dual(state, 0) || notes++ >= 3)
++      return;
++   fprintf(stderr, "d3d10umd: pid %lu: blend state with SRC1 factors: rgb src %u dst %u func %u, alpha src %u dst %u "
++           "func %u (PIPE_BLENDFACTOR_* / PIPE_BLEND_*), enable %u, mask 0x%x; driver dual-source targets %u\n",
++           GetCurrentProcessId(), state->rt[0].rgb_src_factor, state->rt[0].rgb_dst_factor, state->rt[0].rgb_func,
++           state->rt[0].alpha_src_factor, state->rt[0].alpha_dst_factor, state->rt[0].alpha_func,
++           state->rt[0].blend_enable, state->rt[0].colormask, pDevice->max_dual_source_render_targets);
++}
++
+ static uint
+ translateBlendOp(D3D10_DDI_BLEND_OP op)
+ {
+@@ -601,6 +617,7 @@ CreateBlendState(D3D10DDI_HDEVICE hDevice,                     // IN
+ 
+    state.alpha_to_coverage = pBlendDesc->AlphaToCoverageEnable;
+ 
++   NoteDualSourceBlend(pDevice, &state);   /* 0065 */
+    pBlendState->handle = pipe->create_blend_state(pipe, &state);
+ }
+ 
+@@ -660,6 +677,7 @@ CreateBlendState1(D3D10DDI_HDEVICE hDevice,                     // IN
+       }
+    }
+ 
++   NoteDualSourceBlend(pDevice, &state);   /* 0065 */
+    pBlendState->handle = pipe->create_blend_state(pipe, &state);
+ }
+ 
+-- 
+2.43.0
+

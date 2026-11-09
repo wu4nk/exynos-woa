@@ -1021,3 +1021,15 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   the TGSI-born shader writes FRAG_RESULT_DATA1; that variant rewrites store_output DATA1 -> DATA0 with
   dual_source_blend_index 1 (pan_nir_lower_fs_outputs then emits blend2_pan) and re-gathers info;
   bind_blend_state re-selects the FS variant when dual-ness changes (dirty_shader = ~0 if it changed).
+- 0064 review (adversarial pass): the key bool sits in a zero-initialised, memcmp'd struct like the existing
+  line_smooth; variants live in a util_dynarray of structs, so a new variant can move the old ones - the bind
+  code only compares the old pointer, never dereferences it; IO is already lowered when variants are compiled
+  (panfrost_create_shader_state runs nir_lower_io), so the pass works on store_output; info is re-gathered so
+  outputs_written no longer has DATA1 (bifrost's ">> FRAG_RESULT_DATA1" multi-RT copy is skipped) and
+  color_is_dual_source is set; downstream path read: pan_nir_lower_fs_outputs data[0][1] -> blend2_pan ->
+  bifrost blend_src1_type -> pan_context.c blend shader lookup. util_blend_state_is_dual ignores blend_enable
+  (a disabled blend with SRC1 factors would get the variant too - harmless). Not run anywhere yet.
+- 0065 (UMD 529925b6): LOG_UNSUPPORTED / LOG_UNSUPPORTED_ENTRYPOINT also write "d3d10umd: pid N: UNSUPPORTED
+  func:line what" to the UMD log (first two per site); CreateBlendState/1 note dual-source blend states (3 per
+  process); malikm-bigbo chains walk with RtlCaptureContext + RtlLookupFunctionEntry/RtlVirtualUnwind.
+  Symbols for this build: scratchpad sym-0065/ (session-local).
