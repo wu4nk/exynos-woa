@@ -942,3 +942,41 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - 0062 (UMD cdd95de5): _WIN32 resource_copy_region -> pipe->blit (panfrost_blit, GPU, NEAREST) for same-format,
   single-sample, non-compressed, non-depth/stencil textures, src != dst, format RT+sampler supported and
   util_blitter_is_blit_supported; everything else keeps util_resource_copy_region.
+
+### G2b-3 run 24 (UMD 0062 cdd95de5, 2026-11-10 02:07) - DEVICE RESULT: 0.7 -> 5.5-8.6 presents/s; DWM NOW BLOCKED, NOT CPU-BOUND
+- dwm.exe pid 516 malikm-perf (7 lines): 56-86 presents per 10 s (one idle interval: 13), cpu user 1.0-2.0 s +
+  kernel 0.7-1.4 s per 10 s (was user ~10 s), 1068-2478 submits (14.6-32.2 per present), named 11-15 + listed
+  98-241 BOs, RenderCb 0.39-1.10 ms each, waits 0-15 (<=111 ms), polls 1159-3302 (20-94 busy), in flight 2-10,
+  BOs +93..+211 (968-1549 MB !) -85..-115 per 10 s, live 127-371 (129-274 MB). KMD: 1147-2748 jobs, 0 failed,
+  0 timed out, blts = presents, 280-654 paging ops. No job faults, no failed presents, no refused presents.
+- malikm-prof: memcpy gone (+0x10940 absent; only ResourceUpdateSubResourceUP x2-8). Samples: 25-60 % "elsewhere",
+  +0xa2740 (w_render: inside pfnRenderCb) 8-15 %, +0x9b800 35-67 % = return address after fd_handle's
+  AcquireSRWLockShared in call() - a stale stack word of a blocked thread (the scan takes the first image word
+  above SP; callee frames of a blocked thread hold old ones), i.e. "blocked somewhere", not a real site.
+- Reading: presents/s stays 7-8.6 while submits vary 2.3x. Fit time = a*presents + b*jobs over the saturated
+  intervals -> a ~ 90 ms per present, b ~ 1.1 ms per job (ESTIMATE from 4 intervals, not a measurement).
+  ~19 MB of new BOs per present = one full-screen (17.5 MB) BO created and destroyed per present, source unknown.
+  Suspects for a: KMD DoPresent (17.5 MB CPU blt in DxgkDdiSubmitCommand, cached MDL view -> write-combined FB,
+  blocks the scheduler thread), VidMm work for the per-present 17.5 MB allocation, or VidMm waiting for busy
+  allocations (every submission references every live BO, so none is ever idle while DWM has work queued).
+- KMD facts re-read: FbVa = MmMapIoSpaceEx(PAGE_WRITECOMBINE); blt source = MmGetSystemAddressForMdlSafe (cached);
+  rows by RtlCopyMemory; soft vsync 60 Hz timer; LockCb already IgnoreSync; one AsOperation(FLUSH_PT) per map.
+
+### 0063 (UMD a83694a8) - probes for the wall time + shorter allocation lists
+- perf line adds: time and count per runtime callback (escape / allocate / deallocate / lock / unlock), time
+  waiting for wddm_lock (wddm_ioctl only), Panfrost flush reasons per batch really submitted (pan_job.c
+  S10_REASON / S10_PUSH; implicit sites named "batch slot reused", "another batch writes/uses a resource ...").
+- "malikm-bigbo" lines: top 3 call chains (maliumd frames, RtlCaptureStackBackTrace) creating BOs >= 4 MB.
+- Profiler rewritten: copies up to 32 KB of the suspended thread's stack (bounded by the TEB's StackBase), resumes,
+  then unwinds the COPY with RtlLookupFunctionEntry / RtlVirtualUnwind (FP redirected into the copy; 1 MB of zeros
+  after it; Sp must stay inside the copy) - no loader/function-table lock is taken while the thread is suspended.
+  Signature = leaf (64 B bin) + its caller + innermost/outermost maliumd frame; printed with module!export+off
+  names (so a blocked thread shows the Nt*/NtGdiDdDDI* call it sits in); "running" by QueryThreadCycleTime delta.
+- The profiler thread also times one present packet at a time: event b queued right behind the present
+  (EnqueueCpuEvent), event a = the last render submission's; reports ms from max(call, a) to b.
+- Change in behaviour: SUBMIT no longer lists every live BO. Unnamed BOs are listed until listed once (seen), and
+  always if pinned: created before the context's first submission, or from the screen's mempools.bin/.desc
+  (pan_mempool.c s10_unnamed -> malikm_bo_pin; preload/blend shader pools, which batches do not name - the 64 KiB
+  BO of the PE run-18 fault is consistent with mempools.desc). S10_LIST_ALL=1 restores the old rule.
+  RISK (unverified on device): an unnamed, used, non-pinned BO that VidMm evicts would fault its next job.
+- Not verified here: nothing of 0063 has run (cross-build only). Unwinder path is new code inside dwm.exe.
