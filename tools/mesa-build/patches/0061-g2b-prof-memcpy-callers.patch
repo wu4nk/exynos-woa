@@ -1,0 +1,91 @@
+From 762f2623fb6e801879c2b0c3168202d57d10465c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 01:35:14 +0700
+Subject: [PATCH] G2b-3: profiler files memcpy samples under their caller with
+ the copy size
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ include/win32-compat/malikm_drm.c | 38 ++++++++++++++++++++++++++++---
+ 1 file changed, 35 insertions(+), 3 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 87b9bf4..b8a509e 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -2453,6 +2453,27 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+ static volatile DWORD wprof_tid;
+ #define WPROF_BINS 2048
+ static uint32_t wprof_key[WPROF_BINS], wprof_cnt[WPROF_BINS];
++/* 0061: samples inside memcpy are filed under its CALLER (LR: memcpy is a leaf), with the bytes it was asked to copy
++ * (x2 is clobbered; zig's loop keeps len - 1 in x8) - run g2b3-22: 0060 changed nothing, 60-98 % still in memcpy. */
++static uint64_t wprof_len[WPROF_BINS];
++static uint32_t wprof_mc[WPROF_BINS];
++
++static void
++wprof_file2(uint32_t off, int in_memcpy, uint64_t len)
++{
++   uint32_t k = (off >> 6) + 1, i = (k * 2654435761u) % WPROF_BINS;
++   for (int n = 0; n < WPROF_BINS; n++, i = (i + 1) % WPROF_BINS) {
++      if (wprof_key[i] == k || !wprof_key[i]) {
++         wprof_key[i] = k;
++         wprof_cnt[i]++;
++         if (in_memcpy) {
++            wprof_mc[i]++;
++            wprof_len[i] += len;
++         }
++         return;
++      }
++   }
++}
+ 
+ static void
+ wprof_file(uint32_t off)
+@@ -2512,7 +2533,11 @@ wprof_thread(void *arg)
+                for (size_t i = 0; i < got / 8 && !hit; i++)
+                   if (stack[i] >= lo && stack[i] < hi)
+                      hit = stack[i];
+-            if (hit) {
++            uintptr_t mc = (uintptr_t)(void *)memcpy;
++            if (hit && c.Pc >= mc && c.Pc < mc + 0x100 && c.Lr >= lo && c.Lr < hi) {
++               inside++;
++               wprof_file2((uint32_t)(c.Lr - lo), 1, c.X8 + 1);
++            } else if (hit) {
+                inside++;
+                wprof_file((uint32_t)(hit - lo));
+             } else {
+@@ -2522,7 +2547,7 @@ wprof_thread(void *arg)
+       }
+       if (GetTickCount() - t0 >= 10000) {
+          if (samples) {
+-            char line[1400];
++            char line[2000];
+             int n = snprintf(line, sizeof(line), "malikm-prof: pid %lu: %u samples, %u in maliumd (%u elsewhere):",
+                              GetCurrentProcessId(), samples, inside, idle);
+             for (int top = 0; top < 16; top++) {
+@@ -2534,13 +2559,20 @@ wprof_thread(void *arg)
+                   }
+                if (!best || n >= (int)sizeof(line) - 32)
+                   break;
+-               n += snprintf(line + n, sizeof(line) - n, " +0x%x x%u", (wprof_key[bi] - 1) << 6, best);
++               if (wprof_mc[bi])
++                  n += snprintf(line + n, sizeof(line) - n, " +0x%x x%u (memcpy x%u, avg %llu KB)",
++                                (wprof_key[bi] - 1) << 6, best, wprof_mc[bi],
++                                (unsigned long long)(wprof_len[bi] / wprof_mc[bi] / 1024));
++               else
++                  n += snprintf(line + n, sizeof(line) - n, " +0x%x x%u", (wprof_key[bi] - 1) << 6, best);
+                wprof_cnt[bi] = 0;
+             }
+             fprintf(stderr, "%s\n", line);
+          }
+          memset(wprof_key, 0, sizeof(wprof_key));
+          memset(wprof_cnt, 0, sizeof(wprof_cnt));
++         memset(wprof_mc, 0, sizeof(wprof_mc));
++         memset(wprof_len, 0, sizeof(wprof_len));
+          samples = inside = idle = 0;
+          t0 = GetTickCount();
+       }
+-- 
+2.43.0
+

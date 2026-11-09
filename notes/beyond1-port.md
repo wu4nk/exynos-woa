@@ -922,3 +922,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   0046; PAN_BO_SHARED is only set on export) - suspected cause of the missing UI pieces.
 - 0060 (UMD 80ab38e0): on _WIN32 no shadow copies (flush + wait instead) and BIND_SHARED resources never get a
   new BO on map. Next if still slow: profiler should attribute leaf memcpy to LR; replace zig's memcpy.
+
+### G2b-3 run 22 (UMD 0060 80ab38e0, 2026-11-10, after a Windows reinstall for dual boot) - NO CHANGE
+- gpu-report: kit v1.16 gpu-dwm applied (TdrDelay 10, EnablePreemption 0, GALLIUM_DRIVER removed); ESP not
+  mountable from Windows (dual cache). dwm.exe: 0.1-0.8 presents/s, cpu user 4-10.7 s per 10 s, BO churn still
+  +50-270 MB per 10 s, waits negligible.
+- malikm-prof: +0xbbbc0 (zig memcpy) 56-98 % of samples; +0x9b800 x0-784 = return address 0x18009b830 in call()
+  after the bl at 0x18009b82c (a lock taken in call(), malikm_drm.c:168) - the sampled thread blocked there, not
+  CPU. So the shadow-copy guess (0060) was wrong; memcpy's caller is still unknown.
+- 0061 (UMD 471d0b25): samples whose PC is in memcpy are filed under LR (memcpy is a leaf) with the length
+  (x8 + 1 in zig's loop), printed as "(memcpy xN, avg K KB)".
