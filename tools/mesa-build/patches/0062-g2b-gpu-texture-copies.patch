@@ -1,0 +1,91 @@
+From 624985d460d3180c7687d8a90ff1a055f280eea7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 01:58:05 +0700
+Subject: [PATCH] G2b-3: same-format texture copies on the GPU (panfrost_blit),
+ not util_resource_copy_region
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ src/gallium/drivers/panfrost/pan_resource.c | 50 +++++++++++++++++++++
+ 1 file changed, 50 insertions(+)
+
+diff --git a/src/gallium/drivers/panfrost/pan_resource.c b/src/gallium/drivers/panfrost/pan_resource.c
+index 3e66e21..d994f37 100644
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -41,6 +41,7 @@
+ #include "pan_afrc.h"
+ #include "pan_bo.h"
+ #include "pan_context.h"
++#include "util/u_blitter.h"
+ #include "pan_resource.h"
+ #include "pan_screen.h"
+ #include "pan_tiling.h"
+@@ -2643,6 +2644,51 @@ panfrost_resource_screen_destroy(struct pipe_screen *pscreen)
+    u_transfer_helper_destroy(pscreen->transfer_helper);
+ }
+ 
++#ifdef _WIN32
++/* exynos-woa G2b-3 (0062): texture copies on the GPU. Panfrost's resource_copy_region is util_resource_copy_region:
++ * a CPU map + memcpy. Run g2b3-23 (0061 profiler): 62-98 % of dwm.exe's samples were that memcpy called from
++ * util_copy_box, ~17 MB each (a 1440x3040 BGRA surface) - DWM copies full-screen textures every frame and the CPU
++ * reads them from WDDM aperture memory (write-combined: very slow to read). Same-format, single-sample colour
++ * copies between different textures go through pipe->blit (panfrost_blit, the GPU); buffers, depth/stencil,
++ * compressed formats, MSAA and copies within one resource keep the CPU path. */
++static void
++panfrost_s10_copy_region(struct pipe_context *pctx, struct pipe_resource *dst, unsigned dst_level, unsigned dstx,
++                         unsigned dsty, unsigned dstz, struct pipe_resource *src, unsigned src_level,
++                         const struct pipe_box *src_box)
++{
++   struct pipe_screen *screen = pctx->screen;
++   if (dst != src && dst->target != PIPE_BUFFER && src->target != PIPE_BUFFER && dst->format == src->format &&
++       !util_format_is_compressed(src->format) && !util_format_is_depth_or_stencil(src->format) &&
++       src->nr_samples <= 1 && dst->nr_samples <= 1 &&
++       screen->is_format_supported(screen, dst->format, dst->target, 0, 0, PIPE_BIND_RENDER_TARGET) &&
++       screen->is_format_supported(screen, src->format, src->target, 0, 0, PIPE_BIND_SAMPLER_VIEW)) {
++      struct pipe_blit_info info;
++      memset(&info, 0, sizeof(info));
++      info.src.resource = src;
++      info.src.level = src_level;
++      info.src.box = *src_box;
++      info.src.format = src->format;
++      info.dst.resource = dst;
++      info.dst.level = dst_level;
++      info.dst.box.x = dstx;
++      info.dst.box.y = dsty;
++      info.dst.box.z = dstz;
++      info.dst.box.width = src_box->width;
++      info.dst.box.height = src_box->height;
++      info.dst.box.depth = src_box->depth;
++      info.dst.format = dst->format;
++      info.mask = PIPE_MASK_RGBA;
++      info.filter = PIPE_TEX_FILTER_NEAREST;
++      /* panfrost_blit would hit UNREACHABLE on an unsupported blit: check first, else the CPU path */
++      if (util_blitter_is_blit_supported(pan_context(pctx)->blitter, &info)) {
++         pctx->blit(pctx, &info);
++         return;
++      }
++   }
++   util_resource_copy_region(pctx, dst, dst_level, dstx, dsty, dstz, src, src_level, src_box);
++}
++#endif
++
+ void
+ panfrost_resource_context_init(struct pipe_context *pctx)
+ {
+@@ -2650,7 +2696,11 @@ panfrost_resource_context_init(struct pipe_context *pctx)
+    pctx->buffer_unmap = u_transfer_helper_transfer_unmap;
+    pctx->texture_map = u_transfer_helper_transfer_map;
+    pctx->texture_unmap = u_transfer_helper_transfer_unmap;
++#ifdef _WIN32
++   pctx->resource_copy_region = panfrost_s10_copy_region;   /* 0062 */
++#else
+    pctx->resource_copy_region = util_resource_copy_region;
++#endif
+    pctx->blit = panfrost_blit;
+    pctx->generate_mipmap = panfrost_generate_mipmap;
+    pctx->flush_resource = panfrost_flush_resource;
+-- 
+2.43.0
+

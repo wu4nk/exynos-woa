@@ -932,3 +932,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   CPU. So the shadow-copy guess (0060) was wrong; memcpy's caller is still unknown.
 - 0061 (UMD 471d0b25): samples whose PC is in memcpy are filed under LR (memcpy is a leaf) with the length
   (x8 + 1 in zig's loop), printed as "(memcpy xN, avg K KB)".
+
+### G2b-3 run 23 (UMD 0061 471d0b25, 2026-11-10 01:48) - MEMCPY CALLER FOUND
+- malikm-prof (dwm.exe pid 1788, 6 lines): +0x10940 x678-1532 (memcpy, avg 16.8-17.1 MB each) = util_copy_box
+  <- util_resource_copy_region (u_surface.c:346) - Panfrost's pctx->resource_copy_region IS the CPU fallback
+  (pan_resource.c), so every DWM CopyResource / CopySubresourceRegion of a full-screen 1440x3040 BGRA texture
+  maps both and memcpy's 17.5 MB, reading aperture (write-combined) memory. Minor: +0x8080 ResourceUpdateSubResourceUP
+  (Resource.cpp:1306) memcpy ~10 MB x8; +0x975c0 small.
+- 0062 (UMD cdd95de5): _WIN32 resource_copy_region -> pipe->blit (panfrost_blit, GPU, NEAREST) for same-format,
+  single-sample, non-compressed, non-depth/stencil textures, src != dst, format RT+sampler supported and
+  util_blitter_is_blit_supported; everything else keeps util_resource_copy_region.
