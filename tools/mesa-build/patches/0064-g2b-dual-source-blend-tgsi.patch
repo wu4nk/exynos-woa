@@ -1,0 +1,147 @@
+From e33e5bbeecd5a00d051455775a0cf9d90dcb097c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 06:43:12 +0700
+Subject: [PATCH] G2b-3: dual-source blending for TGSI fragment shaders on
+ Panfrost (Direct2D text)
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ src/gallium/drivers/panfrost/pan_context.c | 15 +++++++
+ src/gallium/drivers/panfrost/pan_context.h |  4 ++
+ src/gallium/drivers/panfrost/pan_shader.c  | 48 ++++++++++++++++++++++
+ 3 files changed, 67 insertions(+)
+
+diff --git a/src/gallium/drivers/panfrost/pan_context.c b/src/gallium/drivers/panfrost/pan_context.c
+index 838add1..093fd6e 100644
+--- a/src/gallium/drivers/panfrost/pan_context.c
++++ b/src/gallium/drivers/panfrost/pan_context.c
+@@ -18,6 +18,7 @@
+ #include "util/libsync.h"
+ #include "util/macros.h"
+ #include "util/u_debug_cb.h"
++#include "util/u_dual_blend.h"
+ #include "util/u_helpers.h"
+ #include "util/u_inlines.h"
+ #include "util/u_math.h"
+@@ -142,8 +143,22 @@ static void
+ panfrost_bind_blend_state(struct pipe_context *pipe, void *cso)
+ {
+    struct panfrost_context *ctx = pan_context(pipe);
++#ifdef _WIN32
++   /* exynos-woa G2b-3 (0064): the fragment shader variant depends on whether the blend is dual-source */
++   const struct panfrost_blend_state *s10_old = ctx->blend, *s10_new = cso;
++   const bool s10_was = s10_old && util_blend_state_is_dual(&s10_old->base, 0);
++   const bool s10_is = s10_new && util_blend_state_is_dual(&s10_new->base, 0);
++#endif
+    ctx->blend = cso;
+    ctx->dirty |= PAN_DIRTY_BLEND;
++#ifdef _WIN32
++   if (s10_was != s10_is && ctx->uncompiled[MESA_SHADER_FRAGMENT]) {
++      struct panfrost_compiled_shader *s10_prog = ctx->prog[MESA_SHADER_FRAGMENT];
++      panfrost_update_shader_variant(ctx, MESA_SHADER_FRAGMENT);
++      if (ctx->prog[MESA_SHADER_FRAGMENT] != s10_prog)
++         ctx->dirty_shader[MESA_SHADER_FRAGMENT] = ~0;
++   }
++#endif
+ }
+ 
+ static void
+diff --git a/src/gallium/drivers/panfrost/pan_context.h b/src/gallium/drivers/panfrost/pan_context.h
+index 1adbe76..264e7d0 100644
+--- a/src/gallium/drivers/panfrost/pan_context.h
++++ b/src/gallium/drivers/panfrost/pan_context.h
+@@ -369,6 +369,10 @@ struct panfrost_fs_key {
+ 
+    bool line_smooth;
+ 
++   /* exynos-woa G2b-3 (0064): the bound blend state uses SRC1 factors and this shader came from TGSI with a second
++    * colour output - that output is the second blend source, not render target 1 (see pan_shader.c). */
++   bool s10_dual_src;
++
+    /* The VS varying layout determines how the FS is compiled (LD_VAR vs
+     * LD_VAR_BUF and byte offsets). Include the full layout in the key so
+     * the disk cache and in-memory variant cache correctly distinguish FS
+diff --git a/src/gallium/drivers/panfrost/pan_shader.c b/src/gallium/drivers/panfrost/pan_shader.c
+index 3141026..4824ead 100644
+--- a/src/gallium/drivers/panfrost/pan_shader.c
++++ b/src/gallium/drivers/panfrost/pan_shader.c
+@@ -16,6 +16,7 @@ extern int64_t s10_perf_mesa[4];   /* exynos-woa G2b-3 0058: malikm_drm.c's perf
+ #include "nir/tgsi_to_nir.h"
+ #include "util/u_memory.h"
+ #include "util/u_prim.h"
++#include "util/u_dual_blend.h"
+ #include "nir_builder.h"
+ #include "nir_serialize.h"
+ #include "pan_bo.h"
+@@ -96,6 +97,33 @@ lower_sample_mask_writes(nir_builder *b, nir_intrinsic_instr *intrin,
+    return true;
+ }
+ 
++#ifdef _WIN32
++/* exynos-woa G2b-3 (0064): DUAL-SOURCE BLENDING FOR TGSI SHADERS. In D3D10 a pixel shader that writes SV_Target0 and
++ * SV_Target1 feeds two render targets or, when the blend state uses SRC1 factors, the two sources of one blend: the
++ * shader itself does not say which. d3d10umd hands Gallium TGSI, where both are COLOR[0]/COLOR[1], and tgsi_to_nir
++ * always makes COLOR[1] render target 1 ("tgsi loses some information ... so far no drivers using tgsi-to-nir
++ * support dual source blend"). On Panfrost the blend then read a second source nobody wrote: with Direct2D's text
++ * blend (colour * SRC1_COLOR + dest * INV_SRC1_COLOR, coverage in the second output) every glyph came out as
++ * "dest unchanged" - run g2b3-25: no text in any XAML app (Settings, touch keyboard, taskbar clock, UAC), while
++ * softpipe, which reads TGSI directly, drew it. So the fragment shader gets a variant per "blend is dual-source":
++ * in that variant the store to FRAG_RESULT_DATA1 becomes the second source of FRAG_RESULT_DATA0. */
++static bool
++s10_dual_source_store(nir_builder *b, nir_intrinsic_instr *intr, void *data)
++{
++   (void)b;
++   (void)data;
++   if (intr->intrinsic != nir_intrinsic_store_output)
++      return false;
++   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
++   if (sem.location != FRAG_RESULT_DATA1)
++      return false;
++   sem.location = FRAG_RESULT_DATA0;
++   sem.dual_source_blend_index = 1;
++   nir_intrinsic_set_io_semantics(intr, sem);
++   return true;
++}
++#endif
++
+ static void
+ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
+                         struct util_debug_callback *dbg,
+@@ -147,6 +175,19 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
+                   key->fs.nr_cbufs_for_fragcolor);
+       }
+ 
++#ifdef _WIN32
++      if (key->fs.s10_dual_src) {
++         /* 0064 */
++         bool s10_progress = false;
++         NIR_PASS(s10_progress, s, nir_shader_intrinsics_pass, s10_dual_source_store, nir_metadata_all, NULL);
++         nir_shader_gather_info(s, nir_shader_get_entrypoint(s));
++         static unsigned s10_notes;
++         if (s10_notes++ < 4)
++            fprintf(stderr, "panfrost: dual-source blend variant of a TGSI fragment shader (second colour output -> "
++                            "blend source 1%s)\n", s10_progress ? "" : "; NO store to output 1 found");
++      }
++#endif
++
+       if (key->fs.sprite_coord_enable) {
+          NIR_PASS(_, s, nir_lower_texcoord_replace_late,
+                   key->fs.sprite_coord_enable,
+@@ -357,6 +398,13 @@ panfrost_build_fs_key(struct panfrost_context *ctx,
+    if (!key->clip_plane_enable)
+       key->vs_varying_layout = uncompiled->vs_varying_layout;
+ 
++#ifdef _WIN32
++   /* 0064 */
++   key->s10_dual_src = ctx->blend && util_blend_state_is_dual(&ctx->blend->base, 0) &&
++                       (nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DATA1)) &&
++                       !nir->info.fs.color_is_dual_source;
++#endif
++
+    if (dev->arch <= 5) {
+       u_foreach_bit(i, (nir->info.outputs_read >> FRAG_RESULT_DATA0)) {
+          enum pipe_format fmt = PIPE_FORMAT_R8G8B8A8_UNORM;
+-- 
+2.43.0
+

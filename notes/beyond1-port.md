@@ -1004,3 +1004,20 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   Panfrost independent of 0057 (run-19 thumbnails only prove Win32/GDI text). To check: A8_UNORM / R8 texture
   sampling (pan_format.c: A8_UNORM = BFMT2(A8_UNORM, R8G8B8A8, R8, 0)), D2D's blend states / dual-source blending,
   texture uploads to tiled A8.
+
+### Missing XAML text: cause found by reading (2026-11-10) - dual-source blending never worked through tgsi_to_nir
+- H1 (A8_UNORM unsupported) was WRONG: pan_format.c has FMT(A8_UNORM, A8_UNORM, 000A, L, VTR___) for Bifrost
+  (my first greps were cut by `head`), and comprobe (logs30-39) reports A8_UNORM TEX2D RT SAMPLE BLEND.
+- d3d10umd OutputMerger.cpp passes SRC1 blend factors through when the driver has
+  max_dual_source_render_targets (Panfrost: 1). The pixel shader's SV_Target1 is TGSI COLOR[1].
+  gallium/auxiliary/nir/tgsi_to_nir.c: "tgsi loses some information, so we cannot actually differentiate here
+  between DSB and MRT ... so far no drivers using tgsi-to-nir support dual source blend: bool dual_src_blend =
+  false" -> COLOR[1] always becomes FRAG_RESULT_DATA1 (render target 1). Panfrost's blend then has no second
+  source. Direct2D draws text with dual-source blending (colour*SRC1_COLOR + dest*INV_SRC1_COLOR, coverage in
+  output 1) -> "dest unchanged" = invisible text, exactly the symptom; softpipe reads TGSI itself, so the
+  softpipe modes drew text. NOT yet proven on the device that D2D's blend is this one - 0064 logs when the
+  variant is built.
+- 0064 (UMD a5b3c176): panfrost_fs_key.s10_dual_src = bound blend is dual-source (util_blend_state_is_dual) &&
+  the TGSI-born shader writes FRAG_RESULT_DATA1; that variant rewrites store_output DATA1 -> DATA0 with
+  dual_source_blend_index 1 (pan_nir_lower_fs_outputs then emits blend2_pan) and re-gathers info;
+  bind_blend_state re-selects the FS variant when dual-ness changes (dirty_shader = ~0 if it changed).
