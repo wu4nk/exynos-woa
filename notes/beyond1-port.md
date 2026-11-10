@@ -1253,3 +1253,11 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   /force" - no MaliG76Wddm package left, ACPI\SAMS9828\0 problem 28 (0xC0000490), Services\MaliG76Wddm\Parameters
   empty, mali-pram.txt stale garbage. gpu-report.txt is from kit v1.16 (old script on the phone). No bugcheck event /
   dump in the log (stop code of the build-35 crash still unknown). maliumd 0068 (93d4486c) still in System32.
+
+### G2b-3 run 32 (KMD 1.0.35.1 ScanoutDirect, built by the user with his EWDK, UMD 0068; log 2026-11-11 01:33)
+- setupapi: out-gpu\MaliG76Wddm 1.0.35.1 installed (SUCCESS). That GPU boot ran with no bugcheck: the EWDK build of
+  the same source works, so the build-35 bluescreen was the Linux/clang build (or its signature), not ScanoutDirect.
+- DWM in that boot: 20-34 presents/s for minutes (was 2-13; logon DWM ceiling 13.2 -> gone), 0 failed jobs, 0
+  timed out, KMD "0 blts" (latches copy nothing), profiler: DWM waits outside the driver ~92 % (idle/paced).
+- The log itself was collected in a later boot with \S10EDIAG\nogpu.flg present (GPU0 hidden, phantom) - why the
+  user went back to the rescue flag is not in the log (asked). gpubench in umd-test.txt is the old run-31 file.
