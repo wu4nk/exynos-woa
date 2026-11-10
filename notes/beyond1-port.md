@@ -1337,3 +1337,9 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - MISSING 4x MSAA (CheckMultisampleQualityLevels 0), B5G6R5 / B5G5R5A1 (optional at FL 10_0). Open.
 - PASS but note: cube-map 208 px differ up to 247 (face edges - seamless cube filtering / face selection). Open.
 - UMD 0072 (c32555a1). Not run yet.
+
+### G2c run 37 (gputest v1.0, UMD 0072 c32555a1; 2026-11-11 03:28): 94 PASS, 1 FAIL, 5 MISSING, 0 BROKEN
+- two-render-targets PASS (max_rt), BC1/BC2/BC3/BC4/BC5 + sRGB PASS (decoded-on-upload emulation, worst diff 1-2).
+- Left: FAIL geometry-shader (none in Panfrost); MISSING msaa4-resolve / msaa4-load-samples (4x MSAA not offered),
+  B5G6R5 / B5G5R5A1 (optional); cube-map passes with 208 px up to 247 off at face edges.
+- Next: real apps (Edge, Photos, Store, Terminal), touch keyboard hang, Win+Shift+S, MSAA, GS, brightness driver.
