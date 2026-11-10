@@ -1048,3 +1048,29 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   primitive; pass 1 hardware, pass 2 WARP (reference), pass 3 hardware in a child process with GALLIUM_TRACE (the
   trace driver is linked into maliumd: debug_screen_wrap) -> C:\S10Prov\d3dfill.txt; results ->
   C:\S10Prov\umd-test.txt (both names s10-log v1.9 already collects).
+
+### G2b-3 run 27 (UMD 0065, d2dtext v1.0, 2026-11-10 12:54) - TEXT REPRODUCED OFF-SCREEN; CAUSE: INTEGER VERTEX ATTRIBUTES
+- d2dtext results (notes/logs/g2b3-run27-d2dtext-0065.txt): on the Mali adapter (feature level 10_0) clear,
+  rectangle (3072 px exact), ellipse and line arrive; EVERY text primitive is 0 px changed (grayscale, aliased,
+  default, white on transparent, ClearType on an opaque target, A8 target); A8 rectangle arrives. On WARP all
+  text arrives (1133 px grayscale, 798 aliased, 1244 ClearType). The traced pass gives the same results, so the
+  trace wrapper does not disturb it. (Side note: ellipse 4631 px on Mali vs 4651 on WARP, first changed pixel
+  00 00 00 vs eb eb eb - antialiased edge pixels differ; not looked at yet.)
+- Gallium trace of the run (8.7 MB XML, 10 draw_vbo): the text draw is an INSTANCED INDEXED draw (6 indices,
+  instance_count 5 = the 5 glyphs of "Hg 123", primitive_restart 1 / 0xffff on a triangle list) with 5 vertex
+  elements, ALL pure integers: vb0 R16G16_SINT (quad corner), vb1 per instance (divisor 1, stride 16)
+  R16G16_SINT x3 + R32_SINT. VS: I2F on IN[0..2], MOV of IN[3], IN[4] into a CONSTANT varying. FS: SAMPLE_I
+  (texel fetch) on SVIEW[0] = a PIPE_BUFFER R8_UINT view of 524288 bytes (the glyph coverage; filled by
+  buffer_subdata + resource_copy_region), index from the flat integer varying, then SAMPLE_I on SVIEW[1], a
+  256x80 BGRA lookup texture. Blend ONE / INV_SRC_ALPHA (no dual-source), cull back, flatshade_first.
+  Rectangles / ellipses / lines use R32G32_FLOAT elements, non-instanced, non-indexed.
+- Cause read in the source: tgsi_to_nir declares every vertex input glsl_vec4 (float); bifrost bi_emit_load_attr
+  picks the register format from the load's type: float32 -> BI_REGISTER_FORMAT_F32, integers -> AUTO. So an
+  integer element is loaded as float and the shader's I2F runs on float bits -> garbage positions.
+  softpipe/draw fetch by the element's format, so they were fine.
+- 0066 (UMD 8461af0b): panfrost_vs_key.s10_int_attribs = pure-integer vertex elements that a TGSI-born VS reads
+  (uncompiled->s10_from_tgsi; element i = IN[i] = VERT_ATTRIB_GENERIC0 + i = load_input base i); that variant
+  gives those load_input an integer dest type; bind_vertex_elements_state re-selects the VS variant.
+  panfrost_vertex_state_head mirrors the arch-independent head of panfrost_vertex_state for pan_shader.c.
+- Still unproven after 0066 (same draw): bit-exact integers through a float32 flat varying, texel fetch from a
+  512 KB buffer view (Bifrost: attribute-buffer based, limit 2^27), texel fetch from the lookup texture.

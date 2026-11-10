@@ -1,0 +1,170 @@
+From 1a049a0fae02976d6014baa226ea44b6f96f7cd9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 13:04:42 +0700
+Subject: [PATCH] G2b-3: integer vertex attributes for TGSI vertex shaders on
+ Panfrost (Direct2D text)
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LTRTvXUrrD2JQxT2kzY44X
+---
+ src/gallium/drivers/panfrost/pan_cmdstream.h |  1 +
+ src/gallium/drivers/panfrost/pan_context.c   | 10 ++++
+ src/gallium/drivers/panfrost/pan_context.h   | 14 +++++
+ src/gallium/drivers/panfrost/pan_shader.c    | 55 ++++++++++++++++++++
+ 4 files changed, 80 insertions(+)
+
+diff --git a/src/gallium/drivers/panfrost/pan_cmdstream.h b/src/gallium/drivers/panfrost/pan_cmdstream.h
+index 2c0f5aa..d3b1f9b 100644
+--- a/src/gallium/drivers/panfrost/pan_cmdstream.h
++++ b/src/gallium/drivers/panfrost/pan_cmdstream.h
+@@ -61,6 +61,7 @@ struct panfrost_zsa_state {
+ };
+ 
+ struct panfrost_vertex_state {
++   /* exynos-woa 0066: num_elements and pipe[] are mirrored by struct panfrost_vertex_state_head (pan_context.h) */
+    unsigned num_elements;
+    struct pipe_vertex_element pipe[PIPE_MAX_ATTRIBS];
+    uint16_t strides[PIPE_MAX_ATTRIBS];
+diff --git a/src/gallium/drivers/panfrost/pan_context.c b/src/gallium/drivers/panfrost/pan_context.c
+index 093fd6e..1d22298 100644
+--- a/src/gallium/drivers/panfrost/pan_context.c
++++ b/src/gallium/drivers/panfrost/pan_context.c
+@@ -320,6 +320,16 @@ panfrost_bind_vertex_elements_state(struct pipe_context *pctx, void *hwcso)
+    struct panfrost_context *ctx = pan_context(pctx);
+    ctx->vertex = hwcso;
+    ctx->dirty |= PAN_DIRTY_VERTEX;
++#ifdef _WIN32
++   /* exynos-woa G2b-3 (0066): the vertex shader variant depends on which elements are integers */
++   if (ctx->uncompiled[MESA_SHADER_VERTEX] && ctx->uncompiled[MESA_SHADER_VERTEX]->s10_from_tgsi &&
++       ctx->uncompiled[MESA_SHADER_FRAGMENT]) {
++      struct panfrost_compiled_shader *s10_prog = ctx->prog[MESA_SHADER_VERTEX];
++      panfrost_update_shader_variant(ctx, MESA_SHADER_VERTEX);
++      if (ctx->prog[MESA_SHADER_VERTEX] != s10_prog)
++         ctx->dirty_shader[MESA_SHADER_VERTEX] = ~0;
++   }
++#endif
+ }
+ 
+ static void
+diff --git a/src/gallium/drivers/panfrost/pan_context.h b/src/gallium/drivers/panfrost/pan_context.h
+index 264e7d0..381a529 100644
+--- a/src/gallium/drivers/panfrost/pan_context.h
++++ b/src/gallium/drivers/panfrost/pan_context.h
+@@ -390,6 +390,17 @@ struct panfrost_vs_key {
+    /* Bit mask of varyings in the linked FS that use noperspective
+     * interpolation, starting at VARYING_SLOT_VAR0 */
+    uint32_t noperspective_varyings;
++
++   /* exynos-woa G2b-3 (0066): vertex elements with a pure-integer format that this TGSI-born shader reads: their
++    * loads must be integer loads (see pan_shader.c). */
++   uint32_t s10_int_attribs;
++};
++
++/* exynos-woa G2b-3 (0066): the first members of struct panfrost_vertex_state (pan_cmdstream.h, per PAN_ARCH), which
++ * are the same for every architecture - for code that is not built per architecture. */
++struct panfrost_vertex_state_head {
++   unsigned num_elements;
++   struct pipe_vertex_element pipe[PIPE_MAX_ATTRIBS];
+ };
+ 
+ struct panfrost_shader_key {
+@@ -454,6 +465,9 @@ struct panfrost_uncompiled_shader {
+ 
+    /* If gl_FragColor was lowered, we need to optimize the stores later */
+    bool fragcolor_lowered;
++
++   /* exynos-woa G2b-3 (0066): made by tgsi_to_nir - its inputs and outputs carry no types */
++   bool s10_from_tgsi;
+ };
+ 
+ /* The binary artefacts of compiling a shader. This differs from
+diff --git a/src/gallium/drivers/panfrost/pan_shader.c b/src/gallium/drivers/panfrost/pan_shader.c
+index 4824ead..fef9e69 100644
+--- a/src/gallium/drivers/panfrost/pan_shader.c
++++ b/src/gallium/drivers/panfrost/pan_shader.c
+@@ -98,6 +98,33 @@ lower_sample_mask_writes(nir_builder *b, nir_intrinsic_instr *intrin,
+ }
+ 
+ #ifdef _WIN32
++/* exynos-woa G2b-3 (0066): INTEGER VERTEX ATTRIBUTES FOR TGSI SHADERS. TGSI inputs have no type; tgsi_to_nir declares
++ * every vertex input a float vec4, and Bifrost then loads the attribute with a float register format - an integer
++ * vertex element (R16G16_SINT ...) arrives converted to float, and the shader's own I2F is applied to float bits.
++ * Direct2D's text pipeline is the user: per-glyph instances made of R16G16_SINT / R32_SINT elements (d2dtext v1.0,
++ * run g2b3-27: rectangles, ellipses and lines drawn, every text primitive 0 pixels on Panfrost, all right on WARP;
++ * Gallium trace: the text draw is the only one with integer elements). So a vertex shader variant per set of
++ * integer elements it reads: those load_input get an integer destination type (Bifrost: register format AUTO,
++ * i.e. the bits as they are). */
++static bool
++s10_int_attrib_load(nir_builder *b, nir_intrinsic_instr *intr, void *data)
++{
++   (void)b;
++   const uint32_t mask = *(const uint32_t *)data;
++   if (intr->intrinsic != nir_intrinsic_load_input)
++      return false;
++   unsigned idx = nir_intrinsic_base(intr);
++   nir_src *off = nir_get_io_offset_src(intr);
++   if (off && nir_src_is_const(*off))
++      idx += nir_src_as_uint(*off);
++   if (idx >= 32 || !(mask & BITFIELD_BIT(idx)))
++      return false;
++   if (nir_alu_type_get_base_type(nir_intrinsic_dest_type(intr)) != nir_type_float)
++      return false;
++   nir_intrinsic_set_dest_type(intr, nir_type_int | intr->def.bit_size);
++   return true;
++}
++
+ /* exynos-woa G2b-3 (0064): DUAL-SOURCE BLENDING FOR TGSI SHADERS. In D3D10 a pixel shader that writes SV_Target0 and
+  * SV_Target1 feeds two render targets or, when the blend state uses SRC1 factors, the two sources of one blend: the
+  * shader itself does not say which. d3d10umd hands Gallium TGSI, where both are COLOR[0]/COLOR[1], and tgsi_to_nir
+@@ -222,6 +249,19 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
+                panfrost_device_gpu_prod_id(dev) < 0x700);
+    }
+ 
++#ifdef _WIN32
++   if (s->info.stage == MESA_SHADER_VERTEX && key->vs.s10_int_attribs) {
++      /* 0066 */
++      uint32_t s10_mask = key->vs.s10_int_attribs;
++      bool s10_progress = false;
++      NIR_PASS(s10_progress, s, nir_shader_intrinsics_pass, s10_int_attrib_load, nir_metadata_all, &s10_mask);
++      static unsigned s10_notes;
++      if (s10_notes++ < 4)
++         fprintf(stderr, "panfrost: vertex shader variant with integer attributes 0x%x (TGSI inputs are untyped)%s\n",
++                 s10_mask, s10_progress ? "" : "; NO matching load_input found");
++   }
++#endif
++
+    /* Lower resource indices */
+    NIR_PASS(_, s, panfrost_nir_lower_res_indices, inputs.gpu_id);
+ 
+@@ -364,6 +404,20 @@ panfrost_build_vs_key(struct panfrost_context *ctx,
+ 
+    assert(fs != NULL && "too early");
+    key->noperspective_varyings = fs->noperspective_varyings;
++
++#ifdef _WIN32
++   /* 0066 */
++   if (uncompiled->s10_from_tgsi && ctx->vertex) {
++      const struct panfrost_vertex_state_head *v = (const struct panfrost_vertex_state_head *)ctx->vertex;
++      uint32_t ints = 0;
++      for (unsigned i = 0; i < v->num_elements && i < 32; i++) {
++         if (util_format_is_pure_integer(v->pipe[i].src_format))
++            ints |= BITFIELD_BIT(i);
++      }
++      /* tgsi_to_nir: IN[i] is VERT_ATTRIB_GENERIC0 + i and vertex element i */
++      key->s10_int_attribs = ints & (uint32_t)(uncompiled->nir->info.inputs_read >> VERT_ATTRIB_GENERIC0);
++   }
++#endif
+ }
+ 
+ static void
+@@ -576,6 +630,7 @@ panfrost_create_shader_state(struct pipe_context *pctx,
+                         : cso->ir.nir;
+ 
+    struct panfrost_uncompiled_shader *so = panfrost_alloc_shader(nir);
++   so->s10_from_tgsi = cso->type == PIPE_SHADER_IR_TGSI;   /* exynos-woa 0066 */
+ 
+    /* The driver gets ownership of the nir_shader for graphics. The NIR is
+     * ralloc'd. Free the NIR when we free the uncompiled shader.
+-- 
+2.43.0
+
