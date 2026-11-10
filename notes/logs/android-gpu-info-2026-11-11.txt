@@ -1,0 +1,852 @@
+android-gpu-info v1.0  Wed Nov 11 04:29:44 +07 2026
+== build
+r0s
+samsung/r0sxxx/r0s:14/UP1A.231005.007/S901BXXSDEYA1:user/release-keys
+Linux localhost 4.14.356-openela-rc1-ExtremeKernel-ravindu644-6436c3ed3 #1 SMP PREEMPT Fri Oct 30 17:33:35 UTC 2026 aarch64 Toybox
+== mali device nodes
+--- /sys/devices/platform/18500000.mali
+total 0
+drwxr-xr-x   6 root  root      0 2026-11-11 03:37 .
+drwxr-xr-x 300 root  root      0 2026-11-11 03:37 ..
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 asv_table
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 clock
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 core_mask
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 debug_level
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 down_staycount
+lrwxrwxrwx   1 root  root      0 2026-11-11 03:37 driver -> ../../../bus/platform/drivers/mali
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 driver_override
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 dvfs
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 dvfs_governor
+-rw-rw-r--   1 radio system 4096 2026-11-11 03:37 dvfs_max_lock
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 dvfs_max_lock_status
+-rw-rw-r--   1 radio system 4096 2026-11-11 03:37 dvfs_min_lock
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 dvfs_min_lock_status
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 dvfs_period
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 dvfs_table
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 gpuinfo
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 highspeed_clock
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 highspeed_delay
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 highspeed_load
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 js_ctx_scheduling_mode
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 js_scheduling_period
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 js_timeouts
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 lp_mem_pool_max_size
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 lp_mem_pool_size
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 mem_pool_max_size
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 mem_pool_size
+drwxr-xr-x   2 root  root      0 2026-11-11 03:37 mempool
+drwxr-xr-x   3 root  root      0 2026-11-11 03:37 misc
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 modalias
+lrwxrwxrwx   1 root  root      0 2026-11-11 03:37 of_node -> ../../../firmware/devicetree/base/mali@18500000
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 pm_poweroff
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 polling_speed
+drwxr-xr-x   2 root  root      0 2026-11-11 03:37 power
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 power_policy
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 power_state
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 reset_timeout
+drwxr-xr-x   2 root  root      0 2026-11-11 03:37 scheduling
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 soft_job_timeout
+lrwxrwxrwx   1 root  root      0 2026-11-11 03:37 subsystem -> ../../../bus/platform
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 time_in_state
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 tmu
+-rw-r--r--   1 root  root   4096 2026-11-11 03:37 uevent
+-r--r--r--   1 root  root   4096 2026-11-11 03:37 utilization
+== /sys/devices/platform/18500000.mali/asv_table
+GPU, vol
+702000,  681250
+650000,  662500
+572000,  650000
+433000,  625000
+377000,  612500
+325000,  587500
+260000,  568750
+200000,  568750
+156000,  543750
+
+
+== /sys/devices/platform/18500000.mali/clock
+156000
+
+== /sys/devices/platform/18500000.mali/core_mask
+Current core mask (JS0) : 0x770077
+Current core mask (JS1) : 0x770077
+Current core mask (JS2) : 0x770077
+Available core mask : 0x770077
+
+== /sys/devices/platform/18500000.mali/debug_level
+[Current] 3 (1 ~ 4)
+
+== /sys/devices/platform/18500000.mali/down_staycount
+Clock 702000 - 9
+Clock 650000 - 5
+Clock 572000 - 5
+Clock 433000 - 1
+Clock 377000 - 1
+Clock 325000 - 1
+Clock 260000 - 1
+Clock 200000 - 1
+Clock 156000 - 1
+
+
+== /sys/devices/platform/18500000.mali/driver_override
+(null)
+
+== /sys/devices/platform/18500000.mali/dvfs
+1
+
+== /sys/devices/platform/18500000.mali/dvfs_governor
+Default
+Interactive
+Joint
+Static
+Booster
+Dynamic
+[Current Governor] Interactive
+
+== /sys/devices/platform/18500000.mali/dvfs_max_lock
+-1
+
+== /sys/devices/platform/18500000.mali/dvfs_max_lock_status
+[0:0][1:0][2:0][3:0][4:0][5:0]
+
+== /sys/devices/platform/18500000.mali/dvfs_min_lock
+-1
+
+== /sys/devices/platform/18500000.mali/dvfs_min_lock_status
+[0:0][1:0][2:0][3:0][4:0][5:0]
+
+== /sys/devices/platform/18500000.mali/dvfs_period
+100
+
+== /sys/devices/platform/18500000.mali/dvfs_table
+ 702000 650000 572000 433000 377000 325000 260000 200000 156000
+
+
+== /sys/devices/platform/18500000.mali/gpuinfo
+Mali-G76 12 cores r0p0 0x7211
+
+== /sys/devices/platform/18500000.mali/highspeed_clock
+260000
+
+== /sys/devices/platform/18500000.mali/highspeed_delay
+0
+
+== /sys/devices/platform/18500000.mali/highspeed_load
+94
+
+== /sys/devices/platform/18500000.mali/js_ctx_scheduling_mode
+0
+
+== /sys/devices/platform/18500000.mali/js_scheduling_period
+100
+
+== /sys/devices/platform/18500000.mali/js_timeouts
+100 100 5000 5000 1500000 5500 5500 1502000
+
+== /sys/devices/platform/18500000.mali/modalias
+of:NmaliT<NULL>Carm,mali
+
+== /sys/devices/platform/18500000.mali/pm_poweroff
+400000 2 0
+
+== /sys/devices/platform/18500000.mali/polling_speed
+30
+
+== /sys/devices/platform/18500000.mali/power_policy
+[adaptive] coarse_demand always_on 
+
+== /sys/devices/platform/18500000.mali/power_state
+0
+
+== /sys/devices/platform/18500000.mali/reset_timeout
+3000
+
+== /sys/devices/platform/18500000.mali/soft_job_timeout
+3000
+
+== /sys/devices/platform/18500000.mali/time_in_state
+156000 651369 50496
+200000 3578 1248
+260000 21672 3663
+325000 18122 3989
+377000 4078 2442
+433000 2237 1293
+572000 29273 15637
+650000 1583 667
+702000 51834 48466
+
+== /sys/devices/platform/18500000.mali/tmu
+1
+
+== /sys/devices/platform/18500000.mali/utilization
+0
+
+--- /sys/kernel/gpu
+total 0
+drwxr-xr-x  2 root   root      0 2026-11-11 03:37 .
+drwxr-xr-x 17 root   root      0 2026-11-11 03:37 ..
+-rw-r--r--  1 root   root   4096 2026-11-11 03:37 debug_level
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_available_governor
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_busy
+-rw-rw-r--  1 system system 4096 2026-11-11 03:37 gpu_cl_boost_disable
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_cl_boost_state
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_clock
+-r--r--r--  1 system system 4096 2026-11-11 03:37 gpu_freq_table
+-rw-r--r--  1 system system 4096 2026-11-11 03:37 gpu_governor
+-rw-r--r--  1 system system 4096 2026-11-11 04:29 gpu_max_clock
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_memory
+-rw-r--r--  1 system system 4096 2026-11-11 04:29 gpu_min_clock
+-rw-r--r--  1 root   root   4096 2026-11-11 03:37 gpu_mm_min_clock
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_model
+-rw-r--r--  1 root   root   4096 2026-11-11 03:37 gpu_poweroff_delay
+-r--r--r--  1 root   root   4096 2026-11-11 03:37 gpu_tmu
+== /sys/kernel/gpu/debug_level
+[Current] 3 (1 ~ 4)
+
+== /sys/kernel/gpu/gpu_available_governor
+Default Interactive Joint Static Booster Dynamic 
+
+== /sys/kernel/gpu/gpu_busy
+  0%
+
+== /sys/kernel/gpu/gpu_cl_boost_disable
+0
+
+== /sys/kernel/gpu/gpu_cl_boost_state
+enabled(1) active(0) compute_ratio(0)
+
+== /sys/kernel/gpu/gpu_clock
+0
+
+== /sys/kernel/gpu/gpu_freq_table
+156000 200000 260000 325000 377000 433000 572000 650000 702000 
+
+== /sys/kernel/gpu/gpu_governor
+Interactive
+
+== /sys/kernel/gpu/gpu_max_clock
+702000
+
+== /sys/kernel/gpu/gpu_memory
+     tgid       pid   bytes_used
+    10841     10860      5922816
+    10572     10612     25042944
+     4146     31019     23040000
+     9294      9317      3170304
+     9075      9104      2109440
+     8594      8706      3055616
+     8206      8227      2097152
+     7616      7644      4255744
+     2296      2337     28131328
+     2296      2337       888832
+    32669     32691      3203072
+    23063     23148       483328
+     4005     17762       495616
+    17591     17609      3473408
+     3750     15630       475136
+     4146      4430       483328
+     2578     10034       483328
+     3802      5435      9146368
+     1219      5146     11878400
+     2161      4161     63414272
+     1672      1829     19464192
+      740       740      7593984
+      785       785      7598080
+      804       829     12537856
+
+== /sys/kernel/gpu/gpu_min_clock
+156000
+
+== /sys/kernel/gpu/gpu_mm_min_clock
+156000
+
+== /sys/kernel/gpu/gpu_model
+Mali-G76 12 cores r0p0 0x7211
+
+== /sys/kernel/gpu/gpu_poweroff_delay
+50
+
+== /sys/kernel/gpu/gpu_tmu
+51.0
+
+--- /sys/class/misc/mali0/device
+lrwxrwxrwx 1 root root 0 2026-11-11 04:29 /sys/class/misc/mali0/device -> ../../../18500000.mali
+== /sys/class/misc/mali0/device/asv_table
+GPU, vol
+702000,  681250
+650000,  662500
+572000,  650000
+433000,  625000
+377000,  612500
+325000,  587500
+260000,  568750
+200000,  568750
+156000,  543750
+
+
+== /sys/class/misc/mali0/device/clock
+0
+
+== /sys/class/misc/mali0/device/core_mask
+Current core mask (JS0) : 0x770077
+Current core mask (JS1) : 0x770077
+Current core mask (JS2) : 0x770077
+Available core mask : 0x770077
+
+== /sys/class/misc/mali0/device/debug_level
+[Current] 3 (1 ~ 4)
+
+== /sys/class/misc/mali0/device/down_staycount
+Clock 702000 - 9
+Clock 650000 - 5
+Clock 572000 - 5
+Clock 433000 - 1
+Clock 377000 - 1
+Clock 325000 - 1
+Clock 260000 - 1
+Clock 200000 - 1
+Clock 156000 - 1
+
+
+== /sys/class/misc/mali0/device/driver_override
+(null)
+
+== /sys/class/misc/mali0/device/dvfs
+1
+
+== /sys/class/misc/mali0/device/dvfs_governor
+Default
+Interactive
+Joint
+Static
+Booster
+Dynamic
+[Current Governor] Interactive
+
+== /sys/class/misc/mali0/device/dvfs_max_lock
+-1
+
+== /sys/class/misc/mali0/device/dvfs_max_lock_status
+[0:0][1:0][2:0][3:0][4:0][5:0]
+
+== /sys/class/misc/mali0/device/dvfs_min_lock
+-1
+
+== /sys/class/misc/mali0/device/dvfs_min_lock_status
+[0:0][1:0][2:0][3:0][4:0][5:0]
+
+== /sys/class/misc/mali0/device/dvfs_period
+100
+
+== /sys/class/misc/mali0/device/dvfs_table
+ 702000 650000 572000 433000 377000 325000 260000 200000 156000
+
+
+== /sys/class/misc/mali0/device/gpuinfo
+Mali-G76 12 cores r0p0 0x7211
+
+== /sys/class/misc/mali0/device/highspeed_clock
+260000
+
+== /sys/class/misc/mali0/device/highspeed_delay
+0
+
+== /sys/class/misc/mali0/device/highspeed_load
+94
+
+== /sys/class/misc/mali0/device/js_ctx_scheduling_mode
+0
+
+== /sys/class/misc/mali0/device/js_scheduling_period
+100
+
+== /sys/class/misc/mali0/device/js_timeouts
+100 100 5000 5000 1500000 5500 5500 1502000
+
+== /sys/class/misc/mali0/device/modalias
+of:NmaliT<NULL>Carm,mali
+
+== /sys/class/misc/mali0/device/pm_poweroff
+400000 2 0
+
+== /sys/class/misc/mali0/device/polling_speed
+30
+
+== /sys/class/misc/mali0/device/power_policy
+[adaptive] coarse_demand always_on 
+
+== /sys/class/misc/mali0/device/power_state
+0
+
+== /sys/class/misc/mali0/device/reset_timeout
+3000
+
+== /sys/class/misc/mali0/device/soft_job_timeout
+3000
+
+== /sys/class/misc/mali0/device/time_in_state
+156000 651369 50496
+200000 3578 1248
+260000 21672 3663
+325000 18122 3989
+377000 4078 2442
+433000 2237 1293
+572000 29273 15637
+650000 1583 667
+702000 51834 48466
+
+== /sys/class/misc/mali0/device/tmu
+1
+
+== /sys/class/misc/mali0/device/utilization
+0
+
+--- /sys/devices/platform/15862100.pd-embedded_g3d
+total 0
+drwxr-xr-x   3 root root    0 2026-11-11 03:37 .
+drwxr-xr-x 300 root root    0 2026-11-11 03:37 ..
+-rw-r--r--   1 root root 4096 2026-11-11 04:29 driver_override
+-r--r--r--   1 root root 4096 2026-11-11 04:29 modalias
+lrwxrwxrwx   1 root root    0 2026-11-11 04:29 of_node -> ../../../firmware/devicetree/base/pd-embedded_g3d@15862100
+drwxr-xr-x   2 root root    0 2026-11-11 03:37 power
+lrwxrwxrwx   1 root root    0 2026-11-11 04:29 subsystem -> ../../../bus/platform
+-rw-r--r--   1 root root 4096 2026-11-11 03:37 uevent
+== /sys/devices/platform/15862100.pd-embedded_g3d/driver_override
+(null)
+
+== /sys/devices/platform/15862100.pd-embedded_g3d/modalias
+of:Npd-embedded_g3dT<NULL>Csamsung,exynos-pd
+
+--- /sys/devices/platform/dbgdev-pd-embedded-g3d
+total 0
+drwxr-xr-x   3 root root    0 2026-11-11 03:37 .
+drwxr-xr-x 300 root root    0 2026-11-11 03:37 ..
+lrwxrwxrwx   1 root root    0 2026-11-11 04:29 driver -> ../../../bus/platform/drivers/exynos_pd_dbg
+-rw-r--r--   1 root root 4096 2026-11-11 04:29 driver_override
+-r--r--r--   1 root root 4096 2026-11-11 04:29 modalias
+lrwxrwxrwx   1 root root    0 2026-11-11 04:29 of_node -> ../../../firmware/devicetree/base/dbgdev-pd-embedded-g3d
+drwxr-xr-x   2 root root    0 2026-11-11 03:37 power
+lrwxrwxrwx   1 root root    0 2026-11-11 04:29 subsystem -> ../../../bus/platform
+-rw-r--r--   1 root root 4096 2026-11-11 03:37 uevent
+== /sys/devices/platform/dbgdev-pd-embedded-g3d/driver_override
+(null)
+
+== /sys/devices/platform/dbgdev-pd-embedded-g3d/modalias
+of:Ndbgdev-pd-embedded-g3dT<NULL>Csamsung,exynos-pd-dbg
+
+== devfreq
+--- /sys/class/devfreq/17000010.devfreq_mif
+== cur_freq
+2093000
+
+== min_freq
+421000
+
+== max_freq
+2093000
+
+== available_frequencies
+421000 546000 676000 845000 1014000 1352000 1539000 1794000 2093000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :   2094000   2093000   1794000   1539000   1352000   1014000    845000    676000    546000    421000   time(ms)
+    2094000:         0         0         0         0         0         0         0         0         0         0         0
+    2093000:         0         0      1957      3617      2598      4537       442       167        17        61    835904
+    1794000:         0      1785         0        90       179        54         6         4         1         5    203256
+    1539000:         0      3398        40         0       148       129         7         5         4         2     89544
+    1352000:         0      2488        91        26         0       384        28        24        10        12    165652
+    1014000:         0      5002        27         0       132         0       415       175        37        58    810776
+     845000:         0       437         0         0         3       387         0       576        79        37    176288
+*    676000:         0       202         1         0         3       205       464         0      2475       544    612692
+     546000:         0        25         1         0         0        71       146      2513         0       109    159128
+     421000:         0        58         7         0         0        79        11       431       242         0     82476
+Total transition : 37268
+
+--- /sys/class/devfreq/17000020.devfreq_int
+== cur_freq
+200000
+
+== min_freq
+100000
+
+== max_freq
+534000
+
+== available_frequencies
+100000 200000 267000 400000 534000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    534000    400000    267000    200000    100000   time(ms)
+     534000:         0        11         3         8         2     55464
+     400000:        17         0      1288      9351         0    583220
+     267000:         1      1258         0       701         0    131168
+*    200000:         3      9387       669         0         1   2365228
+     100000:         2         0         0         1         0       784
+Total transition : 22703
+
+--- /sys/class/devfreq/17000030.devfreq_intcam
+== cur_freq
+630000
+
+== min_freq
+630000
+
+== max_freq
+680000
+
+== available_frequencies
+630000 640000 650000 660000 670000 680000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    690000    680000    670000    660000    650000    640000    630000   time(ms)
+     690000:         0         0         0         0         0         0         0         0
+     680000:         0         0         0         0         0         5         0       844
+     670000:         0         0         0         0         0         0         0         0
+     660000:         0         0         0         0         0         0         0         0
+     650000:         0         0         0         0         0         0         0         0
+     640000:         0         0         0         0         0         0         5      4112
+*    630000:         0         5         0         0         0         0         0   3131052
+Total transition : 15
+
+--- /sys/class/devfreq/17000040.devfreq_disp
+== cur_freq
+134000
+
+== min_freq
+134000
+
+== max_freq
+640000
+
+== available_frequencies
+134000 200000 333000 534000 640000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    640000    534000    333000    200000    134000   time(ms)
+     640000:         0         0         0         1         0     40512
+     534000:         1         0         0         0         0         0
+     333000:         0         0         0         0         0         0
+     200000:         0         0         0         0      5499   2186536
+*    134000:         0         0         0      5498         0    909112
+Total transition : 10999
+
+--- /sys/class/devfreq/17000050.devfreq_cam
+== cur_freq
+650000
+
+== min_freq
+650000
+
+== max_freq
+690000
+
+== available_frequencies
+650000 660000 670000 680000 690000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    690000    680000    670000    660000    650000   time(ms)
+     690000:         0         5         0         0         0       848
+     680000:         0         0         0         0         5      4100
+     670000:         0         0         0         0         0         0
+     660000:         0         0         0         0         0         0
+*    650000:         5         0         0         0         0   3131360
+Total transition : 15
+
+--- /sys/class/devfreq/17000060.devfreq_aud
+== cur_freq
+295000
+
+== min_freq
+295000
+
+== max_freq
+1180000
+
+== available_frequencies
+295000 394000 590000 800000 1180000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :   1180000    800000    590000    394000    295000   time(ms)
+    1180000:         0         0         0         2         8       988
+     800000:         0         0         0         0         0         0
+     590000:         0         0         0         0         0         0
+     394000:         0         0         0         0         2      8128
+*    295000:        10         0         0         0         0   3127296
+Total transition : 22
+
+--- /sys/class/devfreq/17000070.devfreq_iva
+== cur_freq
+56000
+
+== min_freq
+56000
+
+== max_freq
+534000
+
+== available_frequencies
+56000 167000 333000 400000 467000 534000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    534000    467000    400000    333000    167000     56000   time(ms)
+     534000:         0         0         0         0         0         0         0
+     467000:         0         0         0         0         0         0         0
+     400000:         0         0         0         0         0         0         0
+     333000:         0         0         0         0         0         0         0
+     167000:         0         0         0         0         0         0         0
+*     56000:         0         0         0         0         0         0   3136480
+Total transition : 0
+
+--- /sys/class/devfreq/17000080.devfreq_score
+== cur_freq
+25000
+
+== min_freq
+25000
+
+== max_freq
+666000
+
+== available_frequencies
+25000 200000 400000 467000 534000 666000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    666000    534000    467000    400000    200000     25000   time(ms)
+     666000:         0         0         0         0         0         0         0
+     534000:         0         0         0         0         0         0         0
+     467000:         0         0         0         0         0         0         0
+     400000:         0         0         0         0         0         0         0
+     200000:         0         0         0         0         0         0         0
+*     25000:         0         0         0         0         0         0   3136536
+Total transition : 0
+
+--- /sys/class/devfreq/17000090.devfreq_mfc
+== cur_freq
+134000
+
+== min_freq
+134000
+
+== max_freq
+666000
+
+== available_frequencies
+134000 267000 400000 534000 666000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    800000    666000    534000    400000    267000    134000   time(ms)
+     800000:         0         0         0         0         0         0         0
+     666000:         0         0         0         4         1         2     14044
+     534000:         0         0         0         0         0         0         0
+     400000:         0         0         0         0         0        13      8352
+     267000:         0         0         0         0         0        51     10876
+*    134000:         0         7         0         9        50         0   3103332
+Total transition : 137
+
+--- /sys/class/devfreq/170000a0.devfreq_npu
+== cur_freq
+167000
+
+== min_freq
+167000
+
+== max_freq
+933000
+
+== available_frequencies
+167000 222000 333000 334000 400000 666000 800000 933000
+
+== available_governors
+interactive
+
+== governor
+interactive
+
+== trans_stat
+     From  :   To
+           :    933000    800000    666000    400000    334000    333000    222000    167000   time(ms)
+     933000:         0         0         0         0         0         0         0         0         0
+     800000:         0         0         0         0         0         0         0         0         0
+     666000:         0         0         0         0         0         0         0         0         0
+     400000:         0         0         0         0         0         0         0         0         0
+     334000:         0         0         0         0         0         0         0         0         0
+     333000:         0         0         0         0         0         0         0         0         0
+     222000:         0         0         0         0         0         0         0         0         0
+*    167000:         0         0         0         0         0         0         0         0   3136664
+Total transition : 0
+
+== cpufreq (for comparison with gpubench's CPU numbers)
+--- /sys/devices/system/cpu/cpufreq/policy0: related 0 1 2 3 cur 1300000 min 442000 max 1950000
+1950000 1846000 1742000 1586000 1456000 1300000 1157000 1053000 949000 806000 650000 546000 442000 
+--- /sys/devices/system/cpu/cpufreq/policy4: related 4 5 cur 1794000 min 507000 max 2314000
+2314000 2210000 2106000 2002000 1898000 1794000 1690000 1586000 1508000 1404000 1222000 1066000 962000 845000 754000 650000 507000 
+--- /sys/devices/system/cpu/cpufreq/policy6: related 6 7 cur 2600000 min 520000 max 2730000
+2730000 2600000 2530000 2470000 2340000 2236000 2080000 1976000 1820000 1664000 1560000 1456000 1378000 1248000 1144000 1040000 936000 819000 728000 624000 520000 
+== thermal zones
+BIG 58000
+MID 54000
+LITTLE 53000
+G3D 50000
+ISP 50000
+ac 42100
+battery 35100
+== ECT / ASV / cal-if debugfs (needs debugfs mounted)
+== regulators with g3d / gpu in the name
+S2MPB02_BUCK1: 1300000 uV, min 1300000 max 1300000, state enabled
+m_vdd_buck1: 600000 uV, min 450000 max 1100000, state enabled
+m_vdd_buck2: 1056250 uV, min 450000 max 1300000, state enabled
+m_vdd_buck3: 850000 uV, min 450000 max 1300000, state enabled
+m_vdd_buck4: 743750 uV, min 450000 max 1300000, state enabled
+m_vdd_buck5: 581250 uV, min 450000 max 950000, state enabled
+m_vdd_buck6: 581250 uV, min 450000 max 1100000, state enabled
+m_vdd_buck7: 750000 uV, min 450000 max 1300000, state enabled
+m_vdd_buck8: 600000 uV, min 450000 max 950000, state enabled
+m_vdd_buck9: 850000 uV, min 750000 max 1150000, state enabled
+m_vdd_buck10: 1100000 uV, min 900000 max 1300000, state enabled
+m_vdd_buck11: 1300000 uV, min 1100000 max 1500000, state enabled
+m_vdd_buck12: 2000000 uV, min 1700000 max 2150000, state enabled
+s_vdd_buck1: 587500 uV, min 450000 max 950000, state enabled
+s_vdd_buck2: 1100000 uV, min 900000 max 1300000, state enabled
+== clk summary lines for g3d / gpu
+== dmesg (mali / g3d / dvfs / asv / acpm)
+[ 2742.878081] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2745.232313] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2768.783029] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2771.033854] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2772.645824] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2779.256355] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2807.175209] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2808.001996] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2811.903147] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2833.231099] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:104.18.42.77 | dst:192.168.0.115 | 45 2a 05 dc e0 89 40 00 39 06 07 ee 68 12 2a 4d c0 a8 00 73 01 bb d4 06 e1 be bb 50 f6 60 61 88 80 10 00 10 be 67 00 00 01 01 08 0a 67 08 8d 8f
+[ 2833.231358] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:104.18.42.77 | dst:192.168.0.115 | 45 2a 05 dc e0 95 40 00 39 06 07 e2 68 12 2a 4d c0 a8 00 73 01 bb d4 06 e1 be fa 5c f6 60 61 88 80 10 00 10 d6 cf 00 00 01 01 08 0a 67 08 8d 92
+[ 2833.232679] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:104.18.42.77 | dst:192.168.0.115 | 45 2a 05 dc e0 96 40 00 39 06 07 e1 68 12 2a 4d c0 a8 00 73 01 bb d4 06 e1 bf 00 04 f6 60 61 88 80 18 00 10 9e f7 00 00 01 01 08 0a 67 08 8d 92
+[ 2833.232835] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:104.18.42.77 | dst:192.168.0.115 | 45 2a 05 dc e0 97 40 00 39 06 07 e0 68 12 2a 4d c0 a8 00 73 01 bb d4 06 e1 bf 05 ac f6 60 61 88 80 10 00 10 ca 95 00 00 01 01 08 0a 67 08 8d 92
+[ 2833.232961] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:104.18.42.77 | dst:192.168.0.115 | 45 2a 05 dc e0 98 40 00 39 06 07 df 68 12 2a 4d c0 a8 00 73 01 bb d4 06 e1 bf 0b 54 f6 60 61 88 80 10 00 10 09 60 00 00 01 01 08 0a 67 08 8d 92
+[ 2834.247782] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2889.371605] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:142.251.14.94 | dst:192.168.0.115 | 45 48 00 3c 00 00 40 00 77 06 a4 ff 8e fb 0e 5e c0 a8 00 73 01 bb 88 c0 cc 41 9f 48 53 f4 21 ad a0 12 ff ff a0 d2 00 00 02 04 05 84 04 02 08 0a
+[ 2931.610038] [@][0][LIB:3AA0]object_create done
+[ 2931.617935] [@][0][LIB:ISP0]object_create done
+[ 2931.645266] [@][RSC] fimc_is_dvfs_sel_table(0):0
+[ 2931.648374] [@][LIB] [DDK][S0][F000001] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[ 2931.733255] [@][0][LIB:3AA0]object_suspend done
+[ 2931.733625] [@][0][LIB:ISP0]object_suspend done
+[ 2931.764482] [@]fimc_is_vendor_select_mipi_by_rf_channel: searching rf channel s [3,93,1700]
+[ 2931.764487] [@]fimc_is_vendor_select_mipi_by_rf_channel: searching result : [0x3005d,(1425-1729)]->(3)
+[ 2931.792206] [@][LIB] [DDK][S0][F000007] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[ 2931.902193] [@][1][LIB:3AA1]object_create done
+[ 2931.906157] [@][1][LIB:ISP1]object_create done
+[ 2931.914316] [@][1][MXS][WRN]reprocessing cannot connect to VRA
+[ 2932.336533] [@][0][LIB:3AA0]object_suspend done
+[ 2932.365992] [@][0][LIB:ISP0]object_suspend done
+[ 2932.368147] [@][1][LIB:3AA1]object_suspend done
+[ 2932.368215] [@][1][LIB:ISP1]object_suspend done
+[ 2932.442856] [@][1][LIB:3AA1]object_destroy done
+[ 2932.443102] [@][1][LIB:ISP1]object_destroy done
+[ 2932.452199] [@][0][LIB:3AA0]object_destroy done
+[ 2932.452610] [@][0][LIB:ISP0]object_destroy done
+[ 2954.908970] [sec_input] sec_cmd_store: push cmd: set_aod_rect,0,0,0,0
+[ 2954.908987] [sec_input] sec_cmd_store_function: cmd = set_aod_rect param = 0 0 0 0
+[ 2954.909004] sec_ts 4-0048: [sec_input]set_aod_rect: w:0, h:0, x:0, y:0, lowpower_mode:0x3C
+[ 2955.383200] PANEL:INFO:panel_regulator_set_short_detection:set regulator(elvss) SSD:2000uA, state:1 enable:true
+[ 2955.400948] PANEL:INFO:panel_sleep_out:ub connected
+[ 2955.417761] PANEL:INFO:panel_regulator_set_short_detection:set regulator(elvss) SSD:8000uA, state:3 enable:true
+[ 2961.440649] phy_exynos_usbdrd 10b00000.phy: USB wasn't connected
+[ 2961.440914] exynos_acpm_tmu_set_resume: acpm irq 0 cold cnt 0 stat 1
+[ 2961.441339] exynos-tmu 100a0000.G3D: Sensor number = 1
+[ 2961.441372] exynos-tmu 100a0000.G3D: Sensor number = 2
+[ 2961.441402] exynos-tmu 100a0000.G3D: Sensor number = 3
+[ 2961.441432] exynos-tmu 100a0000.G3D: Sensor number = 4
+[ 2961.441462] exynos-tmu 100a0000.G3D: Sensor number = 9
+[ 2961.552041] mmc0: no detect irq, skipping mmc_rescan
+[ 2963.357120] phy_exynos_usbdrd 10b00000.phy: USB wasn't connected
+[ 2963.357384] exynos_acpm_tmu_set_resume: acpm irq 0 cold cnt 0 stat 1
+[ 2963.357817] exynos-tmu 100a0000.G3D: Sensor number = 1
+[ 2963.357849] exynos-tmu 100a0000.G3D: Sensor number = 2
+[ 2963.357879] exynos-tmu 100a0000.G3D: Sensor number = 3
+[ 2963.357910] exynos-tmu 100a0000.G3D: Sensor number = 4
+[ 2963.357941] exynos-tmu 100a0000.G3D: Sensor number = 9
+[ 2963.459669] mmc0: no detect irq, skipping mmc_rescan
+[ 2967.737911] mmc0: no detect irq, skipping mmc_rescan
+[ 2968.772757] PM: Resume caused by IRQ 440, qbt_finger_detect
+[ 2968.836843] phy_exynos_usbdrd 10b00000.phy: USB wasn't connected
+[ 2968.837156] exynos_acpm_tmu_set_resume: acpm irq 0 cold cnt 0 stat 1
+[ 2968.837658] exynos-tmu 100a0000.G3D: Sensor number = 1
+[ 2968.837694] exynos-tmu 100a0000.G3D: Sensor number = 2
+[ 2968.837728] exynos-tmu 100a0000.G3D: Sensor number = 3
+[ 2968.837761] exynos-tmu 100a0000.G3D: Sensor number = 4
+[ 2968.837795] exynos-tmu 100a0000.G3D: Sensor number = 9
+[ 2968.953614] mmc0: no detect irq, skipping mmc_rescan
+[ 2969.167636] PANEL:INFO:panel_sleep_out:ub connected
+[ 2969.556254] [sec_input] sec_cmd_store: push cmd: set_aod_rect,0,0,0,0
+[ 2969.556273] [sec_input] sec_cmd_store_function: cmd = set_aod_rect param = 0 0 0 0
+[ 2969.556291] sec_ts 4-0048: [sec_input]set_aod_rect: w:0, h:0, x:0, y:0, lowpower_mode:0x3C
+[ 2979.535429] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2979.987318] servicemanager: appid(isolated), connectivity is not allowed isolated app
+[ 2990.513723] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:160.79.104.10 | dst:192.168.0.115 | 45 2a 00 34 fb c4 40 00 39 06 7c 60 a0 4f 68 0a c0 a8 00 73 01 bb 94 06 e4 12 a9 a2 fc 66 85 b9 80 10 00 10 6b 67 00 00 01 01 08 0a 6b 2e 68 58
+[ 2990.513788] drop_dump: [168.OPT_TCP_PAWSREJECTED] src:160.79.104.10 | dst:192.168.0.115 | 45 28 00 34 d8 70 40 00 39 06 9f b6 a0 4f 68 0a c0 a8 00 73 01 bb 93 c2 8f ee c2 30 96 6e 0c ef 80 10 00 12 66 ad 00 00 01 01 08 0a e2 cc 10 07
+[ 3112.871129] KernelSU: Found new base.apk at path: /data/app/~~ZYG0_VEWj4IRHuicdYz7wg==/com.google.android.projection.gearhead-uAJ3SvGp_Msfjp9uEPGD9A==/base.apk, is_manager: 0
+[ 3127.675840] KernelSU: Found new base.apk at path: /data/app/~~ZYG0_VEWj4IRHuicdYz7wg==/com.google.android.projection.gearhead-uAJ3SvGp_Msfjp9uEPGD9A==/base.apk, is_manager: 0

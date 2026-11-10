@@ -1343,3 +1343,17 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Left: FAIL geometry-shader (none in Panfrost); MISSING msaa4-resolve / msaa4-load-samples (4x MSAA not offered),
   B5G6R5 / B5G5R5A1 (optional); cube-map passes with 208 px up to 247 off at face edges.
 - Next: real apps (Edge, Photos, Store, Terminal), touch keyboard hang, Win+Shift+S, MSAA, GS, brightness driver.
+
+### Android-side data (2026-11-11 06:40, user's S10 on Android 14 "r0s" ROM, ExtremeKernel 4.14.356)
+- notes/logs/android-gpu-info-2026-11-11.txt (android-gpu-info.sh v1.0). Mali-G76 MP12 r0p0 (gpu_id 0x7211),
+  core mask 0x770077. asv_table of THIS chip (kHz, uV): 702000 681250 | 650000 662500 | 572000 650000 |
+  433000 625000 | 377000 612500 | 325000 587500 | 260000 568750 | 200000 568750 | 156000 543750. dvfs_table tops at
+  702 MHz (no 803 MHz step in this kernel). time_in_state: mostly 156 MHz idle, 572 / 702 MHz under load. G3D
+  thermal zone 50 C idle. Regulator names do not say which buck feeds G3D (ACPM does it on Exynos) - still needed
+  before the UEFI raises G3D above the firmware's 260 MHz. CPU policies: 4 x 1.95 GHz, 2 x 2.31 GHz, 2 x 2.73 GHz;
+  under Windows only 6 processors are online.
+- User also ran "panprobe" (Android app dev.zenithblue.panvktest 1.3.2) with an imported panvk .so (Mesa 26.3.0-devel
+  git-795ca7ff3e "p0175", a fork with a kbase JM backend for v7): 41/41 PASS on this phone, incl. geometry,
+  tessellation, xfb, pipeline stats, BC emulation; d3d_fl: DXVK 3.1.1 D3D11 up to FL 11_1, vkd3d-proton D3D12 11_1.
+  So Bifrost v7 here can do GS / tessellation / FL11 through panvk. User asks to "integrate it" - open question
+  whether he means a panprobe-style harness for our Gallium driver or porting that panvk to the Windows shim.
