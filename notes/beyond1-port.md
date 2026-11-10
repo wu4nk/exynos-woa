@@ -1102,3 +1102,21 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Checked and fine by reading: buffer -> buffer resource_copy_region goes to util_resource_copy_region (0062
   only takes textures); panfrost_update_sampler_view / texel_buffer_base_ptr follow a BO change;
   attribs are re-emitted on TEXTURE | SHADER dirty; max texel buffer elements 2^27 on v6+.
+- 0067 (UMD 66a415a1): (a) tgsi_to_nir sets info.texture_buffers for a BUFFER sampler view (ttn_sview_var and
+  the legacy get_sampler_var), so a Bifrost shader that fetches from a buffer gets attribute_count > 0 and
+  panfrost_emit_image_texbuf_attribs emits its attribute table; pan_shader.c logs "panfrost: <stage> shader
+  fetches from texel buffers (slots 0x..): attribute_count N" (first 4). (b) pan_nir_collect_varyings.c
+  walk_varyings, _WIN32 only: the "untrusted type" rule no longer needs !separate_shader - VS stores highp
+  VAR0+ varyings as U32, FS loads flat ones as U32, smooth ones stay F32 (the path every linked GL program
+  already takes). S10_TRUST_VARYING_TYPES=1 = old rule.
+- 0067 review (adversarial pass): texture_buffers is written nowhere else (nir_gather_info / nir_lower_samplers
+  do not touch it; the end of tgsi_to_nir zeroes only textures_used_by_txf), is copied by nir_shader_clone, and
+  the bit index is the SVIEW index = the pipe sampler-view slot = ctx->texture_buffer[stage].mask bit =
+  texture_index after nir_lower_samplers (mid_lower_tex adds 0 for a FS without images), so attribute i is the
+  one emit_texbuf_attribs fills. A shader that declares a buffer with none bound gets a CONSTANT-format
+  attribute (existing loop). Varyings: FS descriptor format = FS base type + VS bit size + VS ncomps
+  (panfrost_emit_varying_descriptor), so VS U32 / FS F32 for smooth varyings is the designed mismatch; flat
+  loads go LD_VAR_FLAT with regfmt U32; locations < VAR0 (position etc.) untouched; walk_varyings is run on
+  the uncompiled NIR (VS layout) and again per variant with the same result. Risk accepted: (b) changes every
+  shader's varying store type on Windows at once - if rendering regresses broadly, suspect it first.
+  Not run anywhere yet. Symbols: scratchpad sym-0067/ (session-local).

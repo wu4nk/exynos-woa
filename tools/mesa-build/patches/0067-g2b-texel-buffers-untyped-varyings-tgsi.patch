@@ -1,0 +1,105 @@
+From e732694a23fc5f323940b2ba23341c783d64c053 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 13:40:47 +0700
+Subject: [PATCH] G2b-3: texel buffers and untyped varyings of TGSI shaders on
+ Panfrost (Direct2D text)
+
+tgsi_to_nir never set info.texture_buffers, which Panfrost uses to size a
+Bifrost shader's attribute table (a texel buffer is an attribute on v6/v7):
+attribute_count stayed 0, panfrost_emit_image_texbuf_attribs emitted no
+table and every SAMPLE_I on a buffer read nothing. Direct2D keeps glyph
+coverage in a buffer, so all text was transparent.
+
+TGSI varyings are untyped (tgsi_to_nir: float vec4, separate_shader), so
+integers MOVed through a CONSTANT varying were stored/loaded as float32,
+which the hardware does not keep bit-exact (docs/drivers/panfrost/
+varyings.rst). On Windows apply the linked-program rule to them too: VS
+stores highp varyings as U32, FS reads flat ones as U32.
+S10_TRUST_VARYING_TYPES=1 restores the old rule.
+---
+ src/gallium/auxiliary/nir/tgsi_to_nir.c          |  7 +++++++
+ src/gallium/drivers/panfrost/pan_shader.c        |  8 ++++++++
+ src/panfrost/compiler/pan_nir_collect_varyings.c | 16 ++++++++++++++++
+ 3 files changed, 31 insertions(+)
+
+diff --git a/src/gallium/auxiliary/nir/tgsi_to_nir.c b/src/gallium/auxiliary/nir/tgsi_to_nir.c
+index 9812dd7..b6627fb 100644
+--- a/src/gallium/auxiliary/nir/tgsi_to_nir.c
++++ b/src/gallium/auxiliary/nir/tgsi_to_nir.c
+@@ -1107,6 +1107,8 @@ get_sampler_var(struct ttn_compile *c, int binding,
+ 
+       /* Record textures used */
+       BITSET_SET(c->build.shader->info.textures_used, binding);
++      if (dim == GLSL_SAMPLER_DIM_BUF)   /* exynos-woa G2b-3 0067, see ttn_sview_var */
++         BITSET_SET(c->build.shader->info.texture_buffers, binding);
+       if (op == nir_texop_txf || op == nir_texop_txf_ms)
+          BITSET_SET(c->build.shader->info.textures_used_by_txf, binding);
+       BITSET_SET(c->build.shader->info.samplers_used, binding);
+@@ -1437,6 +1439,11 @@ ttn_sview_var(struct ttn_compile *c, unsigned sview, enum glsl_sampler_dim dim,
+       c->sview_vars[sview] = var;
+       c->num_samplers = MAX2(c->num_samplers, sview + 1);
+       BITSET_SET(c->build.shader->info.textures_used, sview);
++      /* exynos-woa G2b-3 0067: gl_nir_lower_samplers_as_deref.c is the only other place that sets this, and
++       * Panfrost counts a Bifrost shader's attribute table from it (a texel buffer is an attribute there):
++       * without the bit the shader has no table and every buffer fetch reads nothing (Direct2D text). */
++      if (dim == GLSL_SAMPLER_DIM_BUF)
++         BITSET_SET(c->build.shader->info.texture_buffers, sview);
+    }
+    if (op == nir_texop_txf || op == nir_texop_txf_ms)
+       BITSET_SET(c->build.shader->info.textures_used_by_txf, sview);
+diff --git a/src/gallium/drivers/panfrost/pan_shader.c b/src/gallium/drivers/panfrost/pan_shader.c
+index fef9e69..438241d 100644
+--- a/src/gallium/drivers/panfrost/pan_shader.c
++++ b/src/gallium/drivers/panfrost/pan_shader.c
+@@ -366,6 +366,14 @@ panfrost_shader_get(struct pipe_screen *pscreen,
+ #ifdef _WIN32
+       p_atomic_add(&s10_perf_mesa[0], 1);
+       p_atomic_add(&s10_perf_mesa[1], os_time_get_nano() - s10_t0);
++      /* 0067: a Bifrost texel buffer is an attribute; attribute_count 0 here = the fetches read nothing */
++      if (!BITSET_IS_EMPTY(uncompiled->nir->info.texture_buffers)) {
++         static unsigned s10_tb_notes;
++         if (s10_tb_notes++ < 4)
++            fprintf(stderr, "panfrost: %s shader fetches from texel buffers (slots 0x%x): attribute_count %u\n",
++                    mesa_shader_stage_name(uncompiled->nir->info.stage),
++                    (unsigned)uncompiled->nir->info.texture_buffers[0], res.info.attribute_count);
++      }
+ #endif
+ 
+       panfrost_disk_cache_store(screen->disk_cache, uncompiled, &state->key,
+diff --git a/src/panfrost/compiler/pan_nir_collect_varyings.c b/src/panfrost/compiler/pan_nir_collect_varyings.c
+index c7a43af..b5d2d0b 100644
+--- a/src/panfrost/compiler/pan_nir_collect_varyings.c
++++ b/src/panfrost/compiler/pan_nir_collect_varyings.c
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include <stdlib.h>
+ #include "compiler/nir/nir.h"
+ #include "compiler/nir/nir_builder.h"
+ #include "pan_nir.h"
+@@ -157,6 +158,21 @@ walk_varyings(UNUSED nir_builder *b, nir_instr *instr, void *data)
+                          sem.location >= VARYING_SLOT_VAR0 &&
+                          !sem.medium_precision &&
+                          !b->shader->info.separate_shader;
++#ifdef _WIN32
++   /* exynos-woa G2b-3 0067: on Windows every shader comes from TGSI (d3d10umd), which is untyped: tgsi_to_nir
++    * declares each varying a float vec4 and sets separate_shader, so the rule below was skipped and integers
++    * that a shader merely MOVes through a CONSTANT varying (Direct2D's glyph offsets) were stored and loaded as
++    * float32 - "mistaking an int for a float seems to be lossy" (docs/drivers/panfrost/varyings.rst).
++    * S10_TRUST_VARYING_TYPES=1 restores the old behaviour. */
++   static int s10_trust = -1;
++   if (s10_trust < 0) {
++      const char *e = getenv("S10_TRUST_VARYING_TYPES");
++      s10_trust = e && e[0] == '1';
++   }
++   if (!s10_trust)
++      untrusted_type = !wv_data->trust_varying_flat_highp_types &&
++                       sem.location >= VARYING_SLOT_VAR0 && !sem.medium_precision;
++#endif
+    if (untrusted_type) {
+       /* Don't trust the type, varying_opts might have smashed everything
+        * onto floats.  Replace all flat varyings with ints and smooth varyings
+-- 
+2.43.0
+
