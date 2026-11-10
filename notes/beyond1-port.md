@@ -1289,3 +1289,11 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - gpubench (notes/logs/g2b3-run33-gpubench.txt): WaitForVBlank 54.7 Hz (was 21.8; shortest 0.1, longest 71.6 ms) with
   DWM mostly idle; GPU full-screen copy 769 Mpixel/s.
 - UMD 0070 (3f7aef59): alias template + PIPE_BIND_SHARED. Not run yet.
+
+### G2b-3 run 34 (KMD 1.0.36 + UMD 0070 3f7aef59; 2026-11-11 02:35) - FRAMEBUFFER ALIAS WORKS
+- "framebuffer alias 1440x3040 ... (alloc 0x40001380, stride 5760): frames are copied into it". DWM 15-40 presents/s
+  (typ. 22-35) for the whole boot, KMD 0 blts, 0 failed / timed-out jobs, no "Present refused". gpubench:
+  WaitForVBlank 62.4 Hz (shortest 2.7, longest 41 ms). User: "tạm ổn" (no flicker / ghosting report any more).
+- G2b-3 goal (DWM + apps render on the Mali, usable speed) is MET on the device. Open: touch keyboard hangs after a
+  while, Win+Shift+S does nothing useful (no details yet); BC1-3; KMD one job at a time; G3D clock 260 MHz.
+- User wants an app to test broadly towards daily use -> gputest (differential D3D11 test Mali vs WARP).
