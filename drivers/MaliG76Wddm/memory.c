@@ -294,6 +294,45 @@ NTSTATUS APIENTRY MwCloseAllocation(IN_CONST_HANDLE hDevice, const DXGKARG_CLOSE
 
 /* ---- residency ---- */
 
+/* G2b-3 run 31 (Parameters\ScanoutDirect): may this primary be mapped onto the GOP framebuffer itself? Only with
+ * FlipMmio (the latch is where the copy it replaces happens), only for a 32-bit primary with exactly the
+ * framebuffer's width, height and pitch, and only when the framebuffer is whole pages - the GPU mapping is per page,
+ * and a page past the framebuffer would be someone else's memory. */
+static BOOLEAN ScanoutDirectEligible(const MW_ADAPTER *A, const MW_ALLOCATION *Alloc)
+{
+    const ULONG64 pa = (ULONG64)A->Fb.PhysicAddress.QuadPart;
+    return MwScanoutDirect && MwFlipMmio && (Alloc->Flags & MW_ALLOC_PRIMARY) && A->FbVa != NULL && pa != 0 &&
+           (pa & (PAGE_SIZE - 1)) == 0 && (A->FbSize & (PAGE_SIZE - 1)) == 0 &&
+           (Alloc->Format == D3DDDIFMT_A8R8G8B8 || Alloc->Format == D3DDDIFMT_X8R8G8B8) &&
+           (A->Fb.ColorFormat == D3DDDIFMT_A8R8G8B8 || A->Fb.ColorFormat == D3DDDIFMT_X8R8G8B8) &&
+           Alloc->Width == A->Fb.Width && Alloc->Height == A->Fb.Height && Alloc->Pitch == A->Fb.Pitch;
+}
+
+/* MmuLock held. Map the allocation's GPU range: its first pages onto the framebuffer's (as many as the framebuffer
+ * has), any further ones onto VidMm's (Pfn, for the rows past Height a padded allocation may have). On failure
+ * nothing stays mapped. */
+static NTSTATUS MapScanoutDirect(MW_ADAPTER *A, MW_ALLOCATION *Alloc, const PFN_NUMBER *Pfn, ULONG Pages)
+{
+    const PFN_NUMBER base = (PFN_NUMBER)((ULONG64)A->Fb.PhysicAddress.QuadPart >> PAGE_SHIFT);
+    const ULONG fbPages = (ULONG)(A->FbSize >> PAGE_SHIFT);
+    const BOOLEAN noExec = (Alloc->Flags & MW_ALLOC_NOEXEC) != 0;
+    PFN_NUMBER run[64];
+    ULONG done = 0;
+    NTSTATUS st = STATUS_SUCCESS;
+
+    while (done < Pages && NT_SUCCESS(st)) {
+        ULONG n = Pages - done < 64 ? Pages - done : 64;
+        for (ULONG i = 0; i < n; i++)
+            run[i] = done + i < fbPages ? base + done + i : Pfn[done + i];
+        st = MkMmuMapPages(&A->Gpu, Alloc->GpuVa + ((ULONG64)done << PAGE_SHIFT), run, n, noExec);
+        if (NT_SUCCESS(st))
+            done += n;
+    }
+    if (!NT_SUCCESS(st) && done != 0)
+        MkMmuUnmapPages(&A->Gpu, Alloc->GpuVa, done);
+    return st;
+}
+
 /* Map and unmap happen here, on the CPU, as viogpu3d does: the paging
  * buffer itself stays empty. Everything else VidMm may ask (transfers,
  * fills) is not supported, as in viogpu3d; with one aperture segment it
@@ -334,7 +373,16 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
             pages = alloc->Pages;
         PPFN_NUMBER pfn = MmGetMdlPfnArray(Arg->MapApertureSegment.pMdl) + Arg->MapApertureSegment.MdlOffset;
         ExAcquireFastMutex(&a->MmuLock);
-        st = MkMmuMapPages(&a->Gpu, alloc->GpuVa, pfn, pages, (alloc->Flags & MW_ALLOC_NOEXEC) != 0);
+        /* G2b-3 run 31: a primary with the framebuffer's geometry is rendered straight into the framebuffer. */
+        alloc->ScanDirect = FALSE;
+        if (ScanoutDirectEligible(a, alloc) && NT_SUCCESS(MapScanoutDirect(a, alloc, pfn, pages))) {
+            st = STATUS_SUCCESS;
+            alloc->ScanDirect = TRUE;
+            if (InterlockedIncrement(&a->DirectMaps) <= 4)
+                MwPramText(TRUE, "ScanDirect pages ", NULL, pages, TRUE);
+        } else {
+            st = MkMmuMapPages(&a->Gpu, alloc->GpuVa, pfn, pages, (alloc->Flags & MW_ALLOC_NOEXEC) != 0);
+        }
         alloc->Mapped = NT_SUCCESS(st);
         alloc->Mdl = Arg->MapApertureSegment.pMdl;
         alloc->MdlPage = (ULONG)Arg->MapApertureSegment.MdlOffset;
@@ -368,6 +416,7 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
         if (alloc->Mapped)
             MkMmuUnmapPages(&a->Gpu, alloc->GpuVa, alloc->Pages);
         alloc->Mapped = FALSE;
+        alloc->ScanDirect = FALSE;
         alloc->Mdl = NULL;
         ExReleaseFastMutex(&a->MmuLock);
         return STATUS_SUCCESS;

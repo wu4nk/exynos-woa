@@ -93,6 +93,12 @@ extern ULONG MwRefresh601;
  * SetVidPnSourceAddress, the software vsync "latches" the new primary (CPU copy into the GOP fb) and reports its
  * address (command.c). 0 = no flip caps (DMA flips, FlipBlt at SubmitCommand). */
 extern ULONG MwFlipMmio;
+/* Parameters\ScanoutDirect (default 1, G2b-3 run 31): with FlipMmio, a primary that has the GOP framebuffer's exact
+ * geometry is mapped for the GPU onto the framebuffer's own pages (memory.c MapScanoutDirect), so the GPU renders
+ * into what the panel shows and a flip to it needs no copy (command.c Latch). 0 = every latch copies the primary
+ * into the framebuffer on the CPU, as before (17.5 MB from uncached memory inside the vsync DPC: 50-130 ms per frame
+ * on the S10, DWM stuck at 2-13 frames/s, the vsync starved to ~22 Hz - gpubench v1.0). */
+extern ULONG MwScanoutDirect;
 
 /* ---- objects ---- */
 
@@ -113,6 +119,9 @@ typedef struct _MW_ALLOCATION {
      * matched against for flips that come without hAllocation (UNVERIFIED form - the PRAM lookup lines check it). */
     ULONG64 SegAddress;
     ULONG64 SegOffset;          /* OffsetInPages * PAGE_SIZE alone, matched too */
+    /* ScanoutDirect: while mapped, GpuVa covers the GOP framebuffer's pages, not VidMm's (Mdl): the GPU's view of
+     * the primary IS the panel's picture. The CPU view (AllocationVa) is then stale - DoPresent reads FbVa instead. */
+    BOOLEAN ScanDirect;
 } MW_ALLOCATION;
 
 typedef struct _MW_ADAPTER MW_ADAPTER;
@@ -235,6 +244,7 @@ struct _MW_ADAPTER {
     volatile LONG StdRefused;           /* bit per refused standard allocation type */
     volatile LONG Latches;
     volatile LONG IsrCalls, DpcCalls, VsyncTicks;
+    volatile LONG DirectMaps, DirectLatches;    /* ScanoutDirect: primaries mapped onto the fb, flips that needed no copy */
 };
 
 /* ---- trace: Seen_<ddi>, Fail_<ddi> in the device's registry key ---- */

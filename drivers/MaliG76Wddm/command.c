@@ -244,14 +244,26 @@ static void DoPresent(MW_ADAPTER *A, const MW_PRESENT_OP *Op)
         dstPitch = (LONG)(Op->Dst->Pitch ? Op->Dst->Pitch : Op->Dst->Width * 4);
     }
     if (Op->Kind == MW_PRESENT_BLT) {
-        src = AllocationVa(Op->Src);
+        /* G2b-3 run 31 (ScanoutDirect): the GPU's view of such a source is the framebuffer itself. Into the
+         * framebuffer there is nothing to copy - the pixels are there; anywhere else they are read from it (the CPU
+         * view of the allocation's own pages is stale). */
+        if (Op->Src != NULL && Op->Src->ScanDirect && A->FbVa != NULL) {
+            if (dst == A->FbVa && Op->SrcRect.left == Op->DstRect.left && Op->SrcRect.top == Op->DstRect.top) {
+                A->PresentBlts++;
+                return;
+            }
+            src = A->FbVa;
+            srcPitch = (LONG)A->Fb.Pitch;
+        } else {
+            src = AllocationVa(Op->Src);
+            srcPitch = Op->Src != NULL ? (LONG)(Op->Src->Pitch ? Op->Src->Pitch : Op->Src->Width * 4) : 0;
+        }
         if (src == NULL) {
             A->PresentSkips++;
             return;
         }
         srcW = (LONG)Op->Src->Width;
         srcH = (LONG)Op->Src->Height;
-        srcPitch = (LONG)(Op->Src->Pitch ? Op->Src->Pitch : Op->Src->Width * 4);
     }
 
     for (ULONG i = 0; i < n; i++) {
@@ -538,7 +550,11 @@ static void Latch(MW_ADAPTER *A)
             }
             MwPramText(TRUE, "Latch fb skips ", NULL, ((A->FbVa != NULL) << 24) | (A->PresentSkips & 0xFFFFFF), TRUE);
         }
-        DoPresent(A, &op);
+        /* G2b-3 run 31 (ScanoutDirect): the GPU rendered this primary into the framebuffer - a real latch. */
+        if (p->ScanDirect)
+            InterlockedIncrement(&A->DirectLatches);
+        else
+            DoPresent(A, &op);
         A->ScanoutAddress = A->PendingAddress;
         InterlockedIncrement(&A->Latches);
     }

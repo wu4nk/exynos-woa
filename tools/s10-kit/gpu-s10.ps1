@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.16) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.17) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -28,6 +28,12 @@
                             v1.16: S10_FAULTDUMP is REMOVED again (its processes waited for every GPU job - run
                             g2b3-19 lagged badly); UMD 0057 logs one "malikm-perf" line per process every 10 s.
     .\gpu-s10.ps1 off       remove both GPU packages; Microsoft Basic Display takes the screen back - reboot
+    .\gpu-s10.ps1 kmd       v1.17: put the MaliG76Wddm.sys next to this script (built on Linux, test-signed:
+                            tools/kmd-build) in place of the installed one - reboot. The installed one is kept in
+                            C:\S10Prov\kmd-backup\ first (only the first time), testsign.cer goes into the machine's
+                            Root + TrustedPublisher stores. Needs test mode (the "Test Mode" watermark).
+    .\gpu-s10.ps1 kmd-restore   put the kept original back - reboot. If the new one does not boot: TWRP ->
+                            \S10EDIAG\nogpu.flg on the ESP -> boot (Basic Display) -> kmd-restore -> gpu-dwm -> reboot.
 
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
   Rescue if the screen stays black after "display": boot TWRP, mount the ESP, create
@@ -35,11 +41,11 @@
   Back from "full": .\gpu-s10.ps1 display (FullAdapter 0 again; maliumd.dll may stay, it is only loaded
   in full mode). If "full" hangs: nogpu.flg from TWRP, boot, run "display", delete nogpu.flg, reboot.
 #>
-param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'off')][string]$Action = 'status')
+param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status')
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.16  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.17  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -252,6 +258,59 @@ function Show-Status {
   return $true
 }
 
+# v1.17: the kernel driver's file, replaced in place (a driver built on Linux has no catalog, so pnputil cannot
+# install it as a package; its own embedded test signature is what Code Integrity checks in test mode).
+$KmdBackup = 'C:\S10Prov\kmd-backup'
+function Get-KmdPath {
+  $ip = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm' -ErrorAction SilentlyContinue).ImagePath
+  if (-not $ip) { Fail 'service MaliG76Wddm is not installed - run .\gpu-s10.ps1 display first' }
+  $ip = $ip -replace '^\\\?\?\\', '' -replace '^\\SystemRoot\\', "$env:SystemRoot\" -replace '^System32\\', "$env:SystemRoot\System32\"
+  if (-not (Test-Path $ip)) { Fail "the driver file the service names is not there: $ip" }
+  return $ip
+}
+Add-Type -Namespace S10 -Name Mf -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern bool MoveFileEx(string from, string to, int flags);
+'@
+function Set-KmdFile($Src, $Dst) {
+  & takeown.exe /f $Dst /a | Out-Null
+  & icacls.exe $Dst /grant '*S-1-5-32-544:F' | Out-Null
+  $old = "$Dst.old-$(Get-Date -Format yyyyMMddHHmmss)"
+  try {
+    Rename-Item $Dst (Split-Path $old -Leaf) -ErrorAction Stop
+    Copy-Item $Src $Dst -Force -ErrorAction Stop
+    Ok "driver file replaced: $Dst (the previous one renamed to $(Split-Path $old -Leaf))"
+  } catch {
+    if ((Test-Path $old) -and -not (Test-Path $Dst)) { Rename-Item $old (Split-Path $Dst -Leaf) }
+    $tmp = "$Dst.new"
+    Copy-Item $Src $tmp -Force
+    # MOVEFILE_REPLACE_EXISTING (1) | MOVEFILE_DELAY_UNTIL_REBOOT (4): done by the session manager before drivers load
+    if (-not [S10.Mf]::MoveFileEx($tmp, $Dst, 5)) { Fail "cannot replace $Dst (in use) nor schedule it: $($_.Exception.Message)" }
+    Ok "driver file in use - the replacement is scheduled for the next boot: $Dst"
+  }
+}
+function Install-Kmd {
+  $src = Join-Path $PSScriptRoot 'MaliG76Wddm.sys'
+  if (-not (Test-Path $src)) { Fail "no MaliG76Wddm.sys next to this script ($PSScriptRoot)" }
+  $bcd = (& bcdedit.exe /enum '{current}') -join "`n"
+  if ($bcd -notmatch 'testsigning\s+Yes') { Fail 'test mode is off (bcdedit /set testsigning on, reboot) - a test-signed driver would not load' }
+  $cer = Join-Path $PSScriptRoot 'testsign.cer'
+  if (Test-Path $cer) {
+    foreach ($st in 'Root', 'TrustedPublisher') { Import-Certificate -FilePath $cer -CertStoreLocation "Cert:\LocalMachine\$st" | Out-Null }
+    Ok 'testsign.cer added to LocalMachine Root + TrustedPublisher'
+  } else { Warn 'no testsign.cer next to the script (test mode loads the driver without it)' }
+  $dst = Get-KmdPath
+  New-Item -ItemType Directory -Force $KmdBackup | Out-Null
+  if (-not (Test-Path "$KmdBackup\MaliG76Wddm.sys")) {
+    Copy-Item $dst "$KmdBackup\MaliG76Wddm.sys"
+    $dst | Set-Content "$KmdBackup\path.txt" -Encoding ascii
+    Ok "original kept: $KmdBackup\MaliG76Wddm.sys"
+  } else { Info "a kept original is already in $KmdBackup (kept as it is)" }
+  Set-KmdFile $src $dst
+  Info ("installed: {0}  sha256 {1}" -f $dst, (Get-FileHash $src -Algorithm SHA256).Hash.ToLower())
+  Info ("kept original sha256 {0}" -f (Get-FileHash "$KmdBackup\MaliG76Wddm.sys" -Algorithm SHA256).Hash.ToLower())
+}
+
 function Set-FullMode([int]$Gpu) {
   if (Show-Status) {
     $g = Get-Gpu0
@@ -397,6 +456,16 @@ switch ($Action) {
     Initialize-UmdLog
     Clear-NoGpuFlag             # v1.8: run from a nogpu rescue boot, GPU0 stayed hidden (18:34)
     Info 'reboot: DWM now renders on the Mali. Back: .\gpu-s10.ps1 gpu (DWM on softpipe again) or display'
+  }
+  'kmd' {
+    Install-Kmd
+    Info 'reboot. The PRAM line "LOAD mode 2 build 00000023" in s10-log = the new driver (build 35) runs'
+  }
+  'kmd-restore' {
+    if (-not (Test-Path "$KmdBackup\MaliG76Wddm.sys")) { Fail "nothing kept in $KmdBackup" }
+    Set-KmdFile "$KmdBackup\MaliG76Wddm.sys" (Get-KmdPath)
+    Clear-NoGpuFlag
+    Info 'reboot: the original driver runs again'
   }
   'off' {
     Remove-Pkg 'maliG76wddm.inf'

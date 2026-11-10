@@ -19,6 +19,7 @@ ULONG MwSegmentCpuVisible = 1;
 ULONG MwModeRefreshExact = 1;
 ULONG MwRefresh601 = 1;
 ULONG MwFlipMmio = 1;
+ULONG MwScanoutDirect = 1;
 
 /* ---- trace ---- */
 
@@ -679,6 +680,7 @@ static MW_MODE ReadMode(PUNICODE_STRING RegistryPath, ULONG *PramTrace)
     MwModeRefreshExact = ReadParameter(params, L"ModeRefreshExact", 1) != 0;
     MwRefresh601 = ReadParameter(params, L"Refresh601", 1) != 0;
     MwFlipMmio = ReadParameter(params, L"FlipMmio", 1) != 0;
+    MwScanoutDirect = ReadParameter(params, L"ScanoutDirect", 1) != 0;
     if (params != NULL)
         ZwClose(params);
     if (svc != NULL)
@@ -815,7 +817,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
                    ((ParamGpu & 0xFF) << 24) | ((ParamFull & 0xFF) << 16) | (ParamKeys << 8) |
                    ((MwSoftVsync & 0xF) << 4) | (MwFlipBlt & 0xF), TRUE);
         MwPramText(TRUE, "Switches ", NULL,
-                   (MwFlipMmio << 20) | (MwRefresh601 << 16) | (MwModeRefreshExact << 12) | (MwSegmentCpuVisible << 8) | (MwRecommendVidPn << 4) | MwSynthEdid, TRUE);
+                   (MwScanoutDirect << 24) | (MwFlipMmio << 20) | (MwRefresh601 << 16) | (MwModeRefreshExact << 12) | (MwSegmentCpuVisible << 8) | (MwRecommendVidPn << 4) | MwSynthEdid, TRUE);
         /* Wall clock (Unix seconds), so a saved \WINPRAM.BIN can be matched to the boot that wrote it. */
         KeQuerySystemTimePrecise(&now);
         MwPramText(TRUE, "UnixTime ", NULL, (ULONG)(now.QuadPart / 10000000LL - 11644473600LL), TRUE);

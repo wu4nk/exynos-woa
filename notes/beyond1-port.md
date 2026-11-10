@@ -1193,3 +1193,52 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   50 round trips (clear 16x16 + 1-pixel staging map), 200 small copies back to back, 20 full-screen copies
   (-> Mpixel/s), 5 full-screen uploads, a full-screen read back, WaitForVBlank x 120 (-> Hz), a 200 M-step
   multiply-add chain pinned to each processor; then the GPU part on WARP. -> C:\S10Prov\umd-test.txt.
+
+### G2b-3 run 31 (gpubench v1.0, UMD 0068, 2026-11-10 16:23) - THE BOTTLENECK IS THE KMD'S FLIP LATCH
+- gpubench (notes/logs/g2b3-run31-gpubench.txt), Mali vs WARP: round trip 1.57 ms (worst 56); 200 small copies
+  0.43 ms each; 20 full-screen 1440x3040 copies 5.62 ms each = 779 Mpixel/s (WARP 1007); a full-screen upload
+  20.4 ms (WARP 1.7); read back 6.0 ms. The GPU and the job path are NOT what caps DWM at 2-13 frames/s.
+  WaitForVBlank x 120: 45.9 ms apart = 21.8 Hz, shortest 0.2 ms, longest 3256 ms - the 60 Hz software vsync is
+  starved. CPU chain: 1.3-1.5 G steps/s on all 6 processors (no slow core).
+- Why (read in command.c): with FlipMmio (default) every DWM flip is latched INSIDE the vsync DPC (VsDpc -> Latch ->
+  DoPresent) as a CPU copy of the whole 1440x3040 primary (17.5 MB) from its VidMm pages (mapped uncached /
+  write-combined - the UMD's own upload of that size into such memory took 20.4 ms) into the WC-mapped GOP fb, at
+  DISPATCH_LEVEL with ScanLock held. Consistent with: DPC time on processor 0 = 68 % (run 29, busy) / 11-12 %
+  (runs 30-31, ~2 presents/s) = 50-130 ms per latch; the vsync DPC cannot fire while a latch copies (21.8 Hz,
+  back-to-back ticks after a long one); DWM's thread waits outside the driver 65-95 % of the time (for flips); the
+  logon DWM's constant 13.2-13.5 frames/s ceiling (runs 21-26). My run-24 conclusion "DoPresent is 0-1.1 ms, not a
+  bottleneck" measured BLT presents through SubmitCommand, not the MMIO-flip latch - wrong part.
+- No UMD-side fix exists (the copy and its source mapping are the KMD's). User has no PC with an EWDK.
+- KMD change (ScanoutDirect, Parameters\ScanoutDirect default 1, MwBuild 35, INF DriverVer 1.0.35.1):
+  memory.c MAP_APERTURE_SEGMENT maps a primary that has exactly the fb's width / height / pitch, 32 bpp, onto the
+  GOP framebuffer's own physical pages (Fb.PhysicAddress = 0xCA000000, FbSize must be whole pages: 17 510 400 B =
+  4275 pages) in the Mali's page tables (MapScanoutDirect, runs of 64 PFNs through MkMmuMapPages; pages past the fb
+  from VidMm's MDL; undone on failure) and sets MW_ALLOCATION.ScanDirect; UNMAP clears it. Latch: a ScanDirect
+  primary needs no copy (DirectLatches++). DoPresent: a ScanDirect SOURCE is read from FbVa (its VidMm pages are
+  stale); into the fb at the same origin it is a no-op. PRAM: "Switches" bit 24 = ScanoutDirect, "ScanDirect pages
+  N" for the first 4 mapped. So the GPU renders DWM's frame straight into what the panel shows; a flip is free.
+- Review (adversarial pass): eligibility needs FlipMmio + fb mapped + fb page-aligned and whole pages + identical
+  geometry, so any other primary keeps the copy. All of DWM's 3 flip-chain primaries alias the fb: content stays
+  correct (each frame redraws at least what changed since the previous one, which is what the fb holds; Mali writes
+  a tile once, at the end of a render pass), but a frame split into several render passes ('Blit' / dependency
+  flushes, acrylic blur) can show its intermediate state for a moment - possible flicker, accepted; tearing as
+  before. CPU views of a ScanDirect primary (shim w_lock -> VidMm pages) are stale - no GPU-mode path reads them
+  (malikm_primary_present is the softpipe path). GPU MMU attributes as for any page; the job chain ends with
+  FLUSH_CLEAN_INVALIDATE so DECON reads what the GPU wrote. Race flag-vs-latch benign (set under MmuLock before
+  Mapped). Not verified: that DECON shows GPU writes the same way it shows CPU writes (same DRAM; no reason not to).
+  Rescue: Parameters\ScanoutDirect = 0 (old copy), or kit kmd-restore, or nogpu.flg.
+- BUILT ON LINUX (new, tools/kmd-build): build-kmd-linux.sh v0.1 fetches the NuGet packages
+  Microsoft.Windows.WDK.ARM64 + Microsoft.Windows.SDK.CPP 10.0.26100.6584 (km headers; km/ARM64 ntoskrnl, hal,
+  displib, bufferoverflowfastfailk, libcntpr libs), casefix.py symlinks the WDK's wrong-case #includes, clang-cl 18
+  --target=aarch64-pc-windows-msvc /kernel /GS /Zp8 /O1 -mgeneral-regs-only -funwind-tables (NOT -ffreestanding:
+  it drops .pdata), lld-link /driver /subsystem:native /entry:GsDriverEntry /include:_load_config_used (GsDriverEntry
+  fast-fails if the loader did not set __security_cookie, which it finds through the load config)
+  /merge:.impcall=.rdata /tsaware:no. Checked: ARM64 PE32+, subsystem native, imports ntoskrnl 53 + HAL 2
+  (KeGetCurrentIrql, KeStallExecutionProcessor - as the EWDK build's notes say), load config with the cookie,
+  176 .pdata entries (the functions without one are frameless leaves / thunks), MMIO accessors = WDK inlines with
+  dsb sy. sign-pe.py v0.1: Authenticode SHA-256 PKCS#7 with a self-made test certificate (key stays in the work dir,
+  .gitignore), self-verified (hash, RSA signature, embedded cert, PE checksum). Loads only in test mode (the phone
+  shows "Test Mode"). Never loaded anywhere yet - first clang-built kernel driver of the project.
+- Kit gpu-s10.ps1 v1.17: `kmd` (test mode check, testsign.cer -> LocalMachine Root + TrustedPublisher, original
+  kept once in C:\S10Prov\kmd-backup, takeown/icacls, rename + copy over the service's ImagePath file, else
+  MoveFileEx delay-until-reboot), `kmd-restore`. Package S10-KMD-1.0.35-build35-kit-v1.17.zip (sys sha dd80a783).
