@@ -1322,3 +1322,18 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   the driver has none (logged; such draws run without the GS). Real geometry shaders = open item.
 - User: brightness cannot be changed - no backlight/brightness driver exists in this port yet (AMOLED: DSI
   brightness command via DECON); roadmap item, not GPU.
+
+### G2c run 36 (gputest v1.0 complete, UMD 0071; 2026-11-11 03:08): 86 PASS, 2 FAIL, 12 MISSING, 0 BROKEN
+- flat-integer-varying PASS (0071 SV_VertexID fix confirmed), no crash at the geometry shader.
+- FAIL geometry-shader: expected (stand-in, no GS in Panfrost). Open.
+- FAIL two-render-targets: target 1 stays at its clear value. Cause: Panfrost enables blend info only for RTs
+  0..pipe_blend_state.max_rt (panfrost_create_blend_state rt_count = max_rt + 1; emit: !so->info[i].enabled -> off)
+  and d3d10umd never set max_rt. 0072 sets it to 7 in both CreateBlendState paths.
+- MISSING BC1/BC2/BC3/BC4/BC5 (+sRGB): CreateTexture2D E_OUTOFMEMORY - the GPU has no S3TC/RGTC, but D3D10 makes
+  them mandatory, so any app loading DDS/BC assets fails. 0072: CreateResource keeps such a texture as
+  R8G8B8A8_UNORM/_SRGB (Resource.bc_format), initial data and UpdateSubResourceUP are decoded with
+  util_format_unpack_rgba_8unorm_rect, SRVs of it use the RGBA8 format. Not handled: Map of such a texture
+  (dynamic/staging BC), SNORM variants.
+- MISSING 4x MSAA (CheckMultisampleQualityLevels 0), B5G6R5 / B5G5R5A1 (optional at FL 10_0). Open.
+- PASS but note: cube-map 208 px differ up to 247 (face edges - seamless cube filtering / face selection). Open.
+- UMD 0072 (c32555a1). Not run yet.

@@ -1,0 +1,154 @@
+From 94cdb6aed4449a61a79f35b77d5f1151af08ff94 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 03:20:19 +0700
+Subject: [PATCH] G2c: blend max_rt for MRT, BC1-BC5 kept as RGBA8 and decoded
+ on upload
+
+---
+ .../frontends/d3d10umd/OutputMerger.cpp       |  6 +++
+ src/gallium/frontends/d3d10umd/Resource.cpp   | 46 +++++++++++++------
+ src/gallium/frontends/d3d10umd/Shader.cpp     |  4 ++
+ src/gallium/frontends/d3d10umd/State.h        |  3 ++
+ 4 files changed, 45 insertions(+), 14 deletions(-)
+
+diff --git a/src/gallium/frontends/d3d10umd/OutputMerger.cpp b/src/gallium/frontends/d3d10umd/OutputMerger.cpp
+index 0c12907..ff25861 100644
+--- a/src/gallium/frontends/d3d10umd/OutputMerger.cpp
++++ b/src/gallium/frontends/d3d10umd/OutputMerger.cpp
+@@ -618,6 +618,9 @@ CreateBlendState(D3D10DDI_HDEVICE hDevice,                     // IN
+    state.alpha_to_coverage = pBlendDesc->AlphaToCoverageEnable;
+ 
+    NoteDualSourceBlend(pDevice, &state);   /* 0065 */
++   /* exynos-woa G2c (0072): Panfrost enables render targets 0 .. max_rt only; left at 0, a second render target was
++    * never written (gputest two-render-targets). D3D blend state covers all 8. */
++   state.max_rt = MIN2(PIPE_MAX_COLOR_BUFS, D3D10_DDI_SIMULTANEOUS_RENDER_TARGET_COUNT) - 1;
+    pBlendState->handle = pipe->create_blend_state(pipe, &state);
+ }
+ 
+@@ -678,6 +681,9 @@ CreateBlendState1(D3D10DDI_HDEVICE hDevice,                     // IN
+    }
+ 
+    NoteDualSourceBlend(pDevice, &state);   /* 0065 */
++   /* exynos-woa G2c (0072): Panfrost enables render targets 0 .. max_rt only; left at 0, a second render target was
++    * never written (gputest two-render-targets). D3D blend state covers all 8. */
++   state.max_rt = MIN2(PIPE_MAX_COLOR_BUFS, D3D10_DDI_SIMULTANEOUS_RENDER_TARGET_COUNT) - 1;
+    pBlendState->handle = pipe->create_blend_state(pipe, &state);
+ }
+ 
+diff --git a/src/gallium/frontends/d3d10umd/Resource.cpp b/src/gallium/frontends/d3d10umd/Resource.cpp
+index fc7f1fd..27c3258 100644
+--- a/src/gallium/frontends/d3d10umd/Resource.cpp
++++ b/src/gallium/frontends/d3d10umd/Resource.cpp
+@@ -58,6 +58,18 @@
+  * ----------------------------------------------------------------------
+  */
+ 
++/* exynos-woa G2c (0072): rows from the application into a mapped texture - decoded when the texture stands in for
++ * a block-compressed one (bc_format), copied otherwise. */
++static void
++s10_upload_rect(const Resource *r, uint8_t *dst, unsigned dst_stride, unsigned w, unsigned h, const uint8_t *src,
++                unsigned src_pitch)
++{
++   if (r->bc_format)
++      util_format_unpack_rgba_8unorm_rect(util_format_linear(r->bc_format), dst, dst_stride, src, src_pitch, w, h);
++   else
++      util_copy_rect(dst, r->resource->format, dst_stride, 0, 0, w, h, src, src_pitch, 0, 0);
++}
++
+ SIZE_T APIENTRY
+ CalcPrivateResourceSize(D3D10DDI_HDEVICE hDevice,                                // IN
+                         __in const D3D10DDIARG_CREATERESOURCE *pCreateResource)  // IN
+@@ -380,6 +392,23 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+    templat.bind       = translate_resource_flags(pCreateResource->BindFlags);
+    templat.usage      = translate_resource_usage(pCreateResource->Usage);
+ 
++   /* exynos-woa G2c (0072): BC1-BC5 are mandatory in Direct3D 10 (the runtime tells applications they exist), but
++    * this GPU has no S3TC/RGTC: CreateResource failed with E_OUTOFMEMORY (gputest texture-format-BC*). Such a
++    * texture is kept as RGBA8 and decoded on upload (s10_upload_rect). */
++   if (templat.target != PIPE_BUFFER && util_format_is_compressed(templat.format) &&
++       (util_format_is_s3tc(templat.format) ||
++        util_format_description(templat.format)->layout == UTIL_FORMAT_LAYOUT_RGTC) &&
++       !util_format_is_snorm(templat.format) &&
++       !screen->is_format_supported(screen, templat.format, templat.target, templat.nr_samples,
++                                    templat.nr_storage_samples, templat.bind)) {
++      static unsigned notes;
++      if (notes++ < 2)
++         fprintf(stderr, "d3d10umd: pid %lu: %s is not supported by the GPU - kept as RGBA8, decoded on upload\n",
++                 GetCurrentProcessId(), util_format_name(templat.format));
++      pResource->bc_format = templat.format;
++      templat.format = util_format_is_srgb(templat.format) ? PIPE_FORMAT_R8G8B8A8_SRGB : PIPE_FORMAT_R8G8B8A8_UNORM;
++   }
++
+    if (templat.target != PIPE_BUFFER) {
+       if (!screen->is_format_supported(screen,
+                                        templat.format,
+@@ -597,13 +626,8 @@ CreateResource(D3D10DDI_HDEVICE hDevice,                                // IN
+                for (int z = 0; z < box.depth; ++z) {
+                   uint8_t *dst = (uint8_t*)map + z*transfer->layer_stride;
+                   const uint8_t *src = (const uint8_t*)pInitialDataUP->pSysMem + z*pInitialDataUP->SysMemSlicePitch;
+-                  util_copy_rect(dst,
+-                                 templat.format,
+-                                 transfer->stride,
+-                                 0, 0, box.width, box.height,
+-                                 src,
+-                                 pInitialDataUP->SysMemPitch,
+-                                 0, 0);
++                  s10_upload_rect(pResource, dst, transfer->stride, box.width, box.height, src,
++                                  pInitialDataUP->SysMemPitch);
+                }
+                pipe_texture_unmap(pipe, transfer);
+             }
+@@ -1306,13 +1330,7 @@ ResourceUpdateSubResourceUP(D3D10DDI_HDEVICE hDevice,                // IN
+       for (int z = 0; z < box.depth; ++z) {
+          uint8_t *dst = (uint8_t*)map + z*transfer->layer_stride;
+          const uint8_t *src = (const uint8_t*)pSysMemUP + z*DepthPitch;
+-         util_copy_rect(dst,
+-                        dst_resource->format,
+-                        transfer->stride,
+-                        0, 0, box.width, box.height,
+-                        src,
+-                        RowPitch,
+-                        0, 0);
++         s10_upload_rect(pDstResource, dst, transfer->stride, box.width, box.height, src, RowPitch);
+       }
+       if (pDstResource->buffer) {
+          pipe_buffer_unmap(pipe, transfer);
+diff --git a/src/gallium/frontends/d3d10umd/Shader.cpp b/src/gallium/frontends/d3d10umd/Shader.cpp
+index 85be507..4530c09 100644
+--- a/src/gallium/frontends/d3d10umd/Shader.cpp
++++ b/src/gallium/frontends/d3d10umd/Shader.cpp
+@@ -1205,6 +1205,8 @@ CreateShaderResourceView(
+    memset(&desc, 0, sizeof desc);
+    resource = CastPipeResource(pCreateSRView->hDrvResource);
+    format = FormatTranslate(pCreateSRView->Format, false);
++   if (CastResource(pCreateSRView->hDrvResource)->bc_format)   /* 0072: stored decoded */
++      format = util_format_is_srgb(format) ? PIPE_FORMAT_R8G8B8A8_SRGB : PIPE_FORMAT_R8G8B8A8_UNORM;
+ 
+    u_sampler_view_default_template(&desc,
+                                    resource,
+@@ -1285,6 +1287,8 @@ CreateShaderResourceView1(
+    memset(&desc, 0, sizeof desc);
+    resource = CastPipeResource(pCreateSRView->hDrvResource);
+    format = FormatTranslate(pCreateSRView->Format, false);
++   if (CastResource(pCreateSRView->hDrvResource)->bc_format)   /* 0072: stored decoded */
++      format = util_format_is_srgb(format) ? PIPE_FORMAT_R8G8B8A8_SRGB : PIPE_FORMAT_R8G8B8A8_UNORM;
+ 
+    u_sampler_view_default_template(&desc,
+                                    resource,
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index 3a4cdad..09249b3 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -204,6 +204,9 @@ struct Resource
+    unsigned kmt_shared;
+    /* G2b-3 (0054): kmt_primary is this texture's own GPU BO (the GPU renders into the primary), not a kprim copy */
+    bool gpu_primary;
++   /* exynos-woa G2c (0072): the block-compressed format the application asked for when the driver has none (the
++    * Mali-G76 here has no S3TC/RGTC); the texture is then RGBA8 and every upload is decoded. 0 = not emulated. */
++   enum pipe_format bc_format;
+ };
+ 
+ /* G2b-3 (0045): Resource.cpp - refresh an opened shared resource's GPU copy (no-op for anything else). */
+-- 
+2.43.0
+
