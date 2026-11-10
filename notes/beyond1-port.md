@@ -1357,3 +1357,16 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   tessellation, xfb, pipeline stats, BC emulation; d3d_fl: DXVK 3.1.1 D3D11 up to FL 11_1, vkd3d-proton D3D12 11_1.
   So Bifrost v7 here can do GS / tessellation / FL11 through panvk. User asks to "integrate it" - open question
   whether he means a panprobe-style harness for our Gallium driver or porting that panvk to the Windows shim.
+- 06:45 user: github.com/JimVulkan/mali-panfrost ("Panfrost for Mali Bifrost on kbase", Mesa 26.3.0-devel based, MIT,
+  "XclipseTools", tested on Mali-G76 / S10e and G72). It is the SAME Gallium panfrost driver we use, with geometry
+  shaders and tessellation emulated by COMPUTE jobs on the v6/v7 job manager (pan_gs.h, pan_nir_lower_gs.c 723 lines,
+  GS hooks in pan_cmdstream.c ~400 lines (panfrost_gs_prepare/emit_vs_varyings/emit_out_varyings/viewports),
+  pan_jm.c (jm_launch_draw_gs / jm_launch_draw_tess), pan_shader.c (create/bind_gs_state, gs key), pan_context.h
+  (panfrost_gs_draw, PAN_SYSVAL_GS_PARAMS 22 / TESS_PARAMS 23), pan_screen.c caps; tess also libpan tess.cl kernels).
+  Not done there: GS + tess together, TES without TCS, xfb from GS/TES, layered rendering from GS. Cloned read-only to
+  scratchpad ext/mali-panfrost. Our tree already has src/poly (same files, 2 small diffs) and the needed intrinsics;
+  the rest of src/panfrost has drifted (26.2 vs 26.3-devel: pan_blit.c renamed pan_blitter.c, compiler changes).
+- Plan: port ONLY the geometry-shader emulation (JM path, v7) into our 26.2 tree as a series of UMD patches; tess is
+  unreachable from the D3D10 DDI (needs the D3D11 DDI, FL11), so it waits. Then gputest geometry-shader should PASS
+  and the d3d10umd stand-in GS hooks (0071) go away when the driver has create_gs_state. Attribution: their files keep
+  their MIT header + a note in the patch. gputest v2 (panprobe-style report) half-written, not built.
