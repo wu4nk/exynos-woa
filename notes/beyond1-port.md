@@ -1243,3 +1243,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   kept once in C:\S10Prov\kmd-backup, takeown/icacls, rename + copy over the service's ImagePath file, else
   MoveFileEx delay-until-reboot), `kmd-restore`. v1.18 (21:15, user: "Access ... MaliG76Wddm.sys.new denied"): takeown/icacls
   the driver-store folder too, not only the file - the original stayed in place (rename had failed first). Package S10-KMD-1.0.35-build35-kit-v1.17.zip (sys sha dd80a783).
+- 21:55 user: the clang/Linux-built KMD (build 35) BUGCHECKED at boot ("màn xanh"), stop code not given. Cause
+  unknown (clang codegen vs MSVC, the self-made test signature, or ScanoutDirect itself - nothing to tell them
+  apart yet). User now builds himself: sent the MaliG76Wddm source folder (ScanoutDirect, DriverVer 1.0.35.1) for
+  build-s10.cmd (S10_GPU=1) in his EWDK; rescue = nogpu.flg -> kmd-restore. Do NOT ship Linux-built kernel drivers
+  again until one has been seen to load (compare against an EWDK build of the same source first).
