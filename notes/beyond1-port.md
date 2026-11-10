@@ -1305,3 +1305,20 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   integer varying, Buffer.Load, vertex texture fetch, geometry shader, MRT, MSAA resolve/load, cube/array/3D,
   comparison sampler, CopySubresourceRegion/UpdateSubresource, dynamic VB, discard/derivatives/integer ops/loop) +
   33 texture formats + 14 render-target formats. NOT run anywhere yet: expect BROKEN lines on the first run.
+
+### G2c run 35 (gputest v1.0 first run, UMD 0070, KMD 1.0.36; 2026-11-11 02:49)
+- 38 of the first 39 tests PASS with 0 differing pixels (filters, address modes, all 11 blend set-ups incl. dual
+  source, depth/stencil/scissor/viewport/cull, topologies, strip cut, instanced integer attributes, Buffer.Load,
+  vertex texture fetch). No BROKEN lines - the tool's HLSL is fine so far.
+- FAIL flat-integer-varying: every triangle got key 0 (Mali 8000ff05 everywhere) = SV_VertexID is 0..2 for every
+  vertex. d3d10umd emits TGSI VERTEXID_NOBASE -> nir load_vertex_id_zero_base, which pan_nir_lower_vertex_id does
+  not lower and Bifrost's emit has no case for (release build: falls through to nothing).
+- gputest then DIED at geometry-shader: "ACCESS VIOLATION: execute at 0x0, lr maliumd+0x9064" =
+  CreateGeometryShader calling pipe->create_gs_state, which Panfrost does not have (no geometry shaders at all,
+  although the UMD advertises feature level 10_0). The remaining 61 tests did not run.
+- UMD 0071 (f0c6fdd1): pan_nir_lower_vertex_id lowers load_vertex_id_zero_base = raw_vertex_id + raw_vertex_offset
+  - first_vertex (new sysval word: PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS u[3] = index bias or the start of a
+  non-indexed draw, via load_first_vertex); d3d10umd CreateDevice installs stand-in create/bind/delete_gs_state when
+  the driver has none (logged; such draws run without the GS). Real geometry shaders = open item.
+- User: brightness cannot be changed - no backlight/brightness driver exists in this port yet (AMOLED: DSI
+  brightness command via DECON); roadmap item, not GPU.

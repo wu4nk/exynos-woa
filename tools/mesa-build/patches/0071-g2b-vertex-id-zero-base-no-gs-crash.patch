@@ -1,0 +1,128 @@
+From effef39921498d260d91ff0ae4559ed8d1a8dbad Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 02:56:11 +0700
+Subject: [PATCH] G2b: zero-based vertex ID on Bifrost (SV_VertexID), stand-in
+ geometry shader hooks instead of a NULL call
+
+---
+ src/gallium/drivers/panfrost/pan_cmdstream.c  |  2 ++
+ src/gallium/drivers/panfrost/pan_context.h    |  1 +
+ .../drivers/panfrost/pan_nir_lower_sysvals.c  |  3 +++
+ src/gallium/frontends/d3d10umd/Device.cpp     | 25 +++++++++++++++++++
+ .../compiler/pan_nir_lower_vertex_id.c        | 11 ++++++++
+ 5 files changed, 42 insertions(+)
+
+diff --git a/src/gallium/drivers/panfrost/pan_cmdstream.c b/src/gallium/drivers/panfrost/pan_cmdstream.c
+index 97c1c86..4f0918f 100644
+--- a/src/gallium/drivers/panfrost/pan_cmdstream.c
++++ b/src/gallium/drivers/panfrost/pan_cmdstream.c
+@@ -1416,6 +1416,7 @@ panfrost_upload_sysvals(struct panfrost_batch *batch, void *ptr_cpu,
+          uniforms[i].u[0] = batch->ctx->offset_start;
+          uniforms[i].u[1] = batch->ctx->base_vertex;
+          uniforms[i].u[2] = batch->ctx->base_instance;
++         uniforms[i].u[3] = batch->ctx->s10_first_vertex;   /* 0071 */
+          break;
+       case PAN_SYSVAL_DRAWID:
+          uniforms[i].u[0] = batch->ctx->drawid;
+@@ -3461,6 +3462,7 @@ panfrost_single_draw_direct(struct panfrost_batch *batch,
+       draw->count + (info->index_size ? abs(draw->index_bias) : 0);
+    ctx->instance_count = info->instance_count;
+    ctx->base_vertex = info->index_size ? draw->index_bias : 0;
++   ctx->s10_first_vertex = info->index_size ? draw->index_bias : draw->start;
+    ctx->base_instance = info->start_instance;
+    ctx->drawid = drawid_offset;
+ 
+diff --git a/src/gallium/drivers/panfrost/pan_context.h b/src/gallium/drivers/panfrost/pan_context.h
+index 381a529..42c9259 100644
+--- a/src/gallium/drivers/panfrost/pan_context.h
++++ b/src/gallium/drivers/panfrost/pan_context.h
+@@ -169,6 +169,7 @@ struct panfrost_context {
+    unsigned instance_count;
+    unsigned offset_start;
+    unsigned base_vertex;
++   unsigned s10_first_vertex;   /* exynos-woa 0071: index bias (indexed) or start (arrays), for vertex_id_zero_base */
+    unsigned base_instance;
+    enum mesa_prim active_prim;
+ 
+diff --git a/src/gallium/drivers/panfrost/pan_nir_lower_sysvals.c b/src/gallium/drivers/panfrost/pan_nir_lower_sysvals.c
+index 3cc1314..344ebb2 100644
+--- a/src/gallium/drivers/panfrost/pan_nir_lower_sysvals.c
++++ b/src/gallium/drivers/panfrost/pan_nir_lower_sysvals.c
+@@ -75,6 +75,9 @@ sysval_for_intrinsic(unsigned arch, nir_intrinsic_instr *intr, unsigned *offset)
+    case nir_intrinsic_load_base_instance:
+       *offset = 8;
+       return PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS;
++   case nir_intrinsic_load_first_vertex:   /* exynos-woa 0071, see pan_nir_lower_vertex_id.c */
++      *offset = 12;
++      return PAN_SYSVAL_VERTEX_INSTANCE_OFFSETS;
+ 
+    case nir_intrinsic_load_draw_id:
+       if (arch >= 10)
+diff --git a/src/gallium/frontends/d3d10umd/Device.cpp b/src/gallium/frontends/d3d10umd/Device.cpp
+index c58a22a..3ec826f 100644
+--- a/src/gallium/frontends/d3d10umd/Device.cpp
++++ b/src/gallium/frontends/d3d10umd/Device.cpp
+@@ -104,6 +104,24 @@ CalcPrivateDeviceSize(D3D10DDI_HADAPTER hAdapter,                          // IN
+  * ----------------------------------------------------------------------
+  */
+ 
++static void *
++s10_no_gs_create(struct pipe_context *pipe, const struct pipe_shader_state *templ)
++{
++   static unsigned notes;
++   (void)pipe; (void)templ;
++   if (notes++ < 2)
++      fprintf(stderr, "d3d10umd: pid %lu: a geometry shader was created, but this driver has none - draws that "
++                      "use it run WITHOUT it\n", GetCurrentProcessId());
++   static int dummy;
++   return &dummy;
++}
++
++static void
++s10_no_gs_bind(struct pipe_context *pipe, void *state)
++{
++   (void)pipe; (void)state;
++}
++
+ HRESULT APIENTRY
+ CreateDevice(D3D10DDI_HADAPTER hAdapter,                 // IN
+              __in D3D10DDIARG_CREATEDEVICE *pCreateData) // IN
+@@ -150,6 +168,13 @@ CreateDevice(D3D10DDI_HADAPTER hAdapter,                 // IN
+    if (!screen)
+       return E_OUTOFMEMORY;
+    struct pipe_context *pipe = screen->context_create(screen, NULL, 0);
++   /* exynos-woa G2b (0071): Panfrost has no geometry shaders; the frontend called its NULL create_gs_state (gputest
++    * died in CreateGeometryShader). Stand-ins keep the application alive: such draws run without their GS. */
++   if (!pipe->create_gs_state) {
++      pipe->create_gs_state = s10_no_gs_create;
++      pipe->bind_gs_state = s10_no_gs_bind;
++      pipe->delete_gs_state = s10_no_gs_bind;
++   }
+    pDevice->screen = screen;
+    pDevice->pipe = pipe;
+    pDevice->cso = cso_create_context(pipe, CSO_NO_VBUF);
+diff --git a/src/panfrost/compiler/pan_nir_lower_vertex_id.c b/src/panfrost/compiler/pan_nir_lower_vertex_id.c
+index dd77e78..58dbfde 100644
+--- a/src/panfrost/compiler/pan_nir_lower_vertex_id.c
++++ b/src/panfrost/compiler/pan_nir_lower_vertex_id.c
+@@ -32,6 +32,17 @@ static bool
+ lower_load_vertex_id(nir_builder *b, nir_intrinsic_instr *intr,
+                      UNUSED void *data)
+ {
++   /* exynos-woa G2b (0071): D3D's SV_VertexID reaches us as TGSI VERTEXID_NOBASE = load_vertex_id_zero_base, which
++    * nothing lowered for Bifrost (gputest flat-integer-varying: every vertex got ID 0..2). The zero-based ID is the
++    * full one minus first_vertex (index bias, or the start of a non-indexed draw - a sysval the Gallium driver
++    * fills, pan_nir_lower_sysvals.c). */
++   if (intr->intrinsic == nir_intrinsic_load_vertex_id_zero_base) {
++      b->cursor = nir_before_instr(&intr->instr);
++      nir_def_replace(&intr->def,
++                      nir_isub(b, nir_iadd(b, nir_load_raw_vertex_id_pan(b), nir_load_raw_vertex_offset_pan(b)),
++                               nir_load_first_vertex(b)));
++      return true;
++   }
+    if (intr->intrinsic != nir_intrinsic_load_vertex_id)
+       return false;
+ 
+-- 
+2.43.0
+
