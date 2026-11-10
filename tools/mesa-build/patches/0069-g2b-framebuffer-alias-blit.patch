@@ -1,0 +1,200 @@
+From 3c3bc185d2b6cae40886637fcdd3cdd87f7ce873 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 01:51:32 +0700
+Subject: [PATCH] G2b-3: DWM frames are copied by the GPU into a framebuffer
+ alias (MW_ALLOC_FBALIAS)
+
+Run 32: with KMD 1.0.35 mapping DWM's primaries onto the GOP framebuffer the
+desktop ran at 20-34 frames/s but showed every intermediate state of a frame
+(flicker while dragging, ghost edges, tearing). DWM keeps its own buffers
+again; at each present of a GPU primary the frame is blitted into one
+texture whose pages KMD 1.0.36 maps onto the framebuffer, and the KMD skips
+its CPU copy at the flip. S10_FB_ALIAS=0 turns it off.
+---
+ include/win32-compat/malikm_drm.c          | 40 ++++++++++++++-
+ include/win32-compat/maliwddm_abi.h        |  4 ++
+ src/gallium/frontends/d3d10umd/Device.cpp  |  1 +
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp | 58 ++++++++++++++++++++++
+ src/gallium/frontends/d3d10umd/State.h     |  5 ++
+ 5 files changed, 106 insertions(+), 2 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index f50cffe..e61df3b 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -2244,6 +2244,31 @@ malikm_primary_bo_begin(void *hRTResource, unsigned vidpn, unsigned w, unsigned
+    wshared.vidpn = vidpn;
+ }
+ 
++/* G2b-3 (0069): the next CREATE_BO of this thread is the framebuffer alias (MW_ALLOC_FBALIAS, w x h, A8R8G8B8,
++ * pitch w * 4): a device allocation whose GPU pages the KMD maps onto the GOP framebuffer. */
++static __declspec(thread) struct {
++   int on;
++   unsigned w, h;
++   D3DKMT_HANDLE got;
++} walias;
++
++void
++malikm_fbalias_bo_begin(unsigned w, unsigned h)
++{
++   walias.on = 1;
++   walias.w = w;
++   walias.h = h;
++   walias.got = 0;
++}
++
++unsigned
++malikm_fbalias_bo_end(void)
++{
++   unsigned got = walias.got;
++   walias.on = 0;
++   return got;
++}
++
+ unsigned
+ malikm_shared_bo_end(void)
+ {
+@@ -2395,8 +2420,19 @@ wddm_drm(uint32_t nr, uint8_t *b, uint32_t size)
+          }
+          wshared.got = ai.hAllocation;
+          foreign = WBO_RUNTIME;
+-      } else if (w_create(&ai) < 0)
+-         return -MK_ENOMEM;
++      } else {
++         if (walias.on && !walias.got && sz >= (uint64_t)walias.w * 4 * walias.h) {   /* 0069 */
++            pi.Flags |= MW_ALLOC_FBALIAS;
++            pi.Width = walias.w;
++            pi.Height = walias.h;
++            pi.Pitch = walias.w * 4;
++            pi.Format = D3DDDIFMT_A8R8G8B8;
++         }
++         if (w_create(&ai) < 0)
++            return -MK_ENOMEM;
++         if (pi.Flags & MW_ALLOC_FBALIAS)
++            walias.got = ai.hAllocation;
++      }
+       MW_ESCAPE_ALLOC_INFO_DATA where = {0};
+       where.Code = MW_ESCAPE_ALLOC_INFO;
+       where.hAllocation = ai.hAllocation;
+diff --git a/include/win32-compat/maliwddm_abi.h b/include/win32-compat/maliwddm_abi.h
+index 49df8ff..59b8ad0 100644
+--- a/include/win32-compat/maliwddm_abi.h
++++ b/include/win32-compat/maliwddm_abi.h
+@@ -25,6 +25,10 @@ typedef unsigned __int64 mw_u64;
+ /* Allocation private data (D3DDDI_ALLOCATIONINFO.pPrivateDriverData). */
+ #define MW_ALLOC_NOEXEC         0x1     /* not shader code: may lie anywhere, XN */
+ #define MW_ALLOC_PRIMARY        0x2     /* scan-out capable (step d) */
++/* G2b-3 (KMD 1.0.36 / UMD 0069): the GPU pages of this allocation are the GOP framebuffer itself (KMD
++ * Parameters\ScanoutDirect); the UMD copies every finished DWM frame into it with the GPU before flipping, so the
++ * KMD's flip latch has nothing to copy. Width/Height/Pitch/Format must be the framebuffer's. */
++#define MW_ALLOC_FBALIAS        0x4
+ 
+ typedef struct _MW_ALLOCATION_INFO {
+     mw_u32 Version;                     /* MW_ABI_VERSION */
+diff --git a/src/gallium/frontends/d3d10umd/Device.cpp b/src/gallium/frontends/d3d10umd/Device.cpp
+index e30307a..c58a22a 100644
+--- a/src/gallium/frontends/d3d10umd/Device.cpp
++++ b/src/gallium/frontends/d3d10umd/Device.cpp
+@@ -370,6 +370,7 @@ DestroyDevice(D3D10DDI_HDEVICE hDevice)   // IN
+    }
+ 
+    pipe_resource_reference(&pDevice->index_buffer, NULL);
++   pipe_resource_reference(&pDevice->fb_alias, NULL);   /* G2b-3 0069 */
+ 
+    static struct pipe_sampler_view * sampler_views[PIPE_MAX_SHADER_SAMPLER_VIEWS];
+    memset(sampler_views, 0, sizeof sampler_views);
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index 3b1bf5f..80d9472 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -125,6 +125,60 @@ extern "C" unsigned d3d10_frame_gen = 1;
+ /* G2b-3 (0052, malikm_drm.c): present an allocation as it is; 0 if the runtime took it. */
+ extern "C" void malikm_use_device(void *hRTDevice);
+ extern "C" int malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned w, unsigned h);
++extern "C" void malikm_fbalias_bo_begin(unsigned w, unsigned h);
++extern "C" unsigned malikm_fbalias_bo_end(void);
++
++/* exynos-woa G2b-3 (0069): run 32 (KMD 1.0.35) let the GPU render DWM's three flip buffers straight into the panel's
++ * framebuffer - 20-34 frames/s instead of 2-13, but every intermediate state of a frame was on screen (flicker while
++ * dragging, ghost edges, tearing). Now the buffers are DWM's own again and each finished frame is copied by the GPU
++ * (one full-screen blit, ~5.6 ms at 779 Mpixel/s - gpubench) into one texture whose pages are the framebuffer
++ * (MW_ALLOC_FBALIAS; KMD 1.0.36 maps it and then skips its CPU copy at the flip). With an older KMD the texture is
++ * an ordinary allocation and nothing changes on screen. S10_FB_ALIAS=0 turns it off. */
++static void
++s10_frame_to_fb(Device *device, Resource *src)
++{
++   struct pipe_context *pipe = device->pipe;
++   struct pipe_resource *s = src->resource;
++   if (device->fb_alias_state < 0)
++      return;
++   if (device->fb_alias && (device->fb_alias->width0 != s->width0 || device->fb_alias->height0 != s->height0 ||
++                            device->fb_alias->format != s->format))
++      pipe_resource_reference(&device->fb_alias, NULL);
++   if (!device->fb_alias) {
++      const char *e = getenv("S10_FB_ALIAS");
++      if (e && e[0] == '0') {
++         device->fb_alias_state = -1;
++         return;
++      }
++      struct pipe_resource t = *s;
++      t.next = NULL;
++      t.screen = NULL;
++      pipe_reference_init(&t.reference, 0);
++      t.bind = PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_LINEAR | PIPE_BIND_SCANOUT;
++      t.flags = 0;
++      malikm_fbalias_bo_begin(s->width0, s->height0);
++      device->fb_alias = pipe->screen->resource_create(pipe->screen, &t);
++      unsigned h = malikm_fbalias_bo_end();
++      uint64_t stride = 0;
++      if (device->fb_alias && pipe->screen->resource_get_param)
++         pipe->screen->resource_get_param(pipe->screen, pipe, device->fb_alias, 0, 0, 0, PIPE_RESOURCE_PARAM_STRIDE,
++                                          0, &stride);
++      const bool ok = device->fb_alias && h && stride == s->width0 * 4ull;
++      fprintf(stderr, "d3d10umd: pid %lu: framebuffer alias %ux%u %s (alloc 0x%x, stride %llu): %s\n",
++              GetCurrentProcessId(), s->width0, s->height0, util_format_name(s->format), h,
++              (unsigned long long)stride, ok ? "frames are copied into it" : "NOT POSSIBLE - no copy");
++      if (!ok) {
++         pipe_resource_reference(&device->fb_alias, NULL);
++         device->fb_alias_state = -1;
++         return;
++      }
++      device->fb_alias_state = 1;
++   }
++   struct pipe_box box;
++   u_box_2d(0, 0, s->width0, s->height0, &box);
++   pipe->resource_copy_region(pipe, device->fb_alias, 0, 0, 0, 0, s, 0, &box);
++}
++
+ /* G2b-3 (0068, d3d10_gdi.c): exchange the storage of n textures (i takes i + 1's, the last the first's). */
+ extern "C" bool d3d10_rotate_storage(struct pipe_context *pipe, struct pipe_resource **res, unsigned n);
+ 
+@@ -150,6 +204,10 @@ _Present(DXGI_DDI_ARG_PRESENT *pPresentData)
+    struct Device *device = CastDevice(pPresentData->hDevice);
+    Resource *pSrcResource = CastResource(pPresentData->hSurfaceToPresent);
+ 
++   /* 0069: a DWM frame (flip of a GPU primary) goes into the framebuffer alias before the flip is queued */
++   if (pSrcResource && pSrcResource->gpu_primary && pSrcResource->resource)
++      s10_frame_to_fb(device, pSrcResource);
++
+    device->pipe->flush(device->pipe, NULL, 0);
+ 
+    /* G2b-3 (0052): a source whose GPU BO is its own runtime allocation (the buffers of flip-model and composition
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index a3bfe14..3a4cdad 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -120,6 +120,11 @@ struct Device
+     * depends on whether a depth-stencil view is bound (see
+     * BindDepthStencilState). */
+    struct DepthStencilState *bound_dss;
++
++   /* exynos-woa G2b-3 (0069): DWM's finished frames are copied (GPU) into this texture, whose pages the KMD maps
++    * onto the panel's framebuffer (MW_ALLOC_FBALIAS); fb_alias_state 0 = not tried, 1 = in use, -1 = not possible */
++   struct pipe_resource *fb_alias;
++   int fb_alias_state;
+ };
+ 
+ 
+-- 
+2.43.0
+

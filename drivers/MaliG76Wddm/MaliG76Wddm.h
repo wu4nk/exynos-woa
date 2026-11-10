@@ -93,9 +93,12 @@ extern ULONG MwRefresh601;
  * SetVidPnSourceAddress, the software vsync "latches" the new primary (CPU copy into the GOP fb) and reports its
  * address (command.c). 0 = no flip caps (DMA flips, FlipBlt at SubmitCommand). */
 extern ULONG MwFlipMmio;
-/* Parameters\ScanoutDirect (default 1, G2b-3 run 31): with FlipMmio, a primary that has the GOP framebuffer's exact
- * geometry is mapped for the GPU onto the framebuffer's own pages (memory.c MapScanoutDirect), so the GPU renders
- * into what the panel shows and a flip to it needs no copy (command.c Latch). 0 = every latch copies the primary
+/* Parameters\ScanoutDirect (default 1, G2b-3 run 31; 1.0.36: only MW_ALLOC_FBALIAS allocations): with FlipMmio, an
+ * allocation the UMD marks MW_ALLOC_FBALIAS, with the GOP framebuffer's exact geometry, is mapped for the GPU onto
+ * the framebuffer's own pages (memory.c MapScanoutDirect); the UMD copies each finished DWM frame into it, so while
+ * one is mapped a flip of a framebuffer-sized primary needs no CPU copy (command.c Latch). 1.0.35 mapped DWM's
+ * primaries themselves (run 32: 20-34 frames/s, but flicker / ghost edges / tearing - every intermediate state of a
+ * frame was on screen). 0 = every latch copies the primary
  * into the framebuffer on the CPU, as before (17.5 MB from uncached memory inside the vsync DPC: 50-130 ms per frame
  * on the S10, DWM stuck at 2-13 frames/s, the vsync starved to ~22 Hz - gpubench v1.0). */
 extern ULONG MwScanoutDirect;
@@ -244,7 +247,8 @@ struct _MW_ADAPTER {
     volatile LONG StdRefused;           /* bit per refused standard allocation type */
     volatile LONG Latches;
     volatile LONG IsrCalls, DpcCalls, VsyncTicks;
-    volatile LONG DirectMaps, DirectLatches;    /* ScanoutDirect: primaries mapped onto the fb, flips that needed no copy */
+    volatile LONG DirectMaps, DirectLatches;
+    volatile LONG FbAliasMapped;                /* 1.0.36: MW_ALLOC_FBALIAS allocations mapped onto the fb now */    /* ScanoutDirect: primaries mapped onto the fb, flips that needed no copy */
 };
 
 /* ---- trace: Seen_<ddi>, Fail_<ddi> in the device's registry key ---- */

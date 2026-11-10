@@ -1261,3 +1261,20 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   timed out, KMD "0 blts" (latches copy nothing), profiler: DWM waits outside the driver ~92 % (idle/paced).
 - The log itself was collected in a later boot with \S10EDIAG\nogpu.flg present (GPU0 hidden, phantom) - why the
   user went back to the rescue flag is not in the log (asked). gpubench in umd-test.txt is the old run-31 file.
+- 01:43 user (run 32 continued): "smoother, but flickers while dragging windows, leaves blurred edges, tearing" -
+  the aliasing risk named in the 0068/ScanoutDirect review: all three flip buffers were the panel's memory, so every
+  render pass of a frame (and DWM reading its "previous" buffer for blur/backdrop) happened on screen.
+- KMD 1.0.36 (source to the user, compile-checked here with the Linux toolchain, NOT shipped as a binary): only an
+  allocation flagged MW_ALLOC_FBALIAS (new ABI flag 0x4, fb geometry) is mapped onto the fb (ScanDirect);
+  FbAliasMapped counts mapped ones (map / unmap / free-while-mapped); Latch skips the CPU copy for an fb-sized
+  primary while FbAliasMapped > 0. DWM's primaries are ordinary VidMm pages again.
+- UMD 0069 (f49591d5): shim malikm_fbalias_bo_begin/end -> CREATE_BO with MW_ALLOC_FBALIAS + w/h/pitch/A8R8G8B8 as a
+  device allocation; d3d10umd _Present: for a GPU primary (DWM) s10_frame_to_fb() creates once per device a LINEAR
+  RT texture of the primary's size/format (stride must be w*4, logged "framebuffer alias ... frames are copied into
+  it") and resource_copy_region()s the frame into it (GPU blit, ~5.6 ms full screen) before the flush and the flip.
+  S10_FB_ALIAS=0 = off. Old KMD + 0069: the alias is an ordinary BO, nothing changes on screen; KMD 1.0.36 + old UMD:
+  no alias, latch copies on the CPU (slow, correct).
+- Review: flip packet follows the blit in the same context, so dxgkrnl latches only after the blit completed; the
+  blit is one render pass per tile, so the panel sees old or new tiles, never a half-composed frame (tearing at the
+  tile front still possible - not synchronised to the scan). Alias evicted -> FbAliasMapped 0 -> latch copies again.
+  Cost: one full-screen GPU pass per DWM frame (~17 % of the GPU at 30 frames/s); dirty-region copies later if needed.

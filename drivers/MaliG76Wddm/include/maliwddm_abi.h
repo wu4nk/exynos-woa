@@ -25,6 +25,10 @@ typedef unsigned __int64 mw_u64;
 /* Allocation private data (D3DDDI_ALLOCATIONINFO.pPrivateDriverData). */
 #define MW_ALLOC_NOEXEC         0x1     /* not shader code: may lie anywhere, XN */
 #define MW_ALLOC_PRIMARY        0x2     /* scan-out capable (step d) */
+/* G2b-3 (KMD 1.0.36 / UMD 0069): the GPU pages of this allocation are the GOP framebuffer itself (KMD
+ * Parameters\ScanoutDirect); the UMD copies every finished DWM frame into it with the GPU before flipping, so the
+ * KMD's flip latch has nothing to copy. Width/Height/Pitch/Format must be the framebuffer's. */
+#define MW_ALLOC_FBALIAS        0x4
 
 typedef struct _MW_ALLOCATION_INFO {
     mw_u32 Version;                     /* MW_ABI_VERSION */

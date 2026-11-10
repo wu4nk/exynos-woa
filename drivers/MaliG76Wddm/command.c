@@ -550,8 +550,10 @@ static void Latch(MW_ADAPTER *A)
             }
             MwPramText(TRUE, "Latch fb skips ", NULL, ((A->FbVa != NULL) << 24) | (A->PresentSkips & 0xFFFFFF), TRUE);
         }
-        /* G2b-3 run 31 (ScanoutDirect): the GPU rendered this primary into the framebuffer - a real latch. */
-        if (p->ScanDirect)
+        /* G2b-3 (ScanoutDirect, 1.0.36): while the UMD's framebuffer alias is mapped, the UMD has copied each DWM frame
+         * into the framebuffer with the GPU before flipping - nothing to copy for a framebuffer-sized primary. */
+        if (p->ScanDirect || (A->FbAliasMapped > 0 && p->Width == A->Fb.Width && p->Height == A->Fb.Height &&
+                              p->Pitch == A->Fb.Pitch))
             InterlockedIncrement(&A->DirectLatches);
         else
             DoPresent(A, &op);

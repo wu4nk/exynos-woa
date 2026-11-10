@@ -104,6 +104,8 @@ static void FreeAllocation(MW_ADAPTER *A, MW_ALLOCATION *Alloc)
     ExAcquireFastMutex(&A->MmuLock);
     if (Alloc->Mapped && A->GpuUp)
         MkMmuUnmapPages(&A->Gpu, Alloc->GpuVa, Alloc->Pages);
+    if (Alloc->Mapped && Alloc->ScanDirect)
+        InterlockedDecrement(&A->FbAliasMapped);    /* 1.0.36: freed while still mapped */
     if (Alloc->GpuVa != 0 && A->GpuUp)
         MkVaFree(&A->Gpu, Alloc->GpuVa, Alloc->Pages);
     ExReleaseFastMutex(&A->MmuLock);
@@ -294,14 +296,15 @@ NTSTATUS APIENTRY MwCloseAllocation(IN_CONST_HANDLE hDevice, const DXGKARG_CLOSE
 
 /* ---- residency ---- */
 
-/* G2b-3 run 31 (Parameters\ScanoutDirect): may this primary be mapped onto the GOP framebuffer itself? Only with
+/* G2b-3 run 31 (Parameters\ScanoutDirect; 1.0.36: the UMD's framebuffer alias, not DWM's primaries - run 32):
+ * may this allocation be mapped onto the GOP framebuffer itself? Only with
  * FlipMmio (the latch is where the copy it replaces happens), only for a 32-bit primary with exactly the
  * framebuffer's width, height and pitch, and only when the framebuffer is whole pages - the GPU mapping is per page,
  * and a page past the framebuffer would be someone else's memory. */
 static BOOLEAN ScanoutDirectEligible(const MW_ADAPTER *A, const MW_ALLOCATION *Alloc)
 {
     const ULONG64 pa = (ULONG64)A->Fb.PhysicAddress.QuadPart;
-    return MwScanoutDirect && MwFlipMmio && (Alloc->Flags & MW_ALLOC_PRIMARY) && A->FbVa != NULL && pa != 0 &&
+    return MwScanoutDirect && MwFlipMmio && (Alloc->Flags & MW_ALLOC_FBALIAS) && A->FbVa != NULL && pa != 0 &&
            (pa & (PAGE_SIZE - 1)) == 0 && (A->FbSize & (PAGE_SIZE - 1)) == 0 &&
            (Alloc->Format == D3DDDIFMT_A8R8G8B8 || Alloc->Format == D3DDDIFMT_X8R8G8B8) &&
            (A->Fb.ColorFormat == D3DDDIFMT_A8R8G8B8 || A->Fb.ColorFormat == D3DDDIFMT_X8R8G8B8) &&
@@ -373,11 +376,12 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
             pages = alloc->Pages;
         PPFN_NUMBER pfn = MmGetMdlPfnArray(Arg->MapApertureSegment.pMdl) + Arg->MapApertureSegment.MdlOffset;
         ExAcquireFastMutex(&a->MmuLock);
-        /* G2b-3 run 31: a primary with the framebuffer's geometry is rendered straight into the framebuffer. */
+        /* G2b-3: the UMD's framebuffer alias (MW_ALLOC_FBALIAS) is the framebuffer for the GPU. */
         alloc->ScanDirect = FALSE;
         if (ScanoutDirectEligible(a, alloc) && NT_SUCCESS(MapScanoutDirect(a, alloc, pfn, pages))) {
             st = STATUS_SUCCESS;
             alloc->ScanDirect = TRUE;
+            InterlockedIncrement(&a->FbAliasMapped);
             if (InterlockedIncrement(&a->DirectMaps) <= 4)
                 MwPramText(TRUE, "ScanDirect pages ", NULL, pages, TRUE);
         } else {
@@ -415,6 +419,8 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
         ExAcquireFastMutex(&a->MmuLock);
         if (alloc->Mapped)
             MkMmuUnmapPages(&a->Gpu, alloc->GpuVa, alloc->Pages);
+        if (alloc->ScanDirect)
+            InterlockedDecrement(&a->FbAliasMapped);
         alloc->Mapped = FALSE;
         alloc->ScanDirect = FALSE;
         alloc->Mdl = NULL;
