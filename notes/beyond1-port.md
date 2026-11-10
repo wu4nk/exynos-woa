@@ -1297,3 +1297,11 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - G2b-3 goal (DWM + apps render on the Mali, usable speed) is MET on the device. Open: touch keyboard hangs after a
   while, Win+Shift+S does nothing useful (no details yet); BC1-3; KMD one job at a time; G3D clock 260 MHz.
 - User wants an app to test broadly towards daily use -> gputest (differential D3D11 test Mali vs WARP).
+- gputest v1.0 (drivers/MaliG76Wddm/tools/gputest, sha 8d12a634): D3D11 FL 10_0, HLSL compiled on the phone
+  (d3dcompiler_47), each test drawn on the hardware adapter and on WARP into 256x256 RGBA8 and compared (PASS / FAIL
+  with area, first differing pixel, a 32x16 difference map, BMPs in C:\S10Prov\gputest / MISSING = the Mali refused
+  what WARP takes / BROKEN = the tool's own bug). 53 feature tests (filters, address modes, 11 blend set-ups incl.
+  dual source, depth/stencil/scissor/viewport/cull, topologies + strip cut, instanced integer attributes, flat
+  integer varying, Buffer.Load, vertex texture fetch, geometry shader, MRT, MSAA resolve/load, cube/array/3D,
+  comparison sampler, CopySubresourceRegion/UpdateSubresource, dynamic VB, discard/derivatives/integer ops/loop) +
+  33 texture formats + 14 render-target formats. NOT run anywhere yet: expect BROKEN lines on the first run.

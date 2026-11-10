@@ -22,6 +22,9 @@ rm -f "$O"/*.pdb
 # gpubench (C++: D3D11 only): GPU job round trip, fill rate, vsync rate, per-processor speed (G2b-3 low frame rate)
 "$W/tc/zig-c++" -O2 -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Wl,--image-base=0x140000000 -o "$O/gpubench.exe" \
    "$T/tools/gpubench/gpubench.cpp" -ld3d11 -ldxgi -luser32
+# gputest (C++: D3D11 + d3dcompiler_47 at run time): differential rendering tests, hardware adapter vs WARP
+"$W/tc/zig-c++" -O2 -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Wl,--image-base=0x140000000 -o "$O/gputest.exe" \
+   "$T/tools/gputest/gputest.cpp" -ld3d11 -ldxgi -luser32
 python3 -I "$(dirname "$0")/pe-set-subsys.py" "$O/m5test.exe" "$O/d3dfill.exe" "$O/comprobe.exe" "$O/d2dtext.exe" \
-   "$O/gpubench.exe"
-(cd "$O" && sha256sum m5test.exe d3dfill.exe comprobe.exe d2dtext.exe gpubench.exe > SHA256SUMS && cat SHA256SUMS)
+   "$O/gpubench.exe" "$O/gputest.exe"
+(cd "$O" && sha256sum m5test.exe d3dfill.exe comprobe.exe d2dtext.exe gpubench.exe gputest.exe > SHA256SUMS && cat SHA256SUMS)
