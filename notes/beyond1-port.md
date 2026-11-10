@@ -1241,4 +1241,5 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   shows "Test Mode"). Never loaded anywhere yet - first clang-built kernel driver of the project.
 - Kit gpu-s10.ps1 v1.17: `kmd` (test mode check, testsign.cer -> LocalMachine Root + TrustedPublisher, original
   kept once in C:\S10Prov\kmd-backup, takeown/icacls, rename + copy over the service's ImagePath file, else
-  MoveFileEx delay-until-reboot), `kmd-restore`. Package S10-KMD-1.0.35-build35-kit-v1.17.zip (sys sha dd80a783).
+  MoveFileEx delay-until-reboot), `kmd-restore`. v1.18 (21:15, user: "Access ... MaliG76Wddm.sys.new denied"): takeown/icacls
+  the driver-store folder too, not only the file - the original stayed in place (rename had failed first). Package S10-KMD-1.0.35-build35-kit-v1.17.zip (sys sha dd80a783).

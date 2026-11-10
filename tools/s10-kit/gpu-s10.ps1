@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.17) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.18) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -45,7 +45,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.17  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.18  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -273,8 +273,13 @@ Add-Type -Namespace S10 -Name Mf -MemberDefinition @'
 public static extern bool MoveFileEx(string from, string to, int flags);
 '@
 function Set-KmdFile($Src, $Dst) {
-  & takeown.exe /f $Dst /a | Out-Null
-  & icacls.exe $Dst /grant '*S-1-5-32-544:F' | Out-Null
+  # v1.18: the driver-store FOLDER belongs to TrustedInstaller too - without it, neither the rename nor a new file
+  # in it is allowed (run 2026-11-10 21:15: "Access to the path ...\MaliG76Wddm.sys.new is denied").
+  $dir = Split-Path $Dst
+  foreach ($t in $dir, $Dst) {
+    & takeown.exe /f $t /a | Out-Null
+    & icacls.exe $t /grant '*S-1-5-32-544:F' | Out-Null
+  }
   $old = "$Dst.old-$(Get-Date -Format yyyyMMddHHmmss)"
   try {
     Rename-Item $Dst (Split-Path $old -Leaf) -ErrorAction Stop
