@@ -1120,3 +1120,54 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   the uncompiled NIR (VS layout) and again per variant with the same result. Risk accepted: (b) changes every
   shader's varying store type on Windows at once - if rendering regresses broadly, suspect it first.
   Not run anywhere yet. Symbols: scratchpad sym-0067/ (session-local).
+
+### G2b-3 run 29 (UMD 0067 66a415a1, 2026-11-10 14:00) - TEXT FIXED; "5-6 fps": RotateResourceIdentities COPIES
+- Screenshot: Settings with every label, the taskbar clock, tray icons - XAML text is there. d2dtext
+  (notes/logs/g2b3-run29-d2dtext-0067.txt): every text primitive on the Mali has the SAME pixel count and first
+  pixel as WARP (grayscale 1133 px c3 c3 c3, aliased 798, ClearType 1244 px 70 be ff, A8 1133). umd-log:
+  "MESA_SHADER_FRAGMENT shader fetches from texel buffers (slots 0x1): attribute_count 1" - cause #1 of run 28
+  confirmed; a VERTEX shader with texel buffers (slots 0x3, attribute_count 11) exists too and would have been
+  broken the same way. Cause #2 (varying types) was fixed in the same build: not told apart.
+- User: "only about 5-6 fps". DWM perf lines: 2.2-7.7 presents/s, 16-48 submissions per present, flushes per
+  present ~8 'Blit' + ~13 batch-dependency + ~2 Gallium; "last render done 20-40 ms after the present call";
+  1 BO of 17.5 MB created per present (allocate callbacks only ~25 ms / 10 s, but ~1-1.5 GB of fresh pages per
+  10 s). Top non-idle profile signature: NtGdiDdDDIRender under maliumd entry +0x3b90.
+- Symbolized (sym-0067): entry +0x3b0c/+0x3b90/+0x3be0 = _RotateResourceIdentities (DxgiFns.cpp:340/373), the
+  big-BO chain = panfrost_resource_create <- _RotateResourceIdentities. Upstream d3d10umd rotates a swap chain by
+  resource_create(temp) + Resources + 1 full copies ("XXX: Copying is not very efficient"); DWM's chain is 3
+  kernel primaries of 1440x3040, so every present = a new 17.5 MB texture + 3-4 full-screen GPU copies, each
+  through panfrost_blit, which flushes ALL batches before and after itself (pan_blit.c, upstream).
+  Other entries seen: +0x822c ResourceCopyRegion, +0x2efc DrawIndexed, +0x842c ResourceUpdateSubResourceUP
+  (memcpy 3-5 KB), +0x7d04 ResourceMap (waits in w_wait_seq), u_vbuf_get_minmax_index under DrawIndexed.
+- Confound for the user's impression: cpu.txt of this run has ALL 6 processors ~85-100 % busy (TiWorker 152 s,
+  svchost 123 s, MsMpEng 117 s of CPU in a ~10 min boot - Windows Update + Defender after the reinstall) and
+  processor 0 at 68 % DPC time, 15.6k interrupts/s (source unknown; 0 % / 480 per s in run 21's log). Only 6
+  processors are online. Half of the profiler's samples were in neither the 12 printed signatures nor idle.
+- MS Learn (DXGI_DDI_BASE_FUNCTIONS, pfnRotateResourceIdentities), fetched today: "must exchange identities ...
+  X, Y, Z -> Y, Z, X ... the user-mode display driver should swap the kernel handles of the corresponding
+  resources. However, the driver should not swap the corresponding runtime (RT) handles ... views can refer to
+  resources ... the driver must re-create such views. Also, the driver might be required to reapply currently
+  bound views."
+- 0068 (UMD 93d4486c): panfrost_s10_rotate_storage (pan_resource.c): n same-shaped, same-modifier textures
+  exchange {bo, plane (layout + GPU address), valid levels, CRC valid, label ownership, constant stencil} after
+  every batch that names one of them is flushed; the pipe_resource objects stay, so views stay valid
+  (panfrost_update_sampler_view notices the new BO; batches read rsrc->bo when made); dirty-all afterwards.
+  d3d10_gdi.c d3d10_rotate_storage wraps it; _RotateResourceIdentities uses it for plain textures (no buffer,
+  no mapped subresource, no opened-shared copy) and rotates kmt_primary / kmt_shared / gpu_primary of the
+  Resource structs the same way; otherwise the old copies. Logs "RotateResourceIdentities: N x WxH exchanged
+  storage (no copy)" / "... rotated by COPYING (why)" (2 each per process).
+  malikm-prof: new "split of N samples" line - outside / inside the driver x waiting / kernel calls / running,
+  and the top 10 driver entry points (function start offsets) as samples/waiting/kernel.
+- 0068 review (adversarial pass): rotation direction = the old copy loop's (temp<-0, 0<-1, ..., last<-temp).
+  Not a Panfrost context (softpipe, trace wrapper: resource_copy_region is not panfrost_s10_copy_region) ->
+  false -> copies. Shim state is per BO (busy seq, seen/pinned, WDDM handle), so it moves with the BO. KMD
+  present (command.c MwPresent/DoPresent) takes whatever source allocation the present names and maps it by its
+  MDL - alternating primaries are fine; before, DWM always presented the same allocation. Known wrinkle,
+  accepted: runtime allocations (WBO_RUNTIME) are freed by the runtime with the RT resource they were created
+  under, which after a rotation is not the Resource whose pipe_resource holds that BO; swap-chain buffers are
+  destroyed together and GEM_CLOSE of such a BO only unlocks, so the worst case read from the code is an unlock
+  of an already freed handle. NOT verified on the device: app flip-model swap chains (kmt_shared) now present
+  alternating allocations to DWM instead of always the same one - watch for "Present refused" and frozen app
+  windows. Not run anywhere yet. Symbols: scratchpad sym-0068/ (session-local).
+- Not done (next candidates if still slow): panfrost_blit's flush-all before and after every blit;
+  u_vbuf_get_minmax_index per DrawIndexed; KMD one-job-at-a-time.

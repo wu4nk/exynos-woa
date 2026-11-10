@@ -1,0 +1,261 @@
+From 4936e26b5e9b11e06968902c73355406b597858d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 14:15:02 +0700
+Subject: [PATCH] G2b-3: RotateResourceIdentities exchanges storage instead of
+ copying; profiler sample split
+
+d3d10umd rotated a swap chain's buffers by creating a temporary texture and
+copying Resources + 1 times - for DWM one new 17.5 MB BO and 3-4 full-screen
+GPU passes per present. On Panfrost the textures now exchange their BO /
+plane / valid state under the same pipe_resource objects (views stay valid)
+and the Resource structs rotate their kernel handles, as the DDI asks.
+Anything else (softpipe, trace wrapper, mapped or opened-shared resources)
+keeps the copies.
+
+malikm-prof prints a split of all samples (waiting / kernel calls / running,
+outside and inside the driver, by driver entry point).
+---
+ include/win32-compat/malikm_drm.c           | 55 +++++++++++++++++
+ src/gallium/drivers/panfrost/pan_resource.c | 66 +++++++++++++++++++++
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp  | 47 +++++++++++++++
+ src/gallium/targets/d3d10umd/d3d10_gdi.c    | 16 +++++
+ 4 files changed, 184 insertions(+)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index e8e240d..f50cffe 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -2920,6 +2920,61 @@ wprof_thread(void *arg)
+                     GetCurrentProcessId(), cur, samples, running, pres_n,
+                     pres_n ? perf_ms(pres_t) / pres_n : 0.0, perf_ms(pres_max),
+                     pres_n ? perf_ms(pres_render_t) / pres_n : 0.0, pres_lost);
++            /* 0068: where ALL the samples are (the 12 biggest signatures below left half of them unexplained in
++             * run 29). By the sampled frame: waiting = an Nt*Wait* / delay call; kernel = any other win32u / ntdll
++             * Nt* call; "in the driver" = some frame of the stack is in maliumd, counted under its entry point. */
++            {
++               uint32_t idle = 0, out_k = 0, out_run = 0, in_wait = 0, in_k = 0, in_run = 0;
++               struct { uintptr_t fn; uint32_t n, w, k; } ent[24];
++               int nent = 0;
++               memset(ent, 0, sizeof(ent));
++               for (int i = 0; i < WPROF_SIGS; i++) {
++                  const struct wprof_sig *g = &wprof_sigs[i];
++                  if (!g->key || !g->n)
++                     continue;
++                  char leaf[160];
++                  wprof_name(g->fr[0], leaf, sizeof(leaf));
++                  const int sys = strstr(leaf, "win32u.dll!Nt") || strstr(leaf, "ntdll.dll!Nt") ||
++                                  strstr(leaf, "ntdll.dll!Zw");
++                  const int wait = sys && (strstr(leaf, "Wait") || strstr(leaf, "DelayExecution") ||
++                                           strstr(leaf, "RemoveIoCompletion") || strstr(leaf, "GetMessage"));
++                  if (!g->outer) {
++                     if (wait) idle += g->n; else if (sys) out_k += g->n; else out_run += g->n;
++                     continue;
++                  }
++                  if (wait) in_wait += g->n; else if (sys) in_k += g->n; else in_run += g->n;
++                  DWORD64 base = 0;
++                  PRUNTIME_FUNCTION fe = RtlLookupFunctionEntry((DWORD64)g->outer - 4, &base, NULL);
++                  const uintptr_t fn = fe ? (uintptr_t)(base + fe->BeginAddress) : g->outer;
++                  int e = 0;
++                  while (e < nent && ent[e].fn != fn)
++                     e++;
++                  if (e == 24)
++                     e = 23;   /* the rest share the last slot */
++                  else if (e == nent)
++                     ent[nent++].fn = fn;
++                  ent[e].n += g->n;
++                  ent[e].w += wait ? g->n : 0;
++                  ent[e].k += !wait && sys ? g->n : 0;
++               }
++               char line[1400];
++               int o = snprintf(line, sizeof(line), "malikm-prof: pid %lu split of %u samples: outside the driver "
++                                "%u waiting + %u in kernel calls + %u running | in the driver %u waiting + %u in "
++                                "kernel calls + %u running | by entry (samples/waiting/kernel):",
++                                GetCurrentProcessId(), samples, idle, out_k, out_run, in_wait, in_k, in_run);
++               for (int top = 0; top < 10 && o < (int)sizeof(line) - 48; top++) {
++                  int best = -1;
++                  for (int e = 0; e < nent; e++)
++                     if (ent[e].n && (best < 0 || ent[e].n > ent[best].n))
++                        best = e;
++                  if (best < 0)
++                     break;
++                  o += snprintf(line + o, sizeof(line) - o, " +0x%llx %u/%u/%u",
++                                (unsigned long long)(ent[best].fn - wimg_lo), ent[best].n, ent[best].w, ent[best].k);
++                  ent[best].n = 0;
++               }
++               fprintf(stderr, "%s\n", line);
++            }
+             for (int top = 0; top < 12; top++) {
+                struct wprof_sig *b = NULL;
+                for (int i = 0; i < WPROF_SIGS; i++)
+diff --git a/src/gallium/drivers/panfrost/pan_resource.c b/src/gallium/drivers/panfrost/pan_resource.c
+index d994f37..d0d87d3 100644
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -2687,6 +2687,72 @@ panfrost_s10_copy_region(struct pipe_context *pctx, struct pipe_resource *dst, u
+    }
+    util_resource_copy_region(pctx, dst, dst_level, dstx, dsty, dstz, src, src_level, src_box);
+ }
++
++/* exynos-woa G2b-3 (0068): DXGI's RotateResourceIdentities without copies. Texture i takes over the storage (BO,
++ * its GPU address, which levels hold data, CRC state) of texture i + 1, the last one that of the first; the
++ * pipe_resource objects stay, so every view of them stays valid (sampler views re-emit their descriptor when the
++ * BO under them changed - panfrost_update_sampler_view; a batch reads rsrc->bo when it is made). Returns false
++ * and changes nothing unless pctx is a Panfrost context (not the trace wrapper) and all n are plain textures of
++ * one shape and one modifier. */
++bool
++panfrost_s10_rotate_storage(struct pipe_context *pctx, struct pipe_resource **res, unsigned n)
++{
++   if (!pctx || pctx->resource_copy_region != panfrost_s10_copy_region || !res || n < 2 || n > 16)
++      return false;
++   struct panfrost_context *ctx = pan_context(pctx);
++   struct panfrost_resource *r[16];
++   for (unsigned i = 0; i < n; i++) {
++      r[i] = pan_resource(res[i]);
++      if (!r[i] || res[i]->screen != pctx->screen || res[i]->target == PIPE_BUFFER || !r[i]->bo ||
++          r[i]->separate_stencil || r[i]->shadow_image || r[i]->scanout || r[i]->afbcp || r[i]->index_cache)
++         return false;
++      const struct pipe_resource *a = res[0], *c = res[i];
++      if (c->target != a->target || c->format != a->format || c->width0 != a->width0 || c->height0 != a->height0 ||
++          c->depth0 != a->depth0 || c->array_size != a->array_size || c->last_level != a->last_level ||
++          c->nr_samples != a->nr_samples || r[i]->modifier != r[0]->modifier ||
++          r[i]->image.props.modifier != r[0]->image.props.modifier ||
++          r[i]->plane.layout.data_size_B != r[0]->plane.layout.data_size_B)
++         return false;
++      for (unsigned k = 0; k < i; k++)
++         if (r[k] == r[i] || r[k]->bo == r[i]->bo)
++            return false;
++   }
++
++   /* nothing queued may still name these resources: batches are keyed and ordered by resource, not by BO */
++   for (unsigned i = 0; i < n; i++)
++      panfrost_flush_batches_accessing_rsrc(ctx, r[i], "Rotate resource identities");
++
++   struct {
++      struct panfrost_bo *bo;
++      struct pan_image_plane plane;
++      BITSET_DECLARE(valid, PAN_MAX_MIP_LEVELS);
++      bool crc_valid, owns_label, constant_stencil;
++      uint8_t stencil_value;
++   } st[16];
++   for (unsigned i = 0; i < n; i++) {
++      st[i].bo = r[i]->bo;
++      st[i].plane = r[i]->plane;
++      memcpy(st[i].valid, r[i]->valid.data, sizeof(st[i].valid));
++      st[i].crc_valid = r[i]->crc_state.valid;
++      st[i].owns_label = r[i]->owns_label;
++      st[i].constant_stencil = r[i]->constant_stencil;
++      st[i].stencil_value = r[i]->stencil_value;
++   }
++   for (unsigned i = 0; i < n; i++) {
++      const unsigned from = (i + 1) % n;
++      r[i]->bo = st[from].bo;          /* the references move with the pointers */
++      r[i]->plane = st[from].plane;
++      memcpy(r[i]->valid.data, st[from].valid, sizeof(st[from].valid));
++      r[i]->crc_state.valid = st[from].crc_valid;
++      pan_crc_state_set_ptr(&r[i]->crc_state, &r[i]->bo->ptr);
++      r[i]->owns_label = st[from].owns_label;
++      r[i]->constant_stencil = st[from].constant_stencil;
++      r[i]->stencil_value = st[from].stencil_value;
++      r[i]->damage.tile_map.enable = false;
++   }
++   panfrost_dirty_state_all(ctx);
++   return true;
++}
+ #endif
+ 
+ void
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index bc0d92d..3b1bf5f 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -125,6 +125,8 @@ extern "C" unsigned d3d10_frame_gen = 1;
+ /* G2b-3 (0052, malikm_drm.c): present an allocation as it is; 0 if the runtime took it. */
+ extern "C" void malikm_use_device(void *hRTDevice);
+ extern "C" int malikm_present_alloc(unsigned hSrc, unsigned hDst, void *dxgi_context, unsigned w, unsigned h);
++/* G2b-3 (0068, d3d10_gdi.c): exchange the storage of n textures (i takes i + 1's, the last the first's). */
++extern "C" bool d3d10_rotate_storage(struct pipe_context *pipe, struct pipe_resource **res, unsigned n);
+ 
+ 
+ /*
+@@ -331,6 +333,51 @@ _RotateResourceIdentities( DXGI_DDI_ARG_ROTATE_RESOURCE_IDENTITIES *RotateResour
+    assert(resource0);
+    LOG_UNSUPPORTED(resource0->last_level);
+ 
++   /* exynos-woa G2b-3 (0068): the copies below cost DWM one new 17.5 MB texture and Resources + 1 full-screen
++    * GPU passes per present (run 29: every big BO and the largest share of its submissions came from here).
++    * What the DDI asks for is an exchange of identities (MS Learn, DXGI_DDI_BASE_FUNCTIONS
++    * pfnRotateResourceIdentities: "the user-mode display driver should swap the kernel handles of the
++    * corresponding resources ... should not swap the corresponding runtime (RT) handles"; X, Y, Z -> Y, Z, X).
++    * On Panfrost the textures exchange their storage under the same pipe_resource objects, so the views the
++    * runtime made of them stay valid, and the kernel handles kept in the Resource rotate the same way.
++    * Anything unusual (softpipe, the trace wrapper, a mapped or opened-shared resource) keeps the copies. */
++   {
++      const UINT n = RotateResourceIdentities->Resources;
++      struct pipe_resource *list[16];
++      Resource *rs[16];
++      bool plain = n <= 16;
++      for (UINT i = 0; plain && i < n; i++) {
++         rs[i] = CastResource(RotateResourceIdentities->pResources[i]);
++         list[i] = rs[i] ? rs[i]->resource : NULL;
++         if (!list[i] || rs[i]->buffer || rs[i]->so_target || rs[i]->kmt_opened_locked || rs[i]->shared_cpu)
++            plain = false;
++         for (UINT s = 0; plain && s < rs[i]->NumSubResources; s++)
++            if (rs[i]->transfers && rs[i]->transfers[s])
++               plain = false;
++      }
++      static unsigned rotated, copied;
++      if (plain && d3d10_rotate_storage(pipe, list, n)) {
++         const unsigned kp = rs[0]->kmt_primary, ks = rs[0]->kmt_shared;
++         const bool gp = rs[0]->gpu_primary;
++         for (UINT i = 0; i + 1 < n; i++) {
++            rs[i]->kmt_primary = rs[i + 1]->kmt_primary;
++            rs[i]->kmt_shared = rs[i + 1]->kmt_shared;
++            rs[i]->gpu_primary = rs[i + 1]->gpu_primary;
++         }
++         rs[n - 1]->kmt_primary = kp;
++         rs[n - 1]->kmt_shared = ks;
++         rs[n - 1]->gpu_primary = gp;
++         if (++rotated <= 2)
++            fprintf(stderr, "d3d10umd: pid %lu: RotateResourceIdentities: %u x %ux%u exchanged storage (no copy)\n",
++                    GetCurrentProcessId(), n, resource0->width0, resource0->height0);
++         return S_OK;
++      }
++      if (++copied <= 2)
++         fprintf(stderr, "d3d10umd: pid %lu: RotateResourceIdentities: %u x %ux%u rotated by COPYING (%s)\n",
++                 GetCurrentProcessId(), n, resource0->width0, resource0->height0,
++                 plain ? "the driver cannot exchange their storage" : "not plain textures");
++   }
++
+    /*
+     * XXX: Copying is not very efficient, but it is much simpler than the
+     * alternative of recreating all views.
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index 050539f..a3d28d2 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -210,6 +210,22 @@ d3d10_runtime_is_maliwddm(void)
+    return d3d10_runtime_bind >= 0;
+ }
+ 
++/* G2b-3 (0068): for the frontend's RotateResourceIdentities - exchange the textures' storage instead of copying
++ * their contents (pan_resource.c). false = nothing was changed, copy. */
++#ifdef GALLIUM_PANFROST
++bool panfrost_s10_rotate_storage(struct pipe_context *pctx, struct pipe_resource **res, unsigned n);
++#endif
++bool
++d3d10_rotate_storage(struct pipe_context *pipe, struct pipe_resource **res, unsigned n)
++{
++#ifdef GALLIUM_PANFROST
++   return panfrost_s10_rotate_storage(pipe, res, n);
++#else
++   (void)pipe; (void)res; (void)n;
++   return false;
++#endif
++}
++
+ bool
+ d3d10_bind_runtime(HANDLE hRTAdapter, HANDLE hRTDevice, const void *pKTCallbacks,
+                    const void *pDXGIBaseCallbacks)
+-- 
+2.43.0
+
