@@ -1248,3 +1248,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   apart yet). User now builds himself: sent the MaliG76Wddm source folder (ScanoutDirect, DriverVer 1.0.35.1) for
   build-s10.cmd (S10_GPU=1) in his EWDK; rescue = nogpu.flg -> kmd-restore. Do NOT ship Linux-built kernel drivers
   again until one has been seen to load (compare against an EWDK build of the same source first).
+- 2026-11-11 01:09 log (7d14aaa4): Windows boots on Basic Display. setupapi: out-gpu\MaliG76Wddm 1.0.34.1 (the OLD
+  build, not 1.0.35) was re-added as oem7.inf, then a later boot ran "pnputil /delete-driver oem7.inf /uninstall
+  /force" - no MaliG76Wddm package left, ACPI\SAMS9828\0 problem 28 (0xC0000490), Services\MaliG76Wddm\Parameters
+  empty, mali-pram.txt stale garbage. gpu-report.txt is from kit v1.16 (old script on the phone). No bugcheck event /
+  dump in the log (stop code of the build-35 crash still unknown). maliumd 0068 (93d4486c) still in System32.
