@@ -1074,3 +1074,31 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   panfrost_vertex_state_head mirrors the arch-independent head of panfrost_vertex_state for pan_shader.c.
 - Still unproven after 0066 (same draw): bit-exact integers through a float32 flat varying, texel fetch from a
   512 KB buffer view (Bifrost: attribute-buffer based, limit 2^27), texel fetch from the lookup texture.
+
+### G2b-3 run 28 (UMD 0066 8461af0b, d2dtext v1.0, 2026-11-10 13:25) - GLYPH ICONS ARRIVE, TEXT STILL 0 px; CAUSE: TEXEL BUFFERS
+- Screenshot: with 0066 the font-glyph icons of XAML are there (Settings back arrow / hamburger, taskbar search /
+  Start / task view, Start menu person), text labels and the taskbar clock still are not. osk / tooltips fine.
+- d2dtext (notes/logs/g2b3-run28-d2dtext-0066.txt): antialiased edges now match WARP (ellipse 4657 px vs 4651,
+  first changed pixel eb eb eb on both; line b7 vs bb) - that was the integer-attribute bug too. All six text
+  primitives + A8 text still 0 px on Mali, in the plain and in the traced pass. umd-log has "vertex shader
+  variant with integer attributes 0x1f" (explorer) / 0x2 (d2dtext geometry), so 0066 is in use.
+- Cause #1, read in the source (not a guess; the path cannot work): on Bifrost (v6/v7) a texel buffer is not a
+  texture, it is an ATTRIBUTE: bi_lower_txf_buf -> lea_attr_pan(texture_index) + load_global_cvt_pan, and
+  pan_cmdstream.c panfrost_emit_image_texbuf_attribs builds the fragment attribute table from
+  ctx->texture_buffer[stage].mask - but returns "no table" (*buffers = 0, 0) when shader->info.attribute_count
+  is 0. For a fragment shader attribute_count = LAST_BIT(images_used) + LAST_BIT(nir->info.texture_buffers)
+  (pan_compiler.c), and info.texture_buffers is set in exactly one place in Mesa:
+  gl_nir_lower_samplers_as_deref.c (GLSL). tgsi_to_nir (legacy ttn_tex and our ttn_sample) never sets it, so
+  every TGSI fragment shader that fetches from a buffer runs without an attribute table: Direct2D's glyph
+  coverage (SAMPLE_I on the 512 KB R8_UINT buffer) reads nothing -> lookup-texture column 0 -> transparent.
+- Cause #2 (same draw, documented hardware behaviour): docs/drivers/panfrost/varyings.rst - "mistaking a float
+  for an int is ok, mistaking an int for a float seems to be lossy even without bit-size conversions"; the
+  driver therefore stores every highp varying as U32 in the VS and reads flat highp ones as U32 in the FS -
+  but only for linked programs (walk_varyings: !info.separate_shader). tgsi_to_nir sets separate_shader, so
+  the D2D VS stores the glyph's integers (MOV OUT[2] <- IN[3], IN[4]) as float32 and the FS reads the CONSTANT
+  varying as float32. TGSI is untyped, the declared type means nothing. Not proven on the device that the bits
+  are actually damaged (small integers are float denormals) - fixed together with #1, so the next run cannot
+  tell them apart; S10_TRUST_VARYING_TYPES=1 restores the old rule for an A/B if ever needed.
+- Checked and fine by reading: buffer -> buffer resource_copy_region goes to util_resource_copy_region (0062
+  only takes textures); panfrost_update_sampler_view / texel_buffer_base_ptr follow a BO change;
+  attribs are re-emitted on TEXTURE | SHADER dirty; max texel buffer elements 2^27 on v6+.

@@ -1,0 +1,195 @@
+d2dtext v1.0  2026-11-01 23:23:22  pid 8324  target 256x64, text "Hg 123" Segoe UI 40 px
+each line: what differs from the colour the target was cleared to; then a 64x8 picture of it
+
+#### pass 1: hardware adapter
+== HARDWARE: D3D11CreateDevice 0x00000000, feature level 0xa000
+   adapter "Arm Mali-G76 MP12 (Galaxy S10e, G10/G11)" vendor 0x534d4153 device 0x38323839
+  clear only                   EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  rectangle (3072 px)          EndDraw 0x00000000:  3072 px changed, box x 16..111 y 16..47, first changed px 00 00 00 ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |                                                                |
+      |                                                                |
+  ellipse, antialiased         EndDraw 0x00000000:  4657 px changed, box x 68..187 y 8..55, first changed px eb eb eb ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                    ..oo################oo..                    |
+      |                 .o##########################o.                 |
+      |                 ##############################                 |
+      |                 ##############################                 |
+      |                 .o##########################o.                 |
+      |                    ..oo################oo..                    |
+      |                                                                |
+  line, 3 px                   EndDraw 0x00000000:  1012 px changed, box x 7..248 y 6..57, first changed px b7 b7 b7 ff; px(0,0) ff ff ff ff
+      |  ..                                                            |
+      | .oooooooooo..                                                  |
+      |          ..oooooooooo..                                        |
+      |                    ..oooooooooo..                              |
+      |                              ..oooooooooo..                    |
+      |                                        ..oooooooooo..          |
+      |                                                  ..oooooooooo. |
+      |                                                            ..  |
+  text, grayscale              EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  text, aliased                EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  text, default mode           EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  white text on transparent    EndDraw 0x00000000:     0 px changed; px(0,0) 00 00 00 00
+  text, ClearType (opaque)     EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  A8: rectangle (3072 px)      EndDraw 0x00000000:  3072 px changed, box x 16..111 y 16..47, first changed px ff 00 00 00; px(0,0) 00 00 00 00
+      |                                                                |
+      |                                                                |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |                                                                |
+      |                                                                |
+  A8: text, grayscale          EndDraw 0x00000000:     0 px changed; px(0,0) 00 00 00 00
+
+#### pass 2: WARP (software reference)
+== WARP: D3D11CreateDevice 0x00000000, feature level 0xb000
+   adapter "Microsoft Basic Render Driver" vendor 0x1414 device 0x008c
+  clear only                   EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  rectangle (3072 px)          EndDraw 0x00000000:  3072 px changed, box x 16..111 y 16..47, first changed px 00 00 00 ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |                                                                |
+      |                                                                |
+  ellipse, antialiased         EndDraw 0x00000000:  4651 px changed, box x 68..187 y 8..55, first changed px eb eb eb ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                    ..oo################oo..                    |
+      |                 .o##########################o.                 |
+      |                 ##############################                 |
+      |                 ##############################                 |
+      |                 .o##########################o.                 |
+      |                    ..oo################oo..                    |
+      |                                                                |
+  line, 3 px                   EndDraw 0x00000000:  1012 px changed, box x 7..248 y 6..57, first changed px bb bb bb ff; px(0,0) ff ff ff ff
+      |  ..                                                            |
+      | .oooooooooo..                                                  |
+      |          ..oooooooooo..                                        |
+      |                    ..oooooooooo..                              |
+      |                              ..oooooooooo..                    |
+      |                                        ..oooooooooo..          |
+      |                                                  ..oooooooooo. |
+      |                                                            ..  |
+  text, grayscale              EndDraw 0x00000000:  1133 px changed, box x 11..132 y 19..55, first changed px c3 c3 c3 ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |  .o   o.         .ooo .oooo oooo                               |
+      |  o#...#o.oooo.   .ooo .. o# ..o#                               |
+      |  o#ooo#ooo  #o     oo  ooo. .oo#.                              |
+      |  .#   #..#oo#o     oo o#ooo ooo#.                              |
+      |         .ooo#.                                                 |
+      |                                                                |
+  text, aliased                EndDraw 0x00000000:   798 px changed, box x 12..132 y 19..55, first changed px 00 00 00 ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |   o   o           .o. .ooo. .ooo                               |
+      |   #...# .oooo     ooo    oo   .#                               |
+      |   #ooo# oo  #      oo  ooo  .ooo.                              |
+      |   #   # .ooo#      o. oooo. oooo.                              |
+      |         .oooo                                                  |
+      |                                                                |
+  text, default mode           EndDraw 0x00000000:  1133 px changed, box x 11..132 y 19..55, first changed px c3 c3 c3 ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |  .o   o.         .ooo .oooo oooo                               |
+      |  o#...#o.oooo.   .ooo .. o# ..o#                               |
+      |  o#ooo#ooo  #o     oo  ooo. .oo#.                              |
+      |  .#   #..#oo#o     oo o#ooo ooo#.                              |
+      |         .ooo#.                                                 |
+      |                                                                |
+  white text on transparent    EndDraw 0x00000000:  1133 px changed, box x 11..132 y 19..55, first changed px 6e 6e 6e 6e; px(0,0) 00 00 00 00
+      |                                                                |
+      |                                                                |
+      |  .o   o.         .ooo .oooo oooo                               |
+      |  o#...#o.oooo.   .ooo .. o# ..o#                               |
+      |  o#ooo#ooo  #o     oo  ooo. .oo#.                              |
+      |  .#   #..#oo#o     oo o#ooo ooo#.                              |
+      |         .ooo#.                                                 |
+      |                                                                |
+  text, ClearType (opaque)     EndDraw 0x00000000:  1244 px changed, box x 11..132 y 19..55, first changed px 70 be ff ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |  .#   o.         .ooo .oooo oooo                               |
+      |  o#...#o.oooo.   .o#o .. o# ..o#                               |
+      |  o#ooo#oo#  #o     #o  o#o. .oo#.                              |
+      |  .#   #.o#oo#o     #o o#ooo.ooo#.                              |
+      |         .ooo#.                                                 |
+      |                                                                |
+  A8: rectangle (3072 px)      EndDraw 0x00000000:  3072 px changed, box x 16..111 y 16..47, first changed px ff 00 00 00; px(0,0) 00 00 00 00
+      |                                                                |
+      |                                                                |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |                                                                |
+      |                                                                |
+  A8: text, grayscale          EndDraw 0x00000000:  1133 px changed, box x 11..132 y 19..55, first changed px 6e 00 00 00; px(0,0) 00 00 00 00
+      |                                                                |
+      |                                                                |
+      |  .o   o.         .ooo .oooo oooo                               |
+      |  o#...#o.oooo.   .ooo .. o# ..o#                               |
+      |  o#ooo#ooo  #o     oo  ooo. .oo#.                              |
+      |  .#   #..#oo#o     oo o#ooo ooo#.                              |
+      |         .ooo#.                                                 |
+      |                                                                |
+
+#### pass 3: hardware adapter again, Gallium trace -> C:\S10Prov\d3dfill.txt (GALLIUM_TRACE=C:\S10Prov\d3dfill.txt)
+== HARDWARE (traced): D3D11CreateDevice 0x00000000, feature level 0xa000
+   adapter "Arm Mali-G76 MP12 (Galaxy S10e, G10/G11)" vendor 0x534d4153 device 0x38323839
+  clear only                   EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  rectangle (3072 px)          EndDraw 0x00000000:  3072 px changed, box x 16..111 y 16..47, first changed px 00 00 00 ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                                                                |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |                                                                |
+      |                                                                |
+  ellipse, antialiased         EndDraw 0x00000000:  4657 px changed, box x 68..187 y 8..55, first changed px eb eb eb ff; px(0,0) ff ff ff ff
+      |                                                                |
+      |                    ..oo################oo..                    |
+      |                 .o##########################o.                 |
+      |                 ##############################                 |
+      |                 ##############################                 |
+      |                 .o##########################o.                 |
+      |                    ..oo################oo..                    |
+      |                                                                |
+  line, 3 px                   EndDraw 0x00000000:  1012 px changed, box x 7..248 y 6..57, first changed px b7 b7 b7 ff; px(0,0) ff ff ff ff
+      |  ..                                                            |
+      | .oooooooooo..                                                  |
+      |          ..oooooooooo..                                        |
+      |                    ..oooooooooo..                              |
+      |                              ..oooooooooo..                    |
+      |                                        ..oooooooooo..          |
+      |                                                  ..oooooooooo. |
+      |                                                            ..  |
+  text, grayscale              EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  text, aliased                EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  text, default mode           EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  white text on transparent    EndDraw 0x00000000:     0 px changed; px(0,0) 00 00 00 00
+  text, ClearType (opaque)     EndDraw 0x00000000:     0 px changed; px(0,0) ff ff ff ff
+  A8: rectangle (3072 px)      EndDraw 0x00000000:  3072 px changed, box x 16..111 y 16..47, first changed px ff 00 00 00; px(0,0) 00 00 00 00
+      |                                                                |
+      |                                                                |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |    ########################                                    |
+      |                                                                |
+      |                                                                |
+  A8: text, grayscale          EndDraw 0x00000000:     0 px changed; px(0,0) 00 00 00 00
+#### pass 3 done
+traced pass exit code 0
+trace file C:\S10Prov\d3dfill.txt: 8688606 bytes
+done. Now run s10-log and send the zip.
