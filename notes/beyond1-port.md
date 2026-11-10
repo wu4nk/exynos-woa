@@ -1278,3 +1278,14 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   blit is one render pass per tile, so the panel sees old or new tiles, never a half-composed frame (tearing at the
   tile front still possible - not synchronised to the scan). Alias evicted -> FbAliasMapped 0 -> latch copies again.
   Cost: one full-screen GPU pass per DWM frame (~17 % of the GPU at 30 frames/s); dirty-region copies later if needed.
+
+### G2b-3 run 33 (KMD 1.0.36 built by the user, UMD 0069 f49591d5; 2026-11-11 02:10)
+- User: "laggier, but no more glitches"; on-screen keyboard (TabTip / TextInputHost) hangs after a little use, and
+  Win+Shift+S does not work - both "since always" (no details yet).
+- umd-log: "framebuffer alias 1440x3040 ... (alloc 0x0, stride 5760): NOT POSSIBLE - no copy" -> the KMD latch copies
+  on the CPU again (KMD 58-67 blts / 10 s = DWM's flips), DWM 2-10 presents/s. Cause: Panfrost's BO cache served the
+  alias a recycled 17.5 MB BO (panfrost_bo_create fetches from the cache before allocating), so CREATE_BO never ran
+  with MW_ALLOC_FBALIAS. Cache entries are never SHAREABLE (pan_bo.c), so 0070 adds PIPE_BIND_SHARED to the alias.
+- gpubench (notes/logs/g2b3-run33-gpubench.txt): WaitForVBlank 54.7 Hz (was 21.8; shortest 0.1, longest 71.6 ms) with
+  DWM mostly idle; GPU full-screen copy 769 Mpixel/s.
+- UMD 0070 (3f7aef59): alias template + PIPE_BIND_SHARED. Not run yet.

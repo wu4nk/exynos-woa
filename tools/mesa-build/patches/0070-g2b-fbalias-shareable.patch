@@ -1,0 +1,29 @@
+From bf5ce2f08b750dc78e63e0f348ef2d5df1818982 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 02:16:06 +0700
+Subject: [PATCH] G2b-3: framebuffer alias is PIPE_BIND_SHARED (Panfrost's BO
+ cache handed it a recycled BO)
+
+---
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index 80d9472..849eb67 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -154,7 +154,10 @@ s10_frame_to_fb(Device *device, Resource *src)
+       t.next = NULL;
+       t.screen = NULL;
+       pipe_reference_init(&t.reference, 0);
+-      t.bind = PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_LINEAR | PIPE_BIND_SCANOUT;
++      /* 0070: PIPE_BIND_SHARED = PAN_BO_SHAREABLE, which Panfrost's BO cache never hands out: run 33's alias got a
++       * recycled 17.5 MB BO from the cache (no CREATE_BO, "alloc 0x0") and was refused. */
++      t.bind = PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_LINEAR | PIPE_BIND_SCANOUT |
++               PIPE_BIND_SHARED;
+       t.flags = 0;
+       malikm_fbalias_bo_begin(s->width0, s->height0);
+       device->fb_alias = pipe->screen->resource_create(pipe->screen, &t);
+-- 
+2.43.0
+

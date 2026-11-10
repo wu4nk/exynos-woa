@@ -1,0 +1,26 @@
+gpubench v1.0 - GPU job cost, fill rate, vsync and CPU speed. Results also in C:\S10Prov\umd-test.txt
+== HARDWARE adapter: D3D11CreateDevice 0x00000000, feature level 0xa000
+   adapter 'Arm Mali-G76 MP12 (Galaxy S10e, G10/G11)' vendor 0x534d4153 device 0x38323839
+   warm-up done, pixel ff336699 (expected ff336699)
+   1. round trip (clear 16x16, copy 1 pixel out, map): 0.44 ms each, worst 3.78 (50)
+   2. 200 small copies (16x16) back to back: 0.69 ms each to queue, 0.71 ms each until all were done (total 141 ms)
+   3. 20 full-screen copies (1440x3040): 0.12 ms each to queue, 5.69 ms each until all were done = 769 Mpixel/s (total 114 ms)
+   4. 5 full-screen uploads from memory: 17.0 ms each in the call, 17.7 ms each until done
+   5. full-screen read back: 5.9 ms until mapped, 6.0 ms total (checksum bd9b5b3bee)
+   6. WaitForVBlank x 120: 18.3 ms apart on average = 54.7 Hz (shortest 0.1 ms, longest 71.6 ms)
+== CPU: 6 processors; a dependent multiply-add chain of 200 million steps, pinned to each in turn
+   processor 0: 578 ms = 346 million steps/s (x 4 cycles = about 1.38 GHz if a step takes 4)
+   processor 1: 515 ms = 388 million steps/s (x 4 cycles = about 1.55 GHz if a step takes 4)
+   processor 2: 515 ms = 389 million steps/s (x 4 cycles = about 1.55 GHz if a step takes 4)
+   processor 3: 514 ms = 389 million steps/s (x 4 cycles = about 1.56 GHz if a step takes 4)
+   processor 4: 521 ms = 384 million steps/s (x 4 cycles = about 1.53 GHz if a step takes 4)
+   processor 5: 527 ms = 379 million steps/s (x 4 cycles = about 1.52 GHz if a step takes 4)
+== WARP (software, for scale): D3D11CreateDevice 0x00000000, feature level 0xb000
+   adapter 'Microsoft Basic Render Driver' vendor 0x1414 device 0x008c
+   warm-up done, pixel ff336699 (expected ff336699)
+   1. round trip (clear 16x16, copy 1 pixel out, map): 1.21 ms each, worst 53.44 (50)
+   2. 200 small copies (16x16) back to back: 0.00 ms each to queue, 0.00 ms each until all were done (total 1 ms)
+   3. 20 full-screen copies (1440x3040): 0.01 ms each to queue, 6.92 ms each until all were done = 632 Mpixel/s (total 138 ms)
+   4. 5 full-screen uploads from memory: 2.4 ms each in the call, 2.4 ms each until done
+   5. full-screen read back: 13.4 ms until mapped, 13.4 ms total (checksum bd9b5b3bee)
+done.
