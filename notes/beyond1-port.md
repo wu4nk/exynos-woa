@@ -1033,3 +1033,18 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   func:line what" to the UMD log (first two per site); CreateBlendState/1 note dual-source blend states (3 per
   process); malikm-bigbo chains walk with RtlCaptureContext + RtlLookupFunctionEntry/RtlVirtualUnwind.
   Symbols for this build: scratchpad sym-0065/ (session-local).
+
+### G2b-3 run 26 (UMD 0065 529925b6, 2026-11-10 12:39) - XAML TEXT STILL MISSING; dual-source was not it
+- User sent a screenshot (first one): Settings shows cards, bitmap icons (Windows logo, OneDrive, Update), the PC
+  thumbnail and caption buttons but not one glyph; taskbar has its bitmap icons, no clock; osk.exe (Win32) and the
+  desktop watermark (GDI) have their text. So: bitmaps and rectangles of XAML arrive, glyph runs do not.
+- umd-log: 11 processes create a blend state with SRC1 factors (rgb src 10 = SRC1_ALPHA, dst 26 = INV_SRC1_ALPHA,
+  same for alpha) - Direct2D makes it up front; the dual-source VARIANT was compiled once in the whole boot. So the
+  0064 path is real and now works when used, but XAML's text does not go through it. No UNSUPPORTED line at all
+  (no unimplemented entry point / shader operand hit), no job fault, no refused present.
+- Big-BO chains now have frames (0065 works), not yet symbolized (perf is not the topic of this run).
+- Next: stop guessing. drivers/MaliG76Wddm/tools/d2dtext (v1.0, 25af2bb8): Direct2D/DirectWrite primitives into an
+  off-screen BGRA / opaque BGRA / A8 texture, read back, changed-pixel count + bounding box + 64x8 ASCII picture per
+  primitive; pass 1 hardware, pass 2 WARP (reference), pass 3 hardware in a child process with GALLIUM_TRACE (the
+  trace driver is linked into maliumd: debug_screen_wrap) -> C:\S10Prov\d3dfill.txt; results ->
+  C:\S10Prov\umd-test.txt (both names s10-log v1.9 already collects).
