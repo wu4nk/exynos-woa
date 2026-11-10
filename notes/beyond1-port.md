@@ -1171,3 +1171,25 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   windows. Not run anywhere yet. Symbols: scratchpad sym-0068/ (session-local).
 - Not done (next candidates if still slow): panfrost_blit's flush-all before and after every blit;
   u_vbuf_get_minmax_index per DrawIndexed; KMD one-job-at-a-time.
+
+### G2b-3 run 30 (UMD 0068 93d4486c, 2026-11-10 16:11) - ROTATION WORKS, STILL 2-9 PRESENTS/S, DWM WAITS OUTSIDE THE DRIVER
+- "RotateResourceIdentities: 3 x 1440x3040 exchanged storage (no copy)"; no big BOs any more (BOs +0..4 per
+  10 s), idle DWM frame = 4-5 submissions (was 16), 0 failed jobs, no "Present refused", user reports no
+  rendering fault - 0068 is correct on the device. User: "fps still extremely low".
+- DWM busiest intervals: 8-9.4 presents/s, 12-33 submissions per present ('Blit' ~3 + ~10 batch-dependency
+  flushes per present remain), cpu 1-2.3 s per 10 s, waits ~0. New split line, busiest interval: 781 samples =
+  501 waiting OUTSIDE the driver + 49 kernel + 160 running outside | in the driver 4 waiting + 39 kernel + 28
+  running. So the driver takes < 10 % of DWM's thread and DWM idles in its own frame loop 65-95 % of the time:
+  DWM is neither CPU- nor driver-bound. "Last render done 6-53 ms after the present call."
+- Apps in the same log: Explorer 5 presents/s, SystemSettings 2.6-4/s (cpu 4-5 s per 10 s, waits 44-275 ms),
+  StartMenuExperienceHost 2.8/s. Older boots' logon DWMs sit at a constant 13.2-13.5 presents/s with ~13
+  submissions "in flight" - a ceiling that does not move with CPU use.
+- cpu.txt this time: 20 % total (processor 4 at 88 %), DPC 11.8 % on processor 0 - the Windows Update load of
+  run 29 is gone, so that was not the cause.
+- NOT KNOWN, and nothing logged can tell: what one GPU job costs submit -> done (KMD runs one chain at a time;
+  G3D clock is the firmware's 260 MHz of 702, notes/gpu-m16-g2g3.md F1/F5), the real software-vsync rate
+  (16 ms KTIMER on a 15.6 ms tick, VsyncTicks is not exported), the cores' speed under Windows.
+- gpubench v1.0 (drivers/MaliG76Wddm/tools/gpubench, built by build-gpu-tools.sh, sha a3dbcded): D3D11 only -
+  50 round trips (clear 16x16 + 1-pixel staging map), 200 small copies back to back, 20 full-screen copies
+  (-> Mpixel/s), 5 full-screen uploads, a full-screen read back, WaitForVBlank x 120 (-> Hz), a 200 M-step
+  multiply-add chain pinned to each processor; then the GPU part on WARP. -> C:\S10Prov\umd-test.txt.
