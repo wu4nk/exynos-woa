@@ -1,5 +1,12 @@
-/* gputest.exe (v1.0) - exynos-woa: differential Direct3D 11 test, the hardware adapter (Mali, Mesa d3d10umd +
+/* gputest.exe (v2.0) - exynos-woa: differential Direct3D 11 test, the hardware adapter (Mali, Mesa d3d10umd +
  * Panfrost) against WARP (Microsoft's software rasterizer, the reference).
+ *
+ * v2.0: "panprobe for the Windows driver" - besides the picture tests, VALUE tests (query results, stream-output
+ * contents, float shader arithmetic read back as numbers), stress / large-draw / swap-chain / feature-level probes,
+ * timings, and a panprobe-style report: C:\S10Prov\gputest\report\{manifest.json, summary.json, <test>.log}
+ * (s10-log.cmd v1.10 collects it). Each test carries the panprobe group it corresponds to (blend, sampler,
+ * depth_stencil, bc_decode, occlusion_query, pipeline_stats, xfb, draw_params, clip_cull, fill_mode, shader_arith,
+ * submit_stress, large_draw, d3d_fl, swapchain_lifecycle, workload_perf, ...).
  *
  * Every test draws the same thing into a 256x256 RGBA8 target on both devices and the two pictures are compared
  * pixel by pixel. A test names one feature desktop apps rely on (blend modes, depth/stencil, texture formats and
@@ -72,6 +79,9 @@ struct G {
    ID3D11Buffer *vb = NULL, *cb = NULL;
    ID3D11VertexShader *vs = NULL;
    std::string why;             /* why the running test could not be set up */
+   std::vector<double> vals;    /* v2: value tests put their numbers here (compared hardware vs WARP) */
+   std::string info;            /* v2: free text for the report (timings, query details) */
+   double ms = 0;               /* v2: how long the test body took */
    std::vector<IUnknown *> junk; /* released after each test */
    bool hw = false;
 
