@@ -1,0 +1,76 @@
+From 830e309a0c6ff086163fd6425b4ab03850cd923a Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Wed, 11 Nov 2026 13:37:42 +0700
+Subject: [PATCH] S10 mingw build of upstream's series: itimerspec,
+ __debugbreak, GsEmu enum cast, cfgmgr32
+
+---
+ include/win32-compat/sys/timerfd.h       | 2 ++
+ src/gallium/frontends/d3d10umd/Debug.cpp | 6 +++---
+ src/gallium/frontends/d3d10umd/GsEmu.cpp | 2 +-
+ src/gallium/targets/d3d10umd/meson.build | 4 +++-
+ 4 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/include/win32-compat/sys/timerfd.h b/include/win32-compat/sys/timerfd.h
+index b5314d0..94b5d7f 100644
+--- a/include/win32-compat/sys/timerfd.h
++++ b/include/win32-compat/sys/timerfd.h
+@@ -5,7 +5,9 @@
+ #define TFD_CLOEXEC  0x80000
+ #define TFD_NONBLOCK 0x800
+ #define TFD_TIMER_ABSTIME 0x1
++#ifndef __MINGW32__ /* exynos-woa S10 (mingw build): mingw <sys/types.h> already has it */
+ struct itimerspec { struct timespec it_interval; struct timespec it_value; };
++#endif
+ static inline int timerfd_create(int clockid, int flags) { (void)clockid; (void)flags; errno = ENOSYS; return -1; }
+ static inline int timerfd_settime(int fd, int flags, const struct itimerspec *n, struct itimerspec *o)
+ { (void)fd; (void)flags; (void)n; (void)o; errno = ENOSYS; return -1; }
+diff --git a/src/gallium/frontends/d3d10umd/Debug.cpp b/src/gallium/frontends/d3d10umd/Debug.cpp
+index 6925291..f18685d 100644
+--- a/src/gallium/frontends/d3d10umd/Debug.cpp
++++ b/src/gallium/frontends/d3d10umd/Debug.cpp
+@@ -267,10 +267,10 @@ AssertFail(const char *expr,
+            const char *function)
+ {
+    DebugPrintf("%s:%u:%s: Assertion `%s' failed.\n", file, line, function, expr);
+-#if defined(__GNUC__)
++#if defined(_MSC_VER) || defined(_WIN32)
++   __debugbreak();   /* exynos-woa S10: int3 is x86-only; mingw/clang on ARM64 have __debugbreak */
++#elif defined(__GNUC__)
+    __asm("int3");
+-#elif defined(_MSC_VER)
+-   __debugbreak();
+ #else
+    DebugBreak();
+ #endif
+diff --git a/src/gallium/frontends/d3d10umd/GsEmu.cpp b/src/gallium/frontends/d3d10umd/GsEmu.cpp
+index e572192..bd9e6b9 100644
+--- a/src/gallium/frontends/d3d10umd/GsEmu.cpp
++++ b/src/gallium/frontends/d3d10umd/GsEmu.cpp
+@@ -335,7 +335,7 @@ GsEmuDraw(Device *dev, const struct pipe_draw_info *info, const struct pipe_draw
+    cso_set_vertex_buffers(dev->cso, 1, &vb);
+    struct pipe_draw_info di;
+    util_draw_init_info(&di);
+-   di.mode = ex->gs_out_prim;
++   di.mode = (enum mesa_prim)ex->gs_out_prim;   /* exynos-woa S10 (clang C++ / mingw): explicit enum conversion */
+    di.index_size = 4;
+    di.index.resource = e->i;
+    di.primitive_restart = true;
+diff --git a/src/gallium/targets/d3d10umd/meson.build b/src/gallium/targets/d3d10umd/meson.build
+index bf4f160..ff9bf61 100644
+--- a/src/gallium/targets/d3d10umd/meson.build
++++ b/src/gallium/targets/d3d10umd/meson.build
+@@ -30,7 +30,9 @@ libgallium_d3d10 = shared_library(
+     libgallium, libwsgdi
+   ],
+   dependencies : [
+-    dep_ws2_32, idep_nir, driver_swrast, idep_mesautil, d3d10_panfrost_deps
++    dep_ws2_32, idep_nir, driver_swrast, idep_mesautil, d3d10_panfrost_deps,
++    # exynos-woa S10 (mingw build): Video.cpp's "#pragma comment(lib, cfgmgr32.lib)" is MSVC-only
++    cpp.find_library('cfgmgr32'),
+   ],
+   name_prefix: '',
+   install : true,
+-- 
+2.43.0
+
