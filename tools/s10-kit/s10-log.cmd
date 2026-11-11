@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.9) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.11) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -132,6 +132,8 @@ Copy-Item C:\Windows\System32\LogFiles\Exynos*.txt, C:\Windows\System32\LogFiles
 Copy-Item C:\S10Prov\gpuwatch.txt, C:\S10Prov\d3dfill-auto.txt, C:\S10Prov\m5test.txt, C:\S10Prov\d3dfill.txt, C:\S10Prov\umd-test.txt, C:\ProgramData\S10e\umd\umd-log.txt $dir -ErrorAction SilentlyContinue
 # v1.9: the UMD's thumbnails of what DWM presented (UMD 0055: frame-<pid>-<n>.ppm, 1/8 scale)
 Copy-Item C:\ProgramData\S10e\umd\frame-*.ppm $dir -ErrorAction SilentlyContinue
+# v1.11: upstream UMD (kit v2.x) per-process shim logs + crash evidence (gpu-s10 v1.22 sets MALIKM_TGSI_DIR): newest 60
+Get-ChildItem C:\ProgramData\S10e\umd -Filter 'malikm-*' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Copy-Item -Destination $dir -ErrorAction SilentlyContinue
 Write-Host '[ OK ] devices, counters, events'
 
 # 3. firmware log + saved PRAM dumps from the ESP. v1.6: use an ESP that is already mounted (an earlier

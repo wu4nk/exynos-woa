@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.21) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.22) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,9 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.22: upstream's UMD (kit v2.x) logs nothing to umd-log.txt; its shim writes per-process logs and crash
+  evidence (malikm-<exe>-<pid>.txt) only when MALIKM_TGSI_DIR is set - "gpu" / "gpu-dwm" now set it machine-wide to
+  C:\ProgramData\S10e\umd (DWM and LogonUI see it), "display" / "off" remove it; s10-log v1.11 collects the files.
   v1.21: nogpu.flg is looked for on EVERY FAT volume (dual boot: more than one) and deleted wherever it is.
   v1.20: runs again in the same PowerShell window (the S10.Mf helper type is added only once).
 
@@ -55,7 +58,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.21  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.22  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -75,6 +78,11 @@ function Set-GalliumDriver($v) {
   elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).GALLIUM_DRIVER) {
     Remove-ItemProperty $EnvKey GALLIUM_DRIVER; Ok 'machine GALLIUM_DRIVER removed (Mesa picks its default: Panfrost when the GPU is up)'
   }
+}
+# v1.22: upstream shim logging (malikm_drm.c tlog_file / crash evidence) - machine-wide so DWM and LogonUI write too.
+function Set-ShimLog([bool]$On) {
+  if ($On) { Set-ItemProperty $EnvKey MALIKM_TGSI_DIR 'C:\ProgramData\S10e\umd' -Type String; Ok 'machine MALIKM_TGSI_DIR = C:\ProgramData\S10e\umd (UMD logs malikm-<exe>-<pid>.txt from the next boot)' }
+  elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).MALIKM_TGSI_DIR) { Remove-ItemProperty $EnvKey MALIKM_TGSI_DIR; Ok 'machine MALIKM_TGSI_DIR removed' }
 }
 # v1.11: S10_FAULTDUMP (UMD 0046): $v = a process name (dwm.exe) or 1 (every process) - Panfrost waits for each
 # job of that process and decodes the first two chains that fault into the UMD log; $null removes it.
@@ -402,6 +410,7 @@ function Set-FullMode([int]$Gpu) {
     Ok 'mode: full adapter WITH the GPU half (FullAdapter 1, GpuEnable 1)'
     Set-GalliumDriver 'softpipe'
     Set-FaultDump $null
+    Set-ShimLog $true
     Set-TdrDelay $true
     Set-GpuWatch $true
     Info 'after the reboot: .\gpu-s10.ps1 status, then .\gpu-s10.ps1 m5test'
@@ -409,6 +418,7 @@ function Set-FullMode([int]$Gpu) {
     Ok 'mode: full adapter, GPU half off (FullAdapter 1, GpuEnable 0) - Mesa softpipe draws on the CPU'
     Set-GalliumDriver $null
     Set-FaultDump $null
+    Set-ShimLog $true
     Set-GpuWatch $false
   }
   Clear-NoGpuFlag
@@ -440,6 +450,7 @@ switch ($Action) {
       Ok 'GPU0 hidden (nogpu.flg) - mode written anyway: display-only (GpuEnable 0, FullAdapter 0)'
       Set-GalliumDriver $null
       Set-FaultDump $null
+      Set-ShimLog $false
       Set-GpuWatch $false
       Clear-NoGpuFlag
       Info 'reboot now'
@@ -454,6 +465,7 @@ switch ($Action) {
     Ok 'mode: display-only (GpuEnable 0, FullAdapter 0)'
     Set-GalliumDriver $null
     Set-FaultDump $null
+    Set-ShimLog $false
     Set-GpuWatch $false
     Clear-NoGpuFlag
     Info 'reboot, then run: .\gpu-s10.ps1 status   (FbMatchesGop = 1 is the good sign)'
@@ -490,6 +502,7 @@ switch ($Action) {
     # v1.16: no S10_FAULTDUMP - every process in its list ran Panfrost's PAN_DBG_SYNC (a wait after each job);
     # run g2b3-19 composed the whole desktop and lagged badly. Faulted jobs are still counted in umd-log.txt.
     Set-FaultDump $null
+    Set-ShimLog $true
     if ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).S10_THUMBS) {
       Remove-ItemProperty $EnvKey S10_THUMBS; Ok 'machine S10_THUMBS removed (no frame-*.ppm thumbnails)'
     }
@@ -514,6 +527,7 @@ switch ($Action) {
     Remove-Pkg 'maliG76wddm.inf'
     Remove-Pkg 'maliG76probe.inf'
     Ok 'GPU packages removed - reboot; Microsoft Basic Display drives the screen again'
+    Set-ShimLog $false
   }
 }
 Info "report: $Report"

@@ -1616,3 +1616,14 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   gpu-s10 gpu-dwm said "no nogpu.flg on the ESP (\\?\Volume{3b87cd3e…})": Clear-NoGpuFlag returned at the first
   FAT volume that had an S10EDIAG folder - dual boot has more than one FAT partition. v1.21 deletes the flag on
   every lettered drive and FAT volume (simulated with a fake volume in pwsh). No new DWM crash in this log.
+- 2026-11-11 16:18 log f981cf7c ("black after Please wait"): the same nogpu boot state as 49c3df9b (flag
+  S:\S10EDIAG\nogpu.flg 09:04 UTC still there, WINPRAM-RESTART identical). Nothing from the black boot itself:
+  the rescue went through TWRP/Android, so the Mali PRAM was overwritten before UEFI saved it, and upstream's UMD
+  never writes C:\ProgramData\S10e\umd\umd-log.txt (that log + its "screen: driver ... maliumd built" lines belong to
+  OUR old 0040-0075 series). CORRECTION of the 15:55 entry: the "DWM on the Mali, 50607 jobs 0 failed" lines were
+  from those old UMD builds (Nov 4-11 01:50..09:00 stamps), not from the kit's 603a7885 - upstream UMD + 1.0.72 KMD
+  in GPU mode on the S10 is NOT shown to work yet. The only 1.0.72 trace: display-only (mode 0, Params 0x311), 945
+  PresentDisplayOnly, no error.
+  gpu-s10 v1.22 sets machine MALIKM_TGSI_DIR=C:\ProgramData\S10e\umd for full/gpu/gpu-dwm (upstream shim per-process
+  logs + crash evidence), removes it for display/off; s10-log v1.11 collects malikm-*. Next run: gpu (DWM softpipe)
+  first, then gpu-dwm; rescue without TWRP if possible so the PRAM survives.
