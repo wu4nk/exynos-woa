@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.26) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.27) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,11 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.27: upstream's KMD 1.0.72 is validated (S10e) ONLY as a WDDM 2.0 adapter: Parameters\Wddm2 = 5 (WDDM 2.0, mixed
+  GpuMmu) + DirectFlip = 1 (HANDOFF 47-49); its default (Wddm2 0) is the old WDDM 1.3 adapter, which its UMD does not
+  expect (DWM log: "CB FAIL CreatePagingQueue 0x80004005") - every S10 run so far used that default. "full" / "gpu" /
+  "gpu-dwm" now set Wddm2 5 + DirectFlip 1 for an upstream package (its INF carries maliumd.dll) and remove them for
+  the legacy one; "display" removes them.
   v1.26: -GpuDir <folder> picks the GPU build (keep out-gpu-legacy and out-gpu-upstream side by side and switch with
   "display -GpuDir ..." - no more copying over out-gpu). Tools for gpu-watch v1.4 (kmdstats.exe) are looked for in tools\.
   v1.25: the package path only when the package's INF really carries maliumd.dll ([SourceDisksFiles], upstream 1.0.72)
@@ -69,7 +74,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.26  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.27  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -94,6 +99,23 @@ function Set-GalliumDriver($v) {
 function Set-ShimLog([bool]$On) {
   if ($On) { Set-ItemProperty $EnvKey MALIKM_TGSI_DIR 'C:\ProgramData\S10e\umd' -Type String; Ok 'machine MALIKM_TGSI_DIR = C:\ProgramData\S10e\umd (UMD logs malikm-<exe>-<pid>.txt from the next boot)' }
   elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).MALIKM_TGSI_DIR) { Remove-ItemProperty $EnvKey MALIKM_TGSI_DIR; Ok 'machine MALIKM_TGSI_DIR removed' }
+}
+# v1.27: the WDDM 2.0 switch upstream's KMD needs (only for the upstream package; the legacy KMD ignores both)
+function Set-Wddm2([bool]$On) {
+  New-Item -Force $SvcParams | Out-Null
+  if ($On) {
+    Set-ItemProperty $SvcParams Wddm2 5 -Type DWord
+    Set-ItemProperty $SvcParams DirectFlip 1 -Type DWord
+    Ok 'Parameters Wddm2 = 5 (WDDM 2.0, mixed GpuMmu) + DirectFlip = 1 - the configuration upstream runs on the S10e'
+  } else {
+    foreach ($n in 'Wddm2', 'DirectFlip') {
+      if ($null -ne (Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue).$n) { Remove-ItemProperty $SvcParams $n; Ok "Parameters $n removed" }
+    }
+  }
+}
+function Test-UpstreamPkg {
+  $inf = Join-Path $Out 'MaliG76Wddm\MaliG76Wddm.inf'
+  return (Test-Path $inf) -and (Select-String -Path $inf -Pattern '^\s*maliumd\.dll\s*=' -Quiet)
 }
 # v1.11: S10_FAULTDUMP (UMD 0046): $v = a process name (dwm.exe) or 1 (every process) - Panfrost waits for each
 # job of that process and decodes the first two chains that fault into the UMD log; $null removes it.
@@ -435,6 +457,7 @@ function Set-FullMode([int]$Gpu) {
   New-Item -Force $SvcParams | Out-Null
   Set-ItemProperty $SvcParams FullAdapter 1 -Type DWord
   Set-ItemProperty $SvcParams GpuEnable $Gpu -Type DWord
+  Set-Wddm2 (Test-UpstreamPkg)
   Initialize-UmdLog
   if ($Gpu) {
     Ok 'mode: full adapter WITH the GPU half (FullAdapter 1, GpuEnable 1)'
@@ -488,6 +511,7 @@ switch ($Action) {
       New-Item -Force $SvcParams | Out-Null
       Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
       Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
+      Set-Wddm2 $false
       Ok 'GPU0 hidden (nogpu.flg) - mode written anyway: display-only (GpuEnable 0, FullAdapter 0)'
       Set-GalliumDriver $null
       Set-FaultDump $null
@@ -504,6 +528,7 @@ switch ($Action) {
     New-Item -Force $SvcParams | Out-Null
     Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
     Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
+    Set-Wddm2 $false
     Ok 'mode: display-only (GpuEnable 0, FullAdapter 0)'
     Set-GalliumDriver $null
     Set-FaultDump $null
@@ -540,6 +565,7 @@ switch ($Action) {
   'gpu-dwm' {
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
     if ($m.GpuEnable -ne 1) { Fail 'GpuEnable is not 1 - run .\gpu-s10.ps1 gpu first (and m5test / fill)' }
+    Set-Wddm2 (Test-UpstreamPkg)
     Set-GalliumDriver $null
     # v1.16: no S10_FAULTDUMP - every process in its list ran Panfrost's PAN_DBG_SYNC (a wait after each job);
     # run g2b3-19 composed the whole desktop and lagged badly. Faulted jobs are still counted in umd-log.txt.

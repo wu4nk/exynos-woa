@@ -1668,3 +1668,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   a raw PRAM peek line when the trace is missing, 3 framebuffer pixels (0xCA000000, rows 100/1520/2940, centre
   column) and the DPU G0 (0x19071000) / DECON (0x19030000) registers - i.e. is the FB black, is the scan-out still on
   the GOP base. gpu-s10 v1.26 -GpuDir (legacy and upstream builds side by side). Kit v2.5.
+- 2026-11-11 20:39 log 0f6e9193 (upstream 1.0.72 gpu mode, black; first run with gpu-watch v1.4 + a usable WINPRAM):
+  KMD trace LOAD mode 2, flips SVA addr 0x02000000 (= ScanoutGpuVa), latches run (first ones px 0 = black boot frames,
+  at 647 s a desktop frame ff99bdd5/ffeeeeee copied), "fb skips 01000000" (FbVa mapped, 0 skips). Live: framebuffer
+  0xCA000000 holds real pixels (lock-screen blues), DPU G0 base 0xCA000000 / 1440x3040, DECON 0x113/0x133 (command
+  mode, HW trigger 0x1001), frame counter +0x78 running ~61 fps - all IDENTICAL to the Basic-Display rescue boot whose
+  panel works. kmdstats: ~0 presents/s for minutes, then 1.5/s cpu copies. So the scan-out path is not what differs.
+- FOUND: upstream's KMD is validated only as WDDM 2.0 - the S10e phone runs Parameters\Wddm2 = 5 (mixed GpuMmu) +
+  DirectFlip = 1 (HANDOFF 47-49). Default Wddm2 0 = the old WDDM 1.3 adapter; the upstream UMD expects 2.0 (DWM log
+  "CB FAIL CreatePagingQueue 0x80004005"). Every S10 upstream run used the default. gpu-s10 v1.27 sets Wddm2 5 +
+  DirectFlip 1 for the upstream package (full/gpu/gpu-dwm), removes them for display/legacy.
