@@ -1808,3 +1808,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   gpu-s10 v1.33: Install-UmdFiles (the package loop as a function) + -UmdDir <folder> for full/gpu/final; "final"
   works from any full-adapter state (sets GpuEnable 1, removes GALLIUM_DRIVER) and installs -UmdDir; an in-use
   *.old gets a random suffix instead of failing the rename. Fix for the user: final -UmdDir umd-0222-s10.3 + reboot.
+- 2026-11-12 03:31 user: drag/resize OK now ("tôi thấy ok rồi"). GPU state on the S10: KMD 1.0.72.1 as WDDM 2.0
+  (Wddm2 5 + DirectFlip 1), UMD 0222-s10.3 (TC off, GL Lock2+staging, dual-source), gpu-s10 final, S10ePower +
+  governor with G3D 806 MHz (YuROM fvmap slot), S10Touch 1.1.1.0 touch boost. Open GPU items: msaa4 edge diff
+  (1.7 % px), threaded-context deadlock root cause (perf only), hardware video decode on the S10 (MFC), long-run
+  stability at 806 MHz / 681 mV. Then: louder audio (user, earlier), mic / headphone, brightness.
