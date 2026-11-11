@@ -3,13 +3,15 @@
 # programs (drivers/MaliG76Wddm/tools) built on Linux with zig 0.13 like the UMD (linux-build-g76.sh cross stage).
 # d3dcompiler_47 import libs come from zig's mingw .def files. Not built: d3dtri (needs its overlay source),
 # gpucheck (GUI WinMain), d3dswap (MSVC-only goto over initialisation).
+# x86: dlltool -k (kill the @n stdcall suffix in the DLL import names - without it d3dcompiler_47 imports
+# "D3DCompile@44" and the tools die with 0xC0000139, gpu-validate run 2026-11-12).
 # Usage: build-validate-tools.sh <workdir of linux-build-g76.sh> <out dir>      (ZIG=/path/to/zig)
 set -euo pipefail
 W=$(readlink -f "${1:?workdir}"); O=$(readlink -f "${2:?out dir}"); mkdir -p "$O/x86" "$O/lib" "$O/lib86"
 T=$(cd "$(dirname "$0")/../../drivers/MaliG76Wddm" && pwd)
 M=$(dirname "${ZIG:?set ZIG}")/lib/libc/mingw
 "$W/tc/zig-dlltool" -m arm64 -d "$M/lib-common/d3dcompiler_47.def" -l "$O/lib/libd3dcompiler.a"
-"$W/tc/zig-dlltool" -m i386 -d "$M/lib32/d3dcompiler_47.def" -l "$O/lib86/libd3dcompiler.a"
+"$W/tc/zig-dlltool" -m i386 -k -d "$M/lib32/d3dcompiler_47.def" -l "$O/lib86/libd3dcompiler.a"
 F=(-O2 -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -include "$W/ddi/ddi_mingw_compat.h" -I"$W/ddi" -I"$T/include")
 L=(-ld3dcompiler -ld3d11 -ldxgi -luser32 -lgdi32)
 src() { (shopt -s nullglob; f=("$T/tools/$1"/*.c "$T/tools/$1"/*.cpp); echo "${f[0]}"); }

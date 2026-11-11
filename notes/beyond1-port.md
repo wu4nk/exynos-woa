@@ -1746,3 +1746,22 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   tess mrt bc copysrgb cbdyn vbring fence fs, gltest, gpuinfo, dwmrate, vblank, flipseq, gpuclock) + 5 x86 (caps msaa
   cs cbdyn vbring), zig 0.13, d3dcompiler_47 import libs from zig's mingw .def. Not built: d3dtri (overlay source),
   gpucheck (WinMain GUI), d3dswap (goto over init). NOT run on the device yet.
+- 2026-11-12 00:50 first gpu-validate run (UMD 0222-s10.1, KMD 1.0.72.1 Wddm2 5, MALIKM_TGSI_DIR still on):
+  dxdiag WDDM 2.0, DDI 11.3, FL 11_0..9_1, 1440x3040 60 Hz. PASS: d3dcaps, d3dmsaa, d3dcs 7/7, d3dsm5 34/34, d3dgs 6/6,
+  d3dso, d3dtess 9/9, d3dmrt 7/7, d3dcopysrgb, d3dcbdyn, d3dvbring, d3dfence; x86 d3dcaps32 + d3dmsaa32. KNOWN d3dsm41
+  7/8 (lod, as S10e). Edge edge://gpu: Canvas/Compositing/WebGL/WebGPU/Video Decode+Encode hardware accelerated,
+  Rasterization blocklisted (upstream same), ANGLE D3D11 ES 3.0, D3D11 FL 11_0.
+  FAILS and causes:
+  - d3dbc (plain) 63/63 DIFF = by design since G26 (BC4/BC5 -> ETC2/EAC re-compression; upstream g27: "plain 63/63
+    DIFF = expected"); the right check is "d3dbc lossy" -> gpu-validate v1.1.
+  - x86 d3dcs32/d3dcbdyn32/d3dvbring32 0xC0000139 = MY tool build: zig dlltool without -k imported "D3DCompile@44"
+    from d3dcompiler_47. build-validate-tools.sh now uses -k (import name D3DCompile, checked with llvm-readobj).
+  - gputest 90 PASS / 10 FAIL (legacy stack was 95-100): names cut off by the 25-line tail; B5G6R5 RT 11 px (worst 9).
+    v1.1 keeps the whole output.
+  - gltest 0/5: GL 3.1 Mesa Panfrost context OK, every draw GL_INVALID_FRAMEBUFFER_OPERATION, "mmap(..., size=262144)
+    failed: Invalid argument" = shim IOCTL_MALIKM_MAP -> w_lock -> D3DKMTLock (the ICD's non-runtime D3DKMT path)
+    returned an error. Upstream S10e: GLTEST 5/5 on the same path. Diagnostic: patches-s10/s10-0002 logs the Lock
+    NTSTATUS (+ the D3DKMT paging-queue line already there); maligl-diag.dll swapped in by gpu-validate v1.1 for gltest.
+  - GPU clock 156 MHz (lowest DVFS step: no S10ePower/governor) -> power-s10.ps1 test is the clocks step.
+  - 52 app hangs since boot, mostly SearchHost 1002 in the first minute (shim logging on) - recheck after "final".
+  - gpu-validate v1.0 bug: "$known" vs "$Known" (case-insensitive names) printed the hashtable.

@@ -1,5 +1,5 @@
 <#
-  gpu-validate.ps1 (v1.0) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
+  gpu-validate.ps1 (v1.1) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
   (KMD 1.0.72.1 as WDDM 2.0 + UMD 0222-s10.x) is up with DWM on the Mali ("gpu-s10.ps1 gpu-dwm" + reboot).
   Run ON THE PHONE from the kit folder, PowerShell as Administrator, IN THE DESKTOP SESSION (gltest needs a window):
       Set-ExecutionPolicy -Scope Process Bypass
@@ -19,6 +19,13 @@
     6. timing: vblank (refresh interval), dwmrate (DWM compositions/s for 5 s), gpuclock (the GPU's clock),
        kmdstats (KMD counters)
     7. crashes since this boot: WER reports / Application Error events of dwm, LogonUI, explorer and the tests
+  v1.1 (2026-11-12, first S10 run): "known" counter renamed (PowerShell names are case-insensitive: $known was the
+  $Known table -> "System.Collections.Hashtable known"); d3dbc runs "lossy" (BC4/BC5 are re-compressed to ETC2/EAC
+  since G26 - its plain mode differs by design, upstream g27 notes); gputest's whole output and every FAIL line are
+  kept; x86 tools rebuilt (0xC0000139 = the tools' own d3dcompiler import, not the driver); every test runs with
+  MALIKM_TGSI_DIR = C:\S10Prov\gpu-validate\logs (the UMD's per-process logs) and a failed test's log is listed;
+  gltest uses tools\validate\maligl-diag.dll (logs why D3DKMTLock fails) in place of System32\maligl.dll for its
+  run and puts the original back; everything goes into C:\S10Prov\gpu-validate.zip.
   Not automatic (look yourself, write the result to the chat): Edge -> edge://gpu ("Hardware accelerated" lines),
   a WebGL page, a YouTube video, scrolling in Settings.
 #>
@@ -26,11 +33,14 @@ param([int]$Timeout = 60)
 $ErrorActionPreference = 'Continue'
 $Report = 'C:\S10Prov\gpu-validate.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-validate.ps1 v1.0  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
+"gpu-validate.ps1 v1.1  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
 function W($m) { Write-Host $m; $m | Add-Content $Report -Encoding ascii }
 $Vd = Join-Path $PSScriptRoot 'tools\validate'
-$pass = 0; $fail = 0; $known = 0; $miss = 0
-$Known = @{ 'd3dsm41.exe' = 'S10e: 7/8 (Bifrost LOD)' }
+$pass = 0; $fail = 0; $nKnown = 0; $miss = 0
+$Dir = 'C:\S10Prov\gpu-validate'; Remove-Item $Dir -Recurse -Force -ErrorAction SilentlyContinue
+$Logs = Join-Path $Dir 'logs'; New-Item -ItemType Directory -Force $Logs | Out-Null
+$env:MALIKM_TGSI_DIR = $Logs   # child processes inherit it: every test writes its UMD log there
+$KnownFail = @{ 'd3dsm41.exe' = 'S10e: 7/8 (Bifrost LOD)' }
 
 function Run-Test($exe, [string[]]$a = @(), [string]$label = '') {
   $name = Split-Path $exe -Leaf
@@ -47,12 +57,20 @@ function Run-Test($exe, [string[]]$a = @(), [string]$label = '') {
   $out = @(Get-Content $o, "$o.err" -ErrorAction SilentlyContinue)
   if (-not $ok) { try { $p.Kill() } catch {} ; $res = 'HANG'; $script:fail++ }
   elseif ($p.ExitCode -eq 0) { $res = 'PASS'; $script:pass++ }
-  elseif ($Known.ContainsKey($name)) { $res = 'KNOWN'; $script:known++ }
+  elseif ($KnownFail.ContainsKey($name)) { $res = 'KNOWN'; $script:nKnown++ }
   else { $res = 'FAIL'; $script:fail++ }
   $code = if ($ok) { $p.ExitCode } else { 'timeout' }
-  W ("  {0,-5} {1,-22} exit {2}  {3} ms{4}" -f $res, $label, $code, $ms, $(if ($res -eq 'KNOWN') { "  ($($Known[$name]))" } else { '' }))
+  W ("  {0,-5} {1,-22} exit {2}  {3} ms{4}" -f $res, $label, $code, $ms, $(if ($res -eq 'KNOWN') { "  ($($KnownFail[$name]))" } else { '' }))
   $show = if ($res -eq 'PASS') { 3 } else { 25 }
+  $out | Set-Content (Join-Path $Dir "$label.txt") -Encoding ascii
+  $fl = @($out | Where-Object { "$_" -match '^\s*(FAIL|DIFF)\b' })
+  if ($res -ne 'PASS' -and $fl.Count) { $fl | Select-Object -First 30 | ForEach-Object { W "        ! $_" } }
   $out | Where-Object { "$_".Trim() } | Select-Object -Last $show | ForEach-Object { W "        | $_" }
+  if ($res -ne 'PASS') {
+    $base = [IO.Path]::GetFileNameWithoutExtension($name)
+    Get-ChildItem $Logs -Filter "malikm-$base.exe-*" -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $t0.AddSeconds(-2) } |
+      ForEach-Object { W "        log: $($_.Name) ($($_.Length) B)"; Get-Content $_.FullName -Tail 8 | ForEach-Object { W "        log> $_" } }
+  }
 }
 
 W '== 1. setup'
@@ -82,9 +100,10 @@ if (Test-Path $dx) {
 } else { W '  dxdiag wrote nothing' }
 
 W '== 3. D3D11 tests (ARM64)'
-foreach ($t in 'd3dcaps', 'd3dmsaa', 'd3dcs', 'd3dsm41', 'd3dsm5', 'd3dgs', 'd3dso', 'd3dtess', 'd3dmrt', 'd3dbc', 'd3dcopysrgb', 'd3dcbdyn', 'd3dvbring', 'd3dfence') {
+foreach ($t in 'd3dcaps', 'd3dmsaa', 'd3dcs', 'd3dsm41', 'd3dsm5', 'd3dgs', 'd3dso', 'd3dtess', 'd3dmrt', 'd3dcopysrgb', 'd3dcbdyn', 'd3dvbring', 'd3dfence') {
   Run-Test (Join-Path $Vd "$t.exe")
 }
+Run-Test (Join-Path $Vd 'd3dbc.exe') @('lossy') 'd3dbc lossy'
 $gt = @((Join-Path $PSScriptRoot 'tools\gputest.exe'), (Join-Path $Vd 'gputest.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($gt) { Run-Test $gt } else { W '  MISS gputest.exe' ; $miss++ }
 
@@ -92,7 +111,19 @@ W '== 4. D3D11 tests (x86, 32-bit UMD)'
 foreach ($t in 'd3dcaps32', 'd3dmsaa32', 'd3dcs32', 'd3dcbdyn32', 'd3dvbring32') { Run-Test (Join-Path $Vd "x86\$t.exe") }
 
 W '== 5. OpenGL'
+$sysGl = 'C:\Windows\System32\maligl.dll'; $diagGl = Join-Path $Vd 'maligl-diag.dll'; $swapped = $false
+if ((Test-Path $diagGl) -and (Test-Path $sysGl)) {
+  takeown /f $sysGl /a | Out-Null; icacls $sysGl /grant '*S-1-5-32-544:F' | Out-Null
+  Copy-Item $sysGl (Join-Path $Dir 'maligl-system.dll') -Force
+  try { Copy-Item $diagGl $sysGl -Force -ErrorAction Stop; $swapped = $true; W '  (gltest on maligl-diag.dll - the System32 copy is put back afterwards)' }
+  catch { W "  could not swap in maligl-diag.dll: $_" }
+}
 Run-Test (Join-Path $Vd 'gltest.exe')
+if ($swapped) {
+  try { Copy-Item (Join-Path $Dir 'maligl-system.dll') $sysGl -Force -ErrorAction Stop; W '  System32\maligl.dll restored' }
+  catch { W "  RESTORE FAILED - copy $Dir\maligl-system.dll to $sysGl by hand: $_" }
+}
+Remove-Item (Join-Path $Dir 'maligl-system.dll') -Force -ErrorAction SilentlyContinue
 
 W '== 6. timing'
 Run-Test (Join-Path $Vd 'vblank.exe') @('120')
@@ -112,5 +143,10 @@ $dwm = Get-Process dwm -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($dwm) { W ("  dwm#{0} up {1:N0} s (boot {2:N0} s ago)" -f $dwm.Id, ((Get-Date) - $dwm.StartTime).TotalSeconds, ((Get-Date) - $boot).TotalSeconds) }
 
 W ''
-W "SUMMARY: $pass PASS, $fail FAIL/HANG, $known known, $miss missing   -> $Report"
+W "SUMMARY: $pass PASS, $fail FAIL/HANG, $nKnown known, $miss missing   -> $Report"
+Copy-Item $Report $Dir -Force
+if (Test-Path 'C:\S10Prov\gputest') { Copy-Item 'C:\S10Prov\gputest' (Join-Path $Dir 'gputest-bmp') -Recurse -Force -ErrorAction SilentlyContinue }
+Remove-Item 'C:\S10Prov\gpu-validate.zip' -Force -ErrorAction SilentlyContinue
+Compress-Archive -Path "$Dir\*" -DestinationPath 'C:\S10Prov\gpu-validate.zip' -ErrorAction SilentlyContinue
+W 'send C:\S10Prov\gpu-validate.zip'
 W 'By hand (write in the chat): Edge edge://gpu (Graphics Feature Status), a WebGL demo, YouTube 1080p, scrolling.'
