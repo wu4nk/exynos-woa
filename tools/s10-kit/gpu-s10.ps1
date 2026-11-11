@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.18) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.19) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -35,6 +35,13 @@
     .\gpu-s10.ps1 kmd-restore   put the kept original back - reboot. If the new one does not boot: TWRP ->
                             \S10EDIAG\nogpu.flg on the ESP -> boot (Basic Display) -> kmd-restore -> gpu-dwm -> reboot.
 
+  v1.19 (kit v2.x, KMD 1.0.72.1): the MaliG76Wddm package itself carries the user-mode drivers (maliumd.dll,
+  maliumd32.dll, maligl.dll - its INF copies them to System32 / SysWOW64, in-use files replaced at the reboot).
+  "full" / "gpu" then check each installed file against the package and replace a differing one FROM THE PACKAGE,
+  never a loose maliumd.dll: a stale out-gpu\maliumd.dll from an older kit was picked, and the installed file
+  belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
+  loose-file path is kept for a package without a UMD (with the same takeown).
+
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
   Rescue if the screen stays black after "display": boot TWRP, mount the ESP, create
   \S10EDIAG\nogpu.flg on it (GPU0 disappears on the next boot) - or flash beyond1lte-uefi v0.1.2.
@@ -45,7 +52,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.18  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.19  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -324,6 +331,30 @@ function Set-FullMode([int]$Gpu) {
   } elseif (Get-Service MaliG76Wddm -ErrorAction SilentlyContinue) {
     Info 'GPU0 hidden (nogpu.flg) but MaliG76Wddm is installed - writing the mode anyway, the flag is removed below'
   } else { Fail 'no GPU0 and MaliG76Wddm not installed - run .\gpu-s10.ps1 display first' }
+  # v1.19: the package carries the UMD (kit v2.x). Its INF puts each file in place when the package is installed
+  # ("display"); here every file is checked against the package and, if it differs (an older kit's package, or a
+  # loose copy from gpu-s10 <= v1.18), replaced from the package: take ownership (TrustedInstaller owns what a
+  # package installed), rename the in-use file aside (allowed for a loaded DLL), copy the package's.
+  $pkgUmd = Join-Path $Out 'MaliG76Wddm\maliumd.dll'
+  if (Test-Path $pkgUmd) {
+    $wow = "$env:SystemRoot\SysWOW64"
+    foreach ($pair in @(@('maliumd.dll', $UmdDst), @('maliumd32.dll', "$wow\maliumd32.dll"), @('maligl.dll', "$env:SystemRoot\System32\maligl.dll"))) {
+      $pf = Join-Path $Out "MaliG76Wddm\$($pair[0])"; $dst = $pair[1]
+      if (-not (Test-Path $pf)) { continue }
+      $hp = (Get-FileHash $pf -Algorithm SHA256).Hash.ToLower()
+      $hs = if (Test-Path $dst) { (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower() } else { '' }
+      if ($hs -eq $hp) { Ok "$($pair[0]) = the package's (sha256 $($hp.Substring(0,8))...)"; continue }
+      if (Test-Path $dst) {
+        $old = "$dst.old"
+        if (Test-Path $old) { takeown /f $old /a | Out-Null; icacls $old /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $old -Force -ErrorAction SilentlyContinue }
+        takeown /f $dst /a | Out-Null
+        icacls $dst /grant '*S-1-5-32-544:F' | Out-Null
+        Rename-Item $dst (Split-Path $old -Leaf) -Force
+      }
+      Copy-Item $pf $dst -Force
+      Ok ("{0} -> {1} from the package (sha256 {2}..., was {3})" -f $pair[0], $dst, $hp.Substring(0,8), $(if ($hs) { $hs.Substring(0,8) + '...' } else { 'missing' }))
+    }
+  } else {
   # v1.4: every candidate is checked; images based below 4 GB (zig's default 0x10000000, the 46e5620f build)
   # are refused by Windows ARM64 with LoadLibrary 193 - skip them; of the rest the newest file wins.
   $cands = @((Join-Path $PSScriptRoot 'maliumd.dll'), (Join-Path $PSScriptRoot 'fix\maliumd.dll'),
@@ -347,15 +378,19 @@ function Set-FullMode([int]$Gpu) {
   if ((Test-Path $sum) -and -not (Select-String -Path $sum -Pattern $h -SimpleMatch -Quiet)) {
     Fail "maliumd.dll sha256 $h is not in $sum - copy damaged?"
   }
-  # A loaded DLL cannot be overwritten but can be renamed: move the old one aside first.
+  # A loaded DLL cannot be overwritten but can be renamed: move the old one aside first. v1.19: a file a driver
+  # package installed belongs to TrustedInstaller - take it over first, or the rename is denied.
   if (Test-Path $UmdDst) {
     $old = "$UmdDst.old"
-    if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $old) { takeown /f $old /a | Out-Null; icacls $old /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $old -Force -ErrorAction SilentlyContinue }
+    takeown /f $UmdDst /a | Out-Null
+    icacls $UmdDst /grant '*S-1-5-32-544:F' | Out-Null
     Rename-Item $UmdDst (Split-Path $old -Leaf) -Force
     Info "previous maliumd.dll -> $old"
   }
   Copy-Item $src $UmdDst -Force
   Ok ("maliumd.dll -> $UmdDst ({0:N0} bytes, sha256 {1})" -f (Get-Item $UmdDst).Length, $h)
+  }
   New-Item -Force $SvcParams | Out-Null
   Set-ItemProperty $SvcParams FullAdapter 1 -Type DWord
   Set-ItemProperty $SvcParams GpuEnable $Gpu -Type DWord

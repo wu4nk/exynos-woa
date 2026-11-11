@@ -1598,3 +1598,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   builds it when bcm4375\bt\bcm4375B1_semco.hcd exists; get-wifi-fw v1.2/v1.1 pulls bcm4375*.hcd + cid.info and
   copies murata/semco B1 by the module id (INFERENCE: BT patch file follows the WiFi module vendor in cid.info;
   no cid.info -> semco + warning). BD address still the chip default (upstream open item). Not run on the S10.
+- 2026-11-11 — gpu-s10 full/gpu on kit v2.x: picked a stale out-gpu\maliumd.dll (2026-11-10, older kit) and
+  Rename-Item of System32\maliumd.dll failed "Access denied" (the 1.0.72 package installed it -> TrustedInstaller).
+  gpu-s10.ps1 v1.19: with out-gpu\MaliG76Wddm\maliumd.dll present, maliumd/maliumd32/maligl are checked against the
+  package and a differing one replaced from it (takeown + icacls Administrators F, rename aside, copy); loose-file
+  path keeps the same takeown. Parsed with pwsh 7.4; not run on the phone.
