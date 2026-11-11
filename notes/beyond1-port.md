@@ -1579,3 +1579,22 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
     (COHERENCY_NONE, FLUSH_MEM before AS0 reprogram, JS_COMMAND_NEXT check) are not in upstream's maligpu.c; left
     out (upstream's KMD is validated on the S10e without them; revisit if the S10 shows faults/hangs).
   None of this run on the phone yet.
+- 2026-11-11 — WU4NK sent their Exynos9820Ufs.h ("don't touch this file"): byte-identical to this branch before the
+  upstream merge (8604bf2^1 / 3d2bc20); the current header = theirs + 40 added lines (w40-w47 driver fields:
+  UFS_SLOT, async/IRQ state, large-PRDT asserts), no line of theirs changed - every LBA / fence / protected-range
+  constant is the same. Their .h cannot build the w47 .c, so they keep the installed (pre-w40) driver:
+  build-s10.cmd v1.11 `set S10_KEEP_UFS=1` skips the UFS build.
+- UEFI v0.2.1 (sha256 5f9d6f5e…e201): S10 DSDT UFS0 interrupt back on the PARKED line 259 (disassembled: 0x103) -
+  upstream's 281 storms with the pre-w43 driver WU4NK keeps; w43+ stays polled on 259. BT role latch ON
+  (BEYOND0LTE_BT_UART_ROLE=1 on Beyond0LteBtUartDxe only): DSDT BTH0 present when the DXE latched. S10 DT
+  (FdtBlob/beyond1lte.dtb, python fdt) = S10e: bluetooth pinctrl bt-hostwake gpa2-3, bt-btwake gpg2-0, bt-en
+  gpm8-0, uart1 = uart@10840000. FVMAIN_COMPACT 3520 B free.
+- Audio (user: "secondary speaker not working and still quiet"): by design of the package defaults - Stereo 0
+  (earpiece amp @0x41 not powered, (L+R)/2 to the loudspeaker only) and SpkAtten 40 (-5 dB on the loudspeaker; the
+  S10e by-ear balance). install-in-windows v1.2 sets Stereo 1 + SpkAtten 0 and restarts the device; analog gains
+  unchanged (Rcv 12 / Spk 10; stock music is 17/17 WITH Samsung's DSP protection, which we do not have) - the
+  trim app (S10eSpeakerTrim.cs, compiled on the phone with the in-box csc) raises them to 17 at the user's choice.
+- Bluetooth (user: "nothing"): Exynos9820Bt was never in the S10 kit and the role latch was off. Now: build-s10.cmd
+  builds it when bcm4375\bt\bcm4375B1_semco.hcd exists; get-wifi-fw v1.2/v1.1 pulls bcm4375*.hcd + cid.info and
+  copies murata/semco B1 by the module id (INFERENCE: BT patch file follows the WiFi module vendor in cid.info;
+  no cid.info -> semco + warning). BD address still the chip default (upstream open item). Not run on the S10.

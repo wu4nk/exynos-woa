@@ -7,7 +7,7 @@
     <ProjectGuid>{3C1D9B42-7E55-4A0B-9F21-9829BE10D4C0}</ProjectGuid>
     <ProjectName>Exynos9820Bt</ProjectName>
     <TargetName>Exynos9820Bt</TargetName>
-    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
     <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
     <KMDF_VERSION_MINOR>15</KMDF_VERSION_MINOR>

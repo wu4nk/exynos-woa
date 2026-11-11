@@ -361,7 +361,7 @@
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.2.0"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.2.1"
   #
   # v0.1.6 (notes/beyond1-port.md "UEFI exception in ArmCpuDxe"): no DXE image protection (default 0x2 = every
   # firmware-volume image gets RO code / XP data). The intermittent EC 0x00 exception sits in exactly that
@@ -621,7 +621,14 @@
   #     tables ship but Windows never receives the MADT/DSDT, i.e. the port's
   #     bar ("Windows sees CPU and RAM") cannot be met. ---
   MdeModulePkg/Universal/Acpi/AcpiTableDxe/AcpiTableDxe.inf
-  Platform/Beyond0LtePkg/AcpiTables/AcpiTables.inf
+  # v0.2.1 (2026-11-11): the UFS interrupt stays on the PARKED line 259 on the S10. Upstream's default 281 (real line,
+  # driver >= w43 only) storms with the S10's installed pre-w40 Exynos9820Ufs.sys (its ISR returns FALSE), and WU4NK
+  # keeps that driver. 259 is safe for both: an old driver never sees an interrupt, w43+ never proves the line and
+  # stays polled (Exynos9820UfsDiag.h UFS_IO_ASYNC). Move to 281 only together with a w43+ driver on the phone.
+  Platform/Beyond0LtePkg/AcpiTables/AcpiTables.inf {
+    <BuildOptions>
+      *_*_*_ASLPP_FLAGS = -DBEYOND0LTE_UFS_GSIV=259
+  }
   Platform/Beyond0LtePkg/Drivers/Beyond0LteAcpiPlatformDxe/Beyond0LteAcpiPlatformDxe.inf
   # W19: RAM boot log -> UEFILOG.TXT on the ESP (ReadyToBoot + exception handler)
   Platform/Beyond0LtePkg/Drivers/Beyond0LteBootLogDxe/Beyond0LteBootLogDxe.inf
@@ -631,7 +638,13 @@
   Platform/Beyond0LtePkg/Drivers/Beyond0LteAudioProbeDxe/Beyond0LteAudioProbeDxe.inf
   # upstream (merged 2026-11-11): BT UART probe (off unless BEYOND0LTE_BT_UART_PROBE), SMBIOS (S10 identity + 8 GB),
   # MFC probe (off unless BEYOND0LTE_MFC_PROBE)
-  Platform/Beyond0LtePkg/Drivers/Beyond0LteBtUartDxe/Beyond0LteBtUartDxe.inf
+  # v0.2.1: BT role latch ON (clocks, gpq0 UART pins, USI mode, bt_en gpm8-0 -> DSDT BTH0 shown) for Exynos9820Bt.
+  # S10 live DT (FdtBlob/beyond1lte.dtb) = the S10e's: bluetooth pinctrl bt-hostwake gpa2-3, bt-btwake gpg2-0, bt-en
+  # gpm8-0, uart1 = uart@10840000 (VERIFIED 2026-11-11). Probe (R1/R2 loopback into UEFILOG) stays off.
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteBtUartDxe/Beyond0LteBtUartDxe.inf {
+    <BuildOptions>
+      *_*_*_CC_FLAGS = -DBEYOND0LTE_BT_UART_ROLE=1
+  }
   MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
   Platform/Beyond0LtePkg/Drivers/Beyond0LteSmbiosDxe/Beyond0LteSmbiosDxe.inf
   Platform/Beyond0LtePkg/Drivers/Beyond0LteMfcDxe/Beyond0LteMfcDxe.inf

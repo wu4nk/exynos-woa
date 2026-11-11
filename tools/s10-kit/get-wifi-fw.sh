@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# get-wifi-fw.sh (v1.1) - run ON THE PHONE by get-wifi-fw.cmd (TWRP: as root; Android: through su).
+# get-wifi-fw.sh (v1.2) - run ON THE PHONE by get-wifi-fw.cmd (TWRP: as root; Android: through su).
 # Collects the BCM4375 WiFi blobs into a world-readable folder and prints that folder as the last
 # line. Read-only on every partition.
 #
@@ -8,6 +8,7 @@
 # keeps the same names under /vendor/etc/wifi or /system/etc/wifi on some firmwares).
 # v1.1: TWRP's own ramdisk can carry an unrelated /vendor/firmware, so the REAL vendor (and system)
 # partitions are always mounted read-only on a scratch dir as well, and every candidate dir is searched.
+# v1.2: also the Bluetooth patch files (bcm4375*.hcd) and the module id (cid.info).
 if [ -n "$(getprop ro.twrp.version)" ] || [ ! -d /data/local/tmp ]; then OUT=/tmp/bcm4375; else OUT=/data/local/tmp/bcm4375; fi
 rm -rf "$OUT"; mkdir -p "$OUT"
 
@@ -26,10 +27,17 @@ for d in /vendor/firmware /vendor/etc/wifi /system/etc/wifi /system/vendor/firmw
          /tmp/s10fw_system/etc/wifi /tmp/s10fw_system/system/etc/wifi \
          /tmp/s10fw_system/vendor/firmware /tmp/s10fw_system/system/vendor/firmware; do
   [ -d "$d" ] || continue
-  for f in "$d"/bcmdhd_* "$d"/nvram.txt_* "$d"/nvram_net.txt*; do
+  for f in "$d"/bcmdhd_* "$d"/nvram.txt_* "$d"/nvram_net.txt* "$d"/bcm4375*.hcd; do
     [ -f "$f" ] || continue
     [ -f "$OUT/$(basename "$f")" ] || { cp -f "$f" "$OUT"/ && echo "from $d: $(basename "$f")" 1>&2; }
   done
+done
+
+# v1.2: Bluetooth. The BCM4375 patch files (*.hcd, /vendor/firmware) come along; which module this phone has
+# (murata / semco) is what the WiFi driver wrote to /data/vendor/conn/.cid.info (Samsung dhd CIDINFO) - copied as
+# cid.info when readable (Android, or TWRP with /data decrypted).
+for c in /data/vendor/conn/.cid.info /data/.cid.info; do
+  [ -f "$c" ] && { cp -f "$c" "$OUT/cid.info" && echo "module (cid.info): $(cat "$c")" 1>&2; break; }
 done
 
 for m in $MNTS; do umount "$m" 2>/dev/null; done

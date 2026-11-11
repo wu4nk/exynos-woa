@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.10) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.11) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
@@ -62,7 +62,9 @@ powershell -NoProfile -Command "$c = Get-ChildItem Cert:\CurrentUser\%CERTSTORE%
 call :msb Exynos9820Hsi2c || exit /b 1
 rem v1.5: S10Touch (new touch driver, notes/s10-touch-driver.md) replaces SecTsY761Touch
 call :msb S10Touch || exit /b 1
-call :ufs || exit /b 1
+rem v1.11: set S10_KEEP_UFS=1 to leave the UFS driver out (the phone keeps the Exynos9820Ufs it has; make-windows
+rem needs it, install-in-windows / update-ufs do not).
+if not "%S10_KEEP_UFS%"=="1" (call :ufs || exit /b 1) else (echo [ OK ] S10_KEEP_UFS=1: UFS driver not built, the installed one stays)
 call :msb S10eBattery || exit /b 1
 rem WiFiCx client (KMDF 1.33 + NetAdapterCx 2.2); same msbuild switches as its build-package.ps1.
 call :msb Exynos9820WlanCx "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false" || exit /b 1
@@ -71,6 +73,10 @@ rem reset pins and rails are the S10e's (live DT: cs47l93@0 on spi@10470000, cs3
 rem hsi2c@109A0000, resets gpg1-0 / gph1-1 / gph1-2, LDO17M 1.8 V + LDO18M 1.2 V).
 call :msb Exynos9820Audio "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:ACX_VERSION_MINOR=1" || exit /b 1
 call :diag || exit /b 1
+rem v1.11: Bluetooth - Exynos9820Bt (BthxDDI transport over the BT UART, binds DSDT BTH0 = UEFI v0.2.1+ with the BT
+rem role latch). Its INF ships the phone's own patch file as bcm4375B1_semco.hcd; get-wifi-fw.cmd v1.1 puts the one
+rem that matches this phone's module in bcm4375\bt\. Without it Bluetooth is skipped (never fails the kit).
+if exist "%ROOT%bcm4375\bt\bcm4375B1_semco.hcd" (call :msb Exynos9820Bt "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false" || (echo [WARN] Exynos9820Bt not built - Bluetooth skipped & if exist "%OUT%\Exynos9820Bt" rmdir /s /q "%OUT%\Exynos9820Bt")) else (echo [WARN] no bcm4375\bt\bcm4375B1_semco.hcd - Bluetooth skipped, run get-wifi-fw.cmd v1.1+)
 rem GPU (parked; S10_GPU=1 to build). /p:MwNoWx=1: keep /W4 but do not fail on warnings a newer SDK adds.
 if not "%S10_GPU%"=="1" goto :nogpu
 call :msb MaliG76Probe "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1" || (echo [WARN] MaliG76Probe not built - GPU test skipped & if exist "%OUT%\MaliG76Probe" rmdir /s /q "%OUT%\MaliG76Probe")
@@ -115,6 +121,7 @@ rem Linux/mingw ARM64 build); s10-wddm-inf.ps1 drops the INF lines of the files 
 rem v1.10: every user-mode file the kit has - maliumd.dll (ARM64 D3D), maliumd32.dll (x86 D3D, WOW64), maligl.dll
 rem (ARM64 OpenGL ICD); s10-wddm-inf.ps1 then drops what is not there.
 if /i "%NAME%"=="MaliG76Wddm" for %%U in (maliumd.dll maliumd32.dll maligl.dll) do if exist "%ROOT%umd\%%U" copy /y "%ROOT%umd\%%U" "%DST%\" >nul
+if /i "%NAME%"=="Exynos9820Bt" copy /y "%ROOT%bcm4375\bt\bcm4375B1_semco.hcd" "%DST%\" >nul
 if /i "%NAME%"=="MaliG76Wddm" powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%s10-wddm-inf.ps1" "%DST%\%NAME%.inf"
 if errorlevel 1 (popd & echo [FAIL] s10-wddm-inf.ps1 & exit /b 1)
 popd

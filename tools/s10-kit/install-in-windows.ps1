@@ -1,5 +1,5 @@
 <#
-  install-in-windows.ps1 (v1.1) - add the S10 kit drivers to a Windows ALREADY installed on the
+  install-in-windows.ps1 (v1.2) - add the S10 kit drivers to a Windows ALREADY installed on the
   Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator, from the kit
   folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
@@ -10,6 +10,11 @@
   Reboot afterwards. Flash UEFI v0.1.5+ first.
   v1.1: audio Parameters forced to 1 (the INF value does not overwrite an old 0); WiFi firmware set
   checked by name before copying; WLAN / audio device state printed at the end.
+  v1.2 (S10 kit v2.3): speakers in stereo (Parameters\Stereo 1 = the earpiece amp @0x41 plays the left channel,
+  validated on the S10e 2026-10-16 by microphone) and the loudspeaker's 5 dB digital attenuation removed
+  (SpkAtten 0; analog gains stay at the by-ear baseline, the trim app raises them up to stock 17); the audio device is
+  restarted so it takes them now. Bluetooth (Exynos9820Bt, needs UEFI v0.2.1+). S10eSpeakerTrim.exe compiled from
+  the kit's .cs with the in-box .NET Framework csc and put on the desktop.
 #>
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
@@ -60,11 +65,12 @@ if (Test-Path (Join-Path $fw 'bcmdhd_sta.bin_b1')) {
 # 3. audio: hardware stages ON (stage D). Written before the install so the first start already plays.
 $ap = 'HKLM:\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters'
 New-Item -Force $ap | Out-Null
-foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable') { Set-ItemProperty $ap $v 1 -Type DWord }
-Ok 'audio: AmpInit / AmpEnable / AboxEnable = 1'
+foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable', 'Stereo') { Set-ItemProperty $ap $v 1 -Type DWord }
+Set-ItemProperty $ap 'SpkAtten' 0 -Type DWord
+Ok 'audio: AmpInit / AmpEnable / AboxEnable / Stereo = 1, SpkAtten 0 (both speakers, loudspeaker +5 dB)'
 
 # 4. driver packages
-foreach ($n in 'S10Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio') {
+foreach ($n in 'S10Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio', 'Exynos9820Bt') {
   $inf = Join-Path $Out "$n\$n.inf"
   if (-not (Test-Path $inf)) { Warn "$n not built - skipped"; continue }
   $r = pnputil /add-driver $inf /install 2>&1 | Out-String
@@ -74,7 +80,21 @@ foreach ($n in 'S10Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio')
   Ok "$n installed"
 }
 # the audio package may have been installed earlier with the old 0 values: set them again
-foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable') { Set-ItemProperty $ap $v 1 -Type DWord }
+foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable', 'Stereo') { Set-ItemProperty $ap $v 1 -Type DWord }
+Set-ItemProperty $ap 'SpkAtten' 0 -Type DWord
+# the driver reads Parameters at start: restart the audio device so the stereo / level change applies now
+$aud = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'ACPI\SAMS9827\*' } | Select-Object -First 1
+if ($aud) { pnputil /restart-device "$($aud.InstanceId)" | Out-Null; Ok 'audio device restarted (stereo + level now active)' }
+
+# 4b. speaker trim app (top / bottom level, analog gain up to the stock 17) from the kit's source
+$cs = Join-Path $PSScriptRoot 'S10eSpeakerTrim.cs'
+$csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if (-not (Test-Path $csc)) { $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe" }
+if ((Test-Path $cs) -and (Test-Path $csc)) {
+  $exe = Join-Path $env:PUBLIC 'Desktop\S10eSpeakerTrim.exe'
+  & $csc /nologo /target:winexe /platform:anycpu "/out:$exe" $cs | Out-Null
+  if ($LASTEXITCODE -eq 0) { Ok "speaker trim app -> $exe" } else { Warn "csc S10eSpeakerTrim.cs failed ($LASTEXITCODE)" }
+} else { Warn 'speaker trim app not built (no S10eSpeakerTrim.cs in the kit or no .NET Framework csc)' }
 
 # 5. key agent (same steps as SetupComplete.cmd on a fresh install)
 $diag = Join-Path $Out 'S10eDiag'
@@ -119,6 +139,7 @@ Show 'SCSY0761' 'touch'
 Show 'SAMS9827' 'audio'
 Show 'SAMS9825' 'WiFi'
 Show 'SAMS9826' 'battery'
+Show 'SAMS9829' 'Bluetooth'
 if (-not $fwOk) { Warn 'WiFi firmware missing: the WiFi adapter cannot start until bcm4375\ is installed' }
 
 Ok 'done - drivers were replaced live; restart only if a device above is not OK. Logs: s10-log.cmd on the desktop'

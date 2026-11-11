@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem get-wifi-fw.cmd (v1.0) - copy the S10's own BCM4375 WiFi firmware off the phone into
+rem get-wifi-fw.cmd (v1.1) - copy the S10's own BCM4375 WiFi firmware off the phone into
 rem bcm4375\ next to this file. make-windows.ps1 puts it in Windows\System32\drivers\bcm4375\,
 rem where Exynos9820WlanCx loads it (bcmdhd_sta.bin_b1, bcmdhd_clm.blob, nvram.txt_*_b1; the
 rem nvram is picked by the module's OTP vendor id). The blobs are Broadcom/Samsung's and are
@@ -35,5 +35,15 @@ for %%F in (bcmdhd_sta.bin_b1 bcmdhd_clm.blob) do if not exist "%D%\%%F" (echo [
 if not exist "%D%\nvram.txt_1rh_es43_b1" if not exist "%D%\nvram.txt_CS01_semco_b1" (echo [FAIL] neither nvram.txt_1rh_es43_b1 nor nvram.txt_CS01_semco_b1 & set MISS=1)
 if "%MISS%"=="1" (echo        found:& dir /b "%D%" & exit /b 1)
 echo [ OK ] WiFi firmware in %D%
+rem v1.1: Bluetooth patch file for Exynos9820Bt. Its INF installs it under the name bcm4375B1_semco.hcd (the S10e's
+rem file); the one copied there matches THIS phone's module: cid.info (written by Android's WiFi driver) says murata
+rem or semco. No cid.info: semco (the S10e default) with a warning - Bluetooth may then not start (UNVERIFIED on S10).
+set "MOD="
+if exist "%D%\cid.info" (findstr /i "murata" "%D%\cid.info" >nul && set "MOD=murata")
+if exist "%D%\cid.info" if not defined MOD (findstr /i "semco" "%D%\cid.info" >nul && set "MOD=semco")
+set "HCD=%D%\bcm4375B1_semco.hcd"
+if "%MOD%"=="murata" set "HCD=%D%\bcm4375B1_murata.hcd"
+if not defined MOD echo [WARN] module unknown ^(no cid.info: run this from Android with root, or TWRP with /data decrypted^) - using the semco patch file
+if exist "%HCD%" (mkdir "%D%\bt" & copy /y "%HCD%" "%D%\bt\bcm4375B1_semco.hcd" >nul & echo [ OK ] Bluetooth patch file: %HCD% ^(module %MOD%^) -^> bcm4375\bt\) else (echo [WARN] %HCD% not on the phone - Bluetooth will be skipped)
 dir /b "%D%"
 exit /b 0
