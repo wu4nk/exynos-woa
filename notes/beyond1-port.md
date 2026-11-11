@@ -1789,3 +1789,11 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   BUG (mine): v1.2's $Swapped list and v1.1's $swapped flag are the same PowerShell variable -> "RESTORE FAILED for
   True": the phone's System32 maliumd/maligl + SysWOW64 maliumd32 are s10.2, originals in *.s10prev. v1.3: diag swap
   removed, $TrySwapped, -Restore, never overwrites an existing .s10prev, restores by renaming (in-use safe).
+- 2026-11-12 01:39 gpu-validate v1.3 -TryUmd s10.2 (zip e048a3f2): 21 PASS, 2 FAIL, 1 known; TryUmd restore OK (all
+  three "restored"). d3dsm5 34/34 (the "bits" zero run was a one-off). gputest 91/100 (dual-source PASS; 7 BCn by
+  design + 2 msaa4 edge). gltest 0/5: "kmt Lock 0x400009c0 failed 0xc000000d, Lock2 0xc000000d" - the opened
+  shared allocation refuses BOTH locks on the D3DKMT device; all other BOs lock.
+- s10-0005 (UMD 0222-s10.3): Panfrost panfrost_ptr_map - a linear non-buffer BO whose mmap fails takes the AFBC
+  staging path (GPU blit into an own linear staging resource, which maps; unmap blits writes back). Imported
+  resources are modifier_constant, so the unmap never swaps the BO. maliumd a6850349, maliumd32 621b3027, maligl
+  712ecdb2; x86 layout-check OK. Open (why S10e's lock worked): not needed for the fix. NOT validated.

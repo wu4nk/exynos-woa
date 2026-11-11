@@ -1,0 +1,49 @@
+From b894782f4a14285526f4e32823ec1cc4a0dbaed1 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 01:41:04 +0700
+Subject: [PATCH] S10: panfrost - staging copy for BOs the CPU cannot map (GL
+ ICD window texture on WDDM 2.0)
+
+---
+ src/gallium/drivers/panfrost/pan_resource.c | 16 +++++++++++++---
+ 1 file changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/gallium/drivers/panfrost/pan_resource.c b/src/gallium/drivers/panfrost/pan_resource.c
+index ed5bcc7..3f14bdd 100644
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -1754,9 +1754,21 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
+    if (usage & PIPE_MAP_WRITE)
+       rsrc->constant_stencil = false;
+ 
++   bool already_mapped = bo->ptr.cpu != NULL;
++
++   /* exynos-woa S10 (patches-s10/s10-0005, notes/beyond1-port.md 2026-11-12): a BO the CPU cannot map goes through
++    * the same staging copy as AFBC. The GL ICD renders into a D3D11 shared texture opened on its D3DKMT device
++    * (GL7 DXGI presenter); on the S10's WDDM 2.0 adapter both D3DKMTLock and D3DKMTLock2 refuse that opened
++    * allocation (0xC000000D), so glReadPixels of the window failed with GL_OUT_OF_MEMORY (gltest 0/5). The GPU
++    * blits it into a linear staging resource of our own, which maps. Linear only, never with MAP_DIRECTLY. */
++   bool unmappable = false;
++   if (!drm_is_afbc(rsrc->modifier) && !drm_is_afrc(rsrc->modifier) && !already_mapped &&
++       !(usage & PIPE_MAP_DIRECTLY) && resource->target != PIPE_BUFFER && panfrost_bo_mmap(bo))
++      unmappable = true;
++
+    /* We don't have s/w routines for AFBC/AFRC, so use a staging texture */
+    if (drm_is_afbc(rsrc->modifier) ||
+-       drm_is_afrc(rsrc->modifier)) {
++       drm_is_afrc(rsrc->modifier) || unmappable) {
+       struct panfrost_resource *staging =
+          pan_alloc_staging(ctx, rsrc, level, box);
+       assert(staging);
+@@ -1795,8 +1807,6 @@ panfrost_ptr_map(struct pipe_context *pctx, struct pipe_resource *resource,
+       return staging->bo->ptr.cpu;
+    }
+ 
+-   bool already_mapped = bo->ptr.cpu != NULL;
+-
+    /* If we haven't already mmaped, now's the time */
+    if (panfrost_bo_mmap(bo))
+       return NULL;
+-- 
+2.43.0
+
