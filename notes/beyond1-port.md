@@ -1610,3 +1610,9 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   round). Fixed in install-in-windows v1.3. 16 DWM crashes in that boot: maliumd.dll timestamp 0x6af3b1b2 (NOT the
   kit's 603a7885 = 0x6AF40C7E) +0x18f468 0x80000002 - the stale out-gpu\maliumd.dll gpu-s10 <= v1.18 copied, old
   UMD on the 1.0.72 KMD. Earlier boots with the package's UMD: DWM on the Mali, KMD 50607 jobs 0 failed 0 timed out.
+- 2026-11-11 16:09 log 49c3df9b: package back (display 23:27 SUCCESS, UMD 603a7885, FullAdapter 1 GpuEnable 1) but
+  GPU0 CM_PROB_PHANTOM: UEFILOG "\S10EDIAG\nogpu.flg present - DSDT GPU0 hidden" (UEFI v0.2.1 booted; GpuProbe
+  G76 r0p0 read fine). esp-listing: S:\S10EDIAG\nogpu.flg (created 2026-11-11 09:04 UTC) + an old S:\nogpu.flg.
+  gpu-s10 gpu-dwm said "no nogpu.flg on the ESP (\\?\Volume{3b87cd3e…})": Clear-NoGpuFlag returned at the first
+  FAT volume that had an S10EDIAG folder - dual boot has more than one FAT partition. v1.21 deletes the flag on
+  every lettered drive and FAT volume (simulated with a fake volume in pwsh). No new DWM crash in this log.

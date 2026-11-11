@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.20) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.21) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,7 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.21: nogpu.flg is looked for on EVERY FAT volume (dual boot: more than one) and deleted wherever it is.
   v1.20: runs again in the same PowerShell window (the S10.Mf helper type is added only once).
 
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
@@ -54,7 +55,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.20  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.21  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -171,32 +172,29 @@ function Show-KmdTrace {
 # v1.3: \S10EDIAG\nogpu.flg on the ESP hides GPU0 (rescue). 'display' and 'full' remove it, so the next boot
 # shows GPU0 again in the mode just written.
 function Clear-NoGpuFlag {
-  # v1.4: the ESP may already be mounted (an earlier "mountvol S: /s" never undone) - then mountvol /s on another
-  # letter fails. Look on every mounted drive first.
-  foreach ($d in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue) {
-    $f = Join-Path $d.Root 'S10EDIAG\nogpu.flg'
-    if (Test-Path $f) { Remove-Item $f -Force; Ok "nogpu.flg removed ($f) - GPU0 is back on the next boot"; return }
+  # v1.21: EVERY FAT volume and every lettered drive is checked and the flag deleted wherever it is - no early return.
+  # A dual-boot phone has more than one FAT partition: v1.20 saw an S10EDIAG folder without the flag on one of them,
+  # said "no nogpu.flg" and stopped, while the ESP the firmware reads still had it (2026-11-11: GPU0 hidden,
+  # CM_PROB_PHANTOM). The firmware opens \S10EDIAG\nogpu.flg; a stray \nogpu.flg in the root is removed too.
+  $found = 0
+  $roots = @()
+  foreach ($d in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue) { $roots += $d.Root }
+  foreach ($v in @(Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.FileSystemType -like 'FAT*' -and $_.Path })) { $roots += $v.Path }
+  $l = $null
+  if (-not ($roots | Where-Object { [IO.Directory]::Exists($_ + 'S10EDIAG') })) {
+    $l = @('S', 'R', 'Q', 'P', 'O') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+    if ($l) { mountvol "${l}:" /s 2>$null; if (Test-Path "${l}:\") { $roots += "${l}:\" } else { $l = $null } }
   }
-  # v1.10: every FAT volume through its \\?\Volume{GUID}\ path - no drive letter, no mountvol ("The parameter
-  # is incorrect" when the ESP is mounted elsewhere, 2026-11-03 21:44).
-  foreach ($v in @(Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.FileSystemType -like 'FAT*' -and $_.Path })) {
-    $f = $v.Path + 'S10EDIAG\nogpu.flg'
-    try {
-      if ([IO.File]::Exists($f)) { [IO.File]::Delete($f); Ok "nogpu.flg removed ($f) - GPU0 is back on the next boot"; return }
-      if ([IO.Directory]::Exists($v.Path + 'S10EDIAG')) { Info "no nogpu.flg on the ESP ($($v.Path))"; return }
-    } catch { Info "volume $($v.Path): $($_.Exception.Message)" }
+  foreach ($r in ($roots | Select-Object -Unique)) {
+    foreach ($f in ($r + 'S10EDIAG\nogpu.flg'), ($r + 'nogpu.flg')) {
+      try {
+        if ([IO.File]::Exists($f)) { [IO.File]::Delete($f); Ok "nogpu.flg removed ($f)"; $found++ }
+      } catch { Warn "could not delete ${f}: $($_.Exception.Message)" }
+    }
   }
-  $l = @('S', 'R', 'Q', 'P', 'O') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
-  if (-not $l) { Warn 'no free drive letter to mount the ESP - delete \S10EDIAG\nogpu.flg by hand'; return }
-  mountvol "${l}:" /s 2>$null
-  if (-not (Test-Path "${l}:\")) {
-    Warn 'could not mount the ESP - if GPU0 was hidden it STAYS hidden: in TWRP run  adb shell rm /cache/S10EDIAG/nogpu.flg'
-    return
-  }
-  $f = "${l}:\S10EDIAG\nogpu.flg"
-  if (Test-Path $f) { Remove-Item $f -Force; Ok 'nogpu.flg removed from the ESP - GPU0 is back on the next boot' }
-  else { Info 'no nogpu.flg on the ESP' }
-  mountvol "${l}:" /d 2>$null
+  if ($l) { mountvol "${l}:" /d 2>$null }
+  if ($found) { Ok 'GPU0 is back on the next boot' }
+  else { Info "no nogpu.flg on any FAT volume ($((($roots | Select-Object -Unique) -join ', ')))" }
 }
 
 function Get-Gpu0 { Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'ACPI\SAMS9828\*' } | Select-Object -First 1 }
