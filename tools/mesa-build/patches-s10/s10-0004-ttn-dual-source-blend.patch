@@ -1,0 +1,61 @@
+From c6945100e51cad1646446a03ce072b7585df448d Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 01:21:40 +0700
+Subject: [PATCH] S10: tgsi_to_nir - SV_Target1 also as the dual-source blend
+ input of RT0
+
+---
+ src/gallium/auxiliary/nir/tgsi_to_nir.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/src/gallium/auxiliary/nir/tgsi_to_nir.c b/src/gallium/auxiliary/nir/tgsi_to_nir.c
+index 9e55543..062013f 100644
+--- a/src/gallium/auxiliary/nir/tgsi_to_nir.c
++++ b/src/gallium/auxiliary/nir/tgsi_to_nir.c
+@@ -78,6 +78,9 @@ struct ttn_compile {
+ 
+    nir_variable **inputs;
+    nir_variable **outputs;
++   /* exynos-woa S10 (patches-s10/s10-0004): the D3D dual-source blend copy of SV_Target1 (see TGSI_FILE_OUTPUT) */
++   nir_variable *dual_src1;
++   int dual_src1_idx;
+    nir_variable *samplers[PIPE_MAX_SAMPLERS];
+    /* exynos-woa H3: D3D10-style separate texture (SVIEW) and sampler (SAMP) variables */
+    nir_variable *sview_vars[PIPE_MAX_SHADER_SAMPLER_VIEWS];
+@@ -456,6 +459,24 @@ ttn_emit_declaration(struct ttn_compile *c)
+ 
+             c->outputs[idx] = var;
+ 
++            /* exynos-woa S10 (patches-s10/s10-0004, notes/beyond1-port.md 2026-11-12): D3D10/11 dual-source blending
++             * reads SV_Target1 as the second source of render target 0 (blend factors SRC1_*), but TGSI cannot say
++             * whether o1 is a second render target or that source, and the TODO above sent it to DATA1 only - the
++             * blend unit then read an undefined src1 (gputest blend-dual-source: 56 % of pixels wrong on the S10).
++             * The value is ALSO written as DATA0 / index 1: Panfrost passes it to RT0's blend as the second source
++             * (pan_nir_lower_fs_outputs -> blend2_pan), where it is only read when the blend state names SRC1 -
++             * an MRT state with o1 on RT1 is unchanged. */
++            if (c->scan->processor == MESA_SHADER_FRAGMENT && semantic_name == TGSI_SEMANTIC_COLOR &&
++                semantic_index == 1 && !is_array && !c->dual_src1 &&
++                !c->scan->properties[TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS]) {
++               nir_variable *d = nir_variable_create(b->shader, nir_var_shader_out, var->type, "out_dual_src1");
++               d->data.location = FRAG_RESULT_DATA0;
++               d->data.index = 1;
++               d->data.driver_location = b->shader->num_outputs;
++               c->dual_src1 = d;
++               c->dual_src1_idx = idx;
++            }
++
+             if (b->shader->options->compact_arrays && var->data.location == VARYING_SLOT_CLIP_DIST1) {
+                /* ignore this entirely */
+                continue;
+@@ -2715,6 +2736,8 @@ ttn_add_output_stores(struct ttn_compile *c)
+          }
+       } else {
+          nir_store_deref(b, nir_build_deref_var(b, var), store_value, store_mask);
++         if (c->dual_src1 && i == c->dual_src1_idx)   /* exynos-woa S10 s10-0004 */
++            nir_store_deref(b, nir_build_deref_var(b, c->dual_src1), store_value, store_mask);
+       }
+    }
+ }
+-- 
+2.43.0
+

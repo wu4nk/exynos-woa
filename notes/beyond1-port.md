@@ -1765,3 +1765,19 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   - GPU clock 156 MHz (lowest DVFS step: no S10ePower/governor) -> power-s10.ps1 test is the clocks step.
   - 52 app hangs since boot, mostly SearchHost 1002 in the first minute (shim logging on) - recheck after "final".
   - gpu-validate v1.0 bug: "$known" vs "$Known" (case-insensitive names) printed the hashtable.
+- 2026-11-12 01:16 gpu-validate v1.1 (zip 65bb14c3): 21 PASS, 2 FAIL, 1 known. x86 tools fixed -> all 5 PASS; d3dbc
+  lossy PASS. Remaining:
+  - gltest: tlog "kmt Lock 0x400009c0 (device 0x40000180) failed 0xc000000d" (STATUS_INVALID_PARAMETER), 7x, only for
+    0x400009c0 = the D3D11 shared texture the ICD renders into ("kmt open shared 0x40000142 -> BO", GL7 DXGI
+    presenter); every other BO maps fine. glGetError 0x505 = GL_OUT_OF_MEMORY from the failed map (glReadPixels),
+    present runs 56.5 fps. Fix try (s10-0003): D3DKMTLock2 (WDDM 2.0 lock, d3dkmthk.h D3DKMT_LOCK2) when Lock
+    refuses, paired D3DKMTUnlock2; both results logged. NOT validated.
+  - gputest 10 FAIL: 7x texture-format-BC1/2/3/4/5(+SRGB) = BCn re-compressed to ETC2/EAC by design (G26; gputest's
+    tolerance 8 is for native formats); msaa4-resolve / msaa4-load-samples 1.7 % px at triangle edges (worst 115) -
+    open, low; blend-dual-source 56 %: pictures show RT0 blended with a CONSTANT src1 (no uv gradient). Cause:
+    tgsi_to_nir hard-codes dual_src_blend = false ("no drivers using tgsi-to-nir support dual source blend"), so
+    SV_Target1 only goes to DATA1 while Panfrost reports max_dual_source_render_targets 1 and d3d10umd passes SRC1
+    factors. Fix (s10-0004): COLOR index 1 is also stored to a DATA0/index-1 output (Panfrost lowers it into RT0's
+    blend2_pan, read only when the blend names SRC1). Edge advertises dual-source-blending (WebGPU) -> matters.
+  - UMD 0222-s10.2 = s10-0001..0004: maliumd f57416b8, maliumd32 9f588b50, maligl b8b98694 (x86 layout-check OK).
+    gpu-validate v1.2 -TryUmd swaps them in for the test run only (DWM keeps its boot copy), -Keep keeps them.

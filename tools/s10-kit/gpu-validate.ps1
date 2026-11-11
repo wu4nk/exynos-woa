@@ -1,5 +1,5 @@
 <#
-  gpu-validate.ps1 (v1.1) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
+  gpu-validate.ps1 (v1.2) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
   (KMD 1.0.72.1 as WDDM 2.0 + UMD 0222-s10.x) is up with DWM on the Mali ("gpu-s10.ps1 gpu-dwm" + reboot).
   Run ON THE PHONE from the kit folder, PowerShell as Administrator, IN THE DESKTOP SESSION (gltest needs a window):
       Set-ExecutionPolicy -Scope Process Bypass
@@ -26,14 +26,19 @@
   MALIKM_TGSI_DIR = C:\S10Prov\gpu-validate\logs (the UMD's per-process logs) and a failed test's log is listed;
   gltest uses tools\validate\maligl-diag.dll (logs why D3DKMTLock fails) in place of System32\maligl.dll for its
   run and puts the original back; everything goes into C:\S10Prov\gpu-validate.zip.
+  v1.2: -TryUmd <folder> tests a NEW user-mode driver without installing it: the folder's maliumd.dll /
+  maliumd32.dll / maligl.dll replace the System32 / SysWOW64 copies for the test run only (the in-use originals are
+  renamed to *.s10prev - DWM keeps the copy it loaded at boot, so the desktop is not touched) and are put back
+  afterwards; -Keep leaves the new files in place (then rebuild the kit package with them: gpu-s10 "gpu" would
+  otherwise restore the package's copies).
   Not automatic (look yourself, write the result to the chat): Edge -> edge://gpu ("Hardware accelerated" lines),
   a WebGL page, a YouTube video, scrolling in Settings.
 #>
-param([int]$Timeout = 60)
+param([int]$Timeout = 60, [string]$TryUmd = '', [switch]$Keep)
 $ErrorActionPreference = 'Continue'
 $Report = 'C:\S10Prov\gpu-validate.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-validate.ps1 v1.1  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
+"gpu-validate.ps1 v1.2  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
 function W($m) { Write-Host $m; $m | Add-Content $Report -Encoding ascii }
 $Vd = Join-Path $PSScriptRoot 'tools\validate'
 $pass = 0; $fail = 0; $nKnown = 0; $miss = 0
@@ -71,6 +76,37 @@ function Run-Test($exe, [string[]]$a = @(), [string]$label = '') {
     Get-ChildItem $Logs -Filter "malikm-$base.exe-*" -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $t0.AddSeconds(-2) } |
       ForEach-Object { W "        log: $($_.Name) ($($_.Length) B)"; Get-Content $_.FullName -Tail 8 | ForEach-Object { W "        log> $_" } }
   }
+}
+
+# v1.2: swap in a new UMD for this run (new processes load it; DWM keeps its boot-time copy)
+$Swapped = @()
+function Swap-In($src, $dst) {
+  if (-not (Test-Path $src) -or -not (Test-Path $dst)) { return }
+  takeown /f $dst /a | Out-Null; icacls $dst /grant '*S-1-5-32-544:F' | Out-Null
+  $prev = "$dst.s10prev"
+  if (Test-Path $prev) { takeown /f $prev /a | Out-Null; icacls $prev /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $prev -Force -ErrorAction SilentlyContinue }
+  try {
+    Rename-Item $dst (Split-Path $prev -Leaf) -ErrorAction Stop
+    Copy-Item $src $dst -Force -ErrorAction Stop
+    $script:Swapped += $dst
+    W ("  TryUmd: {0} <- {1} (sha256 {2})" -f $dst, $src, (Get-FileHash $dst).Hash.ToLower().Substring(0, 16))
+  } catch {
+    W "  TryUmd: $dst NOT swapped: $_"
+    if (-not (Test-Path $dst) -and (Test-Path $prev)) { Rename-Item $prev (Split-Path $dst -Leaf) -ErrorAction SilentlyContinue }
+  }
+}
+function Swap-Back {
+  foreach ($dst in $script:Swapped) {
+    try { Remove-Item $dst -Force -ErrorAction Stop; Rename-Item "$dst.s10prev" (Split-Path $dst -Leaf) -ErrorAction Stop; W "  TryUmd: $dst restored" }
+    catch { W "  TryUmd: RESTORE FAILED for $dst - rename $dst.s10prev back by hand: $_" }
+  }
+}
+if ($TryUmd) {
+  $tu = if ([IO.Path]::IsPathRooted($TryUmd)) { $TryUmd } else { Join-Path $PSScriptRoot $TryUmd }
+  W "== 0. TryUmd $tu"
+  Swap-In (Join-Path $tu 'maliumd.dll') 'C:\Windows\System32\maliumd.dll'
+  Swap-In (Join-Path $tu 'maliumd32.dll') 'C:\Windows\SysWOW64\maliumd32.dll'
+  Swap-In (Join-Path $tu 'maligl.dll') 'C:\Windows\System32\maligl.dll'
 }
 
 W '== 1. setup'
@@ -131,6 +167,9 @@ Run-Test (Join-Path $Vd 'dwmrate.exe') @('5')
 Run-Test (Join-Path $Vd 'gpuclock.exe') @('1000', '3')
 $ks = @((Join-Path $PSScriptRoot 'tools\kmdstats.exe'), (Join-Path $PSScriptRoot 'out-gpu\tools\kmdstats.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($ks) { & $ks 2 2>&1 | Select-Object -First 8 | ForEach-Object { W "  kmd> $_" } }
+
+if ($Swapped.Count -and -not $Keep) { W '== TryUmd: putting the installed UMD back'; Swap-Back }
+elseif ($Swapped.Count) { W '== TryUmd -Keep: the new UMD stays (reboot so DWM loads it; rebuild the kit package with it)' }
 
 W '== 7. crashes since this boot'
 $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime

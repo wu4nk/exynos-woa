@@ -1,0 +1,92 @@
+From d2cca5032ee5358efeced39d3fabac85d86efb64 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 01:21:40 +0700
+Subject: [PATCH] S10: D3DKMTLock2 fallback for allocations D3DKMTLock refuses
+ (GL ICD shared render targets on WDDM 2.0)
+
+---
+ include/win32-compat/malikm_drm.c | 40 ++++++++++++++++++++++++++++++-
+ 1 file changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 4709891..4a7a113 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -866,7 +866,8 @@ static struct {
+    KMT_FN CreateDevice, DestroyDevice, CreateContext, CreateAllocation, DestroyAllocation,
+           Lock, Unlock, Render, Escape, EnumAdapters2, WaitForIdle,
+           MakeResident, CreatePagingQueue,
+-          QueryResourceInfo, OpenResource;   /* exynos-woa GL7a: shared resources on the D3DKMT path */
++          QueryResourceInfo, OpenResource,   /* exynos-woa GL7a: shared resources on the D3DKMT path */
++          Lock2, Unlock2;                    /* S10 (patches-s10/s10-0003): WDDM 2.0 lock for opened allocations */
+ } kmt;
+ 
+ struct wbo {
+@@ -1075,6 +1076,7 @@ wddm_init(void)
+    R(Lock); R(Unlock); R(Render); R(Escape); R(EnumAdapters2); R(WaitForIdle);
+    R(MakeResident); R(CreatePagingQueue);
+    R(QueryResourceInfo); R(OpenResource);
++   R(Lock2); R(Unlock2);
+ #undef R
+    if (!kmt.CreateDevice || !kmt.CreateContext || !kmt.CreateAllocation || !kmt.DestroyAllocation ||
+        !kmt.Lock || !kmt.Unlock || !kmt.Render || !kmt.Escape || !kmt.EnumAdapters2 || !kmt.WaitForIdle) {
+@@ -1270,6 +1272,10 @@ w_resident_raw(D3DKMT_HANDLE h)
+    }
+ }
+ 
++/* S10 (s10-0003): allocations locked with D3DKMTLock2 (unlocked with D3DKMTUnlock2) */
++static D3DKMT_HANDLE lock2_h[64];
++static SRWLOCK lock2_lock = SRWLOCK_INIT;
++
+ static void *
+ w_lock_raw(D3DKMT_HANDLE h)
+ {
+@@ -1284,6 +1290,26 @@ w_lock_raw(D3DKMT_HANDLE h)
+    l.hAllocation = h;
+    l.Flags.IgnoreSync = 1;
+    NTSTATUS st = kmt.Lock(&l);
++   if (st < 0 && kmt.Lock2) {
++      /* S10 2026-11-12 (notes/beyond1-port.md): on the WDDM 2.0 adapter D3DKMTLock refused (0xC000000D) the shared
++       * D3D11 texture the GL ICD renders into (kmt open shared -> D3DKMTOpenResource): glReadPixels got
++       * GL_OUT_OF_MEMORY, GLTEST 0/5. D3DKMTLock2 is the WDDM 2.0 lock (d3dkmthk.h D3DKMT_LOCK2); the handle is
++       * remembered so the unlock pairs with D3DKMTUnlock2. */
++      D3DKMT_LOCK2 l2 = {0};
++      l2.hDevice = wdevice;
++      l2.hAllocation = h;
++      NTSTATUS st2 = kmt.Lock2(&l2);
++      static LONG n2;
++      if (InterlockedIncrement(&n2) <= 8)
++         malikm_tlog("kmt Lock 0x%x failed 0x%08lx, Lock2 0x%08lx", h, (unsigned long)st, (unsigned long)st2);
++      if (st2 >= 0 && l2.pData) {
++         AcquireSRWLockExclusive(&lock2_lock);
++         for (unsigned i = 0; i < sizeof(lock2_h) / sizeof(lock2_h[0]); i++)
++            if (lock2_h[i] == 0) { lock2_h[i] = h; break; }
++         ReleaseSRWLockExclusive(&lock2_lock);
++         return l2.pData;
++      }
++   }
+    if (st < 0) {
+       /* S10 (notes/beyond1-port.md 2026-11-12): gltest on the S10 - every BO mmap failed (EINVAL) on this D3DKMT path,
+        * GLTEST 0/5 with GL_INVALID_FRAMEBUFFER_OPERATION. The status says why; the first 8 failures are logged. */
+@@ -1305,6 +1331,18 @@ w_unlock_raw(D3DKMT_HANDLE h)
+       ddi.cb.pfnUnlockCb(ddi.device, &u);
+       return;
+    }
++   int was2 = 0;
++   AcquireSRWLockExclusive(&lock2_lock);
++   for (unsigned i = 0; i < sizeof(lock2_h) / sizeof(lock2_h[0]); i++)
++      if (lock2_h[i] == h) { lock2_h[i] = 0; was2 = 1; break; }
++   ReleaseSRWLockExclusive(&lock2_lock);
++   if (was2 && kmt.Unlock2) {
++      D3DKMT_UNLOCK2 u2 = {0};
++      u2.hDevice = wdevice;
++      u2.hAllocation = h;
++      kmt.Unlock2(&u2);
++      return;
++   }
+    D3DKMT_UNLOCK u = {0};
+    u.hDevice = wdevice;
+    u.NumAllocations = 1;
+-- 
+2.43.0
+
