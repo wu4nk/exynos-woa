@@ -1,7 +1,7 @@
 From ae1be39bb4917b862a9dd1abd55fff8b87abb479 Mon Sep 17 00:00:00 2001
 From: exynos-woa build <build@localhost>
 Date: Wed, 11 Nov 2026 07:21:53 +0700
-Subject: [PATCH 1/3] win: include/win32-compat from exynos-woa 26.2 tree
+Subject: [PATCH 1/4] win: include/win32-compat from exynos-woa 26.2 tree
  (malikm shim @0073)
 
 ---

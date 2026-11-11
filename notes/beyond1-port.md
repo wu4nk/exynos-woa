@@ -1447,3 +1447,25 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - UMD 0074 (ea8bd2b5): panfrost_blitter_save also saves ctx->uncompiled[GEOMETRY]. Every panfrost blitter path goes
   through panfrost_blitter_save (pan_blit.c x2, pan_context.c clear, pan_resource.c x2). Not run yet.
 - vkprobe (panvk V1) not run in this log.
+
+### G2c run 39 (UMD 0074 ea8bd2b5 + panvk V1; 2026-11-11 08:42)
+- 0074 confirmed: DWM up again, no new dwm/LogonUI crash (the 19 WER reports in the zip are run 38's).
+- gputest: 39 tests PASS (triangle .. vertex-texture-fetch), then the process died at geometry-shader, 3 runs alike:
+  0xC000001D (illegal instruction = UNREACHABLE's brk) at maliumd+0x2683a0 = ttn_compile_init, right after
+  "tgsi_to_nir: unhandled TGSI property 1 = 5" (GS_OUTPUT_PRIM = TRIANGLE_STRIP). tgsi_to_nir has NO geometry
+  shader support at all (EMIT/ENDPRIM "XXX", no GS properties, no IN[vertex][i]); before 0073 d3d10umd's stand-in
+  never created the shader so it never got there. 0073's review assumed TTN handled GS - wrong.
+- UMD 0075 (f66ae84a): tgsi_to_nir GS: GS_INPUT_PRIM/OUTPUT_PRIM/MAX_OUTPUT_VERTICES/INVOCATIONS properties,
+  GS inputs as per-vertex arrays at their semantic slot (d3d10umd: GENERIC[reg] / POSITION) loaded with the vertex
+  dimension (immediate or ADDR-indirect), PRIMID / INVOCATIONID system values, VIEWPORT_INDEX scalar int output,
+  EMIT = output stores + emit_vertex, ENDPRIM = end_primitive. pan_nir_lower_gs.c: two phis built with sources
+  emitted after nir_pop_if (invalid NIR - the same bug the panvk series fixed in jm-v7 0011), and
+  nir_lower_continue_constructs before nir_lower_returns. NEW host test s10_gs_hosttest (pan_shader.c hook
+  s10_hosttest_compile = Panfrost's create-time lowering + panfrost_shader_compile with a fake G76 screen): debug
+  build + NIR_DEBUG=validate, 5 shaders compile (GS points->strip 7.9 KB, GS triangles with a loop + indirect vertex
+  10 KB, VS keep_clip_space, VS plain, FS behind the GS). Build: ninja -C build-hostdbg
+  src/gallium/drivers/panfrost/s10_gs_hosttest. Runtime (the three jobs) still untested.
+- vkprobe: "loaded in 8333 ms", 0 physical devices, no message. Cause found in the code: panvk refuses v6/v7/v11/v14
+  unless PAN_I_WANT_A_BROKEN_VULKAN_DRIVER is set (INCOMPATIBLE_DRIVER = silently skipped); the Android launcher
+  sets it. V1.1: gate off on _WIN32 (panvk patch 0004); vkprobe v1.1 also sets the variable, PANVK_DEBUG=startup and
+  MALIKM_TRACE=1, and writes stderr to vkprobe-stderr.txt. vulkan_panfrost.dll 2a7be5c5, vkprobe 83cd3ae5.

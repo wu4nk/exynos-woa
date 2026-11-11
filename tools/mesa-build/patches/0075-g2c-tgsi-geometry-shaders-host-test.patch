@@ -1,0 +1,429 @@
+From b9da107eadd84ba52f197dacff383c3880d78b7f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 08:56:15 +0700
+Subject: [PATCH] exynos-woa 0075: geometry shaders from TGSI (tgsi_to_nir GS),
+ valid phis in the GS lowering, host test
+
+---
+ src/gallium/auxiliary/nir/tgsi_to_nir.c       |  62 +++++++-
+ src/gallium/drivers/panfrost/meson.build      |  12 ++
+ .../drivers/panfrost/pan_nir_lower_gs.c       |  13 +-
+ src/gallium/drivers/panfrost/pan_screen.c     |   4 +
+ src/gallium/drivers/panfrost/pan_shader.c     |  39 +++++
+ .../drivers/panfrost/s10_gs_hosttest.c        | 150 ++++++++++++++++++
+ 6 files changed, 274 insertions(+), 6 deletions(-)
+ create mode 100644 src/gallium/drivers/panfrost/s10_gs_hosttest.c
+
+diff --git a/src/gallium/auxiliary/nir/tgsi_to_nir.c b/src/gallium/auxiliary/nir/tgsi_to_nir.c
+index b6627fb..2debfa5 100644
+--- a/src/gallium/auxiliary/nir/tgsi_to_nir.c
++++ b/src/gallium/auxiliary/nir/tgsi_to_nir.c
+@@ -338,6 +338,13 @@ ttn_emit_declaration(struct ttn_compile *c)
+                      tgsi_varying_semantic_to_slot(decl->Semantic.Name,
+                                                    decl->Semantic.Index);
+                }
++            } else if (c->scan->processor == MESA_SHADER_GEOMETRY) {
++               /* exynos-woa 0075: per-vertex inputs, IN[vertex][idx] */
++               var->data.location =
++                  tgsi_varying_semantic_to_slot(decl->Semantic.Name,
++                                                decl->Semantic.Index);
++               var->type = glsl_array_type(glsl_vec4_type(),
++                                           MAX2(b->shader->info.gs.vertices_in, 1), 0);
+             } else {
+                assert(!decl->Declaration.Semantic);
+                var->data.location = VERT_ATTRIB_GENERIC0 + idx;
+@@ -415,7 +422,8 @@ ttn_emit_declaration(struct ttn_compile *c)
+                if (var->data.location == VARYING_SLOT_FOGC ||
+                    var->data.location == VARYING_SLOT_PSIZ) {
+                   var->type = glsl_float_type();
+-               } else if (var->data.location == VARYING_SLOT_LAYER) {
++               } else if (var->data.location == VARYING_SLOT_LAYER ||
++                          var->data.location == VARYING_SLOT_VIEWPORT) {   /* exynos-woa 0075 */
+                   var->type = glsl_int_type();
+                } else if (b->shader->options->compact_arrays &&
+                           var->data.location == VARYING_SLOT_CLIP_DIST0) {
+@@ -626,6 +634,12 @@ ttn_src_for_file_and_index(struct ttn_compile *c, unsigned file, unsigned index,
+       case TGSI_SEMANTIC_CS_USER_DATA_AMD:
+          load = nir_load_user_data_amd(b);
+          break;
++      case TGSI_SEMANTIC_PRIMID:   /* exynos-woa 0075 */
++         load = nir_load_primitive_id(b);
++         break;
++      case TGSI_SEMANTIC_INVOCATIONID:
++         load = nir_load_invocation_id(b);
++         break;
+       case TGSI_SEMANTIC_SAMPLEID:
+          load = nir_load_sample_id(b);
+          b->shader->info.fs.uses_sample_shading = true;
+@@ -657,10 +671,21 @@ ttn_src_for_file_and_index(struct ttn_compile *c, unsigned file, unsigned index,
+          assert(!c->cap_point_is_sysval && c->input_var_point);
+          return nir_src_for_ssa(nir_load_var(&c->build, c->input_var_point));
+       } else {
+-         /* Indirection on input arrays isn't supported by TTN. */
+-         assert(!dim);
+          nir_deref_instr *deref = nir_build_deref_var(&c->build,
+                                                       c->inputs[index]);
++         if (c->scan->processor == MESA_SHADER_GEOMETRY) {
++            /* exynos-woa 0075: IN[vertex][index] */
++            nir_def *v = nir_imm_int(b, dim ? dim->Index : 0);
++            if (dim && dim->Indirect && dimind) {
++               nir_def *ind = ttn_src_for_file_and_index(c, dimind->File, dimind->Index,
++                                                         NULL, NULL, NULL, false).ssa;
++               v = nir_iadd(b, v, nir_channel(b, ind, dimind->Swizzle));
++            }
++            deref = nir_build_deref_array(&c->build, deref, v);
++         } else {
++            /* Indirection on input arrays isn't supported by TTN. */
++            assert(!dim);
++         }
+          return nir_src_for_ssa(nir_load_deref(&c->build, deref));
+       }
+       break;
+@@ -2051,6 +2076,8 @@ static const nir_op op_trans[TGSI_OPCODE_LAST] = {
+    [TGSI_OPCODE_I64ABS] = nir_op_iabs,
+ };
+ 
++static void ttn_add_output_stores(struct ttn_compile *c);   /* exynos-woa 0075: EMIT */
++
+ static void
+ ttn_emit_instruction(struct ttn_compile *c)
+ {
+@@ -2158,6 +2185,15 @@ ttn_emit_instruction(struct ttn_compile *c)
+       ttn_kill(b);
+       break;
+ 
++   case TGSI_OPCODE_EMIT:   /* exynos-woa 0075: the outputs as they are now become a vertex */
++      ttn_add_output_stores(c);
++      nir_emit_vertex(b, .stream_id = 0);
++      break;
++
++   case TGSI_OPCODE_ENDPRIM:
++      nir_end_primitive(b, .stream_id = 0);
++      break;
++
+    case TGSI_OPCODE_ARR:
+       dst = nir_f2i32(b, nir_fround_even(b, src[0]));
+       break;
+@@ -2388,6 +2424,7 @@ ttn_add_output_stores(struct ttn_compile *c)
+          /* FOGC, LAYER, and PSIZ are scalar values */
+          if (var->data.location == VARYING_SLOT_FOGC ||
+              var->data.location == VARYING_SLOT_LAYER ||
++             var->data.location == VARYING_SLOT_VIEWPORT ||
+              var->data.location == VARYING_SLOT_PSIZ) {
+             store_value = nir_channel(b, store_value, 0);
+          }
+@@ -2593,6 +2630,25 @@ ttn_compile_init(const void *tgsi_tokens,
+       case TGSI_PROPERTY_LEGACY_MATH_RULES:
+          s->info.use_legacy_math_rules = value;
+          break;
++      /* exynos-woa 0075: geometry shaders (d3d10umd's TGSI) */
++      case TGSI_PROPERTY_GS_INPUT_PRIM:
++         if (s->info.stage == MESA_SHADER_GEOMETRY) {
++            s->info.gs.input_primitive = (enum mesa_prim)value;
++            s->info.gs.vertices_in = mesa_vertices_per_prim((enum mesa_prim)value);
++         }
++         break;
++      case TGSI_PROPERTY_GS_OUTPUT_PRIM:
++         if (s->info.stage == MESA_SHADER_GEOMETRY)
++            s->info.gs.output_primitive = (enum mesa_prim)value;
++         break;
++      case TGSI_PROPERTY_GS_MAX_OUTPUT_VERTICES:
++         if (s->info.stage == MESA_SHADER_GEOMETRY)
++            s->info.gs.vertices_out = value;
++         break;
++      case TGSI_PROPERTY_GS_INVOCATIONS:
++         if (s->info.stage == MESA_SHADER_GEOMETRY)
++            s->info.gs.invocations = MAX2(value, 1);
++         break;
+       default:
+          if (value) {
+             fprintf(stderr, "tgsi_to_nir: unhandled TGSI property %u = %u\n",
+diff --git a/src/gallium/drivers/panfrost/meson.build b/src/gallium/drivers/panfrost/meson.build
+index aa37a54..128d542 100644
+--- a/src/gallium/drivers/panfrost/meson.build
++++ b/src/gallium/drivers/panfrost/meson.build
+@@ -126,3 +126,15 @@ driver_panfrost = declare_dependency(
+   compile_args : compile_args_panfrost,
+   link_with : [libpanfrost, libpanfrostwinsys, libpanfrost_shared, libpanfrost_compiler, libpanfrost_decode, libpanfrost_lib],
+ )
++
++# exynos-woa 0075: host check of the geometry shader compile path (not built by default)
++if host_machine.system() != 'windows'
++  s10_gs_hosttest = executable(
++    's10_gs_hosttest',
++    files('s10_gs_hosttest.c'),
++    include_directories : [panfrost_includes, inc_gallium_aux],
++    dependencies : [panfrost_deps, idep_nir],
++    link_with : [libpanfrost, libpanfrost_shared, libpanfrost_compiler, libpanfrost_decode, libpanfrost_lib, libgallium],
++    build_by_default : false,
++  )
++endif
+diff --git a/src/gallium/drivers/panfrost/pan_nir_lower_gs.c b/src/gallium/drivers/panfrost/pan_nir_lower_gs.c
+index 86982b7..5f5391d 100644
+--- a/src/gallium/drivers/panfrost/pan_nir_lower_gs.c
++++ b/src/gallium/drivers/panfrost/pan_nir_lower_gs.c
+@@ -287,10 +287,13 @@ lower_per_vertex_input(nir_builder *b, nir_intrinsic_instr *intr, struct lower_g
+    }
+ 
+    if (location == VARYING_SLOT_PSIZ) {
++      /* exynos-woa 0075: both phi sources built inside their branches (or before the if) - an
++       * instruction emitted after nir_pop_if lands before the phi, which is invalid NIR. */
++      nir_def *one = nir_imm_float(b, 1.0f);
+       nir_push_if(b, nir_ine_imm(b, st->in_psiz, 0));
+-      nir_def *psiz = load_components(b, st->in_psiz, nir_imul_imm(b, vtx, 2), 1, 16);
++      nir_def *psiz = nir_f2f32(b, load_components(b, st->in_psiz, nir_imul_imm(b, vtx, 2), 1, 16));
+       nir_pop_if(b, NULL);
+-      psiz = nir_if_phi(b, nir_f2f32(b, psiz), nir_imm_float(b, 1.0f));
++      psiz = nir_if_phi(b, psiz, one);
+       return convert_bits(b, nir_replicate(b, psiz, n), nir_type_float, intr->def.bit_size);
+    }
+ 
+@@ -303,6 +306,7 @@ lower_per_vertex_input(nir_builder *b, nir_intrinsic_instr *intr, struct lower_g
+    nir_def *offset = nir_iand_imm(b, entry, ~PAN_GS_IN_16BIT);
+    nir_def *rec = nir_iadd(b, nir_imul(b, vtx, st->in_general_stride), offset);
+ 
++   nir_def *zero = nir_imm_zero(b, n, intr->def.bit_size);   /* exynos-woa 0075: before the if */
+    nir_push_if(b, nir_ine_imm(b, entry, PAN_GS_SLOT_UNUSED));
+    nir_push_if(b, is16);
+    nir_def *v16 =
+@@ -315,7 +319,7 @@ lower_per_vertex_input(nir_builder *b, nir_intrinsic_instr *intr, struct lower_g
+    nir_pop_if(b, NULL);
+    nir_def *val = nir_if_phi(b, v16, v32);
+    nir_pop_if(b, NULL);
+-   return nir_if_phi(b, val, nir_imm_zero(b, n, intr->def.bit_size));
++   return nir_if_phi(b, val, zero);
+ }
+ 
+ /* store_output -> the slot's variable, as 32-bit components. */
+@@ -642,6 +646,9 @@ pan_nir_lower_gs(nir_shader *nir, const struct pan_gs_info *info, uint32_t noper
+    nir->info.workgroup_size[2] = 1;
+    nir->info.workgroup_size_variable = false;
+ 
++   /* exynos-woa 0075: loops from TGSI (tgsi_to_nir) can reach here with continue constructs, which
++    * nir_lower_returns does not take. */
++   NIR_PASS(_, nir, nir_lower_continue_constructs);
+    NIR_PASS(_, nir, nir_lower_returns);
+    NIR_PASS(_, nir, nir_lower_vars_to_ssa);
+    NIR_PASS(_, nir, nir_opt_dce);
+diff --git a/src/gallium/drivers/panfrost/pan_screen.c b/src/gallium/drivers/panfrost/pan_screen.c
+index 53d2e8f..aa95180 100644
+--- a/src/gallium/drivers/panfrost/pan_screen.c
++++ b/src/gallium/drivers/panfrost/pan_screen.c
+@@ -1053,7 +1053,11 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
+          for (const char *p = fd_opt; *p && !fd_match;) {
+             const char *e = strchr(p, ',');
+             size_t l = e ? (size_t)(e - p) : strlen(p);
++#ifdef _WIN32
+             fd_match = l == pl && !_strnicmp(p, pname, l);
++#else
++            fd_match = l == pl && !strncasecmp(p, pname, l);   /* exynos-woa 0075: host test build */
++#endif
+             p += l + (e ? 1 : 0);
+          }
+       }
+diff --git a/src/gallium/drivers/panfrost/pan_shader.c b/src/gallium/drivers/panfrost/pan_shader.c
+index a4fbbc8..fb1ea2c 100644
+--- a/src/gallium/drivers/panfrost/pan_shader.c
++++ b/src/gallium/drivers/panfrost/pan_shader.c
+@@ -1082,3 +1082,42 @@ panfrost_shader_context_init(struct pipe_context *pctx)
+    pctx->get_compute_state_info = panfrost_get_compute_state_info;
+    pctx->delete_compute_state = panfrost_delete_shader_state;
+ }
++
++/* exynos-woa 0075: a host-side check of the TGSI -> NIR -> Bifrost path for one shader, as
++ * panfrost_create_shader_state + panfrost_shader_compile do it, without a device (s10_gs_hosttest.c).
++ * Returns the binary size, 0 when nothing came out. */
++unsigned s10_hosttest_compile(nir_shader *nir, uint64_t gpu_id, struct panfrost_shader_key *key,
++                              struct pan_gs_info *gs_out);
++unsigned
++s10_hosttest_compile(nir_shader *nir, uint64_t gpu_id, struct panfrost_shader_key *key,
++                     struct pan_gs_info *gs_out)
++{
++   static struct pan_kmod_dev kdev;
++   static struct panfrost_screen screen;
++   kdev.props.gpu_id = gpu_id;
++   screen.dev.kmod.dev = &kdev;
++   screen.dev.arch = pan_arch(gpu_id);
++   screen.vtbl.compile_shader = pan_shader_compile;
++
++   pan_preprocess_nir(nir, gpu_id);
++   NIR_PASS(_, nir, nir_lower_indirect_derefs_to_if_else_trees,
++            nir_var_shader_in | nir_var_shader_out, UINT32_MAX);
++   NIR_PASS(_, nir, nir_lower_io, nir_var_shader_in | nir_var_shader_out,
++            glsl_type_size, nir_lower_io_use_interpolated_input_intrinsics);
++   NIR_PASS(_, nir, nir_opt_constant_folding);
++
++   struct pan_varying_layout layout = {0};
++   if (nir->info.stage == MESA_SHADER_VERTEX) {
++      pan_varying_collect_formats(&layout, nir, gpu_id, false, false);
++      pan_build_varying_layout_compact(&layout, nir, gpu_id);
++   }
++   if (nir->info.stage == MESA_SHADER_GEOMETRY && gs_out)
++      pan_gs_gather_info(nir, gs_out);
++
++   struct panfrost_shader_binary res = {0};
++   panfrost_shader_compile(&screen, nir, NULL,
++                           nir->info.stage == MESA_SHADER_FRAGMENT ? NULL : &layout, key, 0, &res);
++   unsigned size = res.binary.size;
++   util_dynarray_fini(&res.binary);
++   return size;
++}
+diff --git a/src/gallium/drivers/panfrost/s10_gs_hosttest.c b/src/gallium/drivers/panfrost/s10_gs_hosttest.c
+new file mode 100644
+index 0000000..8b4b6e7
+--- /dev/null
++++ b/src/gallium/drivers/panfrost/s10_gs_hosttest.c
+@@ -0,0 +1,150 @@
++/* exynos-woa 0075: host test of the geometry shader path - d3d10umd-style TGSI through tgsi_to_nir, Panfrost's
++ * create-time lowering, the GS emulation lowering and the Bifrost compiler (G76 gpu_id). Exit 0 when every shader
++ * compiled. */
++#include <stdio.h>
++#include "nir/tgsi_to_nir.h"
++#include "pipe/p_shader_tokens.h"
++#include "tgsi/tgsi_text.h"
++#include "pan_context.h"
++#include "pan_compiler.h"
++
++unsigned s10_hosttest_compile(nir_shader *nir, uint64_t gpu_id, struct panfrost_shader_key *key,
++                              struct pan_gs_info *gs_out);
++
++static const char *gs_text =
++   "GEOM\n"
++   "PROPERTY GS_INPUT_PRIMITIVE POINTS\n"
++   "PROPERTY GS_OUTPUT_PRIMITIVE TRIANGLE_STRIP\n"
++   "PROPERTY GS_MAX_OUTPUT_VERTICES 4\n"
++   "DCL IN[][0], POSITION\n"
++   "DCL IN[][1], GENERIC[1]\n"
++   "DCL OUT[0], POSITION\n"
++   "DCL OUT[1], GENERIC[1]\n"
++   "DCL OUT[2], GENERIC[2]\n"
++   "DCL TEMP[0]\n"
++   "IMM[0] FLT32 {   -0.0800,     0.0800,     0.0000,     1.0000}\n"
++   "IMM[1] UINT32 {0, 0, 0, 0}\n"
++   "  0: ADD OUT[0], IN[0][0], IMM[0].xxzz\n"
++   "  1: MOV OUT[1], IN[0][1]\n"
++   "  2: MOV OUT[2], IMM[0].zwzw\n"
++   "  3: EMIT IMM[1].xxxx\n"
++   "  4: ADD OUT[0], IN[0][0], IMM[0].xyzz\n"
++   "  5: MOV OUT[1], IN[0][1]\n"
++   "  6: MOV OUT[2], IMM[0].zzzw\n"
++   "  7: EMIT IMM[1].xxxx\n"
++   "  8: ADD OUT[0], IN[0][0], IMM[0].yxzz\n"
++   "  9: MOV OUT[1], IN[0][1]\n"
++   " 10: MOV OUT[2], IMM[0].wwzw\n"
++   " 11: EMIT IMM[1].xxxx\n"
++   " 12: ADD OUT[0], IN[0][0], IMM[0].yyzz\n"
++   " 13: MOV TEMP[0].x, IMM[0].wwww\n"
++   " 14: MOV OUT[1], TEMP[0].xxxx\n"
++   " 15: MOV OUT[2], IMM[0].wzzw\n"
++   " 16: EMIT IMM[1].xxxx\n"
++   " 17: ENDPRIM IMM[1].xxxx\n"
++   " 18: END\n";
++
++static const char *gs_tri_text =
++   "GEOM\n"
++   "PROPERTY GS_INPUT_PRIMITIVE TRIANGLES\n"
++   "PROPERTY GS_OUTPUT_PRIMITIVE TRIANGLE_STRIP\n"
++   "PROPERTY GS_MAX_OUTPUT_VERTICES 3\n"
++   "DCL IN[][0], POSITION\n"
++   "DCL IN[][1], GENERIC[1]\n"
++   "DCL OUT[0], POSITION\n"
++   "DCL OUT[1], GENERIC[1]\n"
++   "DCL TEMP[0]\n"
++   "DCL ADDR[0]\n"
++   "IMM[0] INT32 {0, 1, 2, 3}\n"
++   "IMM[1] UINT32 {0, 0, 0, 0}\n"
++   "  0: MOV TEMP[0].x, IMM[0].xxxx\n"
++   "  1: BGNLOOP\n"
++   "  2:   ISGE TEMP[0].y, TEMP[0].xxxx, IMM[0].wwww\n"
++   "  3:   UIF TEMP[0].yyyy\n"
++   "  4:     BRK\n"
++   "  5:   ENDIF\n"
++   "  6:   UARL ADDR[0].x, TEMP[0].xxxx\n"
++   "  7:   MOV OUT[0], IN[ADDR[0].x][0]\n"
++   "  8:   MOV OUT[1], IN[ADDR[0].x][1]\n"
++   "  9:   EMIT IMM[1].xxxx\n"
++   " 10:   UADD TEMP[0].x, TEMP[0].xxxx, IMM[0].yyyy\n"
++   " 11: ENDLOOP\n"
++   " 12: END\n";
++
++static const char *vs_text =
++   "VERT\n"
++   "DCL IN[0]\n"
++   "DCL IN[1]\n"
++   "DCL OUT[0], POSITION\n"
++   "DCL OUT[1], GENERIC[1]\n"
++   "  0: MOV OUT[0], IN[0]\n"
++   "  1: MOV OUT[1], IN[1]\n"
++   "  2: END\n";
++
++static const char *fs_text =
++   "FRAG\n"
++   "DCL IN[0], GENERIC[1], PERSPECTIVE\n"
++   "DCL IN[1], GENERIC[2], PERSPECTIVE\n"
++   "DCL OUT[0], COLOR\n"
++   "DCL TEMP[0]\n"
++   "  0: ADD OUT[0], IN[0], IN[1]\n"
++   "  1: END\n";
++
++static int
++one(const char *name, const char *text, mesa_shader_stage stage, struct panfrost_shader_key *key, struct pan_gs_info *gs)
++{
++   const uint64_t gpu_id = 0x72110000ull;   /* Mali-G76 r0p0 */
++   struct tgsi_token toks[2048];
++   if (!tgsi_text_translate(text, toks, 2048)) {
++      printf("%-10s TGSI text did not parse\n", name);
++      return 1;
++   }
++   nir_shader *nir = tgsi_to_nir_noscreen(toks, pan_get_nir_shader_compiler_options(7, stage, false));
++   /* what tgsi_to_nir's ttn_finalize_nir does (the noscreen entry point skips it) */
++   NIR_PASS(_, nir, nir_lower_continue_constructs);
++   NIR_PASS(_, nir, nir_lower_returns);
++   NIR_PASS(_, nir, nir_lower_vars_to_ssa);
++   NIR_PASS(_, nir, nir_lower_reg_intrinsics_to_ssa);
++   NIR_PASS(_, nir, nir_lower_global_vars_to_local);
++   NIR_PASS(_, nir, nir_split_var_copies);
++   NIR_PASS(_, nir, nir_lower_var_copies);
++   NIR_PASS(_, nir, nir_lower_system_values);
++   NIR_PASS(_, nir, nir_lower_compute_system_values, NULL);
++   if (nir->options->lower_uniforms_to_ubo)
++      NIR_PASS(_, nir, nir_lower_uniforms_to_ubo, false, false);
++   NIR_PASS(_, nir, nir_lower_samplers);
++   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
++   unsigned size = s10_hosttest_compile(nir, gpu_id, key, gs);
++   printf("%-10s %s: %u bytes of Bifrost code\n", name, size ? "OK" : "FAIL", size);
++   if (gs)
++      printf("           gs info: in prim %u x%u, out prim %u x%u, max verts %u prims %u, invocations %u, out_stride %u, "
++             "generic_mask 0x%llx\n", gs->input_prim, gs->input_verts, gs->output_prim, gs->output_verts, gs->max_verts,
++             gs->max_prims, gs->invocations, gs->out_stride, (unsigned long long)gs->generic_mask);
++   ralloc_free(nir);
++   return size ? 0 : 1;
++}
++
++int
++main(void)
++{
++   glsl_type_singleton_init_or_ref();
++   int fails = 0;
++   struct panfrost_shader_key key = {0};
++   struct pan_gs_info gs;
++
++   fails += one("gs-points", gs_text, MESA_SHADER_GEOMETRY, &key, &gs);
++   fails += one("gs-tris", gs_tri_text, MESA_SHADER_GEOMETRY, &key, &gs);
++
++   memset(&key, 0, sizeof(key));
++   key.vs.keep_clip_space = true;
++   fails += one("vs-for-gs", vs_text, MESA_SHADER_VERTEX, &key, NULL);
++   memset(&key, 0, sizeof(key));
++   fails += one("vs-plain", vs_text, MESA_SHADER_VERTEX, &key, NULL);
++
++   memset(&key, 0, sizeof(key));
++   key.fs.emulated_producer = true;
++   fails += one("fs-behind", fs_text, MESA_SHADER_FRAGMENT, &key, NULL);
++
++   printf("%s\n", fails ? "FAILED" : "all compiled");
++   return fails;
++}
+-- 
+2.43.0
+

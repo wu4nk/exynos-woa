@@ -1,0 +1,31 @@
+From 83df52d604c680718e09461daf2b6df6fa75b976 Mon Sep 17 00:00:00 2001
+From: exynos-woa build <build@localhost>
+Date: Wed, 11 Nov 2026 09:07:23 +0700
+Subject: [PATCH 4/4] win: v7 without PAN_I_WANT_A_BROKEN_VULKAN_DRIVER on
+ Windows
+
+---
+ src/panfrost/vulkan/panvk_physical_device.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
+index 3f260af..458a076 100644
+--- a/src/panfrost/vulkan/panvk_physical_device.c
++++ b/src/panfrost/vulkan/panvk_physical_device.c
+@@ -1285,7 +1285,13 @@ panvk_physical_device_init(struct panvk_physical_device *device,
+    case 7:
+    case 11:
+    case 14:
++#ifdef _WIN32
++      /* exynos-woa: the Windows port exists for the G76 (v7); no opt-in needed (panvk-kbase p0175 is what passes
++       * panprobe on this GPU under Android). */
++      if (false) {
++#else
+       if (!os_get_option("PAN_I_WANT_A_BROKEN_VULKAN_DRIVER")) {
++#endif
+          result = panvk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+                                "WARNING: panvk is not well-tested on v%d, "
+                                "pass PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1 "
+-- 
+2.43.0
+

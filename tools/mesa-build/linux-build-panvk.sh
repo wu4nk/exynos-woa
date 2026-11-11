@@ -94,6 +94,7 @@ if want collect; then
   printf '{\n    "file_format_version": "1.0.1",\n    "ICD": {\n        "library_path": ".\\\\vulkan_panfrost.dll",\n        "api_version": "1.4.0",\n        "library_arch": "64"\n    }\n}\n' > $O/panfrost_icd.json
   P=$HERE/../../drivers/MaliG76Wddm/tools/vkprobe
   "$ZIG" cc -target aarch64-windows-gnu -O2 -I"$W/mesa/include" "$P/vkprobe.c" -o $O/vkprobe.exe
+  cp "$HERE/panvk/README-kit.txt" $O/README.txt
   ( cd $O; sha256sum vulkan_panfrost.dll vkprobe.exe > SHA256SUMS )
   llvm-readobj-18 --coff-exports $O/vulkan_panfrost.dll | grep -E 'Name: vk_icd' || { echo "no ICD exports"; exit 1; }
   cat $O/SHA256SUMS

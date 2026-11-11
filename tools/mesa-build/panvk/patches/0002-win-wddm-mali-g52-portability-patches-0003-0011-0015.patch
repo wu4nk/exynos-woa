@@ -1,7 +1,7 @@
 From f3db3a039ac2661b22f415db70d759c90b56ebff Mon Sep 17 00:00:00 2001
 From: exynos-woa build <build@localhost>
 Date: Wed, 11 Nov 2026 07:22:14 +0700
-Subject: [PATCH 2/3] win: wddm-mali-g52 portability patches
+Subject: [PATCH 2/4] win: wddm-mali-g52 portability patches
  0003-0011/0015/0016 (adapted to 26.3-devel)
 
 ---

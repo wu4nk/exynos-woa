@@ -1,5 +1,5 @@
 /*
- * vkprobe (v1.0) - exynos-woa: first light of panvk (Mesa's Vulkan driver for Mali) on the S10 under Windows.
+ * vkprobe (v1.1) - exynos-woa: first light of panvk (Mesa's Vulkan driver for Mali) on the S10 under Windows.
  *
  * Loads the Vulkan ICD directly (vulkan_panfrost.dll next to this exe, or the path given as argument 1) - no Vulkan
  * loader (vulkan-1.dll) is needed - and runs a short ladder of tests, each one depending on the last:
@@ -12,7 +12,9 @@
  *              saved as vkprobe-triangle.bmp
  *   stress     200 fill submits, average time per submit
  * Every GPU wait has a 5 s timeout: a hang shows up as TIMEOUT, not a frozen tool.
- * Output goes to the console and to vkprobe.log next to the exe.
+ * Output goes to the console and to vkprobe.log next to the exe; the driver's own messages (stderr) to
+ * vkprobe-stderr.txt. v1.1: sets PANVK_DEBUG=startup and MALIKM_TRACE=1 unless already set (v1.0's run found
+ * 0 devices and said nothing about why).
  *
  * Build: zig cc -target aarch64-windows-gnu -O2 -I<mesa>/include vkprobe.c -o vkprobe.exe
  */
@@ -540,13 +542,23 @@ main(int argc, char **argv)
       slash[1] = 0;
    snprintf(path, sizeof(path), "%svkprobe.log", exe);
    logf_ = fopen(path, "w");
+   char errpath[MAX_PATH];
+   snprintf(errpath, sizeof(errpath), "%svkprobe-stderr.txt", exe);
+   if (!freopen(errpath, "w", stderr))
+      fprintf(stdout, "(could not redirect stderr)\n");
+   setvbuf(stderr, NULL, _IONBF, 0);
+   if (!getenv("PANVK_DEBUG"))
+      _putenv_s("PANVK_DEBUG", "startup");
+   if (!getenv("MALIKM_TRACE"))
+      _putenv_s("MALIKM_TRACE", "1");
+   _putenv_s("PAN_I_WANT_A_BROKEN_VULKAN_DRIVER", "1");
    const char *icd = argc > 1 ? argv[1] : NULL;
    char icdbuf[MAX_PATH];
    if (!icd) {
       snprintf(icdbuf, sizeof(icdbuf), "%svulkan_panfrost.dll", exe);
       icd = icdbuf;
    }
-   out("vkprobe v1.0 - ICD %s\n", icd);
+   out("vkprobe v1.1 - ICD %s (driver messages: vkprobe-stderr.txt)\n", icd);
    double t0 = now_ms();
    HMODULE h = LoadLibraryA(icd);
    if (!h) {
