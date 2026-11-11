@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.31) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.32) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,10 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.32: "final" - the everyday setting once gpu-dwm works (UMD 0222-s10.1+): DWM stays on the Mali (WDDM 2.0) and
+  every debug helper goes - the machine MALIKM_TGSI_DIR shim logging (a log line per present in every D3D process;
+  upstream HANDOFF 50: "never leave it on"), MALIUMD_NO_TC, the 'S10 GPU watch' / 'S10 GPU fill' tasks, old logs.
+  TDR delays and preemption-off stay (the KMD needs them). Back to debugging: .\gpu-s10.ps1 gpu-dwm.
   v1.31: "gpu-dwm -NoTc" (DIAGNOSIS ONLY): machine MALIUMD_NO_TC=1 turns off the UMD's threaded context (Gallium
   driver thread) for one boot. 2026-11-11 22:43 log 68eeafcf: DWM on Panfrost (Wddm2 5) froze after 80 presents with
   "tc: driver thread waits > 2 s for the DDI thread to run callback op 4" (op 4 = Render, marshalled to DWM's DDI
@@ -84,13 +88,13 @@
   Back from "full": .\gpu-s10.ps1 display (FullAdapter 0 again; maliumd.dll may stay, it is only loaded
   in full mode). If "full" hangs: nogpu.flg from TWRP, boot, run "display", delete nogpu.flg, reboot.
 #>
-param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status',
+param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'final', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status',
       [string]$GpuDir = 'out-gpu',   # v1.26: e.g. -GpuDir out-gpu-legacy / out-gpu-upstream (two builds side by side)
       [switch]$NoTc)                 # v1.31: gpu-dwm only, diagnosis: MALIUMD_NO_TC=1 machine-wide for the next boot
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.31  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.32  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -632,6 +636,19 @@ switch ($Action) {
     Initialize-UmdLog
     Clear-NoGpuFlag             # v1.8: run from a nogpu rescue boot, GPU0 stayed hidden (18:34)
     Info 'reboot: DWM now renders on the Mali. Back: .\gpu-s10.ps1 gpu (DWM on softpipe again) or display'
+  }
+  'final' {
+    $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
+    if ($m.GpuEnable -ne 1 -or $m.FullAdapter -ne 1) { Fail 'not in GPU mode - run display / gpu / gpu-dwm first (one reboot after each)' }
+    if ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).GALLIUM_DRIVER) { Fail 'GALLIUM_DRIVER is set (DWM on softpipe) - run .\gpu-s10.ps1 gpu-dwm, reboot, check the desktop, then final' }
+    Set-Wddm2 (Test-UpstreamPkg)
+    Set-FaultDump $null
+    Set-ShimLog $false           # also clears the old shim logs and MALIUMD_NO_TC
+    Set-GpuWatch $false
+    if ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).S10_THUMBS) { Remove-ItemProperty $EnvKey S10_THUMBS }
+    Set-TdrDelay $true
+    Clear-NoGpuFlag
+    Ok 'final: DWM on the Mali, debug logging and boot tasks off - reboot once (DWM reads the variables at start)'
   }
   'kmd' {
     Install-Kmd

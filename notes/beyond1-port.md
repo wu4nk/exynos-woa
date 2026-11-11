@@ -1735,3 +1735,14 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   maliumd32.dll 0a237e99, both contain the MALIUMD_TC string. maligl.dll unchanged (no d3d10umd). Open: the real cause
   of the DDI thread not coming back (S10e runs DWM threaded) - T-series root cause, not needed for the S10 desktop.
   NOT validated on the device yet.
+- 2026-11-11 23:50 user: UMD 0222-s10.1 works ("nó hoạt động rồi") - DWM on the Mali with the threaded context off by
+  default (no -NoTc). User directive: finish ALL remaining GPU work before anything else.
+- GPU completion plan (in this order): (1) gpu-validate.ps1 battery on the device -> list of real failures;
+  (2) "final" everyday mode (gpu-s10 v1.32: shim logging MALIKM_TGSI_DIR + watch/fill tasks off - upstream HANDOFF 50
+  "never leave it on"); (3) GPU clocks: S10ePower/S10eGovernor (GPU stays at the boot rate without it; upstream's
+  video/mpv judder fix was clocks); (4) Edge edge://gpu / WebGL / YouTube by hand; (5) video decode (Exynos9820Mfc +
+  D3D11 video DDI, upstream G17); (6) threaded-context deadlock root cause (perf only).
+- gpu-validate.ps1 v1.0 + tools/mesa-build/build-validate-tools.sh: 21 ARM64 tools (d3dcaps msaa cs sm41 sm5 gs so
+  tess mrt bc copysrgb cbdyn vbring fence fs, gltest, gpuinfo, dwmrate, vblank, flipseq, gpuclock) + 5 x86 (caps msaa
+  cs cbdyn vbring), zig 0.13, d3dcompiler_47 import libs from zig's mingw .def. Not built: d3dtri (overlay source),
+  gpucheck (WinMain GUI), d3dswap (goto over init). NOT run on the device yet.
