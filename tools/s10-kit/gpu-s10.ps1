@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.23) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.24) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,8 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.24: "full" / "gpu" refuse to run when the installed MaliG76Wddm is not the version in out-gpu\ (2026-11-11 18:10:
+  a legacy kit was built but "gpu" ran on the still-installed 1.0.72.1) - run "display" first, it installs the kit's.
   v1.23: legacy stack (build-s10 v1.12 S10_GPU_LEGACY=1: KMD 1.0.36.1 + UMD 0075): "display" removes every installed
   MaliG76Wddm package before adding the kit's (1.0.72.1 would otherwise outrank 1.0.36.1), and a loose UMD with a
   matching SHA256SUMS in out-gpu\umd\ is preferred over any other loose copy.
@@ -61,7 +63,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.23  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.24  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -345,6 +347,16 @@ function Set-FullMode([int]$Gpu) {
   } elseif (Get-Service MaliG76Wddm -ErrorAction SilentlyContinue) {
     Info 'GPU0 hidden (nogpu.flg) but MaliG76Wddm is installed - writing the mode anyway, the flag is removed below'
   } else { Fail 'no GPU0 and MaliG76Wddm not installed - run .\gpu-s10.ps1 display first' }
+  # v1.24: the installed KMD must be the kit's (a legacy build needs "display" first to replace 1.0.72.1)
+  $kitInf = Join-Path $Out 'MaliG76Wddm\MaliG76Wddm.inf'
+  $kitVer = $null
+  if (Test-Path $kitInf) { foreach ($l in Get-Content $kitInf) { if ($l -match '^\s*DriverVer\s*=\s*[^,]+,\s*([\d.]+)') { $kitVer = $Matches[1] } } }
+  $insVer = (Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | Where-Object { $_.DeviceID -like 'ACPI\SAMS9828\*' } | Select-Object -First 1).DriverVersion
+  if (-not $insVer) { $insVer = (Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" -Directory -Filter 'malig76wddm.inf_*' -ErrorAction SilentlyContinue | ForEach-Object { (Select-String -Path (Join-Path $_.FullName 'malig76wddm.inf') -Pattern '^\s*DriverVer' -ErrorAction SilentlyContinue | Select-Object -First 1).Line -replace '.*,\s*', '' } | Select-Object -First 1) }
+  Info "MaliG76Wddm installed $insVer, kit (out-gpu) $kitVer"
+  if ($kitVer -and $insVer -and $insVer.Trim() -ne $kitVer.Trim()) {
+    Fail "the installed MaliG76Wddm is $insVer but out-gpu holds $kitVer - run .\gpu-s10.ps1 display first (it installs the kit's), reboot, then this"
+  }
   # v1.19: the package carries the UMD (kit v2.x). Its INF puts each file in place when the package is installed
   # ("display"); here every file is checked against the package and, if it differs (an older kit's package, or a
   # loose copy from gpu-s10 <= v1.18), replaced from the package: take ownership (TrustedInstaller owns what a
@@ -451,6 +463,17 @@ switch ($Action) {
       # Rescue boot (nogpu.flg hides GPU0): nothing to install, but the mode can still be written back so the
       # next boot without the flag starts MaliG76Wddm display-only instead of the full adapter that hung.
       if (-not (Get-Service MaliG76Wddm -ErrorAction SilentlyContinue)) { Fail 'no GPU0 and MaliG76Wddm not installed - flash beyond1lte-uefi v0.1.3+ first' }
+      # v1.24: also from the rescue boot, the store gets exactly the kit's package (GPU0 binds it when it is back)
+      if (Test-Path (Join-Path $Out 'MaliG76Wddm\MaliG76Wddm.inf')) {
+        Remove-Pkg 'maliG76probe.inf'
+        Remove-Pkg 'maliG76wddm.inf'
+        $cer = Join-Path $Out 'kit-test-cert.cer'
+        if (Test-Path $cer) { certutil -addstore -f Root $cer | Out-Null; certutil -addstore -f TrustedPublisher $cer | Out-Null }
+        $r = pnputil /add-driver (Join-Path $Out 'MaliG76Wddm\MaliG76Wddm.inf') 2>&1 | Out-String
+        $r | Add-Content $Report
+        if ($LASTEXITCODE) { Write-Host $r; Fail "pnputil /add-driver MaliG76Wddm ($LASTEXITCODE)" }
+        Ok 'kit MaliG76Wddm staged in the driver store (the only one) - GPU0 takes it at the next boot'
+      }
       New-Item -Force $SvcParams | Out-Null
       Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
       Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord

@@ -1637,3 +1637,9 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   with UMD 0075 (build stamp Nov 11 09:00:12 = the umd-log lines of the working DWM runs). build-s10 v1.12
   S10_GPU_LEGACY=1, gpu-s10 v1.23 (display removes every MaliG76Wddm package first; out-gpu\umd UMD with matching
   SHA256SUMS wins), make-kit UMD_LEGACY. Kit v2.4.
+- 2026-11-11 18:10 log 9965158f ("still black"): the legacy stack was NOT installed - gpu-report = gpu-s10 v1.23
+  "gpu" from the nogpu rescue boot, package UMD 603a7885, KMD registry Build 1 / Mode 2 (upstream), no MaliG76Wddm
+  install in setupapi. Same picture as de246bbc (desktop runs, DWM presents, panel black). Cause of the mix-up:
+  "display" in a rescue boot (GPU0 hidden) only wrote the mode, never installed the kit's package, and "gpu" did not
+  check which KMD was installed. gpu-s10 v1.24: rescue "display" removes every MaliG76Wddm/Probe package and stages
+  the kit's (GPU0 binds it next boot); "full"/"gpu" fail when the installed version != out-gpu's.
