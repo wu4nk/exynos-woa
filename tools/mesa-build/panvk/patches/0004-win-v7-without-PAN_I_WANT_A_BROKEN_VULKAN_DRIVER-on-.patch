@@ -1,7 +1,7 @@
 From 83df52d604c680718e09461daf2b6df6fa75b976 Mon Sep 17 00:00:00 2001
 From: exynos-woa build <build@localhost>
 Date: Wed, 11 Nov 2026 09:07:23 +0700
-Subject: [PATCH 4/4] win: v7 without PAN_I_WANT_A_BROKEN_VULKAN_DRIVER on
+Subject: [PATCH 4/5] win: v7 without PAN_I_WANT_A_BROKEN_VULKAN_DRIVER on
  Windows
 
 ---

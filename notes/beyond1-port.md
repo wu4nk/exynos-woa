@@ -1482,3 +1482,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   vk_physical_device_init or panvk_wsi_init (win32 WSI).
 - vkprobe v1.2: unhandled-exception filter printing the code, module+offset and an RtlVirtualUnwind call stack
   (vulkan_panfrost.dll has .pdata), "enumerating physical devices..." marker. DLL unchanged (2a7be5c5).
+
+### panvk run 41 (vkprobe v1.2, V1.1 DLL; 2026-11-11 09:23)
+- Crash report worked: 0xC000001D at vulkan_panfrost.dll+0x3fe7d4 = get_ctr_el0 (util/cache_ops_aarch64.c, `mrs
+  ctr_el0`) <- util_cache_granularity <- panvk_v7_get_physical_device_properties (nonCoherentAtomSize) <-
+  panvk_physical_device_init <- vkEnumeratePhysicalDevices. Windows does not let EL0 read CTR_EL0 (Linux traps and
+  emulates it). util_has_cache_ops() already said false for MSVC; mingw/zig took the aarch64 path.
+- Fix (panvk patch 0005): util_has_cache_ops() false on _WIN32 (no user-mode data cache maintenance assumed; only
+  WB_MMAP BOs would need it), get_ctr_el0() = 64-byte lines on _WIN32. Disassembly of the new DLL: no `mrs
+  ctr_el0` left, the only mrs is FPCR. V1.3: vulkan_panfrost.dll 573504d3, vkprobe 0c626027.
+- Note: second load of the DLL took 9 ms (first 8.3-8.9 s = cold read of 34 MB from storage).

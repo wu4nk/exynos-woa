@@ -1,0 +1,45 @@
+From 92baa467700b549036528657e66976fe84d0cca2 Mon Sep 17 00:00:00 2001
+From: exynos-woa build <build@localhost>
+Date: Wed, 11 Nov 2026 09:28:02 +0700
+Subject: [PATCH 5/5] win: no CTR_EL0 / user cache maintenance on Windows (util
+ cache ops)
+
+---
+ src/util/cache_ops.h         | 4 +++-
+ src/util/cache_ops_aarch64.c | 5 +++++
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/util/cache_ops.h b/src/util/cache_ops.h
+index 3ea796f..a32f1b3 100644
+--- a/src/util/cache_ops.h
++++ b/src/util/cache_ops.h
+@@ -41,7 +41,9 @@ util_has_cache_ops(void)
+    /* TODO: Port to MSVC if and when we have Windows hardware drivers that
+     * need cache flushing ops.
+     */
+-#if defined(_MSC_VER)
++#if defined(_MSC_VER) || defined(_WIN32)
++   /* exynos-woa (panvk on Windows ARM64, zig/mingw): EL0 may not read CTR_EL0 there - mrs traps as an illegal
++    * instruction (vkprobe v1.2, util_cache_granularity) - and no user-mode data cache maintenance is assumed. */
+    return false;
+ #endif
+ 
+diff --git a/src/util/cache_ops_aarch64.c b/src/util/cache_ops_aarch64.c
+index d56ab8a..bf03199 100644
+--- a/src/util/cache_ops_aarch64.c
++++ b/src/util/cache_ops_aarch64.c
+@@ -29,6 +29,11 @@
+ static uint32_t
+ get_ctr_el0(void)
+ {
++#ifdef _WIN32
++   /* exynos-woa: CTR_EL0 traps at EL0 on Windows. 64-byte lines (16 words: CWG = DminLine = 4) on every core of
++    * the Exynos 9820 (Mongoose M4, Cortex-A75, Cortex-A55). */
++   return (4u << 24) | (4u << 16);
++#endif
+    uint32_t ctr_el0;
+    __asm("mrs\t%x0, ctr_el0" : "=r"(ctr_el0));
+    return ctr_el0;
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 1783545738dda5d3c86cda5b9b212807c76e5043 Mon Sep 17 00:00:00 2001
 From: exynos-woa build <build@localhost>
 Date: Wed, 11 Nov 2026 07:55:28 +0700
-Subject: [PATCH 3/4] win: panvk on Windows ARM64 over the malikm shim (V1)
+Subject: [PATCH 3/5] win: panvk on Windows ARM64 over the malikm shim (V1)
 
 drmDevice enumeration in the shim, malikm_atoms.c (kbase job atoms over PANFROST_SUBMIT + binary syncobjs),
 the CPU atom sync type on _WIN32, ICD exports through vulkan_api.def, Windows build fixes.
