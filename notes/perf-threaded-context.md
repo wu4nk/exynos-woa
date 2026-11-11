@@ -266,3 +266,16 @@ thread is still emulated x86 in 32-bit games); also helps every D3D app (DWM, br
 - Diagnosis UMD: build-arm64 now configured -Ddebug=true (PDB emitted, code unchanged) -> maliumd 4a785df4 + PDB
   (scratchpad maliumd-tcdiag.pdb; llvm-symbolizer-18 --obj=maliumd-tcdiag.dll --relative-address works).
   tools/s10-kit/tc-diag.ps1 on|collect|off (swap maliumd, MALIUMD_TC=1, MALIUMD_TC_RESCUE=8, MALIKM_TGSI_DIR).
+- 2026-11-12 04:25 tc-diag run 1 (zip 18b7b334, maliumd 4a785df4, MALIUMD_TC=1, RESCUE 8): black panel again. Three
+  processes hit the wait: dwm.exe-616 (op 4 render, 2032 ms) and SearchHost-5288 (op 4) logged the wait line and
+  NOTHING after it - the snapshot itself never returned; Explorer-4252 (op 1 create) got two snapshots and then went on
+  (no RESCUE line: the DDI thread came back by itself between 7 and 8 s). Explorer's DDI thread (PDB symbolised,
+  scratchpad tcdsym/): ntdll wait <- futex_wait (futex.c:151 WaitOnAddress) <- do_futex_fence_wait <-
+  _util_queue_fence_wait_timeout <- tc_fence_wait (u_threaded_context.c:118) <- _tc_sync:785 <- tc_flush:3767 <-
+  _Present (DxgiFns.cpp:221, the flush at the top of Present). A pumping wait with a 1 ms timeout, yet "DDI thread
+  last seen" grew to 7 s = the 1 ms WaitOnAddress did not come back for seconds (or the loop never re-entered the hook).
+  Snapshot hang in DWM: mk_log_addr calls GetModuleFileNameA (loader lock) while the DDI thread is suspended ->
+  the suspended DWM thread probably held the loader lock.
+- s10-0007: snapshot copies pc / lr / 1024 stack words while suspended, resolves after resuming against a module
+  table made at malikm_marshal_enable (K32EnumProcessModules), logs tc_fence_wait loop count over 20 ms and the
+  futex WaitOnAddress timeout (last / max finite). Diagnosis UMD maliumd 1387928a (PDB scratchpad tcdsym2/).

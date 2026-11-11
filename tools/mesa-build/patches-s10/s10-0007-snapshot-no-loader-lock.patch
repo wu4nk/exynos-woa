@@ -1,0 +1,213 @@
+From 74bdbfda55e8e566e69d8b3b5b0b51175335fe37 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 04:29:00 +0700
+Subject: [PATCH] S10: loader-lock-free ARM64 snapshot, futex timeout +
+ pumping-wait loop counters
+
+---
+ include/win32-compat/malikm_drm.c             | 98 +++++++++++++++----
+ .../auxiliary/util/u_threaded_context.c       |  4 +
+ src/util/futex.c                              |  7 ++
+ 3 files changed, 88 insertions(+), 21 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 6dd0fe1..654eb70 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -13,6 +13,7 @@
+  *  - A sync file is a sequence number kept here against a placeholder fd.
+  */
+ #include <windows.h>
++#include <psapi.h>
+ #include <winternl.h>
+ #include <d3dkmthk.h>
+ #include <d3d9types.h>   /* d3dumddi.h uses the D3D9 types */
+@@ -1487,6 +1488,37 @@ mk_log_addr(char *line, int *o, size_t size, uintptr_t v)
+    *o += snprintf(line + *o, size - *o, " %s+%llx", b ? b + 1 : name, (unsigned long long)(v - (uintptr_t)m));
+ }
+ 
++#if defined(_M_ARM64) || defined(__aarch64__)
++/* s10-0007: the module table the ARM64 snapshot resolves against - made at malikm_marshal_enable (device creation),
++ * long before any deadlock, so no loader call is needed while a DDI thread may hold the loader lock */
++static struct { uintptr_t base, end; char name[40]; } mods[256];
++static int nmods = -1;
++static void
++mk_mods_init(void)
++{
++   if (nmods >= 0)
++      return;
++   HMODULE hm[256];
++   DWORD need = 0;
++   nmods = 0;
++   if (EnumProcessModules(GetCurrentProcess(), hm, sizeof hm, &need)) {
++      for (DWORD i = 0; i < need / sizeof(HMODULE) && i < 256; i++) {
++         MODULEINFO mi;
++         char nm[MAX_PATH];
++         if (!GetModuleInformation(GetCurrentProcess(), hm[i], &mi, sizeof mi) ||
++             !GetModuleBaseNameA(GetCurrentProcess(), hm[i], nm, sizeof nm))
++            continue;
++         mods[nmods].base = (uintptr_t)mi.lpBaseOfDll;
++         mods[nmods].end = (uintptr_t)mi.lpBaseOfDll + mi.SizeOfImage;
++         snprintf(mods[nmods].name, sizeof mods[nmods].name, "%s", nm);
++         nmods++;
++      }
++   }
++}
++#else
++static void mk_mods_init(void) {}
++#endif
++
+ static volatile DWORD mk_ddi_tick;   /* 0175 */
+ static void
+ mk_snapshot_ddi_thread(void)
+@@ -1570,9 +1602,15 @@ mk_snapshot_ddi_thread(void)
+    CloseHandle(t);
+    malikm_tlog("tc: DDI thread %lu: %s", tid, line);
+ #elif defined(_M_ARM64) || defined(__aarch64__)
+-   /* S10 port (patches-s10/s10-0006, notes/beyond1-port.md 2026-11-12): the same scan for native ARM64 (DWM, LogonUI,
+-    * the shell) - 0175 had x86 / x64 / ARM64EC only, so the S10 DWM deadlock left no trace. pc, lr (x30), fp chain
+-    * and a stack scan, module+offset only (AGENTS rule 11: nothing of Windows' code is examined beyond names). */
++   /* S10 port (s10-0006/0007, notes/perf-threaded-context.md): native ARM64 (DWM, LogonUI, the shell). 0006 resolved
++    * module names while the DDI thread was suspended: in DWM and SearchHost the snapshot never returned (no line logged)
++    * - GetModuleFileName takes the loader lock, so the suspended DDI thread most likely HELD it. Now: raw pc / lr /
++    * stack words are copied while it is suspended (no loader, no heap, no CRT), the thread is resumed, and the
++    * addresses are resolved against a module table made at the first snapshot BEFORE suspending, read without
++    * the loader lock. AGENTS rule 11: module names and offsets only. */
++   mk_mods_init();
++   extern volatile uint32_t mesa_futex_last_timeout_ms, mesa_futex_max_timeout_ms, tc_fence_wait_iters;
++   uint32_t it0 = tc_fence_wait_iters;
+    DWORD tid = mk_ddi_tid;
+    HANDLE t = tid ? OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, tid)
+                   : NULL;
+@@ -1580,38 +1618,55 @@ mk_snapshot_ddi_thread(void)
+       malikm_tlog("tc: no DDI thread to inspect (tid %lu)", tid);
+       return;
+    }
+-   static char line[3000];
+-   int o = 0, found = 0;
+-   line[0] = 0;
++   static uintptr_t words[1024];
++   uintptr_t pc = 0, lr = 0;
++   int nw = 0;
++   MEMORY_BASIC_INFORMATION mb;
+    if (SuspendThread(t) != (DWORD)-1) {
+       CONTEXT c;
+       memset(&c, 0, sizeof c);
+       c.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+       if (GetThreadContext(t, &c)) {
+-         o += snprintf(line + o, sizeof line - o, "pc");
+-         mk_log_addr(line, &o, sizeof line, (uintptr_t)c.Pc);
+-         o += snprintf(line + o, sizeof line - o, " | lr");
+-         mk_log_addr(line, &o, sizeof line, (uintptr_t)c.Lr);
+-         o += snprintf(line + o, sizeof line - o, " | stack");
++         pc = (uintptr_t)c.Pc;
++         lr = (uintptr_t)c.Lr;
+          const uintptr_t *sp = (const uintptr_t *)(uintptr_t)c.Sp;
+-         MEMORY_BASIC_INFORMATION mb;
+          uintptr_t top = (uintptr_t)sp;
+          if (VirtualQuery(sp, &mb, sizeof mb))
+             top = (uintptr_t)mb.BaseAddress + mb.RegionSize;
+-         for (const uintptr_t *q = sp; (uintptr_t)(q + 1) <= top && found < 48 && o < (int)sizeof line - 80; q++) {
+-            HMODULE m = NULL;
+-            if (*q > 0x10000 &&
+-                GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+-                                   (LPCSTR)*q, &m) && m) {
+-               mk_log_addr(line, &o, sizeof line, *q);
+-               found++;
+-            }
+-         }
++         for (const uintptr_t *q = sp; (uintptr_t)(q + 1) <= top && nw < 1024; q++)
++            words[nw++] = *q;
+       }
+       ResumeThread(t);
+    }
+    CloseHandle(t);
++   Sleep(20);
++   uint32_t it1 = tc_fence_wait_iters;
++   static char line[3000];
++   int o = 0, found = 0;
++   line[0] = 0;
++#define MK_RESOLVE(v)                                                                                                  \
++   do {                                                                                                               \
++      uintptr_t v_ = (v);                                                                                             \
++      for (int k_ = 0; k_ < nmods; k_++)                                                                              \
++         if (v_ >= mods[k_].base && v_ < mods[k_].end) {                                                              \
++            o += snprintf(line + o, sizeof line - o, " %s+%llx", mods[k_].name,                                       \
++                          (unsigned long long)(v_ - mods[k_].base));                                                  \
++            found++;                                                                                                  \
++            break;                                                                                                    \
++         }                                                                                                            \
++   } while (0)
++   o += snprintf(line + o, sizeof line - o, "pc");
++   MK_RESOLVE(pc);
++   o += snprintf(line + o, sizeof line - o, " | lr");
++   MK_RESOLVE(lr);
++   o += snprintf(line + o, sizeof line - o, " | stack");
++   for (int i = 0; i < nw && found < 50 && o < (int)sizeof line - 80; i++)
++      if (words[i] > 0x10000)
++         MK_RESOLVE(words[i]);
++#undef MK_RESOLVE
+    malikm_tlog("tc: DDI thread %lu: %s", tid, line);
++   malikm_tlog("tc: pumping-wait loops %u in 20 ms (total %u), futex timeout last %u ms max %u ms, %d modules",
++               it1 - it0, it1, mesa_futex_last_timeout_ms, mesa_futex_max_timeout_ms, nmods);
+ #endif
+ }
+ 
+@@ -1818,6 +1873,7 @@ malikm_marshal_enable(void)
+ {
+    if (!mk_done_ev)
+       mk_done_ev = CreateEventW(NULL, FALSE, FALSE, NULL);
++   mk_mods_init();   /* s10-0007 */
+    if (mk_done_ev)
+       InterlockedExchange(&mk_on, 1);
+ }
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.c b/src/gallium/auxiliary/util/u_threaded_context.c
+index 19bc9ac..d2081bf 100644
+--- a/src/gallium/auxiliary/util/u_threaded_context.c
++++ b/src/gallium/auxiliary/util/u_threaded_context.c
+@@ -106,6 +106,9 @@ threaded_context_executing(void)
+    return tc_executing_depth > 0;
+ }
+ 
++/* S10 s10-0007: loops of the pumping wait, read by the UMD's deadlock snapshot (does the waiting thread spin?) */
++volatile uint32_t tc_fence_wait_iters;
++
+ static void
+ tc_fence_wait(struct util_queue_fence *fence)
+ {
+@@ -114,6 +117,7 @@ tc_fence_wait(struct util_queue_fence *fence)
+       return;
+    }
+    for (;;) {
++      tc_fence_wait_iters++;
+       tc_wait_hook();
+       if (util_queue_fence_wait_timeout(fence, os_time_get_absolute_timeout(1000000)))
+          return;
+diff --git a/src/util/futex.c b/src/util/futex.c
+index a980c9e..e93f8e6 100644
+--- a/src/util/futex.c
++++ b/src/util/futex.c
+@@ -135,6 +135,10 @@ int futex_wake(uint32_t *addr, int32_t count)
+    return count;
+ }
+ 
++/* S10 s10-0007 (notes/perf-threaded-context.md): the last WaitOnAddress timeout and the largest finite one, read by the
++ * UMD's deadlock snapshot - do the threaded context's 1 ms waits really wait 1 ms on this build? */
++volatile uint32_t mesa_futex_last_timeout_ms, mesa_futex_max_timeout_ms;
++
+ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
+ {
+    DWORD timeout_ms = INFINITE;
+@@ -148,6 +152,9 @@ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
+       timeout_ms = ms <= 0 ? 0 : ms >= INFINITE ? INFINITE - 1 : (DWORD)ms;
+    }
+ 
++   mesa_futex_last_timeout_ms = timeout_ms;
++   if (timeout_ms != INFINITE && timeout_ms > mesa_futex_max_timeout_ms)
++      mesa_futex_max_timeout_ms = timeout_ms;
+    if (WaitOnAddress(addr, &value, sizeof(value), timeout_ms))
+       return 0;
+    /* exynos-woa T5c: the Linux convention the callers check (do_futex_fence_wait: r < 0 && errno == ETIMEDOUT) -
+-- 
+2.43.0
+
