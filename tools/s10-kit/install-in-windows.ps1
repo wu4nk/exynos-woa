@@ -1,5 +1,5 @@
 <#
-  install-in-windows.ps1 (v1.2) - add the S10 kit drivers to a Windows ALREADY installed on the
+  install-in-windows.ps1 (v1.3) - add the S10 kit drivers to a Windows ALREADY installed on the
   Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator, from the kit
   folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
@@ -15,6 +15,9 @@
   (SpkAtten 0; analog gains stay at the by-ear baseline, the trim app raises them up to stock 17); the audio device is
   restarted so it takes them now. Bluetooth (Exynos9820Bt, needs UEFI v0.2.1+). S10eSpeakerTrim.exe compiled from
   the kit's .cs with the in-box .NET Framework csc and put on the desktop.
+  v1.3: the GPU packages (MaliG76Wddm / MaliG76Probe) are NO LONGER removed. That step dates from the round where
+  the GPU was parked (kit v1.4); since gpu-s10.ps1 owns the GPU, removing them here took the Mali away (2026-11-11:
+  "pnputil /delete-driver oem13.inf" -> ACPI\SAMS9828 CM_PROB_FAILED_INSTALL -> Basic Render, vkprobe 0 devices).
 #>
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
@@ -35,7 +38,7 @@ if (Test-Path $cer) {
 
 # 1. packages that bind the same hardware IDs as ours: remove them first
 $blocks = (pnputil /enum-drivers | Out-String) -split "(\r?\n){2,}"
-foreach ($old in 's6sy761touchbeyond0.inf', 'sectsy761touch.inf', 'malig76wddm.inf', 'malig76probe.inf') {
+foreach ($old in 's6sy761touchbeyond0.inf', 'sectsy761touch.inf') {   # v1.3: GPU packages stay (gpu-s10.ps1 manages them)
   foreach ($b in $blocks) {
     if ($b -match [regex]::Escape($old) -and $b -match '(oem\d+\.inf)') {
       $pub = $Matches[1]

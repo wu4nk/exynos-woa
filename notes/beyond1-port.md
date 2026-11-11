@@ -1603,3 +1603,10 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   gpu-s10.ps1 v1.19: with out-gpu\MaliG76Wddm\maliumd.dll present, maliumd/maliumd32/maligl are checked against the
   package and a differing one replaced from it (takeown + icacls Administrators F, rename aside, copy); loose-file
   path keeps the same takeown. Parsed with pwsh 7.4; not run on the phone.
+- 2026-11-11 15:55 run (log 3f58783e): "GPU not working". gpubench/gputest ran on 'Microsoft Basic Render Driver'
+  (gputest's "100 PASS on the Mali" = WARP vs WARP); vkprobe 0 devices. ACPI\SAMS9828 CM_PROB_FAILED_INSTALL:
+  setupapi shows boot 23:16 (phone clock) -> `pnputil /delete-driver oem13.inf /uninstall /force` followed by the
+  out\ packages = install-in-windows.ps1 step 1, which still removed malig76wddm/malig76probe (from the parked-GPU
+  round). Fixed in install-in-windows v1.3. 16 DWM crashes in that boot: maliumd.dll timestamp 0x6af3b1b2 (NOT the
+  kit's 603a7885 = 0x6AF40C7E) +0x18f468 0x80000002 - the stale out-gpu\maliumd.dll gpu-s10 <= v1.18 copied, old
+  UMD on the 1.0.72 KMD. Earlier boots with the package's UMD: DWM on the Mali, KMD 50607 jobs 0 failed 0 timed out.
