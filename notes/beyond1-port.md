@@ -1648,3 +1648,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   (603a7885; out-gpu copied over, not replaced) -> KMD 1.0.36 + upstream UMD = black. gpu-s10 v1.25: package path only
   when the package INF lists maliumd.dll in [SourceDisksFiles]; a legacy package needs out-gpu\umd\maliumd.dll (fails
   clearly otherwise).
+- 2026-11-11 18:51 log 3db2a1c3: back on upstream 1.0.72.1 in DISPLAY-ONLY mode (FullAdapter 0 / GpuEnable 0, Mode 0,
+  panel works, 1440x3040, PRAM readable live: HB p514) - out-gpu was a non-legacy build again, so v1.24 "display"
+  replaced the legacy package with 1.0.72.1, and the later "gpu" ran from the nogpu boot on 1.0.72.1 + 603a7885.
+  Note: in display-only the live PRAM peek works (gpuwatch HB lines); in the full-mode boots it read nothing.
