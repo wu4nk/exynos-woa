@@ -1547,3 +1547,15 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Mesa: our 0040-0075 line archived in tools/mesa-build/patches-s10-g2 (README). Upstream builds its series with
   clang-cl + MSVC libs on Windows (build-mesa-g76.ps1: ARM64, x86, ARM64EC/ARM64X, GL ICD); no prebuilt releases
   exist. Next: build upstream 0001-0222 on Linux (zig/mingw like our tree, or clang-cl + downloaded MSVC libs).
+
+- 2026-11-11 — UFS on the upstream base: our tree already carries upstream's w43..w47 (async completion, 4
+  slots, NEXUS cache) plus the S10 board switch; `git diff HEAD upstream/main -- drivers/Exynos9820Ufs` is only
+  the S10 additions. The S10 fence (cache start .. LastUsableLBA, omr/cp_debug refused) does not depend on how
+  userdata is split, so a dual-boot layout needs no LBA edits as long as the Windows volume and the ESP sit in
+  3118592..31236090 outside omr/cp_debug. PAIRING: UEFI v0.2.0's DSDT has the real UFS line GSIV 281 (upstream
+  default since w45); the S10's previous driver (pre-merge) is older than w43 → its ISR returns FALSE → level
+  interrupt storm. Order: new UFS driver first (it works on the old parked 259 line: backstop timer, then
+  AsyncDisabled → polled), reboot, then flash v0.2.0. Upstream's INF says DriverVer 9.0.0.0 for every build,
+  so pnputil would not replace the old one: build-s10.cmd v1.9 stamps 11/11/2026,9.0.47.1. New
+  tools/s10-kit/update-ufs.ps1 v1.0 (in-Windows swap: board record check, live-layout fence check, pnputil).
+  Parsed with pwsh 7.4; fence/overlap logic checked on 4 synthetic layouts. NOT run on the phone.

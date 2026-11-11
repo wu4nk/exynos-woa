@@ -1,10 +1,12 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.8) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.9) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
+rem v1.9: the UFS INF gets a newer DriverVer (UFSVER below) (upstream ships 9.0.0.0 for every build, so pnputil would keep an
+rem older driver installed under the same number; update-ufs.ps1 swaps it in a running Windows).
 rem v1.7: GPU packages (S10_GPU=1) land in out-gpu\. v1.4: GPU parked for the touch/audio/WiFi test round (UEFI v0.1.5 hides GPU0); set S10_GPU=1
 rem before running this to build MaliG76Probe / MaliG76Wddm again (v1.3 behaviour, optional).
 rem Same shape as the z3s build-all.cmd; run it inside an EWDK window (LaunchBuildEnv.cmd).
@@ -25,6 +27,7 @@ setlocal EnableExtensions
 set "ROOT=%~dp0"
 set "OUT=%ROOT%out"
 set "CERTNAME=z3s WoA Test"
+set "UFSVER=11/11/2026,9.0.47.1"
 set "CATOS=10_CO_ARM64,10_NI_ARM64,10_GE_ARM64"
 
 set "SRCROOT=%ROOT%"
@@ -129,6 +132,8 @@ if not exist "%UFSBUILD%\%NAME%.sys" (echo [FAIL] %NAME%.sys was not produced & 
 mkdir "%DST%"
 copy /y "%UFSBUILD%\%NAME%.sys" "%DST%\" >nul
 copy /y "%SRC%\%NAME%.inf" "%DST%\" >nul
+powershell -NoProfile -Command "$f='%DST%\%NAME%.inf'; (Get-Content $f) -replace '^DriverVer=.*','DriverVer=%UFSVER%' | Set-Content -Encoding ASCII $f"
+findstr /b /c:"DriverVer=%UFSVER%" "%DST%\%NAME%.inf" >nul || (echo [FAIL] could not stamp DriverVer & exit /b 1)
 rem UfsDiag.exe stays in _ufs-build (a test tool, not part of the driver package).
 goto :catsign
 
