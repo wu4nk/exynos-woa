@@ -1652,3 +1652,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   panel works, 1440x3040, PRAM readable live: HB p514) - out-gpu was a non-legacy build again, so v1.24 "display"
   replaced the legacy package with 1.0.72.1, and the later "gpu" ran from the nogpu boot on 1.0.72.1 + 603a7885.
   Note: in display-only the live PRAM peek works (gpuwatch HB lines); in the full-mode boots it read nothing.
+- 2026-11-11 19:12 log c0f0890b: LEGACY STACK RUNNING - KMD 1.0.36.1 (Mode 2) + UMD 0075 f66ae84a in System32, gpu mode
+  (DWM on softpipe): panel shows the desktop; user "terribly laggy" = expected for softpipe at 1440x3040 (dwm 18-28 s
+  CPU per 20 s pass). KMD HB: vsync ~0x1d88, 0x74 submits, presents rising, no faults. SearchHost restarts every
+  ~20 s (pid changes each pass). Next: gpu-dwm (DWM on the Mali), as in the morning's working runs.
