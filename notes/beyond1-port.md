@@ -1710,3 +1710,18 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
     shim logs, dwmlog and dwm/LogonUI/explorer WER reports at every mode switch.
   - Next run: "gpu" (DWM on softpipe on the 2.0 adapter: separates the KMD's 2.0 flip path from DWM-on-Panfrost),
     reboot, look + s10-log; then "gpu-dwm", reboot, s10-log.
+- 2026-11-11 22:43 logs c05d240f (gpu) + 68eeafcf (gpu-dwm; user: gpu-dwm black, rescued with nogpu.flg):
+  - gpu (DWM on softpipe, Wddm2 5): the desktop reaches the panel (fb rows 100/1520/2940 = desktop colours, latches
+    0x12 -> 0x28), DWM alive but ~0.5 presents/s at most (softpipe at 1440x3040).
+  - gpu-dwm (DWM on Panfrost, Wddm2 5): dwm#556 log (gpu-watch v1.5 copy) stops at 2821 lines, the same in every pass.
+    80 "present primary ... hr 0" up to 33843 ms, then DWM creates a new 1440x3040 render target + CBs, "idle 31 ms
+    via event", one more present, "tc: driver thread tid 3676" (the FIRST time the threaded context's driver thread
+    runs) and at 35875 "tc: driver thread waits > 2 s for the DDI thread to run callback op 4 (DDI thread last seen
+    2016 ms ago, submit queue 0)". op 4 = MK_RENDER (patch 0133 enum: ESCAPE CREATE RESIDENT LOCK RENDER ...): the
+    Render callback is marshalled to DWM's DDI thread (MS Learn: runtime callbacks only on the DDI thread unless
+    pfnSetAsyncCallbacksCb), and that thread never entered the UMD again = deadlock, DWM frozen, panel black (KMD:
+    presents 0x145 / latches 0x54 frozen, GPU idle). The 0175 DDI-thread snapshot printed nothing (log ends there).
+    upstream S10e notes (perf-threaded-context.md) show the same message once in a game (nfs-tc1), fixed then by
+    T5c (Windows futex timeout); this one is new.
+  - gpu-s10 v1.31: "gpu-dwm -NoTc" = machine MALIUMD_NO_TC=1 (Device.cpp switch) for one boot, DIAGNOSIS ONLY (AGENTS
+    12): does DWM on Panfrost run without the threaded context? Every other mode removes it.

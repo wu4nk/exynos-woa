@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.30) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.31) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,11 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.31: "gpu-dwm -NoTc" (DIAGNOSIS ONLY): machine MALIUMD_NO_TC=1 turns off the UMD's threaded context (Gallium
+  driver thread) for one boot. 2026-11-11 22:43 log 68eeafcf: DWM on Panfrost (Wddm2 5) froze after 80 presents with
+  "tc: driver thread waits > 2 s for the DDI thread to run callback op 4" (op 4 = Render, marshalled to DWM's DDI
+  thread, which never came back) - the test says whether the threaded context is the deadlock. Every other mode (and
+  gpu-dwm without -NoTc) removes the variable again: not a fix, the fix goes into the UMD.
   v1.30: every mode switch starts the next boot's evidence clean: old malikm-*.txt shim logs, gpu-watch's DWM log
   copies (C:\S10Prov\dwmlog) and the archived WER reports of dwm / LogonUI / explorer are deleted. The phone's clock
   restarts at the same time every boot, so old and new files could not be told apart (2026-11-11 21:48: 16 DWM crash
@@ -80,11 +85,12 @@
   in full mode). If "full" hangs: nogpu.flg from TWRP, boot, run "display", delete nogpu.flg, reboot.
 #>
 param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status',
-      [string]$GpuDir = 'out-gpu')   # v1.26: e.g. -GpuDir out-gpu-legacy / out-gpu-upstream (two builds side by side)
+      [string]$GpuDir = 'out-gpu',   # v1.26: e.g. -GpuDir out-gpu-legacy / out-gpu-upstream (two builds side by side)
+      [switch]$NoTc)                 # v1.31: gpu-dwm only, diagnosis: MALIUMD_NO_TC=1 machine-wide for the next boot
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.30  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.31  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -106,6 +112,11 @@ function Set-GalliumDriver($v) {
   }
 }
 # v1.22: upstream shim logging (malikm_drm.c tlog_file / crash evidence) - machine-wide so DWM and LogonUI write too.
+# v1.31: diagnosis switch of the upstream UMD (Device.cpp: MALIUMD_NO_TC=1 -> no threaded context, "threaded 0")
+function Set-NoTc([bool]$On) {
+  if ($On) { Set-ItemProperty $EnvKey MALIUMD_NO_TC '1' -Type String; Warn 'DIAGNOSIS: machine MALIUMD_NO_TC = 1 (DWM without the threaded context from the next boot) - any other mode removes it' }
+  elseif ($null -ne (Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).MALIUMD_NO_TC) { Remove-ItemProperty $EnvKey MALIUMD_NO_TC; Ok 'machine MALIUMD_NO_TC removed (threaded context back on)' }
+}
 function Clear-OldEvidence {
   $n = 0
   foreach ($f in @(Get-ChildItem 'C:\ProgramData\S10e\umd' -Filter 'malikm-*' -File -ErrorAction SilentlyContinue)) {
@@ -122,6 +133,7 @@ function Clear-OldEvidence {
 }
 function Set-ShimLog([bool]$On) {
   Clear-OldEvidence
+  Set-NoTc ($On -and $NoTc -and $Action -eq 'gpu-dwm')
   if ($On) { Set-ItemProperty $EnvKey MALIKM_TGSI_DIR 'C:\ProgramData\S10e\umd' -Type String; Ok 'machine MALIKM_TGSI_DIR = C:\ProgramData\S10e\umd (UMD logs malikm-<exe>-<pid>.txt from the next boot)' }
   elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).MALIKM_TGSI_DIR) { Remove-ItemProperty $EnvKey MALIKM_TGSI_DIR; Ok 'machine MALIKM_TGSI_DIR removed' }
 }
