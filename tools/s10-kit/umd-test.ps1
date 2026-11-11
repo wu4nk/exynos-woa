@@ -20,6 +20,8 @@ if (-not (Test-Path $Dll)) { Log "FAIL: $Dll does not exist"; exit 1 }
 $fi = Get-Item $Dll
 Log ("dll: {0}  {1:N0} bytes  {2}  sha256 {3}" -f $Dll, $fi.Length, $fi.LastWriteTime.ToString('s'), (Get-FileHash $Dll).Hash.ToLower())
 
+# a second run in the same PowerShell window must not add the type again (TYPE_ALREADY_EXISTS stops the script)
+if (-not ('S10.K' -as [type])) {
 Add-Type -Namespace S10 -Name K -MemberDefinition @'
 [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
 public static extern System.IntPtr LoadLibraryExW(string name, System.IntPtr file, uint flags);
@@ -28,6 +30,7 @@ public static extern System.IntPtr GetProcAddress(System.IntPtr mod, string name
 [DllImport("kernel32.dll", SetLastError = true)]
 public static extern bool FreeLibrary(System.IntPtr mod);
 '@
+}
 
 # 1. map only (no DllMain, no imports): is it a valid image for this machine?
 $h = [S10.K]::LoadLibraryExW($Dll, [IntPtr]::Zero, 0x2)   # LOAD_LIBRARY_AS_DATAFILE

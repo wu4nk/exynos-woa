@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.19) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.20) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,8 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.20: runs again in the same PowerShell window (the S10.Mf helper type is added only once).
+
   Every action also writes C:\S10Prov\gpu-report.txt (send that file back).
   Rescue if the screen stays black after "display": boot TWRP, mount the ESP, create
   \S10EDIAG\nogpu.flg on it (GPU0 disappears on the next boot) - or flash beyond1lte-uefi v0.1.2.
@@ -52,7 +54,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.19  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.20  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -275,10 +277,13 @@ function Get-KmdPath {
   if (-not (Test-Path $ip)) { Fail "the driver file the service names is not there: $ip" }
   return $ip
 }
+# a second run in the same PowerShell window must not add the type again (TYPE_ALREADY_EXISTS stops the script)
+if (-not ('S10.Mf' -as [type])) {
 Add-Type -Namespace S10 -Name Mf -MemberDefinition @'
 [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
 public static extern bool MoveFileEx(string from, string to, int flags);
 '@
+}
 function Set-KmdFile($Src, $Dst) {
   # v1.18: the driver-store FOLDER belongs to TrustedInstaller too - without it, neither the rename nor a new file
   # in it is allowed (run 2026-11-10 21:15: "Access to the path ...\MaliG76Wddm.sys.new is denied").
