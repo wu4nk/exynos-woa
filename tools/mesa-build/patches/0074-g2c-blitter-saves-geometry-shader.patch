@@ -1,0 +1,27 @@
+From e6e44f7489f0a32b4dacb787c213c5bfb3b1aa4a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 08:25:21 +0700
+Subject: [PATCH] exynos-woa 0074: save the GS for u_blitter
+
+---
+ src/gallium/drivers/panfrost/pan_blit.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/gallium/drivers/panfrost/pan_blit.c b/src/gallium/drivers/panfrost/pan_blit.c
+index 3ec8933..fe7b65d 100644
+--- a/src/gallium/drivers/panfrost/pan_blit.c
++++ b/src/gallium/drivers/panfrost/pan_blit.c
+@@ -21,6 +21,10 @@ panfrost_blitter_save(struct panfrost_context *ctx,
+    util_blitter_save_vertex_elements(blitter, ctx->vertex);
+    util_blitter_save_vertex_shader(blitter,
+                                    ctx->uncompiled[MESA_SHADER_VERTEX]);
++   /* exynos-woa 0074: with geometry shaders advertised (0073) u_blitter unbinds the GS for its draws and binds
++    * back what was saved - INVALID_PTR when nothing was, which crashed DWM and LogonUI on every first blit
++    * (STATUS_DATATYPE_MISALIGNMENT in simple_mtx_lock of panfrost_update_shader_variant). */
++   util_blitter_save_geometry_shader(blitter, ctx->uncompiled[MESA_SHADER_GEOMETRY]);
+    util_blitter_save_rasterizer(blitter, ctx->rasterizer);
+    util_blitter_save_viewport(blitter, &ctx->pipe_viewport);
+    util_blitter_save_so_targets(blitter, 0, NULL, 0);
+-- 
+2.43.0
+

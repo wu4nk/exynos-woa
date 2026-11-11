@@ -1434,3 +1434,16 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Risks for the first run: the shim's D3DKMT path in a non-D3D process (worked for m5test/fill tools); our KMD and
   the tiler heap growth panvk expects (jm-v7/003 grows it on kbase); the series' v7 code assuming kbase
   behaviour elsewhere (SAME_VA / AUTO_VA, imports). Next: vkcube-style present (WSI win32 = GDI blit), then DXVK.
+
+### G2c run 38 (UMD 0073 79adcdc4 installed; 2026-11-11 08:23 log zip): DWM crash loop
+- 17 dwm.exe + 2 LogonUI.exe AppCrash, all maliumd.dll+0x18f468, exception 0x80000002
+  (STATUS_DATATYPE_MISALIGNMENT), one every ~5 s, each right after the first blend state. Symbolized (pdb):
+  simple_mtx_lock in panfrost_update_shader_variant (pan_shader.c:690), ldaxr on ctx->uncompiled[type] + 0x2cc with a
+  misaligned pointer. Cause: 0073 advertises GEOMETRY shader caps, so util_blitter_create sets
+  has_geometry_shader and every blit/clear restores pipe->bind_gs_state(saved_gs) - but panfrost_blitter_save
+  never saved the GS, so saved_gs = INVALID_PTR got bound as the GS and the next re-key locked "its" mutex.
+  My review of 0073 missed u_blitter's caps-driven save/restore (lesson: when a driver gains a stage, grep
+  u_blitter / cso for has_<stage>).
+- UMD 0074 (ea8bd2b5): panfrost_blitter_save also saves ctx->uncompiled[GEOMETRY]. Every panfrost blitter path goes
+  through panfrost_blitter_save (pan_blit.c x2, pan_context.c clear, pan_resource.c x2). Not run yet.
+- vkprobe (panvk V1) not run in this log.
