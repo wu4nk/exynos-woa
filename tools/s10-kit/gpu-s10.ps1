@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.28) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.29) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,9 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.29: FIX - New-Item -Force on an EXISTING registry key recreates it empty: v1.27's Set-Wddm2 ran it right after
+  FullAdapter / GpuEnable were written and wiped them (2026-11-11: "GpuEnable is not 1" after gpu, every time).
+  Keys are now only created when missing (also in install-in-windows / power-s10).
   v1.28: "display" (re)installs the package - Windows finishes that only with a restart, and a "gpu" in the same
   boot lost its Parameters (2026-11-11 21:11: display, gpu, gpu-dwm in one go -> "GpuEnable is not 1"). "display"
   now leaves C:\S10Prov\gpu-reboot-pending.txt; every other mode refuses to run until the phone has restarted.
@@ -77,7 +80,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.28  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.29  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -105,7 +108,7 @@ function Set-ShimLog([bool]$On) {
 }
 # v1.27: the WDDM 2.0 switch upstream's KMD needs (only for the upstream package; the legacy KMD ignores both)
 function Set-Wddm2([bool]$On) {
-  New-Item -Force $SvcParams | Out-Null
+  if (-not (Test-Path $SvcParams)) { New-Item -Force $SvcParams | Out-Null }   # v-fix: -Force on an existing key wipes its values
   if ($On) {
     Set-ItemProperty $SvcParams Wddm2 5 -Type DWord
     Set-ItemProperty $SvcParams DirectFlip 1 -Type DWord
@@ -468,7 +471,7 @@ function Set-FullMode([int]$Gpu) {
   Copy-Item $src $UmdDst -Force
   Ok ("maliumd.dll -> $UmdDst ({0:N0} bytes, sha256 {1})" -f (Get-Item $UmdDst).Length, $h)
   }
-  New-Item -Force $SvcParams | Out-Null
+  if (-not (Test-Path $SvcParams)) { New-Item -Force $SvcParams | Out-Null }   # v-fix: -Force on an existing key wipes its values
   Set-ItemProperty $SvcParams FullAdapter 1 -Type DWord
   Set-ItemProperty $SvcParams GpuEnable $Gpu -Type DWord
   Set-Wddm2 (Test-UpstreamPkg)
@@ -522,7 +525,7 @@ switch ($Action) {
         if ($LASTEXITCODE) { Write-Host $r; Fail "pnputil /add-driver MaliG76Wddm ($LASTEXITCODE)" }
         Ok 'kit MaliG76Wddm staged in the driver store (the only one) - GPU0 takes it at the next boot'
       }
-      New-Item -Force $SvcParams | Out-Null
+      if (-not (Test-Path $SvcParams)) { New-Item -Force $SvcParams | Out-Null }   # v-fix: -Force on an existing key wipes its values
       Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
       Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
       Set-Wddm2 $false
@@ -540,7 +543,7 @@ switch ($Action) {
     Remove-Pkg 'maliG76probe.inf'
     Remove-Pkg 'maliG76wddm.inf'     # v1.23: the kit's package must win, whatever version is in the store
     Add-Pkg 'MaliG76Wddm'
-    New-Item -Force $SvcParams | Out-Null
+    if (-not (Test-Path $SvcParams)) { New-Item -Force $SvcParams | Out-Null }   # v-fix: -Force on an existing key wipes its values
     Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord
     Set-ItemProperty $SvcParams FullAdapter 0 -Type DWord
     Set-Wddm2 $false

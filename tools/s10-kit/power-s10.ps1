@@ -123,7 +123,7 @@ switch ($Action) {
     Ensure-Services 'auto'
     Set-ItemProperty $PwrKey AllowSend 1 -Type DWord
     Set-ItemProperty $PwrKey AllowTmu 1 -Type DWord
-    New-Item -Force "$GovKey\Parameters" | Out-Null
+    if (-not (Test-Path "$GovKey\Parameters")) { New-Item -Force "$GovKey\Parameters" | Out-Null }   # v-fix: -Force on an existing key wipes its values
     $gp = @{ MaxLittle = 1950000; MaxMid = 2314000; MaxG3d = 702000; BoostLittle = 1742000; BoostMid = 2106000; BoostG3d = 433000;
              EffLittle = 1456000; GpuFloor = 260000 }
     foreach ($n in $gp.Keys) { Set-ItemProperty "$GovKey\Parameters" $n $gp[$n] -Type DWord }

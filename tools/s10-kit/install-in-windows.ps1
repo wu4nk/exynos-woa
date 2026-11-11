@@ -1,5 +1,5 @@
 <#
-  install-in-windows.ps1 (v1.3) - add the S10 kit drivers to a Windows ALREADY installed on the
+  install-in-windows.ps1 (v1.4) - add the S10 kit drivers to a Windows ALREADY installed on the
   Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator, from the kit
   folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
@@ -15,6 +15,7 @@
   (SpkAtten 0; analog gains stay at the by-ear baseline, the trim app raises them up to stock 17); the audio device is
   restarted so it takes them now. Bluetooth (Exynos9820Bt, needs UEFI v0.2.1+). S10eSpeakerTrim.exe compiled from
   the kit's .cs with the in-box .NET Framework csc and put on the desktop.
+  v1.4: the audio Parameters key is no longer recreated (New-Item -Force wiped MicGain / HwVolume / CodecEnable ...).
   v1.3: the GPU packages (MaliG76Wddm / MaliG76Probe) are NO LONGER removed. That step dates from the round where
   the GPU was parked (kit v1.4); since gpu-s10.ps1 owns the GPU, removing them here took the Mali away (2026-11-11:
   "pnputil /delete-driver oem13.inf" -> ACPI\SAMS9828 CM_PROB_FAILED_INSTALL -> Basic Render, vkprobe 0 devices).
@@ -67,7 +68,7 @@ if (Test-Path (Join-Path $fw 'bcmdhd_sta.bin_b1')) {
 
 # 3. audio: hardware stages ON (stage D). Written before the install so the first start already plays.
 $ap = 'HKLM:\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters'
-New-Item -Force $ap | Out-Null
+if (-not (Test-Path $ap)) { New-Item -Force $ap | Out-Null }   # v-fix: -Force on an existing key wipes its values
 foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable', 'Stereo') { Set-ItemProperty $ap $v 1 -Type DWord }
 Set-ItemProperty $ap 'SpkAtten' 0 -Type DWord
 Ok 'audio: AmpInit / AmpEnable / AboxEnable / Stereo = 1, SpkAtten 0 (both speakers, loudspeaker +5 dB)'

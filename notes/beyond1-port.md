@@ -1685,3 +1685,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - 2026-11-11 21:11 user ran display, gpu, gpu-dwm in ONE boot: gpu wrote Wddm2 5 etc., then gpu-dwm read GpuEnable empty
   (the display reinstall completes at restart and its service key replaced the values). gpu-s10 v1.28: display leaves
   C:\S10Prov\gpu-reboot-pending.txt (boot time); full/gpu/gpu-dwm refuse until the phone restarted.
+- 2026-11-11 21:24 user: still "GpuEnable is not 1" after a restart. Cause = my v1.27 bug: Set-Wddm2 ran
+  New-Item -Force on the existing Parameters key right after FullAdapter/GpuEnable were written - on the registry
+  provider that recreates the key empty, so only Wddm2/DirectFlip survived and the KMD booted display-only. v1.29
+  creates keys only when missing (gpu-s10, install-in-windows v1.4 - its audio key lost MicGain etc. the same way -,
+  power-s10).
