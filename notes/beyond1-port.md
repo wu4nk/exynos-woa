@@ -1656,3 +1656,5 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   (DWM on softpipe): panel shows the desktop; user "terribly laggy" = expected for softpipe at 1440x3040 (dwm 18-28 s
   CPU per 20 s pass). KMD HB: vsync ~0x1d88, 0x74 submits, presents rising, no faults. SearchHost restarts every
   ~20 s (pid changes each pass). Next: gpu-dwm (DWM on the Mali), as in the morning's working runs.
+- 2026-11-11 19:22 log e6d34eca: gpu-dwm on the legacy stack (KMD 1.0.36.1 + UMD 0075): DWM ON THE MALI again -
+  dwm 19 presents/s, 0 failed submits, KMD 0 failed / 0 timed-out jobs, no fault lines; gputest run (umd-test.txt).
