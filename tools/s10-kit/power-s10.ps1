@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.0) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.1) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -12,6 +12,12 @@
                               settings: ceilings 1.95 / 2.314 GHz / 702 MHz, boost 1.742 / 2.106 GHz / 433 MHz)
     .\power-s10.ps1 disable   governor off, S10ePower read-only and manual - the next boot runs at the boot rates
     .\power-s10.ps1 status    services, temperatures and current clocks
+    .\power-s10.ps1 gpuoc -Khz 806000   (or 754000; -Khz 0 = back to stock 702 MHz) - the YuROM Ultra GPU overclock:
+                              S10ePower checks the ACPM G3D table layout exactly as that kernel does, points the
+                              702 MHz level at PLL slot 0 (754 MHz, or rewritten to 806 MHz) WITHOUT changing its voltage,
+                              then this script measures the real GPU clock (gpuclock.exe), runs gputest twice and keeps the
+                              overclock only if nothing got worse; the governor's GPU ceiling follows. EXPERIMENTAL: 806 MHz
+                              at 702 MHz's voltage depends on the chip ("silicon lottery"). Unload / disable = stock again.
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -23,11 +29,12 @@
   Rescue if a boot goes wrong after "enable": TWRP is not needed - the services are plain services; boot, then
   .\power-s10.ps1 disable. If Windows does not come up at all: Safe Mode skips both (they are not boot-start).
 #>
-param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status')][string]$Action = 'status')
+param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc')][string]$Action = 'status',
+      [int]$Khz = 806000)
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.0  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.1  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -82,7 +89,9 @@ function Start-Power([int]$Send) {
 }
 function Show-Key {
   $k = Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue
-  foreach ($n in 'AcpmStatus', 'AllowSendActive', 'DvfsChannelOk', 'TmuChannelOk', 'AcpmApMax', 'AcpmChannelsOffset') {
+  foreach ($n in 'AcpmStatus', 'AllowSendActive', 'DvfsChannelOk', 'TmuChannelOk', 'AcpmApMax', 'AcpmChannelsOffset',
+                 'AcpmPlugins', 'FvmapPlugin', 'FvmapOff', 'G3dOcCheck', 'G3dTopRate', 'G3dTopVolt', 'G3dPllLevels',
+                 'G3dPms0', 'G3dPms1', 'GpuOc', 'GpuOcStatus', 'GpuOcActive') {
     if ($null -ne $k.$n) { Info ("{0} = {1}" -f $n, $k.$n) }
   }
   return $k
@@ -140,6 +149,55 @@ switch ($Action) {
       Invoke-Sc @('config', 'S10ePower', 'start=', 'demand') | Out-Null
     }
     Ok 'governor off, S10ePower read-only + manual - restart for the boot rates'
+  }
+  'gpuoc' {
+    if ($Khz -ne 0 -and $Khz -ne 754000 -and $Khz -ne 806000) { Fail '-Khz must be 806000, 754000 or 0' }
+    Copy-Files
+    if (-not (Get-Service S10ePower -ErrorAction SilentlyContinue)) { Ensure-Services 'demand' }
+    $govWasOn = (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -eq 'Running'
+    if ($govWasOn) { Invoke-Sc @('stop', 'S10eGovernor') | Out-Null; Start-Sleep -Seconds 2 }
+    if ($Khz -eq 0) { Remove-ItemProperty $PwrKey GpuOc -ErrorAction SilentlyContinue } else { Set-ItemProperty $PwrKey GpuOc $Khz -Type DWord }
+    Start-Power 1
+    $k = Show-Key
+    if ($k.AcpmStatus -ne 0 -or $k.DvfsChannelOk -ne 1 -or $k.TmuChannelOk -ne 1) {
+      Remove-ItemProperty $PwrKey GpuOc -ErrorAction SilentlyContinue; Start-Power 0
+      Fail 'the ACPM channels are not all usable on this phone (see above) - back to read-only; run .\power-s10.ps1 test and send power-report.txt'
+    }
+    $vt = Join-Path $PSScriptRoot 'tools\validate'
+    $gc = Join-Path $vt 'gpuclock.exe'; $gt = Join-Path $vt 'gputest.exe'
+    if ($Khz -ne 0) {
+      if ($k.GpuOcActive -ne $Khz) {
+        Start-Power 1
+        Fail ("overclock NOT applied (GpuOcStatus {0}, G3dOcCheck {1}): 0x10x = a table check failed (nothing written), 2 = sends off, 3 = no temperatures, 4 = read-back mismatch (restored). Send power-report.txt" -f $k.GpuOcStatus, $k.G3dOcCheck)
+      }
+      Ok ("ACPM G3D table patched: level 0 = {0} kHz at {1} uV (702 MHz's voltage), PLL slot 0 = 0x{2:x8}" -f $k.GpuOcActive, $k.G3dTopVolt, $(if ($Khz -eq 806000) { 0x007c0400 } else { 0x00740400 }))
+    }
+    $top = if ($Khz -eq 0) { 702000 } else { $Khz }
+    Run $Ctl @('set', 'g3d', "$top") | Out-Null
+    if (Test-Path $gc) { Info 'measured GPU clock (cycle counter):'; Run $gc @('1000', '3') | Out-Null } else { Warn "no $gc (gpu-validate kit) - clock not measured" }
+    $bad = $false
+    if ($Khz -ne 0 -and (Test-Path $gt)) {
+      foreach ($r in 1, 2) {
+        Info "gputest run $r at $top kHz:"
+        $o = Run $gt @()
+        $sum = $o | Where-Object { $_ -match '== (\d+) PASS' } | Select-Object -Last 1
+        if (-not $sum -or [int]([regex]::Match($sum, '== (\d+) PASS').Groups[1].Value) -lt 91) { $bad = $true; Warn "gputest run ${r}: $sum (stock: 91 PASS)" }
+      }
+      Run $Ctl @() | Out-Null
+      $tdr = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Display'; StartTime = (Get-Date).AddMinutes(-5) } -ErrorAction SilentlyContinue
+      if ($tdr) { $bad = $true; Warn "Display (TDR) events in the last 5 minutes: $(@($tdr).Count)" }
+    }
+    if ($bad) {
+      Remove-ItemProperty $PwrKey GpuOc -ErrorAction SilentlyContinue
+      Start-Power 1
+      $top = 702000
+      Warn 'unstable at this clock -> overclock removed, stock 702 MHz table back'
+    }
+    if (-not (Test-Path "$GovKey\Parameters")) { New-Item -Force "$GovKey\Parameters" | Out-Null }
+    Set-ItemProperty "$GovKey\Parameters" MaxG3d $top -Type DWord
+    if ($govWasOn) { $o = Invoke-Sc @('start', 'S10eGovernor'); Start-Sleep -Seconds 2; Info "governor restarted (GPU ceiling $top kHz)" }
+    if (-not $bad -and $Khz -ne 0) { Ok "GPU overclock $Khz kHz kept (survives reboots while S10ePower starts with GpuOc set; .\power-s10.ps1 gpuoc -Khz 0 removes it)" }
+    elseif ($Khz -eq 0) { Ok 'stock GPU table (702 MHz top)' }
   }
   'status' {
     foreach ($s in 'S10ePower', 'S10eGovernor') {

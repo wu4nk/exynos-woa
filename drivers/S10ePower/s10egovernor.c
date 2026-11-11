@@ -68,7 +68,9 @@ static const unsigned kLadderLittle[] = { 442000, 546000, 650000, 806000, 949000
                                           1586000, 1742000, 1846000, 1950000 };
 static const unsigned kLadderMid[] = { 507000, 650000, 754000, 845000, 962000, 1066000, 1222000, 1404000, 1508000,
                                        1586000, 1690000, 1794000, 1898000, 2002000, 2106000, 2210000, 2314000, 2400000 };
-static const unsigned kLadderG3d[] = { 156000, 200000, 260000, 325000, 377000, 433000, 572000, 650000, 702000 };
+static unsigned kLadderG3d[] = { 156000, 200000, 260000, 325000, 377000, 433000, 572000, 650000, 702000 };
+/* G3D overclock (S10ePower GpuOc, notes/clocks-dvfs.md 2026-11-12): while S10ePower reports GpuOcActive (754000 /
+ * 806000) the ACPM table's top level IS that rate (702000 no longer exists), so the ladder top is replaced */
 
 typedef struct {
     const char *Name;
@@ -134,6 +136,14 @@ static void LoadConfig(void)
     gGpuFloor = Reg(k, "GpuFloor", 260000);
     gGpuMaxBusyPct = Reg(k, "GpuMaxBusyPct", 30);
     gMidMaxBusyPct = Reg(k, "MidMaxBusyPct", 50);
+    if (k)
+        RegCloseKey(k);
+    k = NULL;
+    RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\S10ePower", 0, KEY_READ, &k);
+    {
+        unsigned oc = Reg(k, "GpuOcActive", 0);
+        kLadderG3d[ARRAYSIZE(kLadderG3d) - 1] = (oc == 754000 || oc == 806000) ? oc : 702000;
+    }
     if (k)
         RegCloseKey(k);
 }

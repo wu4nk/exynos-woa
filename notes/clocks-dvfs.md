@@ -131,3 +131,19 @@ Windows reads temperatures and can throttle; lowering is fine.
 - Read that closes it (read-only, Android root): ECT + ACPM partitions, /sys/kernel/gpu/gpu_freq_table, dmesg fvmap
   lines. If Samsung's G3D table has a step above 702000 (with its voltage), it is in-table -> add to the ladder; if
   not, 803 MHz = beyond-table overvolt/PLL -> not without the user's explicit acceptance of the risk.
+- 02:36 user: the 803/806 MHz claim is YuROM Ultra (XDA; kernel github.com/yuefdev/YuROM-Ultra-kernel, V35 Beta).
+  Read its source (clone in scratchpad yurom/k): drivers/soc/samsung/cal-if/exynos9820-oc.h + fvmap.c
+  fvmap_init_gpu_oc. FACTS from it: the ACPM G3D fvmap header (12 levels, 1 member, 1 PLL) has level 0 = 702000 kHz
+  at 600..800 mV using PLL_G3D PMS slot 1 (0x006c0400, M 108); PLL_G3D has 13 PMS slots and slot 0 (0x00740400, M 116
+  = 754 MHz, in ECT too) is used by NO level. Their OC: rewrite fvmap ratevolt[0].rate to the target, o_tables[0]
+  1 -> 0 (level 0 -> slot 0), and for 806 MHz slot 0 PMS -> 0x007c0400 (M 124, P 4, S 0, 26 MHz ref). VOLTAGE NOT
+  CHANGED (702 MHz's) - "experimental-same-voltage", silicon lottery. Not a Samsung-validated OPP; no overvolt.
+  fvmap base = SRAM + (dvfs plugin base_addr & ~1) + fvmap_offset 0xA400 (kernel acpm.c plugins_init; S10 live DT
+  b1.dts:7768 fvmap_offset 0xA400). struct plugin (CONFIG_EXYNOS_ACPM) = 48 bytes, framework plugins @0 num @4.
+- S10ePower: FvmapLocate (read-only, always: AcpmPlugins, FvmapPlugin, FvmapOff, FvmapDump 8 KB binary),
+  G3dOcCheck (YuROM's layout checks + rates descending + every DT step present; result number in G3dOcCheck),
+  G3dOcApply (service key GpuOc 754000/806000, only with AllowSend + DVFS + TMU channels; the three writes under the
+  ACPM lock, read back, restored on mismatch; gLadderG3d[0] = the rate -> thermal guard level-0 cap), G3dOcRestore at
+  unload (G3D to 650000 first). Governor: G3D ladder top follows S10ePower's GpuOcActive. power-s10 v1.1 "gpuoc -Khz":
+  measures with gpuclock.exe, gputest twice (keeps it only with >= 91 PASS both times and no TDR event), sets MaxG3d.
+  Syntax-checked with zig/mingw DDK headers (x64) only - the real build is the user's EWDK. NOT run on the device.

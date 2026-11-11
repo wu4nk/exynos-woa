@@ -63,8 +63,9 @@ static const ULONG gLadderLittle[] = { 1950000, 1846000, 1742000, 1586000, 14560
  * constraint) - SetFreq grants it only while this driver has set MIF to 2093000 (user 2026-10-17: max the 6 cores) */
 static const ULONG gLadderMid[] = { 2400000, 2314000, 2210000, 2106000, 2002000, 1898000, 1794000, 1690000, 1586000,
                                     1508000, 1404000, 1222000, 1066000, 962000, 845000, 754000, 650000, 507000 };
-static const ULONG gLadderG3d[] = { 702000, 650000, 572000, 433000, 377000, 325000, 260000, 200000, 156000 };
-                                    /* exynos9820-mali_common.dtsi gpu_dvfs_table (LineageOS lineage-23.2) */
+static ULONG gLadderG3d[] = { 702000, 650000, 572000, 433000, 377000, 325000, 260000, 200000, 156000 };
+                              /* exynos9820-mali_common.dtsi gpu_dvfs_table (LineageOS lineage-23.2); [0] becomes the
+                               * GpuOc rate while the fvmap patch below is applied (702000 is then gone from ACPM) */
 /* MIF: only the two device-verified ends of devfreq_mif (TWRP sysfs 421000..2093000, cur 2093000 under Linux;
  * notes/m15-perf.md:98) - the steps between are not recorded, so nothing else is requested. */
 static const ULONG gLadderMif[] = { 2093000, 421000 };
@@ -401,6 +402,185 @@ static VOID GuardThread(PVOID Context)
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
+/* ---- G3D overclock (S10 port, notes/clocks-dvfs.md 2026-11-12): a port of YuROM-Ultra-kernel (github.com/yuefdev,
+ * drivers/soc/samsung/cal-if/fvmap.c fvmap_init_gpu_oc + exynos9820-oc.h), same checks, same three writes.
+ * The ACPM G3D fvmap entry has 12 levels; level 0 = 702000 kHz uses PLL_G3D PMS slot 1 (0x006c0400 = M 108), while
+ * PMS slot 0 (0x00740400 = M 116, 754 MHz) is in the table but no level uses it. GpuOc = 754000 points level 0 at slot
+ * 0; GpuOc = 806000 also rewrites slot 0 to M 124 (0x007c0400, P 4, S 0 unchanged). The level keeps ITS VOLTAGE (702
+ * MHz's) - nothing about the rail changes; whether the silicon runs 754/806 MHz at that voltage is the experiment.
+ * Every check below must pass or nothing is written; the original three values are restored on unload. ---- */
+#define ACPM_FW_PLUGINS       0x00u
+#define ACPM_FW_NUM_PLUGINS   0x04u
+#define PLUGIN_STRIDE         48u      /* struct plugin (fw_header/common.h, CONFIG_EXYNOS_ACPM): u32 id, base_addr,
+                                        * acpm_ops, plugin_ops, secure/extern masks, timer{2 u32}, u8 is_attached,
+                                        * u32 size, u8 stay_attached, u32 fw_name - natural alignment = 48 bytes */
+#define PLUGIN_BASE_ADDR      0x04u
+#define PLUGIN_IS_ATTACHED    0x20u
+#define PLUGIN_STAY_ATTACHED  0x28u
+#define PLUGIN_FW_NAME        0x2Cu
+#define FVMAP_OFFSET          0xA400u  /* live DT acpm fvmap_offset (scratchpad b1.dts:7768, = kernel exynos9820.dts) */
+#define FVMAP_SIZE            0x2000u  /* fvmap.c FVMAP_SIZE SZ_8K */
+#define FVH_SIZE              24u      /* struct fvmap_header */
+#define FVH_NUM_LV            1u
+#define FVH_NUM_MEMBERS       2u
+#define FVH_NUM_PLL           3u
+#define FVH_O_MEMBERS         18u
+#define FVH_O_RATEVOLT        20u
+#define FVH_O_TABLES          22u
+#define PLLH_LEVEL            6u       /* struct pll_header: u32 addr, u16 o_lock, u16 level, u32 pms[] */
+#define PLLH_PMS              8u
+#define G3D_PMS_702           0x006c0400u
+#define G3D_PMS_754           0x00740400u
+#define G3D_PMS_806           0x007c0400u
+
+static ULONG gFvmap;                    /* SRAM offset of the fvmap, 0 = not found */
+static struct { BOOLEAN On; ULONG PmsOff, Pms0, RateOff, Rate0, TabOff; UCHAR Tab0; } gOc;
+
+static UCHAR R8(ULONG Off) { return READ_REGISTER_UCHAR((volatile UCHAR *)(gSram + Off)); }
+static USHORT R16(ULONG Off) { return READ_REGISTER_USHORT((volatile USHORT *)(gSram + Off)); }
+static BOOLEAN SramIn(ULONG Off, ULONG Len) { return Len <= ACPM_SRAM_SIZE && Off <= ACPM_SRAM_SIZE - Len; }
+
+/* plugins_init (kernel acpm.c): the attached DVFS plugin's base + fvmap_offset */
+static VOID FvmapLocate(VOID)
+{
+    ULONG plugins = R32(gSram + ACPM_INITDATA_OFFSET + ACPM_FW_PLUGINS);
+    ULONG n = R32(gSram + ACPM_INITDATA_OFFSET + ACPM_FW_NUM_PLUGINS), i, k;
+
+    WriteDword(L"AcpmPlugins", n);
+    if (n == 0 || n > 64 || !SramIn(plugins, n * PLUGIN_STRIDE))
+        return;
+    for (i = 0; i < n; i++) {
+        ULONG e = plugins + i * PLUGIN_STRIDE, name = R32(gSram + e + PLUGIN_FW_NAME), base;
+        CHAR nm[33];
+        BOOLEAN dvfs = FALSE;
+        if (R8(e + PLUGIN_IS_ATTACHED) != 1 || R8(e + PLUGIN_STAY_ATTACHED) != 1 || name == 0 || !SramIn(name, 32))
+            continue;
+        for (k = 0; k < 32; k++) {
+            nm[k] = (CHAR)R8(name + k);
+            if (nm[k] == 0)
+                break;
+        }
+        nm[k] = 0;
+        for (k = 0; nm[k] != 0 && nm[k + 1] != 0 && nm[k + 2] != 0 && nm[k + 3] != 0; k++)
+            if ((nm[k] | 0x20) == 'd' && (nm[k + 1] | 0x20) == 'v' && (nm[k + 2] | 0x20) == 'f' && (nm[k + 3] | 0x20) == 's')
+                dvfs = TRUE;
+        if (!dvfs)
+            continue;
+        base = (R32(gSram + e + PLUGIN_BASE_ADDR) & ~1u) + FVMAP_OFFSET;
+        WriteDword(L"FvmapPlugin", i);
+        if (!SramIn(base, FVMAP_SIZE))
+            return;
+        gFvmap = base;
+        WriteDword(L"FvmapOff", base);
+        {
+            /* the whole fvmap, read-only, for the record (notes: verify the layout offline) */
+            ULONG *copy = (ULONG *)ExAllocatePool2(POOL_FLAG_PAGED, FVMAP_SIZE, 'rPeS');
+            if (copy != NULL) {
+                for (k = 0; k < FVMAP_SIZE / 4; k++)
+                    copy[k] = R32(gSram + base + k * 4);
+                (VOID)RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE, gKey, L"FvmapDump", REG_BINARY, copy, FVMAP_SIZE);
+                ExFreePoolWithTag(copy, 'rPeS');
+            }
+        }
+        return;
+    }
+}
+
+/* fvmap_init_gpu_oc's layout checks. Returns 0 when every one passes, else the first failed check's number
+ * (G3dOcCheck in the service key). Fills the offsets the patch writes. */
+static ULONG G3dOcCheck(ULONG *PmsOff, ULONG *RateOff, ULONG *TabOff)
+{
+    ULONG h = gFvmap + S10EPOWER_DOM_G3D * FVH_SIZE, rv, tab, pll, lv, i, j, prev = 0xFFFFFFFFu;
+
+    if (gFvmap == 0) return 1;
+    if (R8(h + FVH_NUM_LV) != 12 || R8(h + FVH_NUM_MEMBERS) != 1 || R8(h + FVH_NUM_PLL) != 1) return 2;
+    rv = gFvmap + R16(h + FVH_O_RATEVOLT);
+    tab = gFvmap + R16(h + FVH_O_TABLES);
+    if (R16(h + FVH_O_RATEVOLT) + 12 * 8 > FVMAP_SIZE || R16(h + FVH_O_TABLES) + 12 > FVMAP_SIZE ||
+        R16(h + FVH_O_MEMBERS) + 2 > FVMAP_SIZE || (rv & 3) != 0) return 3;
+    WriteDword(L"G3dTopRate", R32(gSram + rv)); WriteDword(L"G3dTopVolt", R32(gSram + rv + 4));
+    if (R32(gSram + rv) != 702000 || R32(gSram + rv + 4) < 600000 || R32(gSram + rv + 4) > 800000) return 4;
+    for (i = 0; i < 12; i++) {                          /* rates strictly descending */
+        ULONG rate = R32(gSram + rv + i * 8);
+        if (rate >= prev || rate == 0) return 5;
+        prev = rate;
+        if (R8(tab + i) != i + 1) return 6;              /* level i -> PLL slot i + 1 (slot 0 unused) */
+    }
+    for (j = 0; j < ARRAYSIZE(gLadderG3d); j++) {       /* every DT step is an ACPM level */
+        BOOLEAN found = FALSE;
+        for (i = 0; i < 12; i++)
+            if (R32(gSram + rv + i * 8) == gLadderG3d[j]) found = TRUE;
+        if (!found) return 7;
+    }
+    if ((R16(h + FVH_O_MEMBERS) & 1) != 0) return 8;
+    pll = R16(gFvmap + R16(h + FVH_O_MEMBERS));         /* the member's pll_header offset */
+    if (pll + PLLH_PMS + 13 * 4 > FVMAP_SIZE || ((gFvmap + pll) & 3) != 0) return 8;
+    pll += gFvmap;
+    lv = R16(pll + PLLH_LEVEL);
+    WriteDword(L"G3dPllLevels", lv);
+    WriteDword(L"G3dPms0", R32(gSram + pll + PLLH_PMS)); WriteDword(L"G3dPms1", R32(gSram + pll + PLLH_PMS + 4));
+    if (lv != 13) return 9;
+    if (R32(gSram + pll + PLLH_PMS + 4) != G3D_PMS_702) return 10;
+    if (R32(gSram + pll + PLLH_PMS) != G3D_PMS_754 && R32(gSram + pll + PLLH_PMS) != G3D_PMS_806) return 11;
+    *PmsOff = pll + PLLH_PMS; *RateOff = rv; *TabOff = tab;
+    return 0;
+}
+
+/* GpuOc = 754000 / 806000 in the service key (AllowSend and the TMU guard required) */
+static VOID G3dOcApply(VOID)
+{
+    ULONG want = ReadDword(L"GpuOc", 0), pmsOff = 0, rateOff = 0, tabOff = 0, check, pms;
+
+    WriteDword(L"GpuOcActive", 0);
+    check = G3dOcCheck(&pmsOff, &rateOff, &tabOff);
+    WriteDword(L"G3dOcCheck", check);
+    if (want == 0)
+        return;
+    if (check != 0 || (want != 754000 && want != 806000) || !gState.AllowSend || !gDvfs.Ok || !gTmu.Ok) {
+        WriteDword(L"GpuOcStatus", check != 0 ? 0x100 | check : !gTmu.Ok ? 3 : 2);   /* not applied */
+        return;
+    }
+    pms = want == 806000 ? G3D_PMS_806 : G3D_PMS_754;
+    gOc.PmsOff = pmsOff; gOc.Pms0 = R32(gSram + pmsOff);
+    gOc.RateOff = rateOff; gOc.Rate0 = R32(gSram + rateOff);
+    gOc.TabOff = tabOff; gOc.Tab0 = R8(tabOff);
+    ExAcquireFastMutex(&gAcpmLock);                     /* no DVFS request while the table changes */
+    if (gOc.Pms0 != pms)
+        W32(gSram + pmsOff, pms);
+    W32(gSram + rateOff, want);
+    WRITE_REGISTER_UCHAR((volatile UCHAR *)(gSram + tabOff), 0);
+    KeMemoryBarrier();
+    if (R32(gSram + pmsOff) != pms || R32(gSram + rateOff) != want || R8(tabOff) != 0) {
+        W32(gSram + pmsOff, gOc.Pms0); W32(gSram + rateOff, gOc.Rate0);
+        WRITE_REGISTER_UCHAR((volatile UCHAR *)(gSram + tabOff), gOc.Tab0);
+        KeMemoryBarrier();
+        ExReleaseFastMutex(&gAcpmLock);
+        WriteDword(L"GpuOcStatus", 4);                   /* read-back mismatch, restored */
+        return;
+    }
+    gOc.On = TRUE;
+    gLadderG3d[0] = want;
+    ExReleaseFastMutex(&gAcpmLock);
+    WriteDword(L"GpuOcActive", want);
+    WriteDword(L"GpuOcStatus", 1);                       /* applied */
+}
+
+/* unload: off the patched level, then the original three values back */
+static VOID G3dOcRestore(VOID)
+{
+    if (!gOc.On)
+        return;
+    (VOID)SetFreq(S10EPOWER_DOM_G3D, 650000);
+    ExAcquireFastMutex(&gAcpmLock);
+    W32(gSram + gOc.PmsOff, gOc.Pms0); W32(gSram + gOc.RateOff, gOc.Rate0);
+    WRITE_REGISTER_UCHAR((volatile UCHAR *)(gSram + gOc.TabOff), gOc.Tab0);
+    KeMemoryBarrier();
+    gOc.On = FALSE;
+    gLadderG3d[0] = 702000;
+    ExReleaseFastMutex(&gAcpmLock);
+    WriteDword(L"GpuOcActive", 0);
+}
+
 /* ---- C0: the channel table dump ---- */
 static VOID DumpChannels(VOID)
 {
@@ -489,6 +669,8 @@ static VOID S10ePowerUnload(PDRIVER_OBJECT DriverObject)
         ObDereferenceObject(gGuardThread);
         gGuardThread = NULL;
     }
+    if (gMbox != NULL && gSram != NULL)
+        G3dOcRestore();
     RtlInitUnicodeString(&dos, S10EPOWER_DOS_NAME);
     (VOID)IoDeleteSymbolicLink(&dos);
     if (gDevice != NULL)
@@ -528,6 +710,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
         return STATUS_SUCCESS;   /* loaded, inert */
     }
     DumpChannels();
+    FvmapLocate();   /* read-only */
     gState.AllowSend = ReadDword(L"AllowSend", 0) == 1;
     WriteDword(L"AllowSendActive", gState.AllowSend);
 
@@ -544,6 +727,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
         }
         WriteDword(L"DvfsChannelOk", gDvfs.Ok);
         WriteDword(L"TmuChannelOk", gTmu.Ok);
+        G3dOcApply();   /* before the guard thread: its caps come from gLadderG3d[0] */
         if (gState.AllowSend) {
             HANDLE h;
             st = PsCreateSystemThread(&h, THREAD_ALL_ACCESS, NULL, NULL, NULL, GuardThread, NULL);
