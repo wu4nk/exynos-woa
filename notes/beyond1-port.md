@@ -1678,3 +1678,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   DirectFlip = 1 (HANDOFF 47-49). Default Wddm2 0 = the old WDDM 1.3 adapter; the upstream UMD expects 2.0 (DWM log
   "CB FAIL CreatePagingQueue 0x80004005"). Every S10 upstream run used the default. gpu-s10 v1.27 sets Wddm2 5 +
   DirectFlip 1 for the upstream package (full/gpu/gpu-dwm), removes them for display/legacy.
+- 2026-11-11 20:46 user CORRECTION: the upstream runs were never black - the desktop renders, incomplete, at a
+  near-zero frame rate ("0.0000001 fps"). Matches kmdstats (~0 presents/s for minutes) and the KMD near idle: DWM is
+  blocked, not the scan-out. Same WDDM 1.3-vs-2.0 suspect (CreatePagingQueue fails on the 1.3 adapter); upstream also
+  never runs DWM on softpipe - after "gpu" the real check is "gpu-dwm" (DWM on Panfrost) with Wddm2 5.
