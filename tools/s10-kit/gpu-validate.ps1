@@ -1,5 +1,5 @@
 <#
-  gpu-validate.ps1 (v1.2) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
+  gpu-validate.ps1 (v1.3) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
   (KMD 1.0.72.1 as WDDM 2.0 + UMD 0222-s10.x) is up with DWM on the Mali ("gpu-s10.ps1 gpu-dwm" + reboot).
   Run ON THE PHONE from the kit folder, PowerShell as Administrator, IN THE DESKTOP SESSION (gltest needs a window):
       Set-ExecutionPolicy -Scope Process Bypass
@@ -31,14 +31,19 @@
   renamed to *.s10prev - DWM keeps the copy it loaded at boot, so the desktop is not touched) and are put back
   afterwards; -Keep leaves the new files in place (then rebuild the kit package with them: gpu-s10 "gpu" would
   otherwise restore the package's copies).
+  v1.3: FIX - v1.1's maligl-diag swap kept a $swapped flag, and PowerShell names are case-insensitive: it overwrote
+  v1.2's $Swapped list, so -TryUmd never put the installed UMD back (2026-11-12 01:32: "RESTORE FAILED for True").
+  The diag swap is gone (UMD 0222-s10.2's maligl logs the Lock / Lock2 results itself); the list is $TrySwapped.
+  -Restore puts every *.s10prev back (System32 maliumd / maligl, SysWOW64 maliumd32) and exits.
+  d3dsm5: when it fails, "d3dsm5 bits" runs 3 more times (2026-11-12: bits all zero once, everything else ok).
   Not automatic (look yourself, write the result to the chat): Edge -> edge://gpu ("Hardware accelerated" lines),
   a WebGL page, a YouTube video, scrolling in Settings.
 #>
-param([int]$Timeout = 60, [string]$TryUmd = '', [switch]$Keep)
+param([int]$Timeout = 60, [string]$TryUmd = '', [switch]$Keep, [switch]$Restore)
 $ErrorActionPreference = 'Continue'
 $Report = 'C:\S10Prov\gpu-validate.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-validate.ps1 v1.2  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
+"gpu-validate.ps1 v1.3  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
 function W($m) { Write-Host $m; $m | Add-Content $Report -Encoding ascii }
 $Vd = Join-Path $PSScriptRoot 'tools\validate'
 $pass = 0; $fail = 0; $nKnown = 0; $miss = 0
@@ -79,16 +84,16 @@ function Run-Test($exe, [string[]]$a = @(), [string]$label = '') {
 }
 
 # v1.2: swap in a new UMD for this run (new processes load it; DWM keeps its boot-time copy)
-$Swapped = @()
+$TrySwapped = @()
 function Swap-In($src, $dst) {
   if (-not (Test-Path $src) -or -not (Test-Path $dst)) { return }
   takeown /f $dst /a | Out-Null; icacls $dst /grant '*S-1-5-32-544:F' | Out-Null
   $prev = "$dst.s10prev"
-  if (Test-Path $prev) { takeown /f $prev /a | Out-Null; icacls $prev /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $prev -Force -ErrorAction SilentlyContinue }
+  if (Test-Path $prev) { W "  TryUmd: $prev exists (an earlier run did not put it back) - run .\gpu-validate.ps1 -Restore first, $dst not swapped"; return }
   try {
     Rename-Item $dst (Split-Path $prev -Leaf) -ErrorAction Stop
     Copy-Item $src $dst -Force -ErrorAction Stop
-    $script:Swapped += $dst
+    $script:TrySwapped += $dst
     W ("  TryUmd: {0} <- {1} (sha256 {2})" -f $dst, $src, (Get-FileHash $dst).Hash.ToLower().Substring(0, 16))
   } catch {
     W "  TryUmd: $dst NOT swapped: $_"
@@ -96,10 +101,25 @@ function Swap-In($src, $dst) {
   }
 }
 function Swap-Back {
-  foreach ($dst in $script:Swapped) {
-    try { Remove-Item $dst -Force -ErrorAction Stop; Rename-Item "$dst.s10prev" (Split-Path $dst -Leaf) -ErrorAction Stop; W "  TryUmd: $dst restored" }
+  foreach ($dst in $script:TrySwapped) {
+    # renamed away, not deleted: a process started during the run may still have the new DLL loaded
+    try {
+      $old = "$dst.s10new"; if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+      if (Test-Path $old) { $old = "$dst.s10new$(Get-Random)" }
+      Rename-Item $dst (Split-Path $old -Leaf) -ErrorAction Stop
+      Rename-Item "$dst.s10prev" (Split-Path $dst -Leaf) -ErrorAction Stop; W "  TryUmd: $dst restored"
+    }
     catch { W "  TryUmd: RESTORE FAILED for $dst - rename $dst.s10prev back by hand: $_" }
   }
+}
+if ($Restore) {
+  W '== Restore: *.s10prev back in place'
+  foreach ($dst in 'C:\Windows\System32\maliumd.dll', 'C:\Windows\SysWOW64\maliumd32.dll', 'C:\Windows\System32\maligl.dll') {
+    if (-not (Test-Path "$dst.s10prev")) { W "  $dst : no .s10prev, left as is"; continue }
+    foreach ($f in $dst, "$dst.s10prev") { if (Test-Path $f) { takeown /f $f /a | Out-Null; icacls $f /grant '*S-1-5-32-544:F' | Out-Null } }
+    $script:TrySwapped = @($dst); Swap-Back
+  }
+  exit 0
 }
 if ($TryUmd) {
   $tu = if ([IO.Path]::IsPathRooted($TryUmd)) { $TryUmd } else { Join-Path $PSScriptRoot $TryUmd }
@@ -137,7 +157,9 @@ if (Test-Path $dx) {
 
 W '== 3. D3D11 tests (ARM64)'
 foreach ($t in 'd3dcaps', 'd3dmsaa', 'd3dcs', 'd3dsm41', 'd3dsm5', 'd3dgs', 'd3dso', 'd3dtess', 'd3dmrt', 'd3dcopysrgb', 'd3dcbdyn', 'd3dvbring', 'd3dfence') {
+  $f0 = $fail
   Run-Test (Join-Path $Vd "$t.exe")
+  if ($t -eq 'd3dsm5' -and $fail -gt $f0) { foreach ($k in 1..3) { Run-Test (Join-Path $Vd 'd3dsm5.exe') @('bits') "d3dsm5 bits #$k" } }
 }
 Run-Test (Join-Path $Vd 'd3dbc.exe') @('lossy') 'd3dbc lossy'
 $gt = @((Join-Path $PSScriptRoot 'tools\gputest.exe'), (Join-Path $Vd 'gputest.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -147,19 +169,7 @@ W '== 4. D3D11 tests (x86, 32-bit UMD)'
 foreach ($t in 'd3dcaps32', 'd3dmsaa32', 'd3dcs32', 'd3dcbdyn32', 'd3dvbring32') { Run-Test (Join-Path $Vd "x86\$t.exe") }
 
 W '== 5. OpenGL'
-$sysGl = 'C:\Windows\System32\maligl.dll'; $diagGl = Join-Path $Vd 'maligl-diag.dll'; $swapped = $false
-if ((Test-Path $diagGl) -and (Test-Path $sysGl)) {
-  takeown /f $sysGl /a | Out-Null; icacls $sysGl /grant '*S-1-5-32-544:F' | Out-Null
-  Copy-Item $sysGl (Join-Path $Dir 'maligl-system.dll') -Force
-  try { Copy-Item $diagGl $sysGl -Force -ErrorAction Stop; $swapped = $true; W '  (gltest on maligl-diag.dll - the System32 copy is put back afterwards)' }
-  catch { W "  could not swap in maligl-diag.dll: $_" }
-}
 Run-Test (Join-Path $Vd 'gltest.exe')
-if ($swapped) {
-  try { Copy-Item (Join-Path $Dir 'maligl-system.dll') $sysGl -Force -ErrorAction Stop; W '  System32\maligl.dll restored' }
-  catch { W "  RESTORE FAILED - copy $Dir\maligl-system.dll to $sysGl by hand: $_" }
-}
-Remove-Item (Join-Path $Dir 'maligl-system.dll') -Force -ErrorAction SilentlyContinue
 
 W '== 6. timing'
 Run-Test (Join-Path $Vd 'vblank.exe') @('120')
@@ -168,8 +178,8 @@ Run-Test (Join-Path $Vd 'gpuclock.exe') @('1000', '3')
 $ks = @((Join-Path $PSScriptRoot 'tools\kmdstats.exe'), (Join-Path $PSScriptRoot 'out-gpu\tools\kmdstats.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($ks) { & $ks 2 2>&1 | Select-Object -First 8 | ForEach-Object { W "  kmd> $_" } }
 
-if ($Swapped.Count -and -not $Keep) { W '== TryUmd: putting the installed UMD back'; Swap-Back }
-elseif ($Swapped.Count) { W '== TryUmd -Keep: the new UMD stays (reboot so DWM loads it; rebuild the kit package with it)' }
+if ($TrySwapped.Count -and -not $Keep) { W '== TryUmd: putting the installed UMD back'; Swap-Back }
+elseif ($TrySwapped.Count) { W '== TryUmd -Keep: the new UMD stays (reboot so DWM loads it; rebuild the kit package with it)' }
 
 W '== 7. crashes since this boot'
 $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime

@@ -1781,3 +1781,11 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
     blend2_pan, read only when the blend names SRC1). Edge advertises dual-source-blending (WebGPU) -> matters.
   - UMD 0222-s10.2 = s10-0001..0004: maliumd f57416b8, maliumd32 9f588b50, maligl b8b98694 (x86 layout-check OK).
     gpu-validate v1.2 -TryUmd swaps them in for the test run only (DWM keeps its boot copy), -Keep keeps them.
+- 2026-11-12 01:32 gpu-validate v1.2 -TryUmd umd-0222-s10.2 (zip 4d7093aa): gputest 91/100 - blend-dual-source now
+  PASSES (s10-0004 validated); left = 7 BCn (by design) + 2 msaa4 edge. d3dsm5 33/34: "bits" (countbits /
+  firstbit / reversebits CS) all zeros once - the change (FS outputs only) cannot reach a compute shader; flaky or
+  real is open (v1.3 repeats "d3dsm5 bits" 3x). gltest still 0/5 BUT it ran on v1.1's maligl-diag.dll (the kit
+  folder still had it, the v1.2 script still swapped it in) -> Lock2 untested.
+  BUG (mine): v1.2's $Swapped list and v1.1's $swapped flag are the same PowerShell variable -> "RESTORE FAILED for
+  True": the phone's System32 maliumd/maligl + SysWOW64 maliumd32 are s10.2, originals in *.s10prev. v1.3: diag swap
+  removed, $TrySwapped, -Restore, never overwrites an existing .s10prev, restores by renaming (in-use safe).
