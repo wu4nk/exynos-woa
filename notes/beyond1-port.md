@@ -1797,3 +1797,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   staging path (GPU blit into an own linear staging resource, which maps; unmap blits writes back). Imported
   resources are modifier_constant, so the unmap never swaps the BO. maliumd a6850349, maliumd32 621b3027, maligl
   712ecdb2; x86 layout-check OK. Open (why S10e's lock worked): not needed for the fix. NOT validated.
+- 2026-11-12 01:47 gpu-validate v1.3 -TryUmd umd-0222-s10.3 (zip 97738670): 22 PASS, 1 FAIL (gputest 91/100 = 7 BCn by
+  design + 2 msaa4 edge), 1 known (d3dsm41 7/8). **GLTEST 5/5 PASS** (59.6 fps swaps) - the Lock/Lock2 refusals are
+  still logged, the staging path (s10-0005) carries the readback. No regression vs s10.2. UMD 0222-s10.3 VALIDATED
+  (tests; desktop/DWM with it after a reboot still to see). Next: install it for good (-Keep now, kit umd\ +
+  build-s10 package later), "final", then clocks (power-s10 test).
