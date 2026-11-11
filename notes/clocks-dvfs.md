@@ -154,3 +154,10 @@ Windows reads temperatures and can throttle; lowering is fine.
   gputest x2 at 806: 91 PASS / 9 FAIL both = identical to stock (7 BCn by design + 2 msaa4 edge); no TDR.
   Temps after: MID 64 / LITTLE 61 / G3D 56 C; 91 sends, 0 fails. VALIDATED short-run; sustained load (minutes) and
   long-term stability at 681 mV still to be seen.
+- 03:11 user: s10.3 installed + final done; "drag / resize windows lags". Report 01137b7c already showed: governor NOT
+  running (gpuoc did not print "governor restarted"), MIF cur 0 (never requested since the driver loaded -> MIF at
+  its boot rate, UNKNOWN, while upstream's judder fix was MIF 2093000 screen-on), LITTLE/MID at the UEFI boot rates
+  1456/1794. Fix 1: power-s10 enable (v1.2 keeps MaxG3d = GpuOc instead of resetting 702000). Measurement:
+  tools/s10-kit/drag-probe.ps1 (idle 10 s vs drag/resize 15 s: dwmrate, kmdstats busy, ACPM clocks, per-core CPU,
+  GPU 3D engine, top processes). Other suspects to separate with it: DWM single-threaded now (threaded context off,
+  s10-0001), 1440x3040 swap-chain reallocation per resize step (bo alloc 10-16 ms per 17 MB surface in UMD logs).
