@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.27) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.28) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,9 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.28: "display" (re)installs the package - Windows finishes that only with a restart, and a "gpu" in the same
+  boot lost its Parameters (2026-11-11 21:11: display, gpu, gpu-dwm in one go -> "GpuEnable is not 1"). "display"
+  now leaves C:\S10Prov\gpu-reboot-pending.txt; every other mode refuses to run until the phone has restarted.
   v1.27: upstream's KMD 1.0.72 is validated (S10e) ONLY as a WDDM 2.0 adapter: Parameters\Wddm2 = 5 (WDDM 2.0, mixed
   GpuMmu) + DirectFlip = 1 (HANDOFF 47-49); its default (Wddm2 0) is the old WDDM 1.3 adapter, which its UMD does not
   expect (DWM log: "CB FAIL CreatePagingQueue 0x80004005") - every S10 run so far used that default. "full" / "gpu" /
@@ -74,7 +77,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.27  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.28  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -116,6 +119,17 @@ function Set-Wddm2([bool]$On) {
 function Test-UpstreamPkg {
   $inf = Join-Path $Out 'MaliG76Wddm\MaliG76Wddm.inf'
   return (Test-Path $inf) -and (Select-String -Path $inf -Pattern '^\s*maliumd\.dll\s*=' -Quiet)
+}
+# v1.28: "display" -> restart required before any other mode (the package (re)install completes at the restart)
+$PendingFile = 'C:\S10Prov\gpu-reboot-pending.txt'
+function Get-BootStamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o') }
+function Assert-Rebooted {
+  if (Test-Path $PendingFile) {
+    if ((Get-Content $PendingFile -Raw).Trim() -eq (Get-BootStamp)) {
+      Fail 'restart the phone first: "display" (re)installed the GPU driver and Windows finishes that only at the restart'
+    }
+    Remove-Item $PendingFile -Force -ErrorAction SilentlyContinue
+  }
 }
 # v1.11: S10_FAULTDUMP (UMD 0046): $v = a process name (dwm.exe) or 1 (every process) - Panfrost waits for each
 # job of that process and decodes the first two chains that fault into the UMD log; $null removes it.
@@ -518,6 +532,7 @@ switch ($Action) {
       Set-ShimLog $false
       Set-GpuWatch $false
       Clear-NoGpuFlag
+      Get-BootStamp | Set-Content $PendingFile -Encoding ascii
       Info 'reboot now'
       Info "report: $Report"
       exit 0
@@ -535,11 +550,13 @@ switch ($Action) {
     Set-ShimLog $false
     Set-GpuWatch $false
     Clear-NoGpuFlag
+    Get-BootStamp | Set-Content $PendingFile -Encoding ascii
+    Warn 'RESTART NOW - the next mode (gpu / full) refuses to run until the phone has restarted'
     Info 'reboot, then run: .\gpu-s10.ps1 status   (FbMatchesGop = 1 is the good sign)'
     Info 'black screen after reboot -> TWRP, create \S10EDIAG\nogpu.flg on the ESP (or flash v0.1.2)'
   }
-  'full' { Set-FullMode 0 }
-  'gpu' { Set-FullMode 1 }
+  'full' { Assert-Rebooted; Set-FullMode 0 }
+  'gpu' { Assert-Rebooted; Set-FullMode 1 }
   'm5test' {
     Show-Status | Out-Null
     $exe = Find-Tool 'm5test.exe'
@@ -563,6 +580,7 @@ switch ($Action) {
     if ($rc -eq 0) { Ok 'd3dfill: every phase presented. Colours seen? Then: .\gpu-s10.ps1 gpu-dwm' } else { Warn "d3dfill exit $rc - send gpu-report.txt" }
   }
   'gpu-dwm' {
+    Assert-Rebooted
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
     if ($m.GpuEnable -ne 1) { Fail 'GpuEnable is not 1 - run .\gpu-s10.ps1 gpu first (and m5test / fill)' }
     Set-Wddm2 (Test-UpstreamPkg)

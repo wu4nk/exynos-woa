@@ -1682,3 +1682,6 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   near-zero frame rate ("0.0000001 fps"). Matches kmdstats (~0 presents/s for minutes) and the KMD near idle: DWM is
   blocked, not the scan-out. Same WDDM 1.3-vs-2.0 suspect (CreatePagingQueue fails on the 1.3 adapter); upstream also
   never runs DWM on softpipe - after "gpu" the real check is "gpu-dwm" (DWM on Panfrost) with Wddm2 5.
+- 2026-11-11 21:11 user ran display, gpu, gpu-dwm in ONE boot: gpu wrote Wddm2 5 etc., then gpu-dwm read GpuEnable empty
+  (the display reinstall completes at restart and its service key replaced the values). gpu-s10 v1.28: display leaves
+  C:\S10Prov\gpu-reboot-pending.txt (boot time); full/gpu/gpu-dwm refuse until the phone restarted.
