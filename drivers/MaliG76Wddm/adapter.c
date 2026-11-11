@@ -13,13 +13,65 @@
 MW_MODE MwMode = MwModeDisplayOnly;
 ULONG MwSoftVsync = 1;
 ULONG MwFlipBlt = 1;
+ULONG MwDeferPresent = 1;   /* G32 (notes/games-unity.md): 0 = the present copy at SubmitCommand, as before */
 ULONG MwRecommendVidPn = 1;
 ULONG MwSynthEdid = 1;
 ULONG MwSegmentCpuVisible = 1;
 ULONG MwModeRefreshExact = 1;
 ULONG MwRefresh601 = 1;
 ULONG MwFlipMmio = 1;
-ULONG MwScanoutDirect = 1;
+ULONG MwScanoutStride = 0;
+ULONG MwOfferRotation = 0;      /* Parameters\OfferRotation: 1 = offer 90/180/270 (needs a rotating present path) */
+ULONG MwRgbaModes = 1;          /* Parameters\RgbaModes: every source mode also in A8B8G8R8 (G22; 0 = A8R8G8B8 only) */
+ULONG MwScaledModes = 1;        /* Parameters\ScaledModes: offer the 2/3-size desktop mode (G20; default on since 1.0.68.1, 0 = off) */
+ULONG MwCddDwmInterop = 1;
+/* G15 S1 (notes/gpu-wddm2-design.md): Parameters\Wddm2 = 1 -> DXGKDDI_INTERFACE_VERSION_WDDM2_0 in physical-engine mode
+ * (no GPU VA caps; Render/Patch/SubmitCommand unchanged). Default 0 = the WDDM 1.3 adapter, byte-identical paths. */
+ULONG MwWddm2 = 0;
+/* G15 S1 run 3 probe: Parameters\Wddm2 = 2 -> as 1, plus DXGK_VIDMMCAPS.VirtualAddressingSupported + GpuMmuSupported
+ * (Learn "GPU virtual memory in WDDM 2.0": a v2 driver "must opt-in" to GpuMmu and/or IoMmu). Probe only: the GpuMmu
+ * QAIs (GPUMMUCAPS, PAGETABLELEVELDESC) are not answered - the run shows whether dxgkrnl asks for them. */
+ULONG MwWddm2Va = 0;
+/* Parameters\Wddm2 = 3: as 1, plus the run-4 stub DDIs (below, before the traced DDI table). */
+ULONG MwWddm2Stubs = 0;
+/* Run 6 probe: Parameters\Probe\Ver (volatile key only) = a DXGKDDI_INTERFACE_VERSION_WDDM2_x value reported instead
+ * of WDDM2_0 - does this Windows build turn away the 2.0 interface itself? 0 = WDDM2_0. */
+ULONG MwWddm2Ver = 0;
+/* S1 run 7: the DXGK_DRIVERCAPS.WDDMVersion reported when Wddm2 is on - default DXGKDDI_WDDMv2 (0x2000), overridden by
+ * Parameters\WddmVersion or the volatile Parameters\Probe\WddmVersion (DriverEntry). notes/gpu-wddm3-research.md
+ * "Cross-check against G15 S1": Learn wddm-2-1-features ("Determining WDDM Version") says dxgkrnl validates caps/DDIs
+ * against the reported WDDMVersion and fails the adapter on inconsistency; both open-source WDDM 2.0 KMDs report
+ * 0x2000. 0 (runs 1-6) failed every 2.x start right after DRIVERCAPS. */
+ULONG MwWddm2CapsVer = 0;
+/* S1 run 8 probe: Parameters\Probe\Quirk (volatile key only), bits = answers that differ from the WDDM 2.0 KMD that
+ * loads (qemus/virtio-drivers-windows gpu-wddm/src/adapter.rs query_info): 1 = PHYSICALADAPTERCAPS NOT_SUPPORTED,
+ * 2 = QAI 47 NOT_SUPPORTED, 4 = QUERYSEGMENT4 aperture not CpuVisible, 8 = DISPLAY_DRIVERCAPS_EXTENSION
+ * NOT_SUPPORTED. 0 = run 7. */
+ULONG MwWddm2Quirk = 0;
+/* G15 S7a (notes/gpu-wddm2-design.md): Parameters\Wddm2 = 5 = Wddm2 3 + a GPU-VA (GpuMmu) adapter in the mixed
+ * form of qemus/virtio-drivers-windows: node 0 = the Mali job manager, still PHYSICAL (allocation + patch lists,
+ * Render/Patch/SubmitCommand unchanged, allocations AccessedPhysically); node 1 = a software COPY node, the paging
+ * node, GpuMmu (DXGK_NODEMETADATA.GpuMmuSupported). No hardware walks the GpuMmu page tables: page-table updates,
+ * TLB flushes and virtual transfers/fills are accepted as no-ops (aperture map/unmap stay real), node-1
+ * submissions complete at once. Why: composition swap chains get no DXGI tracked fence on the physical-only 2.0
+ * adapter, while they do on a VA-capable one (WARP/Basic Render, IoMmu) - notes/gpu-umd-d3d11.md 22:30. */
+ULONG MwWddm2Gpummu = 0;
+/* G15 S4: Parameters\DirectFlip (default 0) - DXGK_DRIVERCAPS.SupportDirectFlip + the aperture segment's
+ * Flags.DirectFlip. MS Learn "Direct flip of video memory": WDDM 1.2+, full graphics = Mandatory; DWM's
+ * flip-model composition builds on it. Composition swap chains get no DXGI tracked fence on our adapter while
+ * they do on WARP (notes/gpu-umd-d3d11.md) - this is one documented cap we never set. The UMD keeps answering
+ * CheckDirectFlipSupport FALSE, so DWM still composes. Parameters\FlipIndependent (default 0): FlipCaps
+ * .FlipIndependent (Learn WDDM 1.3 independent flip). */
+ULONG MwDirectFlip = 0;
+/* G-game (notes/g17-dxva-mfc.md): Parameters\CpuVisibleOnDemand - 0 off, 1 CpuVisible + CpuVisibleOnDemand (no effect),
+ * 2 on-demand only (logon never finished), 3 on-demand only except primaries (boot hung), 4 on-demand only for
+ * allocations the shim marks MW_ALLOC_CPU_ONDEMAND (Panfrost BOs) - default 0. MS Learn DXGK_ALLOCATIONINFOFLAGS_WDDM2_0:
+ * with it "the video memory manager will try to
+ * allocate the virtual address for the allocation when it is mapped/locked ... which reduces the amount of virtual
+ * address space used". Plain CpuVisible cost every allocation a permanent 32 MB of the process's CPU address space
+ * (vatest) - a 32-bit game ran out of its 4 GB. WDDM 2.x only (FlagsWddm2). */
+ULONG MwCpuOnDemand = 0;
+ULONG MwFlipIndependent = 0;
 
 /* ---- trace ---- */
 
@@ -233,6 +285,7 @@ static NTSTATUS APIENTRY MwStartDevice(IN_CONST_PVOID Context, IN_PDXGK_START_IN
             if (!NT_SUCCESS(st))
                 MkGpuQuiet(&a->Gpu);
             a->GpuUp = NT_SUCCESS(st);
+            MwMapScanout(a);    /* H4a: the GOP framebuffer in the GPU address space */
         } else if (NT_SUCCESS(st)) {
             MkGpuQuiet(&a->Gpu);
             MwLog(a, L"GpuQuieted", 1);
@@ -263,9 +316,6 @@ static NTSTATUS APIENTRY MwStopDevice(IN_CONST_PVOID Context)
         MwLog(a, L"Submits", a->Submits);
         MwLog(a, L"JobsDone", a->JobsDone);
         MwLog(a, L"JobsFailed", a->JobsFailed);
-        MwLog(a, L"JobStartRefused", a->JobStartRefused);
-        MwLog(a, L"PartialMaps", a->PartialMaps);
-        MwLog(a, L"LastPartialMdlOffset", a->LastPartialMdlOffset);
         MwLog(a, L"Irqs", a->Gpu.Irqs);
         MwLog(a, L"IsrUnpowered", a->Gpu.IsrUnpowered);
         StopGpu(a);
@@ -280,6 +330,7 @@ static NTSTATUS APIENTRY MwRemoveDevice(IN_CONST_PVOID Context)
     MwPramDdi(TRUE, FALSE, "RemoveDevice", 0);
     HbStop(a);
     MwDisplayStop(a);
+    MwCommandFree(a);
     ExFreePoolWithTag(Context, MW_TAG);
     return STATUS_SUCCESS;
 }
@@ -298,10 +349,17 @@ static NTSTATUS APIENTRY MwDispatchIoRequest(IN_CONST_PVOID Context, IN_ULONG So
 static NTSTATUS APIENTRY MwSetPowerState(IN_CONST_PVOID Context, IN_ULONG Uid,
                                          IN_DEVICE_POWER_STATE State, IN_POWER_ACTION Action)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(Uid);
-    UNREFERENCED_PARAMETER(State);
-    UNREFERENCED_PARAMETER(Action);
+    MW_ADAPTER *a = (MW_ADAPTER *)Context;
+
+    MwLog(a, L"SetPowerStateLast", (Uid << 16) | ((ULONG)State << 8) | (ULONG)Action);
+    /* The monitor child (ChildUid 0, display.c) = the internal panel: Windows' display off / on (SC_MONITORPOWER,
+     * display-off timeout). The adapter itself (DISPLAY_ADAPTER_HW_ID) keeps the old no-op. */
+    /* 1.0.45.1 test (2026-10-14): D3 -> DCS 0x28 worked, but Windows never sends D0 again on this phone (touch is
+     * ignored while the display is off and the power button is not a Windows button), so the panel stayed dark.
+     * Until a Windows-recognised power button exists, D3 is only logged; D0 makes sure the panel is lit. The power
+     * button darkens the panel itself (MW_ESCAPE_PANEL_POWER). */
+    if (Uid == 0 && State == PowerDeviceD0)
+        MwPanelDisplayPower(a, TRUE);
     return STATUS_SUCCESS;
 }
 
@@ -319,9 +377,7 @@ static VOID APIENTRY MwUnload(VOID)
 
 static NTSTATUS APIENTRY MwQueryInterface(IN_CONST_PVOID Context, IN_PQUERY_INTERFACE Qi)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(Qi);
-    return STATUS_NOT_SUPPORTED;
+    return MwPanelQueryInterface((MW_ADAPTER *)Context, Qi);    /* brightness only (panel.c) */
 }
 
 /* ---- interrupts (full adapter only; the display-only mode registers none) ---- */
@@ -341,6 +397,7 @@ static VOID APIENTRY MwDpcRoutine(IN_CONST_PVOID Context)
 {
     MW_ADAPTER *a = (MW_ADAPTER *)Context;
     InterlockedIncrement(&a->DpcCalls);
+    MwPresentDpc(a);   /* G32: a deferred present at the head of the queue */
     a->Dxgk.DxgkCbNotifyDpc(a->Dxgk.DeviceHandle);
 }
 
@@ -359,22 +416,52 @@ static NTSTATUS DriverCaps(MW_ADAPTER *A, const DXGKARG_QUERYADAPTERINFO *Info)
     if (!FITS(size, DXGK_DRIVERCAPS, WDDMVersion))
         return STATUS_BUFFER_TOO_SMALL;
     RtlZeroMemory(caps, size);
-    caps->WDDMVersion = DXGKDDI_WDDMv1_3;
+    /* DXGK_DRIVERCAPS.WDDMVersion: 0 for interfaces newer than WIN7 (MS Learn DXGK_DRIVERCAPS) - set for 2.0 only so
+     * the 1.3 answer stays as it was. */
+    caps->WDDMVersion = MwWddm2 ? (DXGK_WDDMVERSION)MwWddm2CapsVer : DXGKDDI_WDDMv1_3;
     /* G76 (R11): what the Mali reports it can address (MMU_FEATURES PA bits), at most the original's 40 bits. */
     caps->HighestAcceptableAddress.QuadPart = (LONGLONG)((1ULL << bits) - 1);
     caps->MaxAllocationListSlotId = 256;   /* Render patches every allocation, SlotId = index */
     caps->SchedulingCaps.MultiEngineAware = 1;
     /* Preemption off system-wide (the full-mode ESP script sets EnablePreemption 0), as viogpu3d does. */
     caps->SchedulingCaps.PreemptionAware = 1;
-    caps->GpuEngineTopology.NbAsymetricProcessingNodes = 1;
+    caps->GpuEngineTopology.NbAsymetricProcessingNodes = MwWddm2Gpummu ? 2 : 1;
     /* G76: MMIO flips (Parameters\FlipMmio) - every DMA flip of DWM's swap chain came back
      * STATUS_GRAPHICS_PRESENT_MODE_CHANGED (runs g22-g25) whatever the primary looked like. */
     if (MwFlipMmio)
         caps->FlipCaps.FlipOnVSyncMmIo = 1;
+    if (MwFlipIndependent)
+        caps->FlipCaps.FlipIndependent = 1;
+    if (MwDirectFlip && FITS(size, DXGK_DRIVERCAPS, SupportDirectFlip))
+        caps->SupportDirectFlip = TRUE;
+    /* H4c (notes/gpu-hw-path.md): MS Learn DXGK_PRESENTATIONCAPS.DriverSupportsCddDwmInterop - "supports CDD present
+     * operations to texture allocations that are created by the user-mode driver for the DWM". Windowed D3D swap
+     * chains are presented "redirected" (PresentDXGI Blt, no destination: run h3n) and none of the cube's presents
+     * ever reached DxgkDdiPresent or DWM (runs h3m-h3q) while this was 0. DoPresent's blt is a generic
+     * allocation-to-allocation CPU copy. Parameters\CddDwmInterop (default 1; 0 = the caps before 1.0.37.1). */
+    if (MwCddDwmInterop)
+        caps->PresentationCaps.DriverSupportsCddDwmInterop = 1;
     if (FITS(size, DXGK_DRIVERCAPS, SupportNonVGA))
         caps->SupportNonVGA = TRUE;
     if (FITS(size, DXGK_DRIVERCAPS, SupportSmoothRotation))
         caps->SupportSmoothRotation = TRUE;
+    /* G15 S1 run 2 (notes/gpu-wddm2-design.md): run 1's 2.0 adapter was failed by dxgkrnl right after this query.
+     * MS Learn "TDR in Windows 8 and later": per-engine TDR is Mandatory for full graphics drivers (WDDM 1.2+) - the
+     * three DDIs are implemented (command.c MwResetEngine/MwQueryEngineStatus/MwQueryDependentEngineGroup); "GPU
+     * preemption": WDDM 1.2+ KMDs must support the Windows 8 preemption model - we preempt only between DMA buffers,
+     * so DMA_BUFFER_BOUNDARY is the honest granularity. 2.0 only; the 1.3 answer is unchanged. */
+    if (MwWddm2) {
+        if (FITS(size, DXGK_DRIVERCAPS, SupportPerEngineTDR))
+            caps->SupportPerEngineTDR = TRUE;
+        if (MwWddm2Va) {
+            caps->MemoryManagementCaps.VirtualAddressingSupported = 1;
+            caps->MemoryManagementCaps.GpuMmuSupported = 1;
+        }
+        if (FITS(size, DXGK_DRIVERCAPS, PreemptionCaps)) {
+            caps->PreemptionCaps.GraphicsPreemptionGranularity = D3DKMDT_GRAPHICS_PREEMPTION_DMA_BUFFER_BOUNDARY;
+            caps->PreemptionCaps.ComputePreemptionGranularity = D3DKMDT_COMPUTE_PREEMPTION_DMA_BUFFER_BOUNDARY;
+        }
+    }
     return STATUS_SUCCESS;
 }
 
@@ -418,6 +505,62 @@ static NTSTATUS APIENTRY MwQueryAdapterInfo(IN_CONST_HANDLE hAdapter, const DXGK
         case DXGKQAITYPE_QUERYSEGMENT3:
             st = MwQuerySegment(a, Info);
             break;
+        case DXGKQAITYPE_QUERYSEGMENT4:      /* WDDM 2.0: the same single aperture segment, stride-described */
+            st = MwWddm2 ? MwQuerySegment4(a, Info) : STATUS_NOT_SUPPORTED;
+            break;
+        case DXGKQAITYPE_PHYSICALADAPTERCAPS:
+            /* WDDM 2.0 physical-engine mode: one node, paging on it, no IoMmu/GpuMmu flags. DxgkPhysicalAdapterHandle =
+             * the DXGKRNL_INTERFACE::DeviceHandle from DxgkDdiStartDevice (MS Learn DXGK_PHYSICALADAPTERCAPS). */
+            if (!MwWddm2 || (MwWddm2Quirk & 1)) {
+                st = STATUS_NOT_SUPPORTED;
+            } else if (Info->OutputDataSize < FIELD_OFFSET(DXGK_PHYSICALADAPTERCAPS, Flags) + sizeof(DXGK_PHYSICALADAPTERFLAGS)) {
+                st = STATUS_BUFFER_TOO_SMALL;
+            } else {
+                DXGK_PHYSICALADAPTERCAPS *pc = (DXGK_PHYSICALADAPTERCAPS *)Info->pOutputData;
+                RtlZeroMemory(pc, Info->OutputDataSize);
+                pc->NumExecutionNodes = MwWddm2Gpummu ? 2 : 1;
+                pc->PagingNodeIndex = MwWddm2Gpummu ? 1 : 0;
+                pc->Flags.GpuMmuSupported = MwWddm2Gpummu ? 1 : 0;
+                pc->DxgkPhysicalAdapterHandle = a->Dxgk.DeviceHandle;
+                st = STATUS_SUCCESS;
+            }
+            break;
+        case DXGKQAITYPE_GPUMMUCAPS:
+            /* S7a: the format of the Mali-G76 LPAE-style tables (maligpu.c: 4 levels x 512 8-byte descriptors, 4 KiB
+             * pages, MMU_FEATURES VA bits 48) although nothing walks them yet; CPU_VIRTUAL updates (system-memory
+             * tables, Learn DXGK_GPUMMUCAPS: not allowed only for tables in local memory); explicit invalidation as a
+             * software (emulated) page table, Learn: "typically used by a software driver that needs to emulate". */
+            if (!MwWddm2Gpummu) {
+                st = STATUS_NOT_SUPPORTED;
+            } else if (Info->OutputDataSize < sizeof(DXGK_GPUMMUCAPS)) {
+                st = STATUS_BUFFER_TOO_SMALL;
+            } else {
+                DXGK_GPUMMUCAPS *g = (DXGK_GPUMMUCAPS *)Info->pOutputData;
+                RtlZeroMemory(g, Info->OutputDataSize);
+                g->ExplicitPageTableInvalidation = 1;
+                g->PageTableUpdateMode = DXGK_PAGETABLEUPDATE_CPU_VIRTUAL;
+                g->VirtualAddressBitCount = 48;
+                g->PageTableLevelCount = 4;
+                st = STATUS_SUCCESS;
+            }
+            break;
+        case DXGKQAITYPE_PAGETABLELEVELDESC:
+            if (!MwWddm2Gpummu) {
+                st = STATUS_NOT_SUPPORTED;
+            } else if (Info->OutputDataSize < sizeof(DXGK_PAGE_TABLE_LEVEL_DESC) || Info->pInputData == NULL ||
+                       Info->InputDataSize < sizeof(UINT) || *(const UINT *)Info->pInputData >= 4) {
+                st = STATUS_INVALID_PARAMETER;
+            } else {
+                DXGK_PAGE_TABLE_LEVEL_DESC *l = (DXGK_PAGE_TABLE_LEVEL_DESC *)Info->pOutputData;
+                RtlZeroMemory(l, Info->OutputDataSize);
+                l->PageTableIndexBitCount = 9;            /* 512 entries */
+                l->PageTableSegmentId = 0;                /* system memory (<= 4 KiB per table) */
+                l->PagingProcessPageTableSegmentId = 0;
+                l->PageTableSizeInBytes = PAGE_SIZE;
+                l->PageTableAlignmentInBytes = PAGE_SIZE;
+                st = STATUS_SUCCESS;
+            }
+            break;
         case DXGKQAITYPE_HISTORYBUFFERPRECISION:
             /* WDDM 1.3 asks this of every 1.3 driver; NOT_SUPPORTED was logged by dxgkrnl as an invalid
              * NTSTATUS right before failures (original's WinPE runs 5-8). */
@@ -429,10 +572,18 @@ static NTSTATUS APIENTRY MwQueryAdapterInfo(IN_CONST_HANDLE hAdapter, const DXGK
             }
             break;
         case 47: /* DXGKQAITYPE_64BITONLYCAPS: zero = not restricted to 64-bit */
+            if (MwWddm2 && (MwWddm2Quirk & 2)) {
+                st = STATUS_NOT_SUPPORTED;
+                break;
+            }
             RtlZeroMemory(Info->pOutputData, Info->OutputDataSize);
             st = STATUS_SUCCESS;
             break;
         case DXGKQAITYPE_DISPLAY_DRIVERCAPS_EXTENSION:
+            if (MwWddm2 && (MwWddm2Quirk & 8)) {
+                st = STATUS_NOT_SUPPORTED;
+                break;
+            }
             RtlZeroMemory(Info->pOutputData, Info->OutputDataSize);
             st = STATUS_SUCCESS;
             break;
@@ -488,6 +639,7 @@ static void Stats(MW_ADAPTER *A, MW_ESCAPE_STATS_DATA *D)
     D->PresentBlts = A->PresentBlts;
     D->PresentFills = A->PresentFills;
     D->PresentSkips = A->PresentSkips;
+    D->PresentGpu = A->PresentGpu;
 }
 
 static NTSTATUS APIENTRY MwEscape(IN_CONST_HANDLE hAdapter, const DXGKARG_ESCAPE *Esc)
@@ -508,11 +660,41 @@ static NTSTATUS APIENTRY MwEscape(IN_CONST_HANDLE hAdapter, const DXGKARG_ESCAPE
         if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_ALLOC_INFO_DATA))
             return STATUS_INVALID_PARAMETER;
         return MwEscapeAllocInfo(a, Esc, (MW_ESCAPE_ALLOC_INFO_DATA *)Esc->pPrivateDriverData);
+    case MW_ESCAPE_CAPS:   /* G32 */
+        if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_CAPS_DATA))
+            return STATUS_INVALID_PARAMETER;
+        ((MW_ESCAPE_CAPS_DATA *)Esc->pPrivateDriverData)->Flags = MwDeferPresent ? MW_CAPS_DEFERRED_PRESENT : 0;
+        return STATUS_SUCCESS;
     case MW_ESCAPE_GPU_INFO:
         if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_GPU_INFO_DATA))
             return STATUS_INVALID_PARAMETER;
         GpuInfo(a, (MW_ESCAPE_GPU_INFO_DATA *)Esc->pPrivateDriverData);
         return STATUS_SUCCESS;
+    case MW_ESCAPE_SCANOUT:
+        if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_SCANOUT_DATA))
+            return STATUS_INVALID_PARAMETER;
+        return MwEscapeScanout(a, Esc, (MW_ESCAPE_SCANOUT_DATA *)Esc->pPrivateDriverData);
+    case MW_ESCAPE_CLOCK: {
+        MW_ESCAPE_CLOCK_DATA *c = (MW_ESCAPE_CLOCK_DATA *)Esc->pPrivateDriverData;
+        LARGE_INTEGER f, q;
+
+        if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_CLOCK_DATA))
+            return STATUS_INVALID_PARAMETER;
+        c->Valid = a->GpuUp && MkReadClock(&a->Gpu, &c->Cycles, &c->Timestamp);
+        q = KeQueryPerformanceCounter(&f);
+        c->Qpc = (mw_u64)q.QuadPart;
+        c->QpcFreq = (mw_u64)f.QuadPart;
+        return STATUS_SUCCESS;
+    }
+    case MW_ESCAPE_PANEL_POWER: {
+        MW_ESCAPE_PANEL_POWER_DATA *pp = (MW_ESCAPE_PANEL_POWER_DATA *)Esc->pPrivateDriverData;
+
+        if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_PANEL_POWER_DATA))
+            return STATUS_INVALID_PARAMETER;
+        MwPanelEscapePower(a, pp->On != 0);   /* off: the caller becomes the owner; relit if it dies (panel.c) */
+        pp->Done = (a->PanelDisplayOn == (pp->On != 0)) ? 1u : 0u;
+        return STATUS_SUCCESS;
+    }
     case MW_ESCAPE_STATS:
         if (Esc->PrivateDriverDataSize < sizeof(MW_ESCAPE_STATS_DATA))
             return STATUS_INVALID_PARAMETER;
@@ -537,6 +719,73 @@ static NTSTATUS APIENTRY MwSetPointerShape(IN_CONST_HANDLE hAdapter, const DXGKA
     UNREFERENCED_PARAMETER(hAdapter);
     UNREFERENCED_PARAMETER(Arg);
     return STATUS_NOT_SUPPORTED;
+}
+
+/* G15 S1 run 4 probe (Parameters\Wddm2 = 3): runs 1-3 showed dxgkrnl fails the 2.0 adapter after DRIVERCAPS whatever
+ * the caps say, before any 2.0 QAI. Learn marks none of the WDDM 1.3/2.0 table additions as mandatory, so this run
+ * registers no-op versions of the ones that mean something in physical mode and logs every call (Enter_*):
+ * CalibrateGpuClock (WDDM 1.3; CPU QPC used for both clocks - no history buffers are produced, so nothing is
+ * calibrated against it), CreateProcess/DestroyProcess (2.0; no per-process KMD state), SetStablePowerState (2.0;
+ * clocks are owned by s10egov). Bisect after a run that gets further. */
+static NTSTATUS MwCalibrateGpuClock(IN_CONST_HANDLE hAdapter, UINT32 Node, UINT32 Engine, DXGKARG_CALIBRATEGPUCLOCK *c)
+{
+    LARGE_INTEGER f, t = KeQueryPerformanceCounter(&f);
+    UNREFERENCED_PARAMETER(hAdapter); UNREFERENCED_PARAMETER(Node); UNREFERENCED_PARAMETER(Engine);
+    c->GpuFrequency = (ULONGLONG)f.QuadPart;
+    c->GpuClockCounter = (ULONGLONG)t.QuadPart;
+    c->CpuClockCounter = (ULONGLONG)t.QuadPart;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS MwCreateProcess(IN_CONST_HANDLE hAdapter, DXGKARG_CREATEPROCESS *p)
+{
+    p->hKmdProcess = (HANDLE)hAdapter;   /* any non-NULL handle: DestroyProcess ignores it */
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS MwDestroyProcess(IN_CONST_HANDLE hAdapter, IN_CONST_HANDLE hKmdProcess)
+{
+    UNREFERENCED_PARAMETER(hAdapter); UNREFERENCED_PARAMETER(hKmdProcess);
+    return STATUS_SUCCESS;
+}
+
+static VOID APIENTRY T_SetStablePowerState(IN_CONST_HANDLE hAdapter, IN_CONST_PDXGKARG_SETSTABLEPOWERSTATE p)
+{
+    UNREFERENCED_PARAMETER(p);
+    MwEnter((MW_ADAPTER *)hAdapter, L"Enter_SetStablePowerState");
+}
+
+/* G15 S1 run 5 probe (Wddm2 = 4, VOLATILE Parameters\Probe only - see DriverEntry): VA + GpuMmu caps (run 3) AND the
+ * GpuMmu DDIs run 3 lacked, in case dxgkrnl checks caps against the table. Stubs only: no Mali page tables are built,
+ * GPUMMUCAPS/PAGETABLELEVELDESC stay unanswered (logged as QAI_13/QAI_14). 8 bytes per root PTE = the Mali LPAE-style
+ * descriptor size (panfrost io-pgtable-arm, 64-bit descriptors). */
+static SIZE_T APIENTRY T_GetRootPageTableSize(IN_CONST_HANDLE hAdapter, DXGKARG_GETROOTPAGETABLESIZE *a)
+{
+    MwEnter((MW_ADAPTER *)hAdapter, L"Enter_GetRootPageTableSize");
+    return (SIZE_T)a->NumberOfPte * 8;
+}
+
+static VOID APIENTRY T_SetRootPageTable(IN_CONST_HANDLE hAdapter, IN_CONST_PDXGKARG_SETROOTPAGETABLE a)
+{
+    UNREFERENCED_PARAMETER(a);
+    MwEnter((MW_ADAPTER *)hAdapter, L"Enter_SetRootPageTable");
+}
+
+static NTSTATUS APIENTRY T_SubmitCommandVirtual(IN_CONST_HANDLE hAdapter, IN_CONST_PDXGKARG_SUBMITCOMMANDVIRTUAL a)
+{
+    MwEnter((MW_ADAPTER *)hAdapter, L"Enter_SubmitCommandVirtual");
+    if (!MwWddm2Gpummu)
+        return STATUS_NOT_SUPPORTED;
+    /* S7a: only the software copy node runs virtual contexts; its work (paging, mostly) has no hardware behind it. */
+    MwCompleteNow((MW_ADAPTER *)hAdapter, a->NodeOrdinal, a->SubmissionFenceId);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS APIENTRY T_RenderGdi(IN_CONST_HANDLE hContext, DXGKARG_RENDERGDI *a)
+{
+    UNREFERENCED_PARAMETER(a);
+    MwEnter(((MW_CONTEXT *)hContext)->Device->Adapter, L"Enter_RenderGdi");
+    return STATUS_SUCCESS;   /* Learn: any other status bugchecks */
 }
 
 /* ---- the traced DDI table ---- */
@@ -614,6 +863,9 @@ TRACE_ADAPTER(CancelCommand, (IN_CONST_HANDLE hAdapter, const DXGKARG_CANCELCOMM
 TRACE_ADAPTER(PreemptCommand, (IN_CONST_HANDLE hAdapter, const DXGKARG_PREEMPTCOMMAND *a), (hAdapter, a))
 TRACE_CTX(RenderKm, (IN_CONST_HANDLE hContext, DXGKARG_RENDER *a), (hContext, a))
 TRACE_ADAPTER(GetNodeMetadata, (IN_CONST_HANDLE hAdapter, UINT n, DXGKARG_GETNODEMETADATA *a), (hAdapter, n, a))
+TRACE_ADAPTER(CalibrateGpuClock, (IN_CONST_HANDLE hAdapter, UINT32 n, UINT32 e, DXGKARG_CALIBRATEGPUCLOCK *c), (hAdapter, n, e, c))
+TRACE_ADAPTER(CreateProcess, (IN_CONST_HANDLE hAdapter, DXGKARG_CREATEPROCESS *p), (hAdapter, p))
+TRACE_ADAPTER(DestroyProcess, (IN_CONST_HANDLE hAdapter, IN_CONST_HANDLE h), (hAdapter, h))
 TRACE_ADAPTER(QueryDependentEngineGroup, (IN_CONST_HANDLE hAdapter, DXGKARG_QUERYDEPENDENTENGINEGROUP *a), (hAdapter, a))
 TRACE_CONTEXT(StopDeviceAndReleasePostDisplayOwnership,
               (IN_CONST_PVOID Context, IN_CONST_D3DDDI_VIDEO_PRESENT_TARGET_ID t, PDXGK_DISPLAY_INFORMATION d),
@@ -674,13 +926,50 @@ static MW_MODE ReadMode(PUNICODE_STRING RegistryPath, ULONG *PramTrace)
     *PramTrace = ReadParameter(params, L"PramTrace", 1);
     MwSoftVsync = ReadParameter(params, L"SoftVsync", 1) != 0;
     MwFlipBlt = ReadParameter(params, L"FlipBlt", 1) != 0;
+    MwDeferPresent = ReadParameter(params, L"DeferPresent", 1) != 0;
     MwRecommendVidPn = ReadParameter(params, L"RecommendVidPn", 1) != 0;
     MwSynthEdid = ReadParameter(params, L"SynthEdid", 1) != 0;
     MwSegmentCpuVisible = ReadParameter(params, L"SegmentCpuVisible", 1) != 0;
     MwModeRefreshExact = ReadParameter(params, L"ModeRefreshExact", 1) != 0;
     MwRefresh601 = ReadParameter(params, L"Refresh601", 1) != 0;
     MwFlipMmio = ReadParameter(params, L"FlipMmio", 1) != 0;
-    MwScanoutDirect = ReadParameter(params, L"ScanoutDirect", 1) != 0;
+    MwScanoutStride = ReadParameter(params, L"ScanoutStride", 0);
+    MwOfferRotation = ReadParameter(params, L"OfferRotation", 0);
+    MwScaledModes = ReadParameter(params, L"ScaledModes", 1);
+    MwRgbaModes = ReadParameter(params, L"RgbaModes", 1);
+    MwPanelCmdMode = ReadParameter(params, L"PanelCmdMode", MwPanelCmdMode);         /* S10 build: default 0 (panel.c) */
+    MwPanelBrightness = ReadParameter(params, L"PanelBrightness", MwPanelBrightness);
+    MwCddDwmInterop = ReadParameter(params, L"CddDwmInterop", 1) != 0;
+    MwDirectFlip = ReadParameter(params, L"DirectFlip", 0) != 0;
+    MwCpuOnDemand = ReadParameter(params, L"CpuVisibleOnDemand", 0);
+    MwFlipIndependent = ReadParameter(params, L"FlipIndependent", 0) != 0;
+    {
+        ULONG w = ReadParameter(params, L"Wddm2", 0);
+        /* Run 5+: a probe value in Parameters\Probe overrides; the test creates that key VOLATILE, so any reboot
+         * (crash, WDT) comes back with the persistent value. Wddm2 = 4 is honoured only from there. */
+        UNICODE_STRING probeName = RTL_CONSTANT_STRING(L"Probe");
+        HANDLE probe = NULL;
+        /* S1 run 10: WDDMVersion 0x2000 is required (runs 1-6 reported 0 and were failed after DRIVERCAPS), so it is
+         * the default now; Parameters\WddmVersion, then Probe\WddmVersion, override. The working 2.0 setting is
+         * Wddm2 = 3 (the CalibrateGpuClock/SetStablePowerState stubs are a load requirement too, run 9). */
+        MwWddm2CapsVer = ReadParameter(params, L"WddmVersion", DXGKDDI_WDDMv2);
+        if (params != NULL) {
+            InitializeObjectAttributes(&oa, &probeName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, params, NULL);
+            if (NT_SUCCESS(ZwOpenKey(&probe, KEY_READ, &oa))) {
+                w = ReadParameter(probe, L"Wddm2", w);
+                MwWddm2Ver = ReadParameter(probe, L"Ver", 0);
+                MwWddm2CapsVer = ReadParameter(probe, L"WddmVersion", MwWddm2CapsVer);
+                MwWddm2Quirk = ReadParameter(probe, L"Quirk", 0);
+                ZwClose(probe);
+            } else if (w == 4) {
+                w = 0;
+            }
+        }
+        MwWddm2 = w >= 1 && w <= 5;
+        MwWddm2Stubs = w == 3 || w == 4 || w == 5;
+        MwWddm2Va = w == 2 || w == 4 || w == 5;
+        MwWddm2Gpummu = w == 5;
+    }
     if (params != NULL)
         ZwClose(params);
     if (svc != NULL)
@@ -734,7 +1023,11 @@ static NTSTATUS InitFull(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPa
 {
     DRIVER_INITIALIZATION_DATA init = {0};
 
-    init.Version = DXGKDDI_INTERFACE_VERSION_WDDM1_3;
+    init.Version = MwWddm2 ? (MwWddm2Ver >= DXGKDDI_INTERFACE_VERSION_WDDM2_0 && MwWddm2Ver <= DXGKDDI_INTERFACE_VERSION_WDDM2_9
+                              ? MwWddm2Ver : DXGKDDI_INTERFACE_VERSION_WDDM2_0)
+                           : DXGKDDI_INTERFACE_VERSION_WDDM1_3;
+    DbgPrintEx(DPFLTR_IHVVIDEO_ID, DPFLTR_ERROR_LEVEL, "MaliG76Wddm: InterfaceVersion = 0x%04x (Wddm2 %u Va %u Stubs %u) WDDMVersion 0x%04x\n",
+               init.Version, MwWddm2, MwWddm2Va, MwWddm2Stubs, MwWddm2 ? MwWddm2CapsVer : (ULONG)DXGKDDI_WDDMv1_3);
     init.DxgkDdiAddDevice = MwAddDevice;
     init.DxgkDdiStartDevice = MwStartDevice;
     init.DxgkDdiStopDevice = T_StopDevice;
@@ -781,6 +1074,18 @@ static NTSTATUS InitFull(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPa
     init.DxgkDdiCancelCommand = T_CancelCommand;
     init.DxgkDdiControlInterrupt = T_ControlInterrupt;
     init.DxgkDdiGetScanLine = T_GetScanLine;
+    if (MwWddm2Stubs) {
+        init.DxgkDdiCalibrateGpuClock = T_CalibrateGpuClock;
+        init.DxgkDdiCreateProcess = T_CreateProcess;
+        init.DxgkDdiDestroyProcess = T_DestroyProcess;
+        init.DxgkDdiSetStablePowerState = T_SetStablePowerState;
+    }
+    if (MwWddm2Va && MwWddm2Stubs) {
+        init.DxgkDdiGetRootPageTableSize = T_GetRootPageTableSize;
+        init.DxgkDdiSetRootPageTable = T_SetRootPageTable;
+        init.DxgkDdiSubmitCommandVirtual = T_SubmitCommandVirtual;
+        init.DxgkDdiRenderGdi = T_RenderGdi;
+    }
 
     init.DxgkDdiSetPointerPosition = T_SetPointerPosition;
     init.DxgkDdiSetPointerShape = T_SetPointerShape;
@@ -817,7 +1122,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
                    ((ParamGpu & 0xFF) << 24) | ((ParamFull & 0xFF) << 16) | (ParamKeys << 8) |
                    ((MwSoftVsync & 0xF) << 4) | (MwFlipBlt & 0xF), TRUE);
         MwPramText(TRUE, "Switches ", NULL,
-                   (MwScanoutDirect << 24) | (MwFlipMmio << 20) | (MwRefresh601 << 16) | (MwModeRefreshExact << 12) | (MwSegmentCpuVisible << 8) | (MwRecommendVidPn << 4) | MwSynthEdid, TRUE);
+                   ((MwWddm2 | (MwWddm2Va << 1) | (MwWddm2Stubs << 2)) << 24) | (MwFlipMmio << 20) | (MwRefresh601 << 16) | (MwModeRefreshExact << 12) | (MwSegmentCpuVisible << 8) | (MwRecommendVidPn << 4) | MwSynthEdid, TRUE);
         /* Wall clock (Unix seconds), so a saved \WINPRAM.BIN can be matched to the boot that wrote it. */
         KeQuerySystemTimePrecise(&now);
         MwPramText(TRUE, "UnixTime ", NULL, (ULONG)(now.QuadPart / 10000000LL - 11644473600LL), TRUE);

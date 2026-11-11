@@ -23,7 +23,7 @@ EVT_WDF_DEVICE_D0_ENTRY           AudEvtD0Entry;
 EVT_WDF_DEVICE_D0_EXIT            AudEvtD0Exit;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP    AudEvtDeviceCleanup;
 
-#define AUD_DRIVER_VERSION "1.0.1.11"
+#define AUD_DRIVER_VERSION "1.0.3.7"
 
 static AUD_CONFIG g_Cfg;
 
@@ -55,21 +55,41 @@ static VOID AudReadConfig(_In_ WDFDRIVER Driver)
         { L"Stereo",     FIELD_OFFSET(AUD_CONFIG, Stereo) },
         { L"KsOverride", FIELD_OFFSET(AUD_CONFIG, KsOverride) },
         { L"DefaultMode", FIELD_OFFSET(AUD_CONFIG, DefaultMode) },
+        { L"RcvSlotReg", FIELD_OFFSET(AUD_CONFIG, RcvSlotReg) },
+        { L"RcvAtten",   FIELD_OFFSET(AUD_CONFIG, RcvAtten) },
+        { L"SpkAtten",   FIELD_OFFSET(AUD_CONFIG, SpkAtten) },
+        { L"RcvGain",    FIELD_OFFSET(AUD_CONFIG, RcvGain) },
+        { L"SpkGain",    FIELD_OFFSET(AUD_CONFIG, SpkGain) },
+        { L"CodecEnable", FIELD_OFFSET(AUD_CONFIG, CodecEnable) },
+        { L"JackTone",   FIELD_OFFSET(AUD_CONFIG, JackTone) },
+        { L"HpRoute",    FIELD_OFFSET(AUD_CONFIG, HpRoute) },
+        { L"HpMaster",   FIELD_OFFSET(AUD_CONFIG, HpMaster) },
+        { L"MicGain",    FIELD_OFFSET(AUD_CONFIG, MicGain) },
     };
     WDFKEY         Key;
     UNICODE_STRING Name;
     ULONG          V;
     ULONG          I;
 
-    /* 1.0.2.0: hardware stages ON when the value is absent (stage D, the S10e configuration that played through the
-     * loudspeaker - notes/d8-audio-win-a5.md); A8 had them off for the test harness. The INF writes the same. */
-    g_Cfg.AmpInit    = 1;
-    g_Cfg.AmpEnable  = 1;
-    g_Cfg.AboxEnable = 1;
+    g_Cfg.AmpInit    = 0;   /* A8: hardware stages off unless the tester sets them (Exynos9820Audio.h AUD_CONFIG) */
+    g_Cfg.AmpEnable  = 0;
+    g_Cfg.AboxEnable = 0;
     g_Cfg.HwVolume   = 0;
     g_Cfg.Stereo     = 0;
     g_Cfg.KsOverride = 1;
     g_Cfg.DefaultMode = 1;
+    g_Cfg.RcvSlotReg  = 0xFFFFFFFF;
+    /* Balance baseline by ear (user, 2026-10-16, S10eSpeakerTrim): earpiece analog gain 12 (+2 dB over the boot #99 0x0A),
+       loudspeaker 0x0A with 5 dB digital attenuation. Max gain AmpI2c.c AMP_GAIN_MAX. Same values = 0 dB in the app. */
+    g_Cfg.RcvAtten    = 0;
+    g_Cfg.SpkAtten    = 40;
+    g_Cfg.RcvGain     = 12;
+    g_Cfg.SpkGain     = 0x0A;
+    g_Cfg.CodecEnable = 0;
+    g_Cfg.JackTone    = 0;
+    g_Cfg.HpRoute     = 1;
+    g_Cfg.MicGain     = MIC_GAIN_DEFAULT;
+    g_Cfg.HpMaster    = 1;   /* ABOX-master BCLK never reached the codec (FLL2 no lock, 1.0.1.25-31) */
 
     if (!NT_SUCCESS(WdfDriverOpenParametersRegistryKey(Driver, KEY_READ, WDF_NO_OBJECT_ATTRIBUTES, &Key))) {
         return;
@@ -83,6 +103,27 @@ static VOID AudReadConfig(_In_ WDFDRIVER Driver)
     }
 
     WdfRegistryClose(Key);
+}
+
+/* Parameters\MicTest, read at every hardware start (a device restart re-runs PrepareHardware but not DriverEntry) and
+   set back to 0 BEFORE the test runs: one-shot, so a test that hangs or crashes cannot repeat at every boot. */
+static ULONG AudTakeMicTest(VOID)
+{
+    WDFKEY         Key;
+    UNICODE_STRING Name;
+    ULONG          V = 0;
+
+    if (!NT_SUCCESS(WdfDriverOpenParametersRegistryKey(WdfGetDriver(), KEY_READ | KEY_SET_VALUE, WDF_NO_OBJECT_ATTRIBUTES,
+                                                       &Key))) {
+        return 0;
+    }
+    RtlInitUnicodeString(&Name, L"MicTest");
+    if (NT_SUCCESS(WdfRegistryQueryULong(Key, &Name, &V)) && V != 0 &&
+        !NT_SUCCESS(WdfRegistryAssignULong(Key, &Name, 0))) {
+        V = 0;   /* could not clear it: do not run */
+    }
+    WdfRegistryClose(Key);
+    return V;
 }
 
 _Use_decl_annotations_
@@ -169,6 +210,18 @@ NTSTATUS AudEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     if (!NT_SUCCESS(Status)) {
         return Status;
     }
+    Status = WdfWaitLockCreate(WDF_NO_OBJECT_ATTRIBUTES, &Dev->CodecLock);
+    if (!NT_SUCCESS(Status)) {
+        return Status;
+    }
+    Status = WdfWaitLockCreate(WDF_NO_OBJECT_ATTRIBUTES, &Dev->CodecShareLock);
+    if (!NT_SUCCESS(Status)) {
+        return Status;
+    }
+    Status = WdfWaitLockCreate(WDF_NO_OBJECT_ATTRIBUTES, &Dev->MicLock);
+    if (!NT_SUCCESS(Status)) {
+        return Status;
+    }
 
     ACX_DEVICE_CONFIG_INIT(&DevCfg);
     Status = AcxDeviceInitialize(Device, &DevCfg);
@@ -177,9 +230,18 @@ NTSTATUS AudEvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
         return Status;
     }
 
-    Status = AudRenderCircuitCreate(Device, Dev);
+    Status = AudRenderCircuitCreate(Device, Dev, 0);
     AudLog(Dev->Log, "render circuit \"Speaker0\": %08lX%s\r\n", Status,
            Dev->Cfg.HwVolume ? " (volume + mute elements on the amps)" : " (volume + mute elements in software)");
+    if (NT_SUCCESS(Status) && AudHeadphoneEndpoint(Dev)) {
+        Status = AudRenderCircuitCreate(Device, Dev, 1);
+        AudLog(Dev->Log, "render circuit \"Headphone0\": %08lX\r\n", Status);
+    }
+    if (NT_SUCCESS(Status) && AudMicEndpoint(Dev)) {
+        NTSTATUS MicStatus = AudCaptureCircuitCreate(Device, Dev);   /* optional: a failure only costs the mic */
+
+        AudLog(Dev->Log, "capture circuit \"Microphone0\": %08lX\r\n", MicStatus);
+    }
     return Status;
 }
 
@@ -268,17 +330,55 @@ NTSTATUS AudEvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Resources, WDFCMRE
             AudLog(Dev->Log, "AmpInit skipped (Parameters\\AmpInit = 0)\r\n");
         }
     }
+    if (Dev->Cfg.CodecEnable) {
+        Status = CodecInit(Dev);
+        AudLog(Dev->Log, "CodecInit %08lX\r\n", Status);
+        AudLogFlush(Dev->Log);
+        if (NT_SUCCESS(Status)) {
+            Status = CodecSetup(Dev);
+            AudLog(Dev->Log, "CodecSetup %08lX\r\n", Status);
+            AudLogFlush(Dev->Log);
+        }
+        if (NT_SUCCESS(Status)) {
+            Status = CodecJackStart(Dev, Device);
+            AudLog(Dev->Log, "CodecJackStart %08lX\r\n", Status);
+        }
+        if (NT_SUCCESS(Status) && Dev->Cfg.JackTone != 0) {
+            Status = CodecTone(Dev, min(Dev->Cfg.JackTone, 5000u));
+            AudLog(Dev->Log, "CodecTone %08lX\r\n", Status);
+        }
+        Dev->MicGain = min(Dev->Cfg.MicGain, MIC_GAIN_MAX);
+        Dev->MicWdmaIdx = 1;   /* SIFM0 feeds WDMA1 (notes/d8-mic.md, device-proven 1.0.2.5) */
+        if (NT_SUCCESS(Status) && Dev->AboxAlive) {
+            ULONG MicTestMs = AudTakeMicTest();
+
+            if (MicTestMs != 0) {
+                MicSelfTest(Dev, MicTestMs);   /* diagnosis (notes/d8-mic.md) */
+            }
+        }
+    }
 
     Status = STATUS_SUCCESS;
-    if (Dev->Render == NULL) {
-        /* run audB2 (bugcheck D1 on pnputil /restart-device): ReleaseHardware's AcxDeviceRemoveCircuit deletes the
-           circuit, so a restart must create a new one (ACX AudioCodec sample: create + add in PrepareHardware) */
-        Status = AudRenderCircuitCreate(Device, Dev);
-        AudLog(Dev->Log, "render circuit re-created: %08lX\r\n", Status);
-    }
-    if (NT_SUCCESS(Status) && !Dev->CircuitAdded && Dev->Render != NULL) {
-        Status = AcxDeviceAddCircuit(Device, Dev->Render);
-        Dev->CircuitAdded = NT_SUCCESS(Status);
+    for (I = 0; I < AUD_EP_COUNT && NT_SUCCESS(Status); I++) {
+        PAUD_ENDPOINT Ep = &Dev->Ep[I];
+
+        if ((I == 1 && !AudHeadphoneEndpoint(Dev)) || (I == AUD_EP_MIC && !AudMicEndpoint(Dev))) {
+            continue;
+        }
+        if (Ep->Circuit == NULL) {
+            /* run audB2 (bugcheck D1 on pnputil /restart-device): ReleaseHardware's AcxDeviceRemoveCircuit deletes the
+               circuit, so a restart must create a new one (ACX AudioCodec sample: create + add in PrepareHardware) */
+            Status = (I == AUD_EP_MIC) ? AudCaptureCircuitCreate(Device, Dev) : AudRenderCircuitCreate(Device, Dev, I);
+            AudLog(Dev->Log, "render circuit %lu re-created: %08lX\r\n", I, Status);
+        }
+        if (NT_SUCCESS(Status) && !Ep->Added && Ep->Circuit != NULL) {
+            Status = AcxDeviceAddCircuit(Device, Ep->Circuit);
+            Ep->Added = NT_SUCCESS(Status);
+        }
+        if (I == AUD_EP_MIC && !NT_SUCCESS(Status)) {
+            AudLog(Dev->Log, "Microphone0 not added (%08lX) - the render endpoints stay\r\n", Status);
+            Status = STATUS_SUCCESS;   /* optional endpoint */
+        }
     }
 
     AudLog(Dev->Log, "PrepareHardware done: hardware %s, ABOX %s, circuit %08lX\r\n", Dev->Mapped ? "mapped" : "NOT mapped",
@@ -291,20 +391,26 @@ _Use_decl_annotations_
 NTSTATUS AudEvtReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
 {
     PAUD_DEVICE_CONTEXT Dev = AudGetDeviceContext(Device);
+    ULONG               I;
 
     UNREFERENCED_PARAMETER(Translated);
     PAGED_CODE();
 
-    if (Dev->CircuitAdded) {
-        (VOID)AcxDeviceRemoveCircuit(Device, Dev->Render);
-        Dev->CircuitAdded = FALSE;
-        Dev->Render       = NULL;   /* deleted by the remove; PrepareHardware creates a new one */
+    for (I = 0; I < AUD_EP_COUNT; I++) {
+        if (Dev->Ep[I].Added) {
+            (VOID)AcxDeviceRemoveCircuit(Device, Dev->Ep[I].Circuit);
+            Dev->Ep[I].Added   = FALSE;
+            Dev->Ep[I].Circuit = NULL;   /* deleted by the remove; PrepareHardware creates a new one */
+            Dev->Ep[I].Jack    = NULL;
+        }
     }
 
     if (Dev->Mapped) {
         AmpRelease(Dev);    /* amps off before their clocks go */
         AboxRelease(Dev);   /* stop + restore every stage-1 register */
     }
+    CodecJackStop(Dev);
+    CodecRelease(Dev);
     AudUnmap(Dev);
     Dev->AboxReady = FALSE;
     Dev->AboxAlive = FALSE;

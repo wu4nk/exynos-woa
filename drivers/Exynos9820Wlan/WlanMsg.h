@@ -98,6 +98,18 @@ _IRQL_requires_(PASSIVE_LEVEL)
 ULONG WlanMsgConnect(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_ const WLAN_CONNECT *C,
                      _Out_ PWLAN_ASSOC_INFO A);                            /* JOIN_*: associated + flowring */
 _IRQL_requires_(PASSIVE_LEVEL)
+ULONG WlanMsgAmpduTid(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_ UCHAR Tid, _In_ BOOLEAN Enable);  /* MSG_* */
+ULONG WlanMsgScbAuthorize(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_reads_(6) const UCHAR *Peer);  /* MSG_* */
+ULONG WlanMsgDump(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_z_ PCSTR Section);  /* MSG_* */
+VOID  WlanMsgCounters(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_z_ PCSTR When);  /* "[cnt]" lines */
+ULONG WlanMsgStaInfo(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_reads_(6) const UCHAR *Peer);  /* "[sta]" */
+VOID  WlanMsgBw40Experiment(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R);  /* debug "bw40" */
+VOID  WlanMsgSetCountry(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_reads_(2) PCSTR Cc);  /* debug */
+ULONG WlanMsgSetIntVar(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_z_ PCSTR Name, _In_ ULONG Value);
+ULONG WlanMsgGetVarRaw(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_z_ PCSTR Name);  /* "[var]" line */
+ULONG WlanMsgGetIntVar(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_z_ PCSTR Name, _Out_ PULONG Value);
+ULONG WlanMsgSetPm(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _In_ ULONG Mode, _Out_ PULONG Old);  /* MSG_* */
+ULONG WlanMsgGetRate(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R, _Out_ PULONG Rate500k);  /* MSG_* */
 ULONG WlanMsgDisconnect(_Inout_ PWLAN_MSG_CTX M, _Inout_ PWLAN_REPORT R);  /* MSG_* */
 /* CCMP key (16 B): Ea != NULL = pairwise for that peer (index 0), Ea == NULL = group key Index (primary), Rsc =
    6-byte receive sequence counter or NULL. MSG_*. */

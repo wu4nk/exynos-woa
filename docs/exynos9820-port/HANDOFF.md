@@ -1369,3 +1369,713 @@ themselves). Bluetooth D4c research + skeleton imported (parkinglot/bluetooth-d4
 **Lessons:** marker files in C:\S10eTmp (audswap/gpumode2/audstage.flg) survive a crashed pass - check marks; a
 killed ping returned to collect.cmd -> holdrestart loops; installs reset INF Parameters (stage after add); clean
 restarts save PRAM to WINPRAM-RESTART.BIN; never fsck NTFS from TWRP (read-only mounts are fine).
+
+**§33 update (2026-10-13 ~23:35).** BOOT = **#115** (s10e-artifactsoot115-wlanfix-v2.img, 358e52bd…: #114 recipe
++ 9ffee79 - the stay.flg WINPRAM save no longer zeroes the progress page; that zeroing hid XHC0/WLAN/GPU0 from
+Windows after every hard reset). ESP: extra.cmd = extra-wifi-gfx.cmd (extra-wifi-state snapshot, then gfxperf),
+stay.flg, gpuull.flg + bench.flg, noaudio.flg; BCD = original (KD off). Next: validate WiFi on #115
+(notes/m12-wifi-wificx.md), then the power-menu "reboot to TWRP" failure and slow TWRP start, then GpuEnable 1.
+
+## 37. Restart point (2026-10-14 ~03:50 local, unattended; goal: GPU smooth in Windows)
+**Phone:** BOOT = **#116** (s10e-artifacts/boot116-fb10m-v2.img 740d97fe…: #115 + 10 MiB framebuffer reservation,
+a1dd2e2). KMD **MaliG76Wddm 1.0.36.1** swapped into the DriverStore (tools/phone/kmd-deploy.sh; previous .sys kept as
+C:\S10eTmp\kmd-prev). UMD in System32 = mali-umd-0052. Parameters GpuEnable 1 / FullAdapter 1, DWM on Panfrost.
+ESP: extra.cmd = drivers/S10eDiag/esp/extra-gpu-h3.cmd, gpu\restride.flg set (arms Parameters\ScanoutStride 1088 for
+the NEXT boot), gpu\{gpu,full,bench}.flg, noaudio.flg. Run h3l (03:35, baseline #116 + KMD 36) in flight.
+**H4b plan (notes/gpu-hw-path.md has every step):** h3m = first boot with ScanoutStride 1088 + UMD 0053 (put in ESP
+gpu\umd-new\): the KMD widens DPU G0's source line to 4352 B (RestrideStep 0 in trace.reg = done), the UMD blits DWM's
+frame into the scan-out on the GPU (tlog "scanout:" lines). Check: RestrideStep, tlog, DWM fps in summary, webcam.
+Back out: delete gpu\restride.flg (next-but-one boot is GOP layout again), MALIKM_NO_SCANOUT=1, or the old UMD.
+**Then:** windowed D3D presents never reach DWM (d3dtri cube: 4 DWM frames per 10 s), tex test crash (WER dump armed),
+DVFS/clock + thermal, stability (H5).
+
+## 38. Restart point (2026-10-14 ~05:30 local, unattended; goal: GPU smooth in Windows)
+**Phone:** BOOT #116 (10 MiB fb reservation). KMD **MaliG76Wddm 1.0.37.1** in the DriverStore (CddDwmInterop cap;
+C:\S10eTmp\kmd-prev = 1.0.36.1). UMD **mali-umd-0061** in System32 (Mesa patches 0053-0061). Parameters: GpuEnable 1,
+FullAdapter 1, ScanoutStride 1088 (re-armed every boot by extra-gpu-h3 while ESP gpu\restride.flg exists).
+ESP extra.cmd = drivers/S10eDiag/esp/extra-gpu-h3.cmd (md5 293fe153..., cubes in blt + flip model, ETW cube trace,
+gdi phase), gpu\d3dtri.exe = d3dtri-5.
+**State (notes/gpu-hw-path.md, runs h3l-h3v):** zero-copy scan-out works (KMD re-stride + GPU blit present): DWM ~41
+fps at logon, keeps up with a 21/s GDI load; windowed D3D apps reach the panel through the GDI hand-off (0061) at ~30
+fps for a 540x1140 window; Explorer's multi-device Render failures fixed (0060, binding + screen per device); tex
+sampling test PASS (0058); 0 GPU faults in every run. Tools: tools/phone/kmd-deploy.sh, umd-deploy.sh, pull-run.sh.
+**Next:** visual confirmation of the cube on the webcam; readback cost of the GDI hand-off for big windows (CPU-cached
+staging); DVFS/clock + thermal; long soak (H5); the open question why DXGI windowed presents never reach DWM natively.
+
+## 39. Restart point (2026-10-14 ~12:15 local, unattended after an interactive look by the user; goal: GPU smooth)
+**Phone (interactive config, user's request "no debugging modes or auto reboots or your special flags"):** BOOT =
+s10e-artifacts/boot116-gpuon-nowdt.img (0c728578…) = HEAD firmware built with the two build-only defines
+BEYOND0LTE_WINDOWS_WATCHDOG **0** and BEYOND0LTE_GPU_POWER_ON **1** (both reverted in the tree after the build; the
+committed defaults are 1 and 0 - **any rebuild for GPU work must set GPU_POWER_ON 1**, the first nowdt image forgot it
+and Windows ran on Basic Render). ESP: stay.flg, extra.cmd = extra-ssh-install.cmd (idempotent: sshd + GPU Check copy),
+noaudio.flg removed (audio + HW GPU coexist), WINRUN.FLG left by the firmware. MALIKM_TGSI_DIR removed, BCD debug off.
+KMD **1.0.38.1** (DriverStore; .37 kept beside it and in C:\S10eTmp\kmd-prev), UMD **mali-umd-0064** (System32;
+*-0063.dll kept beside). Parameters GpuEnable 1, FullAdapter 1, ScanoutStride 1088 (persists in the registry).
+**Remote access:** `ssh s10e` (PC key ~/.ssh/s10e_ed25519, user S10e = admin, hotspot only; notes/phone-ssh.md).
+Big files: `sftp` (`get /C:/path`), not scp (stops at 200 KB). Writes into the DriverStore need SYSTEM: one-shot
+scheduled task (C:\S10eTmp\kmdswap.cmd pattern). UMD/KMD can be swapped live by RENAMING the in-use file first.
+Desktop-session programs: run-as-user.ps1 (C:\S10eTmp). Reboot: `ssh s10e shutdown /r /t 5` (stay.flg -> back to
+Windows). Screen: s10ediagx.exe dumpmmio 0xCA000000 9922560 + pitch 4352.
+**Fixed today:** panel shear (H4b never latched: KMD 38 commits GLOBAL|WIN0-5, verifies the latched DPU_DMA copy at
++0x810, LatchedBy 1); Direct2D text/icons/bitmaps (Mesa 0064: TGSI texel buffers + untyped VS inputs); Settings and
+the taskbar render fully (scan-out dumps). User-facing: GPU Check.exe on the desktop.
+**Open, in order:** memory (dwm 334 MB / explorer 346 MB private 2 min after boot - leak or overhead? memwatch
+running), a soak with 0064/38, display rotation (KMD identity-only), GDI hand-off cost, thermal (notes/thermal-research.md
+stage 0), brightness (notes/brightness-research.md), stereo speaker (Parameters\Stereo 1, untested), slow TWRP start.
+To go back to unattended reboot loops: flash boot116-fb10m-v2.img (watchdog 1), rm stay.flg, extra.cmd = a run script.
+
+## 40. Restart point (2026-10-14 ~17:10 local, unattended; user priorities: brightness, then landscape, then thermals)
+- **Phone state:** firmware `s10e-artifacts\boot116-gpuon-nowdt-d9.img` (1ed69ae7..., = HEAD 3d32793 + build-only
+  WINDOWS_WATCHDOG 0 / GPU_POWER_ON 1; adds read-only UEFI DSIM snapshots) on by-name/boot (readback verified);
+  Windows 22631.6199 (KB5068865 installed itself 15:45; **Windows Update now disabled**, `tools/phone/wuoff.cmd`,
+  notes/phone-ssh.md); KMD **1.0.42.2** (sha256 3CED0E5B..., 41 kept as C:\S10eTmp\kmd41.sys, also DriverStore
+  MaliG76Wddm.prev = 42.1); UMD 0066; S10eDiag with boot DSIM snapshot (956448f); s10ediag CLI with `sample` + PA guard
+  at C:\S10eTmp\s10ed3.exe (System32 copy is old). OfferRotation 0. Screen saver blank 120 s.
+- **Brightness works** (MILESTONES G14 doing): root cause = sboot leaves DECON_F in VIDEO operation mode while DSIM is in
+  command mode -> DSIM never reaches a frame boundary, DCS commands never leave. KMD panel.c switches DECON to command
+  mode (as Samsung's decon_reg_init_probe does), then the brightness interface v2 maps 0-100 % to AOR (B1) between
+  sboot's 0x0014 and 0x08D4. Windows sees it (WmiMonitorBrightness Active, levels set 100/30/75 reach the panel).
+  notes/brightness-research.md D6-D10 + KMD sections.
+- In flight: idle dim. powercfg VIDEODIM 60 s, dimmed 30 % (relative), display-off policy 3c0bc021 changed 0 -> 600 s
+  (sleep/hibernate policies untouched); dim had not fired before the policy change; post-reboot retest running.
+- Next order: (1) user visual check of the slider + 3rd boot -> G14 PASS; (2) idle dim result; (3) panel off/on for
+  display-off (DCS 28/10, 11/29) in MwSetPowerState - then the screen saver can go; (4) hardware brightness keys
+  (later), light sensor (much later); (5) landscape (notes/gpu-hw-path.md rotation attempts); (6) thermals.
+- Rules learned today: cube fps is void if scrnsave.scr ran (real ~28-30); check frozen screens yourself (dump, launch,
+  dump + DSIM status); cmd chains over SSH: run steps as separate ssh calls.
+
+## 41. Restart point (2026-10-14 ~20:25 local, session end; user: "good enough, mark this as done")
+- **Done this session (after §40):** alpha1 + alpha2 tags (local, not pushed); brightness fade (KMD 1.0.43) and boot
+  brightness hand-off (UEFI sets the last Windows level, 50 % cold; KMD 1.0.44.1 reads/writes WINPRAM progress words
+  [6] 'BR' / [7] 'A0'); landscape/rotation (Mesa 0067 stale GPU-presented flag; 0068 holds the scan-out 700 ms after an
+  orientation change; KMD Parameters\OfferRotation = 1 on the phone, committed default still 0); touch driver
+  6.0.5058.6 (event-count mask, no all-up on SPB errors, precise scan time; user: "feels perfect"); tablet posture
+  (PriorityControl\ConvertibilityEnabled 1) + touch keyboard (TouchKeyboardTapInvoke 2, IE UseSWRender 1 = EdgeHTML
+  software render works around the composition frame-gate hang); s10etap synthetic touch + s10etouchlog test UI;
+  Windows Update disabled; boot screen (shim opaque-black fill, SEC + DXE draw the EXYNOS WOA / NTDEV / "Powered by
+  Windows" splash; checkpoint bands, BDS countdown + GraphicsConsole removed); **TWRP patched** (one-time recovery
+  write approved by the user: /data not auto-mounted, start 133 s -> 36 s; original in s10e-artifacts/twrp).
+- **Phone state:** boot = s10e-artifacts/boot116-gpuon-nowdt-clean3.img (d85b7391..., HEAD 3883ebf + build-only
+  WINDOWS_WATCHDOG 0 / GPU_POWER_ON 1); recovery = twrp/recovery-nodata.img (c7b198c0...); KMD 1.0.44.1 (4fae4048...,
+  .prev = 1.0.43.1, C:\S10eTmp\kmd41.sys); UMD 0068 (System32, older *-00NN.dll kept); touch 6.0.5058.6 (touch5.sys =
+  previous); S10eDiag fa76c6af...; MALIKM_TGSI_DIR removed; idle dim VIDEODIM 60 s / 30 % set but never fires (parked);
+  display-off policy 0; screen saver blank 120 s.
+- **Open / next candidates:** thermals (user's next big item; no clock increases before it), composition frame-gate
+  hang (EdgeHTML CanPaintNow / Settings / Terminal; notes/touch-keyboard.md), ShellExperienceHost gets softpipe in its
+  AppContainer, ~1 s UFS read stall under load (notes/m8-ufs-hc.md), touch SPB >250 ms stalls, Defender real-time
+  protection (user to switch off via Windows Security - Tamper Protection), stereo/earpiece speaker, Android-like shell
+  (parkinglot/android-like-shell.md), make OfferRotation default 1 in the INF/driver.
+
+## 42. Restart point (2026-10-15 ~01:40 local, unattended; goal: all 8 cores in Windows; READ FIRST: notes/m14-m4-summary.md)
+- **State:** the M4 big cores are NOT working yet. Windows starts all 8 (KeStartAllProcessors returns, all answer IPIs),
+  then any boot where Windows RUNS ON an M4 dies within ~1 min (two M4s: silent all-CPU hang, "HOST cannot
+  communicate"; one M4 (PARK 0x7E): fast reset loop every ~69 s, no bugcheck). Powered-but-unused M4s are fine
+  (the "not offered" runs were clean harness restarts - see the CORRECTION entry in notes/m14-smp.md).
+- **Ruled out (with data):** GPU KMD, audio (inconclusive), BIG 520 MHz DVFS, WFE wake (Windows spins with YIELD),
+  CNTFRQ (26 MHz on all), GIC CPU interface numbering (M4 = 6/7), LLC (off by default; enabling it like Linux hangs
+  Windows at KD init), cache geometry (CTR/DCZID identical), cached snoop coherency (100k ping-pongs, 0 misses), DVM
+  broadcasts on the M4 (UEFI), CPU_ON history (CPU_OFF works). Remaining ISA gaps on the M4: LRCPC, HPDS2.
+- **Tools built this session (committed):** kdrun fixed and extended (Kits dbgeng by path, INFINITE wait + timer thread,
+  shared log, initial-break commands file, 'every' mode, per-break commands file, exit after TWRP reset);
+  tools/phone/watchall.sh (state-change monitor; address in gitignored local/phone.env); park-stub diagnostics behind
+  flags: DVM self-test, CNTFRQ, poll counter, GIC if mask, ID registers, WFI / CPU_OFF sleep modes, cached coherency
+  ping-pong; BEYOND0LTE_SMP_OFFER_MASK; TouchPower BIG 520 MHz FREQ_REQ (default on), SCI LLC setup (default off),
+  UEFI soak (default off). All test flags default to the old behaviour; defaults: PARK 0x3E (6 cores).
+- **Phone:** boot = s10e-artifacts/boot-m4one1.img or later test image (KD image family: WATCHDOG 0, GPU_POWER_ON 1,
+  USB_KD_DEVICE 1); BCD debug ON (KDNET USB, port 50005, key 1.2.3.4). ESP: stay.flg restored; nogpu.flg and
+  noaudio.flg ADDED this session (remove for normal use). Daily image before this work: boot116-gpuon-nowdt-clean3
+  (d85b7391) - restoring it needs BCD debug off (or a KD-capable image).
+- **Next candidates:** what resets the SoC quickly after an M4 fails (Samsung uH at EL2 / EL3 - read
+  reset_reason_extra_info right after a one-M4 death, without an intermediate reset); M4 under Windows with fewer
+  features (e.g. TCR/SCTLR bits Windows sets from boot-CPU ID registers: HPD/HWU from HPDS2, hardware DBM/AF);
+  KD bp on processor 6 exception paths (KiSystemServiceHandler / KiSErrorException / KiUndefinedInstructionException).
+- **§42 update (01:52):** ONE M4 offered (PARK 0x7E) also dies: a fast reset loop (~69 s period, KD "restarted
+  without notifying the debugger"), with stopping breakpoints on every Windows fatal path (SError/FIQ/fatal
+  exception/HAL reboot/KeBugCheck2/WHEA) never hit => the reset is external to Windows (EL3/uH). 2 MiB guard
+  reservations around every carve-out and DRAM edge do not help (prefetch theory out). M4 ID registers: CTR/DCZID
+  equal to the A55; missing LRCPC and HPDS2. Phone restored: boot-kd6.img (6 cores), ESP stay.flg only.
+  EL2 trap timing done (m4trap1): uH traps none of TTBR0/TCR/SCTLR/MAIR/CONTEXTIDR on any core. Next: read
+  Samsung debug-snapshot memory (0xFD900000.., carved out) from UEFI after an M4 death for EL3's register dump;
+  find which Windows-programmed EL1 setting differs on the M4 (TCR HPD/HWU from HPDS2, hardware DBM/AF).
+
+## 43. Restart point (2026-10-15 ~12:20 local; M4 work PARKED by the user; goal "all 8 cores" not reached)
+
+- **Read first:** notes/m14-m4-summary.md (updated), then notes/m14-smp.md from "## PC sampler" to the end.
+  A ready-made brief for another model: notes/m14-m4-brief-other-model.md.
+- **Established today (all with runs in m14-smp.md):**
+  - CoreSight/EL3 view closed: DBGAUTHSTATUS 0xAA on all cores; EDPCSR reads 0; s2d/arraydump empty. The reset-surviving
+    EDPRSR timeline shows every core powered, none reset or halted, at the death.
+  - Windows uses hardware Access flag (TCR.HA 1); Samsung's Linux never does (CONFIG_ARM64_HW_AFDBM off). With HA forced
+    off on every core from boot (BEYOND0LTE_NT_NO_HWAF) Windows runs fine on 6 cores, but 8 cores STILL die -> not the cause.
+  - A busy cached M4 (stub flag 6: copy loop + DC CIVAC / IC IALLUIS / TLBI VMALLE1IS) runs 16+ min next to a healthy
+    6-core Windows -> the trigger needs Windows running ON the M4. Untested: interrupts/WFI with IRQs unmasked on the M4,
+    EL0 traffic, Windows' MMU attributes.
+  - Timer PPIs verified from the stock DT (GSIV 29/30/27/26, 26 MHz, Linux uses the physical timer).
+- **Committed today (switches default off unless noted):** PC sampler (stub flag 5, BEYOND0LTE_PARK_PCSAMPLE_MASK,
+  \PCSAMP.BIN, tools/phone/pcsamp.py); CoreSight debug bases in Exynos9820.h; BEYOND0LTE_NT_NO_HWAF (BootLogDxe);
+  cached stress (stub flag 6, BEYOND0LTE_PARK_STRESS_MASK); **safeguard ON by default: BEYOND0LTE_STAY_MAX_DEATHS 2**
+  (with stay.flg, the 2nd unexplained Windows death in a row goes to TWRP; verified on device). The RAM-dump idea was
+  dropped at the user's request (prep script reverted).
+- **Phone (parked):** boot = boot-kd6.img (7810a0bd, 6 cores, KD image, WATCHDOG 0), ESP stay.flg. BCD bootdebug was
+  turned ON today for a winload test; it is switched back OFF as part of parking (see the update line below).
+- **Open decisions for the user:** the phone sshd firewall rule only allows 192.168.137.0/24 (old hotspot) - SSH from the
+  home Wi-Fi is refused; widening it was blocked and needs the user. Test images built from now on include the safeguard;
+  boot-kd6.img predates it and has the watchdog off (a hang there stays dark until a force restart).
+- **Next order when resumed:** stub flag 7 = flag-6 stress + EL1 physical timer IRQ (GSIV 30) through the M4's own GIC CPU
+  interface + WFI with IRQs unmasked (details in the brief); soak with Windows on the 6 small cores. Dies -> bisect timer /
+  WFI / SGIs. Survives -> EL0 round trips, then Windows' MMU attributes.
+- **§43 update (12:24):** parked state reached: boot-kd6.img (7810a0bd) flashed, BCD bootdebug back OFF (bcdedit output
+  "bootdebug No", kernel debug still Yes as the KD image needs), extra.cmd back to the ssh-install original, ESP
+  stay.flg on, rebooted into Windows.
+
+## 44. Restart point (2026-10-16 ~11:55 local; Wi-Fi throughput DONE per user; next session: WDDM2 rewrite)
+**Committed (tree clean):** Exynos9820WlanCx 1.0.10.26 installed on the phone (c446aa1 = the fix: firmware "mfp" set from
+our RSN IE before the join - the PMF mismatch had blocked Block Ack with PMF-capable APs; d098f68 = last). Measured:
+2.4 GHz Home-X 34-41 Mbit/s (was 4-8), 5 GHz 221-282 Mbit/s single stream at ~23 % CPU. Diagnostics: Parameters\DbgDump
+(section | var: | set: | pm: | stainfo | cnt | bw40 | country:XX), counters/macstat80 every ~1 min. Details:
+notes/wifi-throughput.md. BT 1.0.0.16 unchanged. alpha4 tag = baa0caf.
+**Open, not in flight:**
+- **Silent freeze every boot at ~2832 s (47.2 min) after the SoC reset** (13 so far, predicted to the second; tracks the
+  raw counter, not Windows boot time; NOT WlanCx (froze with it removed), NOT BT, NOT a memory leak, NOT the 2^36 counter
+  wrap; KD break-in fails - the hang takes the USB/KDNET path too). notes/thermal-clocks.md. Next: boot image with the m14
+  EL3 PC sampler or the DSS/scan2dram dump to see the hung cores. Until then every session dies after ~47 min.
+- 40 MHz in 2.4 GHz: this fw keeps HT cap 20 MHz (bw_cap, mimo_bw_cap, country tried); RSDB wlc1 untested.
+- Phone leftovers: firewall rule S10eUdpTest (UDP 9998), schtasks band5/band24/wifiexp/wlanswap (one-shot, harmless).
+
+## 45. Restart point (2026-10-16 ~19:30 local; audio session: speakers, trim app, 3.5 mm jack DONE)
+
+Committed and device-verified this session (notes/d8-audio-speakers-20261016.md, notes/d8-jack-windows.md):
+- Exynos9820Audio **1.0.1.36** installed. Speakers: both amps at 0 dB digital, per-amp analog gain; balance set by ear
+  is the default (earpiece gain 12, loudspeaker atten 40 = -5 dB). Parameters RcvAtten/SpkAtten/RcvGain/SpkGain.
+- tools/S10eSpeakerTrim (C:\Program Files\S10eSpeakerTrim + Start menu "S10e Speakers"): live trim over the private KS
+  property AUDPROPSETID_SpeakerTrim (AudControl.h, Control.c), works unelevated.
+- 3.5 mm jack: CS47L93 over spi_2 from Windows (Codec.c, pages mapped without _CRS), cs47l92 patch + 32 kHz + FLL1
+  (CodecTone.c), jack detection polled (CodecJack.c), headphone path (CodecHp.c) with the **codec as AIF1 clock
+  master** and ABOX UAIF0 slave (the stock ABOX-master + FLL2 path never locks: AP BCLK not seen by the codec - open,
+  kept behind Parameters HpMaster 0). Separate "Headphones" endpoint (Headphone0) with jack presence; speakers stay
+  listed; per-endpoint volume; Windows restores Headphones as default on replug once chosen. Phone registry:
+  CodecEnable 1 (needed; INF default 0), HpRoute 1, HpMaster 1 (default), Stereo 1, AmpInit/AmpEnable/AboxEnable 1.
+- Driver log keeps the previous load as C:\Windows\System32\LogFiles\Exynos9820Audio-prev.txt.
+- tools/phone/debloat.ps1 run on the phone (OneDrive + Copilot appx + Copilot desktop removed, svchost grouping,
+  27 services disabled) - re-run after any clean reflash. Desktop .cmd launchers removed (desktop.cmd on the ESP).
+- Parking lot: Galaxy Controller (one C# UI for all our drivers; MILESTONES).
+
+Freeze (notes/thermal-clocks.md #16-#19): still every ~47 min; **KDNET debug is OFF in the phone BCD** (left off per
+user) and it still freezes, now at raw ~2791-2802 s instead of 2832 s; the "freeze" is a **fast reset ~7 s after the
+last sample**, not the 82 s watchdog. No scheduled task near 47 min. Next: Samsung reset reason for that path from TWRP;
+EL3 PC sampler / DSS image needs a boot flash (user's call).
+
+Open / next: USB OTG hot-plug (parkinglot/usb-host-hotplug-and-power.md, not started); mic capture endpoint (jack mic
++ DMICs) not started; why the ABOX-master UAIF0 BCLK does not reach the codec.
+
+## 46. Restart point (2026-10-16 ~20:50 local; user goal: WDDM2 + GPU-accelerated UI/browsers/video + HDMI; unattended)
+**Committed:** alpha5 tag (local, 1e5df58). 47-minute reset FIXED: Exynos9820Ufs w38 (25b6e23; w37 minus the
+W31 45-min watchdog-feed ceiling; installed on the phone, validated past raw 2966 s) - notes/thermal-clocks.md.
+**WDDM 2.0 (G15):** physical-mode 2.0 adapter starts (dxdiag "WDDM 2.0"). Load gates: DRIVERCAPS.WDDMVersion 0x2000,
+CalibrateGpuClock + SetStablePowerState (Parameters\Wddm2 = 3), Offset0 on the primary path; handle lookups via
+DxgkCbAcquireHandleData. KMD 1.0.58.1 in the phone's DriverStore (sys 453a6236); WDDMVersion defaults to 0x2000 when
+Wddm2 is on. UMD = Mesa 0069 (residency: paging queue + MakeResident) staged in System32 (maliumd.dll f8821c81,
+previous kept as .prev). In flight: first persistent boot with Parameters\Wddm2 = 3 (set 20:47).
+Rescue: ssh `powershell -File C:\S10eTmp\w2set.ps1 -Wddm2 0 -Reboot`; no ssh -> TWRP -> ESP \S10EDIAG\nogpu.flg.
+Probe tooling (scratchpad): probe7.ps1 (volatile Probe key + restart-device), unprobe.ps1, w2check.ps1, kmdswap.cmd
+(SYSTEM task "kmdswap"), umdswap.cmd, espget.cmd (ESP is mounted at S:), WINPRAM decode = dd + strings (KMD trace
++0x4000, S10eDiag ring +0xA000 has "BC <code>" lines). References cloned to C:\Users\ilya\code\wddm-ref (virtio-rs,
+amdgpu-wddm read-only licence, MS docs + DDI docs).
+**Next:** make DWM compose on the 2.0 adapter (S3/S4), then Terminal tracked fence; G16 chrome://gpu on FL10_0;
+G17 needs D3D11.1 video DDI + FL11_0 in the UMD (notes/gpu-browser-video-research.md); G18 HDMI.
+
+## 47. Restart point (2026-10-16 ~23:10 local; goal WDDM2 + GPU UI/browsers/video + HDMI, unattended)
+**Committed:** KMD 1.0.60.1 (phone: Parameters\Wddm2 = 5 = WDDM 2.0 mixed GpuMmu, DirectFlip = 1) - desktop on the Mali
+via DWM, D3D11 + monitored fences work, HWND flip-model swap chains work. UMD = Mesa 0069-0073 (residency, D3D11_0 ->
+WDDM2_0 UMD DDI at FL 10_0, DXGI 1.4, redirect switch, callback logging); phone has mali-umd-0073 in System32.
+Debug kit: tools/phone/wddm2 (wddm2dbg.sh + README; traces land in traces/, gitignored). Freeze: fixed (UFS w38).
+**Open blocker (S4):** composition swap chains (Windows Terminal, DirectComposition/browsers) need DXGI redirection;
+d3d10umd returned DXGI_STATUS_NO_REDIRECTION - D3D10UMD_REDIRECT=1 fixes the tracked fence, but DWM then loses its
+devices repeatedly while redirected surfaces are live (no failing call of ours) -> redirect OFF by default.
+**Next:** understand DWM's device loss with redirected surfaces from our side (KMD trace of Present/OpenAllocation
+per device, shared-allocation flags, the DXGI Blt/Present DDI path the app takes when redirected); then browsers
+(chrome://gpu, G16), video DDI (G17), HDMI (G18). Notes: notes/gpu-umd-d3d11.md, notes/gpu-wddm2-design.md.
+
+## 48. Restart point (2026-10-16 ~23:55 local; goal WDDM2 + GPU UI/browsers/video + HDMI, unattended)
+**Committed:** G15 S4 reached - Windows Terminal renders natively on the Mali. Mesa 0074 (MSAA, FL 10_1 task F1),
+0075 (shim lists opened = other-process buffers only when the batch uses them, as READS: the DWM device-loss root
+cause), 0076 (DXGI redirection default; D3D10UMD_NO_REDIRECT=1 diagnosis only). Phone: KMD 1.0.60.1 (Wddm2 = 5),
+mali-umd-0076 (maliumd 107bdb1e) in System32, machine env MALIKM_TGSI_DIR on (UMD logs in C:\S10eTmp\tlog;
+`wddm2dbg.sh umdtrace -Off` to stop). New AGENTS.md rules 11 (Windows internals: document in
+notes/skipped-windows-internals.md, don't look), 12 (native only, no per-process flags as solutions), 13 (stuck ->
+MS docs first).
+**G16 state:** Edge's GPU process needs GLES3 from ANGLE = D3D FL 10_1 (FL 10_0 -> ES2 -> GPU process exits). Plan
+F1-F5 in notes/gpu-umd-d3d11.md; F1 done (d3dmsaa passes). Diagnostic run with ANGLE allowES3OnFL10_0 (not a solution)
+got past Skia after F1; its later crash was the tracked fence, now fixed by 0076.
+**Next:** F2 SM 4.1 opcodes (LOD, GATHER4, SAMPLE_POS, SAMPLE_INFO) in ShaderParse/ShaderTGSI, F3 cube arrays, F4
+per-RT blend check, F5 report pipeline level 10_1, then Edge with no flags (tools/phone/wddm2/browsertest.ps1). Then
+G17 video DDI, G18 HDMI. Follow-ups: d3dmsaa over all RT formats x 4/8/16 (R32/R16 families answered from depth).
+
+## 49. Restart point (2026-10-17 ~02:00 local; goal WDDM2 + GPU UI/browsers/video + HDMI, unattended)
+**Committed:** G16 state - Edge runs natively on the Mali: ANGLE D3D11, GLES 3.0, vs/ps 4.1, Canvas/Compositing/
+WebGL/WebGPU hardware accelerated (edge://gpu + DevTools SystemInfo, tools/phone/wddm2/cdp_gpuinfo.py). Mesa 0074
+MSAA, 0076 redirection default, 0077 SM4.1 opcodes, 0078 pipeline level 10_1, 0079 no-stderr fail-fast fix, 0080 SM4.1
+fixes (+ panfrost TEXTURE_SAMPLES sysval), 0081 allocation list grows on demand. Phone: mali-umd-0081c (maliumd
+fa2109d9) in System32; machine env MALIKM_TGSI_DIR still on (umdtrace -Off to stop); WER LocalDumps for msedge.exe on
+(werdump.ps1 -Exe msedge.exe -Off). Known limits: Chromium GPU rasterization blocklisted for our vendor id (entry 122),
+Graphite needs FL12, D3D lod on Bifrost wrong (d3dsm41 7/8), WebGL MSAA off (ANGLE stops at our 2x = 0).
+**Next:** G17 video (MFC decode integrated with D3D11 / Media Foundation), G18 HDMI. Optional: user check of real
+browsing smoothness.
+
+## 50. Restart point (2026-10-17 ~04:40 local)
+**Committed since 49:** Mesa 0082 (AppContainer shell processes - Start menu / Search / Quick Settings - could not open
+"NUL": softpipe fallback + fail-fast on a dead stderr; now Panfrost; user confirmed Start + Quick Settings open),
+machine env MALIKM_TGSI_DIR switched OFF (never leave it on), G18 H1 (S10eBattery 1.0.0.5 reads the max77705 USB-C
+block, read-only; usbc.ps1), parking lot FL 11_0 (parkinglot/fl11-chrome-video.md), G17 = UMD DXVA bridge for MF
+apps (user decision; Chrome needs FL 11_0), panelon rescue tool, KMD 1.0.61.1 panel-off owner watch (BUILT, NOT
+INSTALLED: C:\Users\ilya\code\s10e-artifacts\maliwddm-1.0.61.1, install with wddm2dbg.sh kmdswap ...sys + reboot).
+**In flight:** the phone is finishing a Windows servicing restart ("Updates are underway", TiWorker); the panel was
+dark because s10ekeys' screen-off was killed by the shutdown - relit with panelon.exe. Do NOT hard-reset while
+TiWorker runs. User said "forget HDMI for now" (G18 H1 second read with the hub waits).
+**Next:** after the restart: confirm desktop + Start/Quick Settings on the Mali (sandboxlogs.ps1 shows no softpipe
+lines), kmdswap 1.0.61.1 + test (s10ekeys screen off, kill it -> panel relights), then G17 DXVA bridge.
+
+## 51. alpha6 tagged (2026-10-17 ~05:35 local, local tag only like alpha5 - not pushed)
+After the Windows update restart: KMD 1.0.61.1 installed + validated (panel-owner watch), 20-min soak clean (DWM alive,
+0 crashes), d3dmsaa PASS, d3dsm41 7/8 (lod gap), Terminal, composition chain, Edge YouTube, Start menu. Tag message =
+feature list + known limits. Next (user directive, memory clocks-directive-20261017): S10ePower C1 (AllowSend +
+AllowTmu -> temperatures), C2 frequency requests, touch driver 6.0.5058.7 + governor, C5 max-clock tests. S10ePower
+service is created (start= demand, read-only so far). HDMI waits for the user.
+
+## 52. Restart point (2026-10-17 ~08:00 local)
+**Committed since 51:** G19 dynamic clocks (MILESTONES line): S10ePower (C:\S10eTmp\S10ePower.sys, service auto,
+AllowSend=1 + AllowTmu=1 in its service key) - temperatures + FREQ_REQ + thermal guard; touch driver 6.0.5058.7
+(installed via pnputil); S10eGovernor service (C:\S10eTmp\s10egovernor.exe, auto, depends on S10ePower; Parameters =
+ceilings 1950000/2314000/702000, boost 1742000/2106000/433000, EffLittle 1456000, GpuFloor 260000). Validated:
+temperatures, down/up requests measured, screen-off minimum, C5 max clocks (LITTLE 1.95 GHz, MID 2.314 GHz, GPU
+702 MHz measured by cycle counter), services survive a reboot. Open: touch boost needs a real finger (user), sustained
+(minutes) thermals under full load not measured, MIF untouched (2314 MHz MID / 650+ MHz GPU want MIF >= 2.093 GHz
+for performance per DT tables). Rollback: `sc config S10eGovernor start= demand` + `sc stop S10eGovernor` (clocks
+return to the boot rates), `reg add ...S10ePower /v AllowSend /d 0` to make S10ePower read-only.
+**In flight:** battery 16 % -> phone parked in TWRP to charge. **Next:** G17 V6a (UMD video DDI skeleton) offline;
+HDMI with the user.
+
+## 53. Restart point (2026-10-17 ~09:10 local)
+**Committed since 52:** G17 hardware video for Windows apps, V6a-V6d (notes/g17-dxva-mfc.md has every measurement):
+- Mesa 0083-0091 (tools/mesa-build/patches; working copy commits as ilyatbn): D3D11 video DDI (RetrieveSubObject
+  2/3, generated stubs), H.264 VLD_NOFGT decode on the MFC (VideoH264.c rebuilds SPS/PPS from DXVA picture
+  parameters; decode-order MFC session per decoder; NV12 into the output view), QueryVideoCapabilities, GPU video
+  processor (VideoProc.cpp + VideoCsc.c NIR compute NV12->RGBA, then pipe->blit), profile exposed when the MFC device
+  is present (no env gate). Phone UMD = maliumd 1cb628cb (0091), loaded by DWM after the next reboot (new processes
+  already use it).
+- Exynos9820Mfc 1.0.0.7 sys on the phone (MFC_OPEN_DECODE_ORDER); INF 1.0.0.9 carries the device Security
+  (SY/BA all, Everyone/AC/LPAC/RC read); the phone's devnode got the same SDDL via tools/mfc/mfcacl.ps1 -Set
+  (verified effective with mfcsd.ps1 after reboot).
+- Validated on the phone: MF Source Reader decode bit-exact (720p, 1080p B-frames, visible rows); Media Engine 1080p24
+  real time (mfplay); inside an AppContainer (acrun); Photos (packaged) plays test.mp4 on the MFC + GPU VP (its UMD
+  log + MFC busy probe). Not yet: visual confirmation (screenshot/fb/webcam paths all failed), Photos ~15-20
+  blt/s vs 24 fps (drops?), interlaced/seek/PPS switching/scaling-matrix streams, Edge (needs FL 11_0: parking lot).
+- tools: d3dvdec (debug mode), mftest -d3d11/-rows, mfplay(-noread), mfd3d/mfplayq/vdecmatrix/actest(u)/photostest/
+  photoslog/ordertest/mfcacl/mfcsd/appx/drvhash/totwrp (clean restart into TWRP).
+**Blocked on the user:** D3D11 debug layer (Graphics Tools optional feature) - Add-WindowsCapability over SSH is
+0x80070005 and a SYSTEM task was declined; webcam returns empty images.
+**Photos frame rate (09:30):** decode ~5 fps after the first 40 frames, presents ~16-20/s; ruled out GPU clock (702
+MHz same), present CPU cost (< 5 ms), display-off (same with display awake), vsync (62 Hz measured, tools vblank).
+DWM composes ~0.2 frames/s while Photos presents (tools dwmrate) -> composition of composition/XAML swap chains on
+this stack is the suspect (H5 family). Phone UMD maliumd 9d9ca53a (0092). Display: wake.ps1 before tests (it had gone
+off with timeout "never" - cause unknown).
+**Also validated (09:45):** 10-min soak OK (DWM alive, 0 crashes) on the new UMD; robustness clips bit-exact through
+DXVA/MFC (CQM scaling matrices, Baseline, Main, B-pyramid + 4 refs + weightp, 854x480 cropping) - tools/mfc/cliptest.ps1.
+**Next:** user: look at Photos playing test.mp4 (is video visible/smooth?), HDMI; me: composition swap chains (DWM
+consumption of presents) as its own milestone.
+
+## 54. Restart point (2026-10-17 ~15:30 local)
+
+Committed (exynos-woa main, last ae51419; Mesa working copy last 1337e37 = patch 0096, clean tree):
+- mpv renders on the Mali: Mesa 0095 (TGSI VS outputs sorted by location - Bifrost took varying slot 0 as
+  gl_Position). Flip-model buffers: runtime present only (0094 as committed) - DWM composes them; the GDI-draw interim
+  was wrong (concluded while mpv still rendered black) and is gone.
+- Judder cause = clocks: S10ePower v2 (MIF control, verified 2093000 / 421000 only), S10eGovernor (GPU load = SUM of
+  per-process 3D instances, GPU ceiling above 50 % load, MIF 2093000 screen on / 421000 off). mpv default config:
+  DWM 35 -> 47.5 presents/s, on-time compositions 35-40 % -> ~80 %. Mesa 0096 = DWM pacing log ("pacing N" in DWM's
+  tlog). Tools: tools/mfc/mpvrate.sh, mpvshot.ps1, mpvstats.lua, umdlogtail.ps1; kmdstats busy.
+- On the phone: UMD 71ef0e38 (0096, DWM still runs the 0096-equivalent fafaa8c5 until it restarts), S10ePower.sys v2,
+  s10egovernor.exe (old copies *.pre-mif in C:\S10eTmp). umdtrace still machine-wide ON.
+
+Next order of work:
+1. User eyes on mpv (sound on) - remaining ~20 % late compositions; audio stutter (user-reported, open).
+2. Read the full devfreq_mif ladder in TWRP (sysfs available_frequencies) -> per-G3D-step MIF (Samsung table,
+   gpu-odin-rom.md F2) to cut the screen-on MIF battery cost.
+3. Remaining pacing: DWM's composition queues behind app jobs (one in-order queue, no preemption).
+4. Blank screensaver (120 s) voids measurements - mpvrate.sh dismisses it.
+5. Photos ~5 fps (open), DWM CPU-copy trigger (open), Graphics Tools WU decision (user), HDMI (G18) with the user.
+
+## 55. Restart point (2026-10-17 ~19:30 local)
+
+Committed (exynos-woa main; Mesa working copy last a2f5c0c = patch 0102, clean except nothing):
+- Video smooth (user-confirmed): Mesa 0097 (cached BOs not listed: VidMm thrash), 0099 (RotateResourceIdentities
+  rotates identities - DWM had shown flip chains out of order), 0101 (closed BOs destroyed promptly), 0100/0098/0096
+  diagnostics (Render timing, app/DWM pacing logs). Tools: flipseq + seqpix (frame order), vatest/vaprobe (address
+  space), gpumem/gpuengine/coretop/memcommit/lastboot/appcrash/dwmevents, kmdstats busy/paging.
+- 32-bit games: x86 UMD (build-mesa-g76.ps1 stage x86 -> s10e-artifacts\mali-g12-x86\maliumd32.dll), installed BY HAND:
+  C:\Windows\SysWOW64\maliumd32.dll + HKLM\...\Class\{4d36e968-...}\0000 UserModeDriverNameWow = maliumd32.dll x4
+  (dxgkrnl reads it at boot). Mesa 0102: 32-bit build sub-allocates small BOs from 32 MB slabs (each allocation's
+  CPU view costs 32 MB of address space; CpuVisibleOnDemand is refused in 32-bit processes and wrecks DWM in 64-bit).
+  The Unity game (Game Dev Story) runs on the Mali (user: "working now").
+- KMD 1.0.66.1 deployed: segment 2.5 GiB; Parameters\CpuVisibleOnDemand (0 off = default and current registry
+  value; modes 2/3 broke logon / hung boot - never set them without nogpu.flg recovery ready).
+- Governor: GPU load = sum of 3D instances, MIF 2093000 screen on, GpuMaxBusyPct 30, MidMaxBusyPct 50 (game
+  17.6 -> 22.8 presents/s).
+- Recovery learned: a forced reset leaves NTFS dirty (TWRP read-only) -> ESP S10EDIAG\nogpu.flg from TWRP boots
+  Windows on Basic Display; fix the registry there; remove the flag; clean restart.
+
+Next order of work:
+1. Package the x86 UMD in the INF (UserModeDriverNameWow + SysWOW64 CopyFiles) - native install.
+2. 0102 follow-up: release closed slab pages by submission sequence (busy processes keep them).
+3. DWM per-session leak (~19 MB: one opened flip buffer of each app window never DestroyResource'd).
+4. DWM teardown hang after taskkill (and the unkillable-process class).
+5. x64-emulated apps (ARM64EC/ARM64X UMD), HDMI (G18) with the user, Photos ~5 fps, Graphics Tools WU decision.
+
+## 56. Restart point (2026-10-17 ~23:15 local)
+
+**Phone state changed:** firmware = **s10e-artifacts/boot-host-btmfc.img** (6db74a58: HEAD 5c445be + build-only
+GPU_POWER_ON 1, WINDOWS_WATCHDOG 0, BT_UART_PROBE 1, MFC_PROBE/POWER/FWBOOT 1; USB_KD_DEVICE 0 = USB-C HOST, no KDNET).
+Previous = boot-vidc2.img (KD image), backup in s10e-artifacts/boot-backups. Flash tool: tools/phone/bootflash.sh.
+KMD 1.0.69.1 (ScaledModes + RgbaModes default on), UMD ARM64 0105 / x86 0106 live (System32 / SysWOW64).
+
+Done this session (notes): G20 720p scaled mode (done); G21 game profile -> Mesa 0104 profile + 0105 per-BO WAIT_BO;
+G22 RGBA source modes (KMD 69); NFSU2 (notes/games-nfsu2.md): no D3D9 DDI -> dgVoodoo2 (CHPE) in C:\Games\src ->
+Mesa 0106 (tgsi_to_nir tex src sizes) -> blocked: this Mali has NO BCn decode (TEXTURE_FEATURES0 bits 7-16 clear).
+Research docs for the owner's researcher: docs/exynos9820-port/research-requests.md, mongoose-research-guide.md.
+
+Next order of work:
+1. BC1-BC7 emulation in the UMD (decompress to RGBA8/R8/RG8 on upload) - unblocks dgVoodoo/NFSU2 and DXT PC games.
+2. Present wait (R1): ~10.5 ms CPU<->GPU serialisation per frame in DxgiFns present.
+3. Screen slow-wake outage (notes/g21-submissions.md) - open.
+4. Older queue (section 55): x86 UMD in the INF, slab page release, DWM leak / teardown hang, x64 apps, HDMI.
+
+## 57. Restart point (2026-10-18 ~02:45 local)
+
+**Phone state:** firmware boot-host-btmfc.img (unchanged; USB-C host works, the user's keyboard dongle enumerates).
+KMD 1.0.69.1. **UMD x86 = mali-umd-0123-x86** (SysWOW64; Mesa 0111-0123). **UMD ARM64 = mali-umd-0119** (System32;
+Mesa 0111-0119, CS 4.x advertised, loaded by DWM since the 01:23 reboot - desktop fine); previous ARM64 kept as
+System32\maliumd.dll.old0110. UPDATE ~03:05: ARM64 = mali-umd-0123 now in System32 (d3dcs 7/7, d3dbc lossy 126/126; previous kept as
+maliumd.dll.old0119); browser check NOT done - battery 13% and not charging (the keyboard dongle holds the USB-C port);
+testing stopped, user notified.
+NFSU2: C:\Games\src, dgVoodoo.conf = windowed borderless fullscreen-size (backups .bak-exclusive / .bak-fake),
+desktop shortcut SPEED2.lnk (launch it in the foreground; the game crashes on focus loss / its own resolution change).
+
+Done this session (notes/g24-compute-cs4x.md, notes/g26-bc-etc2.md): G24 DirectCompute 4.x (0111-0115, 0117-0119),
+G25 GS guard (0116; Panfrost has no GS - emulation via src/poly open), rotated DXGI exclusive fullscreen (0120-0122,
+user-verified upright), G26 BC->ETC2/EAC transcode (0123; d3dbc lossy 126/126, d3dbcmem 600 vs ~260 textures).
+NFSU2 reached the game; the race load ran out of 32-bit address space -> G26.
+
+Next order of work:
+1. (charge first) ARM64 0123 is deployed and tested (d3dcs, d3dbc); still to do: browsers (Edge/Brave GPU page + WebGL) with
+   CS 4.x advertised (G24 review follow-up) before the next reboot puts it into DWM. User wants all fixes on 64-bit.
+2. User test: NFSU2 race load with UMD x86 0123 (cannot be reproduced unattended; d3dbcmem is the proxy).
+3. G26 speed: ~0.5 s (BC1) / ~0.8-1 s (BC3) per 1024x1024 upload under x86 emulation; T/H ETC2 modes for 2-colour
+   blocks (quality, follow-up).
+4. G25 geometry shaders via compute (src/poly) - dgVoodoo's 2 GS are skipped today (particles likely missing).
+5. Older queue (sections 55/56): present wait, screen slow-wake, x86 UMD in the INF, slab release, DWM leak, HDMI.
+
+## 58. Restart point (2026-10-18 ~12:30 local)
+
+**Phone state:** firmware boot-host-btmfc.img; KMD 1.0.69.1; **UMD x86 = mali-umd-0127-x86 (SysWOW64), UMD ARM64 =
+mali-umd-0127 (System32; DWM still runs the 0123 it loaded at boot until the next reboot)** - Mesa 0111-0127. Older
+copies: System32\maliumd.dll.old0110/.old0119/.old0123/.tmp0123, SysWOW64\maliumd32.dll.old*. Battery charged (99 %).
+The phone's clock reset after the 03:23 power-off (file times read 2026-10-17 ~20:00-21:00).
+
+Done since 57: G26 BC->ETC2 (0123) verified on both UMDs; G25 geometry shaders emulated: Mesa 0124 (Panfrost builds
+nir->xfb_info from TGSI stream output - stream output was dead for every TGSI VS), 0125 (GS -> compute + three-pass
+draw), 0126 (per-vertex capture: indexed + strips), 0127 (barrier). d3dgs 6/6 pixel-exact vs WARP on x86 + ARM64;
+d3dcs, d3dbc, Edge WebGL (cdp_webgl.py) unchanged. NFSU2: both dgVoodoo GS compile; particles need a race (user).
+
+Next order of work:
+1. User tests: NFSU2 race load (G26 memory) + particles (G25); the keyboard dongle works.
+2. x86 UMD packaged in the INF (UserModeDriverNameWow + SysWOW64 CopyFiles) - today it is copied by hand.
+3. D3D10 stream output without a GS (CreateGeometryShaderWithStreamOutput, empty GS): attach the SO to the VS now that
+   Panfrost XFB works for TGSI.
+4. Present wait (R1), screen slow-wake, G26 speed / ETC2 T-H modes, slab release, DWM leak, HDMI.
+
+## 59. Restart point (2026-10-18 ~13:30 local)
+
+**Phone state:** firmware boot-host-btmfc.img; KMD 1.0.69.1; **UMD x86 = mali-umd-0128-x86 (SysWOW64). System32 =
+the G27 ARM64X set from s10e-artifacts\mali-umd-0129-x: maliumd.dll (pure forwarder) -> maliumd_arm64.dll (ARM64,
+Mesa 0001-0129) / maliumd_ec.dll (ARM64EC, same source)**, copied live with `wddm2dbg.sh umdxswap`; DWM, explorer and
+the shell load maliumd.dll + maliumd_arm64.DLL since the 13:12 reboot (desktop + taskbar OK). Rollback:
+System32\maliumd.dll.pre-g27 (= 0127s plain ARM64) via umdswap. Battery 100 % on the charger. Phone clock reset again
+(reads 2026-10-17 ~20:xx).
+
+Done since 58: G25.6 SO without a GS (0128); G27 x64 apps: G27.1 baseline (x64 d3dcs got DXGI_ERROR_UNSUPPORTED),
+G27.2 ARM64EC Mesa build (build-mesa-g76 -Stage ec, Mesa 0129, venv-ec with meson's arm64ec machine mapping),
+G27.3 forwarder (tools/mesa-build/make-arm64x.ps1): x64 d3dcs gets Mali FL 10_1, 7/7 PASS; ARM64 d3dcs 7/7, Edge WebGL
+exact; G27.4 INF 1.0.71.1 + package s10e-artifacts\mwddm-1.0.71.1 (InfVerif valid, NOT installed - attended).
+shot.ps1 is DPI-aware now (older shots at 150 % were top-left 2/3 crops - no taskbar).
+
+Next order of work:
+1. G27.5: real x64 apps on the GPU (an x64 D3D11 game / x64 browser build), x64 builds of d3dgs / d3dso / d3dbc.
+2. User tests: NFSU2 race load (G26) + particles (G25); install mwddm-1.0.71.1 when attended.
+3. Present wait (R1), screen slow-wake, G26 speed / ETC2 T-H modes, slab release, DWM leak, HDMI.
+
+## 60. Restart point (2026-10-18 ~15:35 local)
+
+**Phone state:** as 59 (ARM64X UMD set live, x86 0128, KMD 1.0.69.1), Windows up after two bugcheck resets (phone clock
+reset again). Game DVR settings restored to default. Battery 100 %.
+
+Done since 59: on-phone screen recording for the remote user (tools/phone/rec: screenrec.exe GDI or -dup DXGI desktop
+duplication, recfetch.sh -> GIF + contact sheet, SendUserFile); the "display asleep" readings were the blank
+screensaver. x64 apps verified with recordings: mpv x86_64 D3D11 FL 10_1, ungoogled-chromium x64 WebGL Aquarium
+24-27 fps. NFSU2: dies (+0x6562b) whenever it loses the foreground - the "ms-gamingoverlay" popup (no Xbox Game Bar on
+this image; winget Store install fails 0x80004002) and the screensaver; Settings > Gaming capture off avoids the popup
+(tested as a diagnosis switch, restored) - USER DECIDES the native fix.
+NEW BUG: fullscreen x64 mpv + -dup capture across its whole run bugchecks the system 2/2 (S10eDiag ring "BUGCHECK
+callback", no code; Kernel-Power 41 code 0); subsets 0/4 (notes/g27-x64-apps.md).
+
+Next order of work:
+1. Bugcheck code for the fullscreen+duplication crash (S10eDiag AuxKlib BC lines missing, or KD), then fix.
+2. NFSU2 race test once the user picks the popup fix (gamedrive.ps1 key script + -dup / scan-out frames).
+3. G27 leftovers: install mwddm-1.0.71.1 (attended); x64 game.
+
+## 61. Restart point (2026-10-18 ~17:25 local)
+
+**Phone state:** firmware **s10e-artifacts/boot-host-r2.img** (9e15a5bc; = HEAD + the btmfc build overrides via the
+new firmware/tools/build-host-image.ps1; rollback boot-host-r1.img / boot-host-btmfc.img, backups in boot-backups).
+Windows sees 5912 MiB usable (was 5370) and 6 GB installed (SMBIOS). KMD 1.0.69.1, UMD ARM64X set (0129), x86 0128.
+New S10eDiag (AuxKlib/BC status marks) live. Game capture off (user's choice). Battery 100 %.
+
+Done since 60: alpha7 tagged (local, 4fdb98a). R1 RAM: CP reservations + sec_rdx_bootdev published (memfill to 98 %
+load, 0 mismatches). R2: SMBIOS 0/1/3/16/17/19. NFSU2 reached title + menu (black screens were the screensaver);
+fullscreen dumps show stripes that move between dumps (likely capture artefact - user to confirm on the panel).
+
+Next order of work:
+1. User: stripes on the panel in NFSU2 fullscreen? Install mwddm-1.0.71.1 when attended.
+2. Fullscreen + desktop-duplication bugcheck (code via the new S10eDiag marks on the next occurrence).
+3. NFSU2 race (gamedrive.ps1: click at the title, then menus), GPU backlog (notes/g27, HANDOFF 60).
+
+## 62. Restart point (2026-10-18 ~18:55 local)
+
+**Phone state:** as 61 (boot-host-r2.img, 5912 MiB / 6 GB installed) + S10eBattery 1.0.0.6 (read-only USB-C IOCTL;
+1.0.0.7 H2 write source is in the tree, NOT built - the auto-mode classifier refused the build, user decides) +
+IddSampleDriver package (drivers/S10eIdd poc4) in the driver store, device only while iddstream.cmd runs.
+
+G18 external/remote display (user: "Can you do something about type-c to hdmi and remote monitors while im away?"):
+- Research: notes/g18-h2-altmode-research.md (max77705 DP alt-mode entry: AP enables alt mode 0x55/0x03, FW
+  discovers, AP sends Enter Mode + DP Configure, HPD in DP Status VDOs; Android's shutdown resets the block, so under
+  Windows nothing happens on plug until 0x55 is sent), notes/g18-remote-monitors-research.md (RDP works today; spacedesk
+  ARM64; own IddCx driver; Miracast blocked by HW H.264 + Wi-Fi Direct; avoid Sunshine/desktop duplication).
+- H1b: usbcwatch.exe logger ready for the user's hub plug test (tools/phone/usbc/README.md).
+- Remote monitor PoC: IddCx virtual monitor 2560x1440 appears and DWM composes it on the Mali (proved by a GDI shot);
+  frame sink + S10eIddView HTTP MJPEG pipeline runs end to end, but frames read back black - open.
+
+Next order of work:
+1. User: run usbcwatch with the hub + HDMI monitor plugged; decide on building the H2 write IOCTL (S10eBattery 1.0.0.7);
+   try RDP / the virtual monitor; NFSU2 stripes check; install mwddm-1.0.71.1.
+2. IddCx black frames: log render adapter + pixel probe in ShareFrame; IddCx frame-processing docs.
+3. Fullscreen + duplication bugcheck (code via S10eDiag marks on the next occurrence).
+
+## 63. Restart point (2026-10-18 ~23:45 local)
+
+**Phone state:** firmware boot-host-r2.img (unchanged since 17:15). SysWOW64\maliumd32.dll = x86 **threaded context +
+constant-buffer renaming** build x86-tc6f (e1fae195; s10e-artifacts/x86-tc6f with PDB) - Mesa TC T1-T6
+(notes/perf-threaded-context.md). The ARM64 / ARM64EC UMDs (DWM, browsers, x64 apps) are NOT changed (still pre-TC).
+Rollback for 32-bit apps: `bash tools/phone/wddm2/wddm2dbg.sh umd32swap /c/Users/ilya/code/s10e-artifacts/x86-0130e`
+(no reboot). Diagnosis switch only: MALIUMD_NO_TC=1.
+
+**Done this session (G29, notes/perf-threaded-context.md):** MS Learn: no runtime callbacks from a driver worker on
+D3D10+ -> winsys marshals them to the DDI thread (T1); Panfrost TC subclassing + TC-direct thread safety (T2/T2b);
+TC map rules + replace_buffer_storage (T3); TC enabled (T4) + no user buffers (T4b); re-entry fix (T5a), assert fix
+(T5b), Mesa Windows futex timed-wait bug (T5c, the deadlock); DYNAMIC CB renaming (T6). NFSU2 race 84 -> ~30 ms.
+keyplay retries the foreground (automation no longer dies at the first Enter). New tests: d3dcbdyn, x86tests build.
+
+**Next, in order:** (1) user play test of NFSU2 on the TC build; (2) build ARM64 + ARM64EC UMDs with TC + T6, run the
+ARM64 tests + DWM/browser checks (AGENTS port-x86-fixes-to-64bit); (3) driver-thread costs: new-batch init 1.5 ms
+x7/frame (get_batch_slow), launch_draw, varyings; (4) export Mesa patches 0132+ to tools/mesa-build/patches.
+
+## 64. Restart point (2026-10-19 ~00:35 local) - alpha8
+
+**Phone state:** firmware boot-host-r2.img. UMDs: System32 ARM64X set **mali-umd-0148-x** (forwarder e7fce848 ->
+maliumd_arm64 / maliumd_ec, Mesa 0001-0149) and SysWOW64 **x86-0148** (2f738e24) - threaded context + DYNAMIC
+constant-buffer renaming in all three. DWM and the desktop run on it (rebooted). No page heap / LocalDumps left set.
+dgVoodoo NFSU2: CenterAppWindow=true (screen-sized borderless window at 0,0). Rollback: umdxswap
+s10e-artifacts/mali-umd-0129-x (pre-TC 64-bit set), umd32swap s10e-artifacts/x86-0130e. Diagnosis switch only:
+MALIUMD_NO_TC=1.
+
+**Next:** user NFSU2 play test; driver-thread batch init cost (get_batch_slow 1.5 ms x7/frame); remove the per-draw
+diagnostic timers from release builds once perf work settles.
+
+## 65. 2026-10-19 night - M4 big cores (G30), unattended
+
+- Full log + summary: notes/m4-cores.md ("Summary 2026-10-19"). Commits 4e3081d, 5d6021a, b50d004 + this one.
+- Bare-metal M4 tests from the park stub (flag 7 + options) all pass: interrupts/WFI, PMU, atomics run, DVM, timers.
+- 8 cores with today's firmware: kernel heap-corruption bugchecks every boot (KD log s10e-artifacts/runs/m4kd8) ->
+  next: verify atomicity/ordering between an M4 and an A55/A75 in the stub (counters checked, not just counted).
+- Phone: boot-host-r2.img (6 cores) restored; BCD debug turned off again (03:35, verified).
+- Never peek CPUCL2 SYSREG 0x1D100104 or PMU 0x15861200-0x1650 from Windows (SoC freeze).
+
+
+## 66. 2026-10-19 - UFS speed-up (app load times)
+
+- notes/app-launch-slowness.md + notes/ufs-async-plan.md (full log, every build with hash + test results).
+- Phone: firmware boot-host-r4.img (IO coherency BIT22|23 + real UFS interrupt GSIV 281, both now source defaults)
+  + Exynos9820Ufs.sys w47 (DriverStore). PAIRING RULES: IOCOH firmware needs driver >= w40; GSIV 281 needs >= w43.
+- Driver features (UfsIoMode, auto-off after a failed boot via progress word [12]): fast per-command zeroing,
+  full-duplex StartIo, coherent RAM bounce, 256 KiB commands, interrupt observe, hybrid async (> 64 KiB reads),
+  4 slots for async reads, NEXUS cache / fine poll.
+- Results: 1 MiB reads 50-120 -> ~500-560 MiB/s, 4 KiB 300 -> ~150 us, Brave first start 6.6 -> 2.35 s, Steam warm
+  49.8 -> ~30 s. Integrity checks: tools/phone/perf/hashcheck.ps1, parhash.ps1, writetest.ps1 (baseline hash-w38).
+
+## 67. 2026-10-19 - native OpenGL (G31)
+
+- notes/gl-icd.md (design, docs, every build hash, measurements, reviews).
+- Phone (live, by hand - not from a package): System32\maligl.dll (ARM64X forwarder) + maligl_arm64.dll +
+  maligl_ec.dll = Mesa 0150-0159 (s10e-artifacts\mali-gl-x, deploy tools/phone/gl/gldeploy.sh); class key 0000
+  OpenGLDriverName maligl.dll / OpenGLVersion 1 / OpenGLFlags 1 set by tools/phone/gl/glicd.ps1 (dxgkrnl reads
+  them at adapter start: a change needs a reboot). Rollback: glicd.ps1 -Remove + reboot.
+- Build: tools/mesa-build/build-mesa-g76.ps1 -Stage gl,glec then make-arm64x.ps1 -Name maligl (-Arm64 mali-g12-gl
+  -Ec mali-g12-gl-ec -Out mali-gl-x). Test: drivers/MaliG76Wddm/tools/gltest (gltest.exe ARM64, gltest64.exe x64).
+- Present: DXGI flip swap chain + 2 D3D11 shared textures (wgl_panfrost_fb.c, 0158); CPU copy only for GDI /
+  single-buffered pixel formats. Stardew Valley: starts in ~3-4 min (emulated .NET), ~58.6 fps (vsync) at 1520x720;
+  timing lines via tools/phone/gl/gltlog.ps1 ("gl dxgi present").
+  Kill scrnsave.scr before screenshots (blank screensaver = black scan-out, CopyFromScreen "handle is invalid").
+- Package s10e-artifacts\mwddm-1.0.72.1 (Umd 0148-x, Umd32 mali-g12-x86, Gl mali-gl-x, InfVerif valid) NOT installed.
+- Next: user play test of Stardew; install 1.0.72.1 in an attended session; GL apps beyond Stardew.
+
+## 68. 2026-10-20 - Dave the Diver performance (G32), unattended
+
+- notes/games-unity.md (every build hash, run, counter line, review). Live on the phone: System32\maliumd_ec.dll =
+  Mesa 0160-0191 EC build s10e-artifacts\mali-umd-0191-ec 6311a66a (live swap tools/phone/games/ecswap.sh; previous
+  builds kept as maliumd_ec.dll.pre-<tag>-n). KMD = DeferPresent d69c01cd (unchanged). ARM64 / x86 UMDs NOT updated
+  (mali-umd-0171-x built only); port 0172-0191 before a package.
+- Benchmark: tools/phone/games/davebot/ (davebot.ps1 hidden user-session bot: screenshots + state signatures, plays
+  title -> boat -> dive by what is on screen; botbench.sh TAG [SWIM_S] = one run + frame-time stats + spike lines;
+  the game is always killed, never "return to map" - that saves progress). Probes: threadcpu.ps1, gpuengine.ps1,
+  tlogq.ps1, werlast.ps1, keyplay probe. Flag files on the phone: write them with PowerShell Set-Content (cmd
+  "echo N> file" redirects handle N).
+- Results (auto route; three map layouts, ~2 ms run-to-run spread): coral 41.6 ms median (0171) -> 36.9 (0185); kelp
+  38.4 -> 37.0. Done: 0172 cached BO maps kept; 0173-0177 shim submit queue (9-10 chains/Render; 0177 fixed the
+  deadlock with Panfrost's BO-cache lock); 0179-0189 D3D clears -> batch fast clears (all of Dave's clears now fast:
+  colour, full zs, stencil-only, flags masked to the format's aspects); 0185 no abort in pan_nir_lower_bool_to_bitsize
+  (the exit-time fast-fail 7, found from a LocalDumps dump); 0191 texture tracking memo. GPU ~90 % busy, Unity's render
+  thread ~90-94 %.
+- Diagnosis left in the build (file / flag driven, cheap): frametimes.on (+ spike lines), framecap.flg,
+  fastclear.txt (absent = 7), counter lines every 2000 batches / 500 clears, thread-id lines.
+- Open: KMD per-job GPU timing; clear-only batches (~310 / 2000) -> deferred clears; shader disk cache port; NDEBUG
+  build; ARM64/x86 ports; why malikm_mark_worker_thread logs nothing (0190).
+
+## 69. 2026-10-20 - all UMD flavours, shader disk cache + app, game load times (G33), unattended
+
+- notes/games-unity.md "G33" (every build hash, run, review). Mesa patches 0192-0198 (tools/mesa-build/patches):
+  0192 Windows backend for Mesa's shader disk cache (src/util/disk_cache_os.c, multi-file, one dir per exe:
+  %LOCALAPPDATA%\MaliUMD\ShaderCache\<exe>-<crc32 of path> + app.txt; Steam's MESA_DISK_CACHE_SINGLE_FILE /
+  MESA_SHADER_CACHE_DIR are ignored on Windows), 0194 size-counter fix, 0198 sparse index files, 0195 sRGB<->linear
+  copies as queued GPU blits (was a CPU fallback with a threaded-context sync), 0193/0196/0197 load diagnosis
+  (copy-path, CreateResource and BO alloc/mmap timing in the tlog). build-mesa-g76.ps1: -Dshader-cache=enabled
+  -Dshader-cache-max-size=256M -Dzlib:default_library=static (run it with -ExecutionPolicy Bypass).
+- Live on the phone: System32\maliumd_arm64.dll = mali-umd-0198 (adf54860, needs a reboot to change: dwm), maliumd_ec.dll
+  = 0198-ec (40813354), SysWOW64\maliumd32.dll = 0198-x86 (dd3ec9ad); swap any flavour with
+  tools/phone/games/umdswap.sh KIND DLL TAG (kind arm64 | ec | x86; previous kept as <name>.pre-<tag>-<n>). The
+  x86-0148 build before 0191 has no .pre copy on the phone (s10e-artifacts keeps it).
+- App: drivers/S10eDiag/S10eShaderCache.c -> s10eshadercache.exe, Public Desktop "Shader cache.exe" (per-game list,
+  Clear selected / Clear all, refuses a running game); in build.bat, esp/desktop.cmd and both provisioning scripts.
+- Results (Dave the Diver 1.0.6.2113, auto route): start -> title 140 s -> 122 s (0195; two runs 121.6 / 122.1);
+  Continue -> water 49.8 s cold cache -> 43.0 warm (0192) -> 40-42 (0195), spread up to 52 s when the file cache is
+  cold. The rest of the title load is ~105 s of the game's main thread at 100 % of one A75 (IL2CPP code under x64
+  emulation, governor at its ceiling) - not GPU-driver work; the M4 big cores (not running under Windows) are the only
+  faster cores. In-game load now: disk + game CPU; UMD left: BO allocations (CREATE_BO 1-40 ms by size, Lock 3-10 ms
+  each - runtime / VidMm, notes/skipped-windows-internals.md).
+- Bot (tools/phone/games/davebot): the update's title pop-ups are tapped away (OK only, title screen only); Continue now
+  resumes straight into a dive and the update starts a STORY DIALOGUE (Cobra) after the water HUD - the bot never
+  advances dialogue (it would progress the save), so the swim / frame-time route is blocked until the user decides.
+  loadrun.sh (phases + loadprof.ps1), loadspikes.sh (UMD sections of the in-game load). TaskStop of a background bash
+  task leaves its children (a leftover botbench.sh killed the game once): killruns.ps1 cleans up - run it as its own
+  command.
+- Open: x64 slab sub-allocation (wslab, 32-bit only today) to cut small BO creates / Locks (~1 s per load, EC-only:
+  32 MB slab granularity vs dwm's segment); the first-boot white-capture after the 0191 ARM64 swap (not reproduced);
+  D3D11 runtime shader cache DDI (WDDM 2.2 pfnCreateShaderCacheSession) as a documented alternative; earlier G32
+  items (KMD per-job timing, deferred clears, NDEBUG build).
+
+## 70. 2026-10-20 - built-in microphones + boost control (D8 mic), unattended
+
+- notes/d8-mic.md (research, every device run, the review F1-F7 and their fixes). Audio driver 1.0.3.7 live on the
+  phone (s10e-artifacts/audio-1.0.3.7; tools/phone/audio/audbuild.sh VERSION bumps, builds and installs).
+- Path: DMIC1/2 -> CS47L93 IN3L/IN4L (MICVDD charge pump + MICBIAS1) -> AIF1 TX1/2 (codec = AIF1 clock master) ->
+  ABOX UAIF0 MIC -> NSRC0 -> SPUM -> SIFM0 -> WDMA1 ring (Mic.c, AboxHw.c AboxCapture*). Windows endpoint
+  "Microphone" (Capture.c ACX capture circuit, stereo, 16/32-bit, 48 kHz). Measured through WASAPI with a quiet PC
+  1 kHz tone (tools/phone/audio/wascap.exe + micgaintest.sh): ~55 dB SNR, gain 0/24/48 -> -61.6/-49.4/-37.4 dB.
+- Boost: AUD_PROPERTY_MICGAIN (0..63 half-dB, default 24 = +12 dB, Parameters\MicGain) - slider in "S10e Speakers"
+  (C:\Program Files\S10eSpeakerTrim) and `S10eSpeakerTrim.exe mic [N]`; live during a capture.
+- Headphones and mic share SYSCLK / AIF1 RX through CodecShareOn/Off (first user on, last off). Headphones + mic at the
+  same time was never run (needs headphones in the jack) - Guided. Headset mic (jack) not done.
+- MicTest (Parameters\MicTest = ms, one-shot) still runs the raw self-test at device start (mictest.sh); diagnosis
+  knobs MicVariant / MicWdma* apply to the self-test only. Parameters\MicWdma = 1 is still set on the phone (harmless).
+- Next: D3D feature level 11_0 on the GPU (user order: mic first, then feature_11).
+
+## 71. 2026-10-20 - FL 11_0 (G34) in progress, unattended
+
+- notes/g34-fl11.md: research (MS Learn quotes, tessellation options, HW limits: workgroup 384), plan F11.1-F11.11,
+  every device run and review. Mesa patches 0199-0203 (parser, FL11 diagnosis switch, SM5 ALU, f16 alias fix,
+  atomics). Test tool drivers/MaliG76Wddm/tools/d3dsm5 (cs_5_0 vs WARP; sets D3D10UMD_FL11_0=1 for itself only).
+- Testing goes through the x86 UMD (umdswap.sh x86, no reboot): SysWOW64\maliumd32.dll = x86-0203 (9c6d1cbd).
+  ARM64 / EC still 0198 (not rebuilt with 0199+ yet). Build: build-mesa-g76.ps1 -Stage x86 (PowerShell tool;
+  from bash the invocation silently does nothing).
+- d3dsm532 status on 0203: ALU 8/8, atomics 4/4 ok; typedtex and later (typed UAVs, uav8, group1024, groupz64) not
+  yet. Next: F11.4b typed UAVs (TGSI images: dcl, ld/store_uav_typed, view creation + set_shader_images, image
+  atomics, RESQ), F11.4c 8 UAVs, then F11.5-F11.11 per the notes. FL 11_0 is not reported by default.
+
+## 72. 2026-10-20 - FL 11_0 (G34): compute side done, tessellation next
+
+- Mesa 0199-0214 (notes/g34-fl11.md, each with device run + review): SM5 parser/ALU, atomics, typed UAVs (images),
+  PS UAVs, append/consume + CopyStructureCount, indirect draws, BC6H/BC7, >384-thread groups (thread-loop
+  transform), and two pre-existing fixes for every D3D pixel shader: SV_Position at the pixel centre (0207) and
+  coarse ddx/ddy (0208). d3dsm5 34/34 vs WARP, d3dbc bptc 28/28.
+- Live: SysWOW64\maliumd32.dll = x86-0214 (e4e496d2). ARM64 / EC still 0198 (rebuild + reboot needed to ship 0199+;
+  the pixel-centre fix changes what DWM / ARM64 apps see - check the desktop after that reboot).
+- FL 11_0 still only via D3D10UMD_FL11_0=1 (test processes). Next: F11.10 hull/domain shaders (design in the notes:
+  HS as compute, tessellator, DS as VS), then F11.11 (format-support caps for 11_0 incl. typed UAV store/load - R7,
+  report 11_0 by default, ARM64 + EC builds, regression incl. DWM, Edge, games).
+
+## 73. 2026-10-20 - FL 11_0 (G34) done and shipped on all three UMDs, unattended
+
+- Mesa 0215-0218 (notes/g34-fl11.md): hull/domain shaders (TessEmu.cpp: HS as compute, gallium CPU tessellator, DS as
+  VS), review fixes 0216/0217, and 0218 = pipeline level 11_0 reported by default (D3D10UMD_FL11_0=0 hides it -
+  diagnosis only). R7 format caps: every gap vs WARP is optional at 11_0 (MS Learn table) - no change.
+- Live since the 16:46 reboot: System32\maliumd_arm64.dll 0218 (add36214), maliumd_ec.dll 0218 (8a4fc694),
+  SysWOW64\maliumd32.dll x86-0218 (a2b50dba); set in s10e-artifacts\mali-umd-0218. Previous files kept as *.pre-0218-0.
+- Validated: d3dtess 9/9, d3dsm5 34/34, d3dbc bptc 28/28 vs WARP without any override; DWM desktop, Edge WebGL, Dave the
+  Diver (Unity picks "Direct3D 11.0 [level 11.0]", scene renders; save now opens on Cobra's dialogue - never advance
+  it), NFSU2 race (frame 31 ms).
+- Tooling traps found today: phonestate.sh needs WINIP from `ssh -G s10e` (phone is on the home Wi-Fi, not the
+  hotspot); scrnsave.scr (120 s) whitens every user-session shot - kill it first; gamelaunch.args is shared (nfsrace
+  now sets it); Steam's library can cover Dave after launch (tools/phone/g34/front.ps1).
+- Open G34 follow-ups: HS join phases (R13), GS after DS (R14), HS SRVs, GPU tessellation, Bifrost VS inputs 16 (a
+  10_1 gap), WebGPU requestAdapter null (also with 11_0 hidden). Next candidate: Edge/Chromium hardware video, which
+  the FL 11_0 gate was for (parking lot fl11-chrome-video.md) - untested.
+
+## 74. 2026-10-20 - browser hardware video (G35) done, HDMI prep next, unattended
+
+- Mesa 0219-0222 (notes/g35-browser-video.md): Chromium's D3D11VideoDecoder now runs on our DXVA bridge -> MFC.
+  0219/0220 MFC device handle at CreateVideoDecoder, the one-per-device session at the first BeginFrame (Chromium
+  creates a second decoder before releasing the first); 0221 NV12 plane views (R8 luma / R8G8 chroma) through
+  panfrost_resource_create_alias (linear NV12, alias tracked as its base); 0222 VideoProc releases its sampler view
+  through the context (TC use-after-free).
+- Live since the 19:20 reboot (all three UMDs 0222): System32\maliumd_arm64.dll bf2be4ed, maliumd_ec.dll cf3998ca,
+  SysWOW64\maliumd32.dll 93180fde (s10e-artifacts\mali-umd-0222). DWM / desktop fine.
+- Validated natively: Edge 1080p24 H.264 23.6 fps dropped 2 (software 14.1), Brave 23.4 fps; MFC busy probe confirms
+  the browser holds the MFC. x86 + EC D3D regressions pass (d3dbc: use the "lossy" mode since G26).
+- Tools: tools/phone/g35 (browservideo.ps1 + videorun.sh = native playback check; cdpplay.sh / cdp_nav.py = DevTools
+  Media log + unsandboxed UMD log, tracing only).
+- Next: HDMI (G18) prep - user has a USB-C to HDMI adapter and a USB-C hub. Do as much as possible without the user.
+
+## 75. 2026-10-20 - HDMI (G18) prep, unattended
+
+- Done (notes/g18-hdmi-prep.md): S10eBattery 1.0.0.7 (H2 allowlisted alt-mode opcodes) BUILT + reviewed
+  (s10e-artifacts\s10ebattery-1.0.0.7, staged C:\S10eTmp\batt107) - the live install was denied by the session's
+  safety classifier, so the phone still runs 1.0.0.6 and NOTHING was written to the max77705. usbcaltmode
+  (tools/phone/usbc, staged C:\S10eTmp) dry-run verified. User procedure: tools/phone/usbc/README.md "User test 2"
+  (install, plug the adapter BEFORE boot for VBUS, run usbcaltmode 90, hub repeat).
+- KMD: MaliG76Wddm counts the DP output (P4b, child UID 1 disconnected) + per-source DDI guards (review fix); live sys
+  1f72350c via kmdswap (INF not bumped), rollback MaliG76Wddm.sys.prev. Desktop + Edge hardware video verified after
+  the reboot.
+- Research: notes/g18-p3-dp-bringup.md (DP controller / PHY / DECON_T sequence, hazards), notes/g18-p4-wddm-target.md
+  (WDDM design, P4c checklist).
+- Next, in order: the user's alt-mode run (needs their go for the PD writes) -> read-only probes P3 steps 1-7 -> AUX /
+  DPCD / EDID -> link training + BIST first light -> P4c/P4d.
+- CORRECTION 20:40: P4b caused a severe display slowdown under use (vsync ~25/s while presenting, G3D stuck 260 MHz).
+  Live KMD restored to d69c01cd (mwddm-g32-defer = commit 7ee013d), repo KMD sources reverted (7e1d02e). Do not redo
+  P4b without a measured 30+ min soak (notes/g18-hdmi-prep.md, last section).

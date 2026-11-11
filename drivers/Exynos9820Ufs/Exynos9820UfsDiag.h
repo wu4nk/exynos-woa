@@ -15,6 +15,89 @@
  */
 #ifndef UFS_PERF_INSTRUMENTATION
 #define UFS_PERF_INSTRUMENTATION                   1
+
+/*
+ * 2026-10-19 per-boot I/O mode (notes/ufs-async-plan.md stages 1-2, notes/app-launch-slowness.md):
+ *   UFS_IO_FAST_ZERO   - clear only what a command uses (TRD slot, command UPIU, response UPIU, the PRDT entries
+ *                        actually programmed) instead of the whole UTRL + UCD before AND after every command.
+ *   UFS_IO_FULL_DUPLEX - StorSynchronizeFullDuplex: StartIo (and its completion poll) runs at DISPATCH under the
+ *                        StartIo lock instead of DIRQL; HwStorTimer/HwResetBus still hold the StartIo lock
+ *                        (MS Learn StorPortAcquireSpinLock lock table), the ISR is a no-op on the parked line.
+ * Forced to 0 (the w38 behaviour) when the previous boot died: BootLogDxe's unexplained-death counter in progress
+ * word [12] at 0x8FE0F000 ('DE' << 16 | n, cleared by a clean OS restart or a cold power-on).
+ */
+#ifndef UFS_IO_MODE_DEFAULT
+#define UFS_IO_MODE_DEFAULT                        0x7FUL
+#endif
+#define UFS_IO_FAST_ZERO                           0x1UL
+#define UFS_IO_FULL_DUPLEX                         0x2UL
+/*
+ * UFS_IO_COHERENT_BOUNCE (w40): used only when the firmware turned the 9820 UFS IO-coherency bits on
+ * (SYSREG_FSYS1 + 0x700 = EXYNOS_UFS_IOCOH_BASE 0x13C10700, VERIFIED in Exynos9820.h; bits 22|23 = the live DT
+ * ufs-io-coherency mask, Beyond0LteUfsHcDxe BEYOND0LTE_UFS_IOCOH_9820). Then ALL bounce data goes through the
+ * cacheable view: writes are staged there and reads copied back from it without per-line cache maintenance - never
+ * through the Device alias, so cached and uncached accesses to bounce data never mix (notes/ufs-async-plan.md:
+ * the 12:17-12:25 revert). With the bits off (today's daily firmware) the driver behaves exactly like w39.
+ * Firmware and driver ship as a pair: never run the iocoh firmware with a driver older than w40.
+ */
+#define UFS_IO_COHERENT_BOUNCE                     0x4UL
+/*
+ * UFS_IO_LARGE_TRANSFER (w42): with the coherent RAM bounce, one command carries up to 256 KiB instead of 64 KiB:
+ * RAM bounce 256 KiB, UCD relocated into the then-unused firmware-pool bounce area (PRDT 64 x 128 B entries of
+ * 4 KiB). 256 KiB keeps the FMP per-entry byte-count field check (UFS_FMP_PRDT_DATA_BYTE_COUNT_MASK + 1) and the
+ * 16-bit byte-encoded PRDT length (64 x 128 = 8192) valid. Reads AND writes (the StorPort limit covers both); the
+ * write fence / GPT guard / protected ranges validate the whole LBA range as before.
+ */
+#define UFS_IO_LARGE_TRANSFER                      0x8UL
+/*
+ * UFS_IO_IRQ_OBSERVE (w43, notes/ufs-async-plan.md stage 3): arm the controller interrupt (IE = transfer completion
+ * + fatal bits, TRD IOC set) while completion is STILL polled; the ISR only acknowledges IS (W1C), latches the bits
+ * for the poll path and counts. Proves the line (GSIV 281 = SPI 249, VERIFIED from TWRP /proc/interrupts) is
+ * delivered with StorPort's forced level mode before anything depends on it. With the parked DSDT line (GSIV 259)
+ * the ISR never runs and the poll path acknowledges IS exactly as before. The ISR claims and clears any IS it sees
+ * even when not armed, so a firmware that connects the real line can never storm against this driver.
+ * Diagnostics (existing UfsDiag fields): CALLBACKS = ISR invocations, UTRD_INTERRUPT = invocations that saw
+ * transfer completion, IE_AFTER_ISR = the armed IE value.
+ */
+#define UFS_IO_IRQ_OBSERVE                         0x10UL
+/*
+ * UFS_IO_ASYNC (w44, stage 3b): once the ISR has seen UFS_ASYNC_PROVE_IRQS transfer completions (the line is proven
+ * for this boot), StartIo rings the doorbell and returns without completing; the ISR queues the completion DPC,
+ * which (under the StartIo lock) runs exactly the post-poll path of the synchronous code (UfsFinishIssuedCommand)
+ * and completes the SRB. A StorPort extended timer re-checks every UFS_ASYNC_TIMER_US as a backstop for a lost
+ * interrupt; the 5 s containment of the polled path still applies. If the backstop has to complete more than
+ * 1/8 of the commands, async is switched off for the rest of the boot (back to polling).
+ */
+#define UFS_IO_ASYNC                               0x20UL
+#define UFS_ASYNC_PROVE_IRQS                       16L
+#define UFS_ASYNC_TIMER_US                         2000UL
+/*
+ * w45 hybrid: interrupt + DPC dispatch measured ~70 us per command on this SoC (w44b: 4 KiB p50 155 -> 230 us, Steam
+ * warm start 31 -> 48 s, its reads are strictly serial 4 KiB). Commands up to UFS_ASYNC_MIN_BYTES are polled
+ * synchronously WITHOUT the TRD interrupt bit (no interrupt, no added latency); only larger ones (the 128-256 KiB
+ * commands of w42) go async, where the CPU is freed for 0.3-0.6 ms of device time. All commands request the
+ * interrupt until UFS_ASYNC_PROVE_IRQS completions proved the line.
+ */
+#define UFS_ASYNC_MIN_BYTES                        (64UL * 1024UL)
+/*
+ * UFS_IO_MULTI_SLOT (w46, stage 4): async READS (the > UFS_ASYNC_MIN_BYTES ones) may run in up to UFS_MAX_SLOTS
+ * transfer-request slots at once - each slot has its own TRD, UCD (in the freed firmware-pool bounce area) and 256 KiB
+ * coherent RAM bounce; the UPIU task tag = the slot. Every other command (writes, small/polled commands, no free
+ * slot) first drains all outstanding slots and runs alone in slot 0, so writes stay exclusive and single-slot.
+ * Completion of slot n retires only slot n: UTRLCLR on Exynos takes the slot BIT (Linux
+ * UFSHCD_QUIRK_BROKEN_REQ_LIST_CLR writes 1 << tag; W27 proved it on slot 0). StorPort queue depth = slots.
+ */
+#define UFS_IO_MULTI_SLOT                          0x40UL
+#define UFS_IRQ_ARMED_ENABLE                       (UFS_INTERRUPT_TRANSFER_COMPLETION | UFS_INTERRUPT_STATUS_FATAL_MASK)
+#define UFS_LARGE_TRANSFER_LENGTH                  (256UL * 1024UL)
+#define UFS_LARGE_PRDT_ENTRIES                     (UFS_LARGE_TRANSFER_LENGTH / 4096UL)
+#define UFS_LARGE_UCD_REGION_SIZE                  (2048UL + UFS_LARGE_PRDT_ENTRIES * 128UL)
+#define UFS_IOCOH_PHYSICAL                         0x13C10700ULL   /* EXYNOS_UFS_IOCOH_BASE (Exynos9820.h, VERIFIED) */
+#define UFS_IOCOH_UFS_BITS                         0x00C00000UL    /* BIT22|BIT23, live DT ufs-io-coherency */
+#define UFS_FAST_ZERO_COMMAND_BYTES                64UL    /* command UPIU is 32 B */
+#define UFS_FAST_ZERO_RESPONSE_BYTES               128UL   /* response UPIU is 52 B */
+#define UFS_DEATH_COUNTER_WORD                     12UL
+#define UFS_DEATH_COUNTER_MAGIC                    0x4445UL
 #endif
 
 /*

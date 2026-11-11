@@ -1845,7 +1845,10 @@ BuildOwnRsn(_Inout_ PMSG_STATE S)
     S->OwnRsn[15] = 0;
     RtlCopyMemory(S->OwnRsn + 16, Oui, 3);
     S->OwnRsn[19] = RSN_AKM_PSK_SUITE;
-    S->OwnRsn[20] = 0;
+    /* RSN capabilities: PTKSA replay counter subfield (bits 2-3) = 3 -> 16 replay counters, one per TID, as a QoS STA
+       uses them (802.11-2016 9.4.2.25.4); the AP here announces 0x008C = the same 16 + MFPC. 0 (one shared counter)
+       was the value until 1.0.10.4, with no Block Ack session ever set up (notes/wifi-throughput.md). No MFP. */
+    S->OwnRsn[20] = 0x0C;
     S->OwnRsn[21] = 0;
     S->OwnRsnLen  = 22;
     return TRUE;
@@ -2162,6 +2165,17 @@ CountersDump(_Inout_ PMSG_STATE S, _In_z_ PCSTR When, _In_ BOOLEAN Hex)
         } else if (Id == CNT_XTLV_GE80_UCODE && L >= MCST80_RXF0OVFL + 4) {
             ReportLine(S->R, "[cnt] %s: macstat 0x%lX rxf0ovfl %lu rxdtucastmbss %lu\r\n", When, Id,
                        Le32At(D, MCST80_RXF0OVFL), Le32At(D, MCST80_RXDTUCASTMBSS));
+            ReportLine(S->R, "[cnt] %s: macstat80 txall %lu txack %lu txucast %lu rsptmout %lu | rxstrt %lu badfcs %lu "
+                       "badplcp %lu crsglitch %lu anyerr %lu toolate %lu dtocast %lu bcn %lu missbcn %lu\r\n", When,
+                       Le32At(D, MCST80_TXALLFRM), Le32At(D, MCST80_TXACKFRM), Le32At(D, MCST80_TXUCAST),
+                       Le32At(D, MCST80_RXRSPTMOUT), Le32At(D, MCST80_RXSTRT), Le32At(D, MCST80_RXBADFCS),
+                       Le32At(D, MCST80_RXBADPLCP), Le32At(D, MCST80_RXCRSGLITCH), Le32At(D, MCST80_RXANYERR),
+                       Le32At(D, MCST80_RXTOOLATE), Le32At(D, MCST80_RXDTOCAST), Le32At(D, MCST80_RXBEACONMBSS),
+                       Le32At(D, MCST80_MISSBCN));
+            ReportLine(S->R, "[cnt] %s: macstat80 txrts %lu txcts %lu txnull %lu txphyerr %lu | rxrts %lu rxcts %lu rxack %lu "
+                       "rxcts-other %lu\r\n", When, Le32At(D, MCST80_TXRTSFRM), Le32At(D, MCST80_TXCTSFRM),
+                       Le32At(D, MCST80_TXDNLFRM), Le32At(D, MCST80_TXPHYERROR), Le32At(D, MCST80_RXRTSUCAST),
+                       Le32At(D, MCST80_RXCTSUCAST), Le32At(D, MCST80_RXACKUCAST), Le32At(D, MCST80_RXCTSOCAST));
         } else {
             ReportLine(S->R, "[cnt] %s: xtlv 0x%lX len %lu (not decoded)\r\n", When, Id, L);
         }
@@ -2411,6 +2425,17 @@ WlanMsgConnect(PWLAN_MSG_CTX M, PWLAN_REPORT R, const WLAN_CONNECT *C, PWLAN_ASS
         ReportLine(R, "[join] security setup refused (last status %ld)\r\n", S->RespStatus);
         goto Done;
     }
+    {
+        /* PMF must match the RSN IE we send (dhd wl_cfg80211.c:4703-4780: mfp from the connect IE's RSN caps, MFPR
+           0x40 -> WL_MFP_REQUIRED 2, MFPC 0x80 -> WL_MFP_CAPABLE 1, else WL_MFP_NONE 0; wpa.h:222-223,
+           wlioctl.h:19179-19181). This fw defaults to mfp 1: with our caps 0x000C (no MFPC) it treated robust action
+           frames (ADDBA/DELBA) as protected while the AP did not - no Block Ack with a PMF-capable AP
+           (notes/wifi-throughput.md 2026-10-16). */
+        UCHAR Caps = (C->Rsn && S->OwnRsnLen > 20) ? S->OwnRsn[20] : 0;
+        ULONG Mfp  = (Caps & 0x40) ? 2 : (Caps & 0x80) ? 1 : 0;
+
+        ReportLine(R, "[join] mfp %lu (RSN caps 0x%02X): MSG %lu\r\n", Mfp, Caps, SetInt(S, "mfp", Mfp));
+    }
     if (C->Rsn && IoctlVar(S, TRUE, "wpaie", S->OwnRsn, S->OwnRsnLen, 0) != MSG_OK) {
         ReportLine(R, "[join] wpaie refused (status %ld) - the firmware builds its own RSN IE\r\n", S->RespStatus);
     }
@@ -2525,6 +2550,279 @@ WlanMsgSetKey(PWLAN_MSG_CTX M, PWLAN_REPORT R, ULONG Index, const UCHAR *Key, co
     Rc = InstallKey(S, (Ea != NULL) ? 0 : Index, Key, Ea, Rsc);
     ReportLine(R, "[key] %s key idx %lu%s -> MSG %lu (status %ld)\r\n", (Ea != NULL) ? "pairwise" : "group",
                (Ea != NULL) ? 0 : Index, (Rsc != NULL) ? " with rsc" : "", Rc, S->RespStatus);
+    return Rc;
+}
+
+/* SET_VAR "ampdu_tid" {u8 tid, u8 enable} (dhd wlioctl.h:6395 struct ampdu_tid_control, used by dhd_linux.c:12194-
+   12205). Toggled off/on for TID 0 after the port is authorized: the firmware's initiator had given up ("ini_off")
+   after its early ADDBA attempts went unanswered during the 4-way handshake (notes/wifi-throughput.md). */
+_Use_decl_annotations_
+ULONG
+WlanMsgAmpduTid(PWLAN_MSG_CTX M, PWLAN_REPORT R, UCHAR Tid, BOOLEAN Enable)
+{
+    PMSG_STATE S = Live(M, R);
+    UCHAR      V[2];
+    ULONG      Rc;
+
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    V[0] = Tid;
+    V[1] = Enable ? 1 : 0;
+    Rc = IoctlVar(S, TRUE, "ampdu_tid", V, sizeof(V), 0);
+    ReportLine(R, "[key] ampdu_tid %u %s -> MSG %lu (status %ld)\r\n", Tid, Enable ? "on" : "off", Rc, S->RespStatus);
+    return Rc;
+}
+
+/* Port authorized: the host supplicant (Windows) finished the 4-way handshake. dhd tells the firmware with
+   WLC_SCB_AUTHORIZE + the peer MAC (wl_cfg80211.c:9390, station mode via cfg80211 change_station AUTHORIZED); the
+   firmware only sets up Block Ack (A-MPDU) for an authorized peer. Without it: txaddbareq 5 / rxaddbaresp 0,
+   ini_off, tot_ampdus 0 (notes/wifi-throughput.md). */
+_Use_decl_annotations_
+ULONG
+WlanMsgScbAuthorize(PWLAN_MSG_CTX M, PWLAN_REPORT R, const UCHAR *Peer)
+{
+    PMSG_STATE S = Live(M, R);
+    ULONG      Rc;
+
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    Rc = Ioctl(S, WLC_SCB_AUTHORIZE, Peer, 6, 0, "scb authorize");
+    ReportLine(R, "[key] SCB_AUTHORIZE -> MSG %lu (status %ld)\r\n", Rc, S->RespStatus);
+    return Rc;
+}
+
+/* Firmware text statistics: GET_VAR "dump" with the section name as the value (dhd "wl dump <section>"), reply = NUL-
+   terminated text; logged line by line (notes/wifi-throughput.md: why ~14 Mbit/s on a 130-144 Mbit/s link). */
+_Use_decl_annotations_
+ULONG
+WlanMsgDump(PWLAN_MSG_CTX M, PWLAN_REPORT R, PCSTR Section)
+{
+    PMSG_STATE S = Live(M, R);
+    size_t     SecLen;
+    ULONG      Rc, I, Start;
+
+    if (S == NULL || !NT_SUCCESS(RtlStringCbLengthA(Section, 32, &SecLen))) {
+        return MSG_SKIPPED;
+    }
+    Rc = IoctlVar(S, FALSE, "dump", Section, (ULONG)SecLen + 1, IOCTL_RESP_MAX_OUT);
+    ReportLine(R, "[dump] %s -> MSG %lu, %lu B\r\n", Section, Rc, S->RespLen);
+    if (Rc != MSG_OK) {
+        return Rc;
+    }
+    S->Resp[(S->RespLen < sizeof(S->Resp)) ? S->RespLen : sizeof(S->Resp) - 1] = 0;
+    for (I = 0, Start = 0; I <= S->RespLen && I < sizeof(S->Resp); I++) {
+        if (S->Resp[I] == '\n' || S->Resp[I] == 0) {
+            S->Resp[I] = 0;
+            if (I > Start) {
+                ReportLine(R, "[dump %s] %s\r\n", Section, (PCSTR)&S->Resp[Start]);
+            }
+            if (I == S->RespLen || (I + 1 < sizeof(S->Resp) && S->Resp[I + 1] == 0)) {
+                break;
+            }
+            Start = I + 1;
+        }
+    }
+    return Rc;
+}
+
+/* Runtime rx-loss diagnostics (notes/wifi-throughput.md 2026-10-16): the "counters" decode of the join dump. */
+_Use_decl_annotations_
+VOID
+WlanMsgCounters(PWLAN_MSG_CTX M, PWLAN_REPORT R, PCSTR When)
+{
+    PMSG_STATE S = Live(M, R);
+
+    if (S != NULL) {
+        CountersDump(S, When, FALSE);
+    }
+}
+
+/* GET_VAR of a 32-bit iovar (diagnostics: ampdu, ampdu_ba_wsize, frameburst, nmode). */
+_Use_decl_annotations_
+ULONG
+WlanMsgGetIntVar(PWLAN_MSG_CTX M, PWLAN_REPORT R, PCSTR Name, PULONG Value)
+{
+    PMSG_STATE S = Live(M, R);
+    ULONG      Rc;
+
+    *Value = 0xFFFFFFFF;
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    Rc = IoctlVar(S, FALSE, Name, NULL, 0, sizeof(ULONG));
+    if (Rc == MSG_OK && S->RespLen >= sizeof(ULONG)) {
+        *Value = *(ULONG UNALIGNED *)S->Resp;
+    }
+    return Rc;
+}
+
+/* GET_VAR of any iovar, the first 16 B of the reply logged as words (CX debug channel "var:<name>"; structs such as
+   wl_config_t {config, status} of "rsdb_mode"). */
+_Use_decl_annotations_
+ULONG
+WlanMsgGetVarRaw(PWLAN_MSG_CTX M, PWLAN_REPORT R, PCSTR Name)
+{
+    PMSG_STATE S = Live(M, R);
+    ULONG      Rc;
+
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    Rc = IoctlVar(S, FALSE, Name, NULL, 0, 16);
+    if (Rc == MSG_OK && S->RespLen >= 16) {
+        ReportLine(R, "[var] %s: %08lX %08lX %08lX %08lX\r\n", Name, Le32At(S->Resp, 0), Le32At(S->Resp, 4),
+                   Le32At(S->Resp, 8), Le32At(S->Resp, 12));
+    } else {
+        ReportLine(R, "[var] %s: MSG %lu, %lu B\r\n", Name, Rc, S->RespLen);
+    }
+    return Rc;
+}
+
+/* GET_VAR "sta_info" for Peer (sta_info_v4..v7 common prefix, bcmdhd_101_16 wlioctl.h:2276-2342; offsets are the
+   uint16/uint32/uint64 sequence of that struct, wl_rateset_t = 4 + 16 B; flags = wlioctl_defs.h:121-148 WL_STA_*):
+   what the firmware holds for the AP - WME/N/AMPDU capability bits, retries, decrypt failures, per-antenna rssi. */
+_Use_decl_annotations_
+ULONG
+WlanMsgStaInfo(PWLAN_MSG_CTX M, PWLAN_REPORT R, const UCHAR *Peer)
+{
+    PMSG_STATE   S = Live(M, R);
+    const UCHAR *B;
+    ULONG        Rc;
+
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    Rc = IoctlVar(S, FALSE, "sta_info", Peer, 6, 256);
+    B  = S->Resp;
+    ReportLine(R, "[sta] sta_info -> MSG %lu, %lu B, ver %u len %u\r\n", Rc, S->RespLen,
+               (S->RespLen >= 4) ? *(const USHORT UNALIGNED *)B : 0, (S->RespLen >= 4) ? *(const USHORT UNALIGNED *)(B + 2) : 0);
+    if (Rc != MSG_OK || S->RespLen < 48) {
+        return Rc;
+    }
+    ReportLine(R, "[sta] cap 0x%04X flags 0x%08lX idle %lu in %lu s\r\n", *(const USHORT UNALIGNED *)(B + 4),
+               Le32At(B, 8), Le32At(B, 12), Le32At(B, 44));
+    /* this fw (18.41.117) answers ver 4 len 84: the statistics below exist only from len 200 on */
+    if (S->RespLen < 200 || *(const USHORT UNALIGNED *)(B + 2) < 200) {
+        return Rc;
+    }
+    ReportLine(R, "[sta] ht_cap 0x%04X vht_flags 0x%04X aid 0x%04X\r\n", *(const USHORT UNALIGNED *)(B + 154),
+               *(const USHORT UNALIGNED *)(B + 156), *(const USHORT UNALIGNED *)(B + 152));
+    ReportLine(R, "[sta] tx_pkts %lu tx_failures %lu retried %lu retry_exhausted %lu | rx_ucast %lu rx_mcast %lu "
+               "rx_retried %lu decrypt ok %lu fail %lu | tx_rate %lu rx_rate %lu fallback %lu (500 kbit/s units)\r\n",
+               Le32At(B, 52), Le32At(B, 56), Le32At(B, 160), Le32At(B, 164), Le32At(B, 60), Le32At(B, 64), Le32At(B, 192),
+               Le32At(B, 76), Le32At(B, 80), Le32At(B, 68), Le32At(B, 72), Le32At(B, 196));
+    ReportLine(R, "[sta] rssi %d %d %d %d nf %d %d %d %d last %d %d %d %d; fw frames %lu retries %lu exhausted %lu\r\n",
+               (CHAR)B[144], (CHAR)B[145], (CHAR)B[146], (CHAR)B[147], (CHAR)B[148], (CHAR)B[149], (CHAR)B[150],
+               (CHAR)B[151], (CHAR)B[168], (CHAR)B[169], (CHAR)B[170], (CHAR)B[171], Le32At(B, 180), Le32At(B, 184),
+               Le32At(B, 188));
+    return Rc;
+}
+
+/* CX debug "country:XX": wl_country_t {abbrev[4], int32 rev, ccode[4]} (bcmdhd_101_16 wlioctl.h:1648-1660), rev -1 =
+   "unspecified" per that header; the fw came up as "GB" rev 0. Logs the value read back. */
+_Use_decl_annotations_
+VOID
+WlanMsgSetCountry(PWLAN_MSG_CTX M, PWLAN_REPORT R, PCSTR Cc)
+{
+    PMSG_STATE S = Live(M, R);
+    UCHAR      C[12];
+    ULONG      Rc;
+
+    if (S == NULL) {
+        return;
+    }
+    RtlZeroMemory(C, sizeof(C));
+    C[0] = (UCHAR)Cc[0]; C[1] = (UCHAR)Cc[1];
+    *(LONG UNALIGNED *)(C + 4) = -1;
+    C[8] = (UCHAR)Cc[0]; C[9] = (UCHAR)Cc[1];
+    Rc = IoctlVar(S, TRUE, "country", C, sizeof(C), 0);
+    ReportLine(R, "[cc] set country %c%c rev -1: MSG %lu (status %ld)\r\n", Cc[0], Cc[1], Rc, S->RespStatus);
+    (VOID)WlanMsgGetVarRaw(M, R, "country");
+}
+
+/* Experiment (CX debug "bw40"): WLC_DOWN, bw_cap {WLC_BAND_2G 2, WLC_BW_CAP_40MHZ 3}, read it back, WLC_UP - the
+   pre-UP set answered BCME_BADBAND (-13) and a runtime set BCME_NOTDOWN (-5). The association is lost (the OS
+   reconnects). notes/wifi-throughput.md 2026-10-16. */
+_Use_decl_annotations_
+VOID
+WlanMsgBw40Experiment(PWLAN_MSG_CTX M, PWLAN_REPORT R)
+{
+    PMSG_STATE S = Live(M, R);
+    ULONG      One = 1, Down, Set, Get, Up, Band = 2;
+    ULONG      Bw[2] = { 2, 0x3 };
+
+    if (S == NULL) {
+        return;
+    }
+    Down = Ioctl(S, WLC_DOWN, &One, sizeof(One), 0, "DOWN");
+    Set  = IoctlVar(S, TRUE, "bw_cap", Bw, sizeof(Bw), 0);
+    ReportLine(R, "[bw40] DOWN MSG %lu, set bw_cap 2G=3 MSG %lu (status %ld)\r\n", Down, Set, S->RespStatus);
+    Set  = SetInt(S, "mimo_bw_cap", 1);   /* WLC_N_BW_40ALL (wlioctl_defs.h:1196); runtime set was BCME_NOTDOWN */
+    ReportLine(R, "[bw40] set mimo_bw_cap 1 MSG %lu (status %ld)\r\n", Set, S->RespStatus);
+    Get  = IoctlVar(S, FALSE, "bw_cap", &Band, sizeof(Band), sizeof(ULONG));
+    ReportLine(R, "[bw40] get bw_cap 2G MSG %lu (status %ld) value 0x%lX\r\n", Get, S->RespStatus,
+               (Get == MSG_OK && S->RespLen >= 4) ? *(ULONG UNALIGNED *)S->Resp : 0xFFFFFFFFUL);
+    Band = 1;
+    Get  = IoctlVar(S, FALSE, "bw_cap", &Band, sizeof(Band), sizeof(ULONG));
+    ReportLine(R, "[bw40] get bw_cap 5G MSG %lu value 0x%lX\r\n", Get,
+               (Get == MSG_OK && S->RespLen >= 4) ? *(ULONG UNALIGNED *)S->Resp : 0xFFFFFFFFUL);
+    Up   = Ioctl(S, WLC_UP, &One, sizeof(One), 0, "UP");
+    ReportLine(R, "[bw40] UP MSG %lu\r\n", Up);
+}
+
+/* SET_VAR of a 32-bit iovar (the CX debug channel "set:<name>=<value>", notes/wifi-throughput.md). */
+_Use_decl_annotations_
+ULONG
+WlanMsgSetIntVar(PWLAN_MSG_CTX M, PWLAN_REPORT R, PCSTR Name, ULONG Value)
+{
+    PMSG_STATE S = Live(M, R);
+
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    return IoctlVar(S, TRUE, Name, &Value, sizeof(Value), 0);
+}
+
+/* Power-save mode: reads the current one (WLC_GET_PM) and sets Mode (WLC_SET_PM), int in. fmac sets PM_FAST after
+   bring-up when power save is on (cfg80211.c:7824-7825); left at the firmware default this driver saw 8-207 ms
+   ping RTT (avg 137 ms) on a 144 Mbit/s link = beacon-interval buffering (notes/wifi-throughput.md). */
+_Use_decl_annotations_
+ULONG
+WlanMsgSetPm(PWLAN_MSG_CTX M, PWLAN_REPORT R, ULONG Mode, PULONG Old)
+{
+    PMSG_STATE S = Live(M, R);
+    ULONG      Zero = 0;
+
+    *Old = 0xFFFFFFFF;
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    if (Ioctl(S, WLC_GET_PM, &Zero, sizeof(Zero), sizeof(ULONG), "get pm") == MSG_OK && S->RespLen >= sizeof(ULONG)) {
+        *Old = *(ULONG UNALIGNED *)S->Resp;
+    }
+    return Ioctl(S, WLC_SET_PM, &Mode, sizeof(Mode), 0, "set pm");
+}
+
+/* Current link rate (WLC_GET_RATE, int in/out, 500 kbit/s units - fmac cfg80211 get_station reads it the same way
+   and reports rate * 5 in 100 kbit/s). 0 = not associated / unknown. */
+_Use_decl_annotations_
+ULONG
+WlanMsgGetRate(PWLAN_MSG_CTX M, PWLAN_REPORT R, PULONG Rate500k)
+{
+    PMSG_STATE S = Live(M, R);
+    ULONG      Zero = 0;
+    ULONG      Rc;
+
+    *Rate500k = 0;
+    if (S == NULL) {
+        return MSG_SKIPPED;
+    }
+    Rc = Ioctl(S, WLC_GET_RATE, &Zero, sizeof(Zero), sizeof(ULONG), "rate");
+    if (Rc == MSG_OK && S->RespLen >= sizeof(ULONG)) {
+        *Rate500k = *(ULONG UNALIGNED *)S->Resp;
+    }
     return Rc;
 }
 

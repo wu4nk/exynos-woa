@@ -50,6 +50,17 @@ NTSTATUS APIENTRY MwCreateContext(IN_CONST_HANDLE hDevice, DXGKARG_CREATECONTEXT
         return STATUS_NO_MEMORY;
     ctx->Device = (MW_DEVICE *)hDevice;
     Arg->hContext = ctx;
+    if (MwWddm2Gpummu && (Arg->NodeOrdinal != 0 || Arg->Flags.VirtualAddressing)) {
+        /* S7a: a context on the software copy node: no lists; a virtual one needs no patching (Learn
+         * DXGK_CONTEXTINFO_CAPS); a physical one (the system paging context) gets a DMA buffer for paging buffers. */
+        Arg->ContextInfo.DmaBufferSize = Arg->Flags.VirtualAddressing ? 0 : MW_DMA_BUFFER_SIZE;
+        Arg->ContextInfo.DmaBufferSegmentSet = 0;
+        Arg->ContextInfo.DmaBufferPrivateDataSize = 0;
+        Arg->ContextInfo.AllocationListSize = 0;
+        Arg->ContextInfo.PatchLocationListSize = 0;
+        Arg->ContextInfo.Caps.NoPatchingRequired = Arg->Flags.VirtualAddressing ? 1 : 0;
+        return STATUS_SUCCESS;
+    }
     Arg->ContextInfo.DmaBufferSize = MW_DMA_BUFFER_SIZE;
     Arg->ContextInfo.DmaBufferSegmentSet = 0;           /* system memory, as viogpu3d */
     Arg->ContextInfo.DmaBufferPrivateDataSize = sizeof(MW_DMA_PRIVATE);
@@ -218,6 +229,58 @@ static void ClipRect(RECT *R, LONG W, LONG H)
     if (R->bottom > H) R->bottom = H;
 }
 
+/* G20 (notes/g20-scaled-modes.md): a present into the Fb from a primary smaller than the Fb (the scaled source mode,
+ * VW x VH) - nearest-neighbour stretch of each rectangle (primary coordinates) onto the Fb. Fb pixel (X, Y) shows
+ * primary pixel (X * VW / FbW, Y * VH / FbH); a rectangle [t, b) of primary rows covers Fb rows
+ * [ceil(t * FbH / VH), ceil(b * FbH / VH)). The GPU path (Mesa d3d10_scanout_present) is the normal one; this is the
+ * fallback for CPU-presented frames. */
+/* G22: one pixel of an A8B8G8R8 (RGBA) source as the A8R8G8B8 framebuffer wants it - red and blue swapped. */
+static __forceinline ULONG SwapRB(ULONG P)
+{
+    return (P & 0xFF00FF00u) | ((P & 0xFFu) << 16) | ((P >> 16) & 0xFFu);
+}
+
+static void ScalePresent(MW_ADAPTER *A, const MW_PRESENT_OP *Op, PUCHAR Src, LONG SrcW, LONG SrcH, LONG SrcPitch,
+                         LONG VW, LONG VH, BOOLEAN Swap)
+{
+    LONG fw = (LONG)A->Fb.Width, fh = (LONG)A->Fb.Height, fp = (LONG)A->Fb.Pitch;
+    ULONG n = Op->NumRects ? Op->NumRects : 1;
+
+    for (ULONG i = 0; i < n; i++) {
+        RECT r = Op->NumRects ? Op->Rects[i] : Op->DstRect;
+        LONG dx = Op->SrcRect.left - Op->DstRect.left, dy = Op->SrcRect.top - Op->DstRect.top;
+
+        ClipRect(&r, VW, VH);
+        if (Op->Kind == MW_PRESENT_BLT) {
+            if (r.left + dx < 0) r.left = -dx;
+            if (r.top + dy < 0) r.top = -dy;
+            if (r.right + dx > SrcW) r.right = SrcW - dx;
+            if (r.bottom + dy > SrcH) r.bottom = SrcH - dy;
+        }
+        if (r.right <= r.left || r.bottom <= r.top)
+            continue;
+        LONG y0 = (LONG)(((LONG64)r.top * fh + VH - 1) / VH), y1 = (LONG)(((LONG64)r.bottom * fh + VH - 1) / VH);
+        LONG x0 = (LONG)(((LONG64)r.left * fw + VW - 1) / VW), x1 = (LONG)(((LONG64)r.right * fw + VW - 1) / VW);
+        for (LONG y = y0; y < y1 && y < fh; y++) {
+            ULONG *d = (ULONG *)(A->FbVa + (SIZE_T)y * fp);
+            if (Op->Kind == MW_PRESENT_BLT) {
+                const ULONG *s = (const ULONG *)(Src + (SIZE_T)((LONG)((LONG64)y * VH / fh) + dy) * SrcPitch);
+                for (LONG x = x0; x < x1 && x < fw; x++) {
+                    ULONG p = s[(LONG)((LONG64)x * VW / fw) + dx];
+                    d[x] = Swap ? SwapRB(p) : p;
+                }
+            } else {
+                for (LONG x = x0; x < x1 && x < fw; x++)
+                    d[x] = Op->Color;
+            }
+        }
+    }
+    if (Op->Kind == MW_PRESENT_BLT)
+        A->PresentBlts++;
+    else
+        A->PresentFills++;
+}
+
 /* Carry out a present on the CPU. 32-bit pixels only. */
 static void DoPresent(MW_ADAPTER *A, const MW_PRESENT_OP *Op)
 {
@@ -225,6 +288,12 @@ static void DoPresent(MW_ADAPTER *A, const MW_PRESENT_OP *Op)
     LONG dstW, dstH, dstPitch, srcPitch = 0, srcW = 0, srcH = 0;
     ULONG n = Op->NumRects ? Op->NumRects : 1;
 
+    /* H4a: a GPU-presented primary's frame is in the framebuffer already (the UMD copied it there on the GPU). */
+    if (Op->Kind == MW_PRESENT_BLT && Op->Src != NULL && Op->Src->GpuPresented &&
+        (Op->ToScanout || (Op->Dst != NULL && (Op->Dst->Flags & MW_ALLOC_PRIMARY)))) {
+        A->PresentGpu++;
+        return;
+    }
     if ((Op->ToScanout || (Op->Dst != NULL && (Op->Dst->Flags & MW_ALLOC_PRIMARY))) && A->FbVa != NULL) {
         dst = A->FbVa;
         dstW = (LONG)A->Fb.Width;
@@ -244,26 +313,28 @@ static void DoPresent(MW_ADAPTER *A, const MW_PRESENT_OP *Op)
         dstPitch = (LONG)(Op->Dst->Pitch ? Op->Dst->Pitch : Op->Dst->Width * 4);
     }
     if (Op->Kind == MW_PRESENT_BLT) {
-        /* G2b-3 run 31 (ScanoutDirect): the GPU's view of such a source is the framebuffer itself. Into the
-         * framebuffer there is nothing to copy - the pixels are there; anywhere else they are read from it (the CPU
-         * view of the allocation's own pages is stale). */
-        if (Op->Src != NULL && Op->Src->ScanDirect && A->FbVa != NULL) {
-            if (dst == A->FbVa && Op->SrcRect.left == Op->DstRect.left && Op->SrcRect.top == Op->DstRect.top) {
-                A->PresentBlts++;
-                return;
-            }
-            src = A->FbVa;
-            srcPitch = (LONG)A->Fb.Pitch;
-        } else {
-            src = AllocationVa(Op->Src);
-            srcPitch = Op->Src != NULL ? (LONG)(Op->Src->Pitch ? Op->Src->Pitch : Op->Src->Width * 4) : 0;
-        }
+        src = AllocationVa(Op->Src);
         if (src == NULL) {
             A->PresentSkips++;
             return;
         }
         srcW = (LONG)Op->Src->Width;
         srcH = (LONG)Op->Src->Height;
+        srcPitch = (LONG)(Op->Src->Pitch ? Op->Src->Pitch : Op->Src->Width * 4);
+    }
+    /* G22: an RGBA (A8B8G8R8) source into the A8R8G8B8 / X8R8G8B8 framebuffer - swap red and blue while copying */
+    BOOLEAN swap = Op->Kind == MW_PRESENT_BLT && dst == A->FbVa && Op->Src->Format == D3DDDIFMT_A8B8G8R8 &&
+                   (A->Fb.ColorFormat == D3DDDIFMT_A8R8G8B8 || A->Fb.ColorFormat == D3DDDIFMT_X8R8G8B8);
+    if (swap && InterlockedIncrement(&A->RgbaPresents) == 1)
+        MwPramText(TRUE, "Present RGBA source, R/B swapped", NULL, 0, FALSE);
+    if (MwScaledModes && dst == A->FbVa) {
+        /* G20: the primary's own size - the flipped source, or the primary named as destination. */
+        const MW_ALLOCATION *prim = Op->ToScanout ? Op->Src : Op->Dst;
+        LONG vw = prim != NULL ? (LONG)prim->Width : dstW, vh = prim != NULL ? (LONG)prim->Height : dstH;
+        if (vw > 0 && vh > 0 && vw <= dstW && vh <= dstH && (vw != dstW || vh != dstH)) {
+            ScalePresent(A, Op, src, srcW, srcH, srcPitch, vw, vh, swap);
+            return;
+        }
     }
 
     for (ULONG i = 0; i < n; i++) {
@@ -284,7 +355,12 @@ static void DoPresent(MW_ADAPTER *A, const MW_PRESENT_OP *Op)
             ULONG *d = (ULONG *)(dst + (SIZE_T)y * dstPitch) + r.left;
             if (Op->Kind == MW_PRESENT_BLT) {
                 const ULONG *s = (const ULONG *)(src + (SIZE_T)(y + dy) * srcPitch) + r.left + dx;
-                RtlCopyMemory(d, s, (SIZE_T)(r.right - r.left) * 4);
+                if (swap) {
+                    for (LONG x = 0; x < r.right - r.left; x++)
+                        d[x] = SwapRB(s[x]);
+                } else {
+                    RtlCopyMemory(d, s, (SIZE_T)(r.right - r.left) * 4);
+                }
             } else {
                 for (LONG x = 0; x < r.right - r.left; x++)
                     d[x] = Op->Color;
@@ -314,17 +390,40 @@ NTSTATUS APIENTRY MwPatch(IN_CONST_HANDLE hAdapter, const DXGKARG_PATCH *Arg)
 
 /* ---- the queue, at interrupt level ---- */
 
-static void NotifyCompleted(MW_ADAPTER *A, ULONG Fence)
+static void NotifyCompletedNode(MW_ADAPTER *A, UINT Node, ULONG Fence)
 {
     DXGKARGCB_NOTIFY_INTERRUPT_DATA n = {0};
 
     n.InterruptType = DXGK_INTERRUPT_DMA_COMPLETED;
     n.DmaCompleted.SubmissionFenceId = Fence;
-    n.DmaCompleted.NodeOrdinal = 0;
+    n.DmaCompleted.NodeOrdinal = Node;
     n.DmaCompleted.EngineOrdinal = 0;
     A->Dxgk.DxgkCbNotifyInterrupt(A->Dxgk.DeviceHandle, &n);
-    A->LastCompletedFence = Fence;
+    if (Node == 0)
+        A->LastCompletedFence = Fence;
+    else
+        A->LastCompletedFenceCopy = Fence;
     A->NeedDpc = TRUE;
+}
+
+static void NotifyCompleted(MW_ADAPTER *A, ULONG Fence)
+{
+    NotifyCompletedNode(A, 0, Fence);
+}
+
+typedef struct {
+    MW_ADAPTER *A;
+    UINT Node;
+    ULONG Fence;
+} MW_COMPLETE;
+
+static BOOLEAN SyncCompleteNow(PVOID Context)
+{
+    MW_COMPLETE *c = (MW_COMPLETE *)Context;
+    NotifyCompletedNode(c->A, c->Node, c->Fence);
+    c->A->NeedDpc = FALSE;
+    c->A->Dxgk.DxgkCbQueueDpc(c->A->Dxgk.DeviceHandle);
+    return TRUE;
 }
 
 /* Start the next job chain, completing every submission that has none left.
@@ -334,6 +433,15 @@ static void Kick(MW_ADAPTER *A)
     while (!A->Running && A->QCount != 0) {
         MW_SUBMISSION *s = &A->Queue[A->QHead];
 
+        /* G32: its job chains (if any) are done and every earlier submission is complete - the present's CPU copy is
+         * the DPC's (DoPresent is not for interrupt level); nothing later starts before it (in order). */
+        if (s->HasPresent && (s->Next >= s->Count || !A->GpuUp)) {
+            if (!A->PresentAtHead) {
+                A->PresentAtHead = TRUE;
+                A->NeedDpc = TRUE;
+            }
+            break;
+        }
         if (!A->GpuUp || s->Next >= s->Count) {
             NotifyCompleted(A, s->FenceId);
             A->QHead = (A->QHead + 1) % MW_QUEUE_DEPTH;
@@ -346,10 +454,7 @@ static void Kick(MW_ADAPTER *A)
         A->JobStart = KeQueryInterruptTime();
         (void)MkJobTakeStatus(&A->Gpu, c->Slot);
         InterlockedExchange(&A->Gpu.MmuIrqStatus, 0);
-        /* A refused start (slot NEXT still busy) leaves Running set: Reap's timeout hard-stops the slot, resets
-         * the GPU and drops the submission, the same path as a hung chain. */
-        if (!MkJobStart(&A->Gpu, c->Slot, c->Jc, (A->ChainFlag++ & 1) != 0))
-            A->JobStartRefused++;
+        MkJobStart(&A->Gpu, c->Slot, c->Jc, (A->ChainFlag++ & 1) != 0);
     }
 }
 
@@ -393,6 +498,16 @@ static BOOLEAN Reap(MW_ADAPTER *A, BOOLEAN CheckTimeout)
     if (!MkGpuBringup(gpu))
         A->GpuUp = FALSE;
     return TRUE;
+}
+
+static BOOLEAN Synchronize(MW_ADAPTER *A, PKSYNCHRONIZE_ROUTINE Routine, PVOID Context);
+
+/* S7a: complete a submission of a node without hardware (the software copy node) right away, at interrupt level as
+ * DxgkCbNotifyInterrupt requires. */
+void MwCompleteNow(MW_ADAPTER *A, UINT Node, ULONG Fence)
+{
+    MW_COMPLETE c = { A, Node, Fence };
+    (void)Synchronize(A, SyncCompleteNow, &c);
 }
 
 /* From the ISR, after MkIsr has collected the status. */
@@ -493,11 +608,12 @@ void MwArmPoll(MW_ADAPTER *A)
  * screen (notes/gpu-full-adapter-hang.md). A periodic timer stands in: its DPC reports the vsync at the device's
  * interrupt level through DxgkCbSynchronizeExecution and queues our DPC, as DxgkCbNotifyInterrupt requires. The
  * panel's real refresh is whatever sboot programmed (60 Hz on this phone, UNVERIFIED by a register read). The timer
- * period is 16 ms (KeSetTimerEx takes whole ms: 62.5 Hz nominal, near the 60 Hz the VidPN reports, display.c
- * FillSignal), and expiries land on the system clock tick (15.6 ms by default), so individual intervals jitter by a
- * tick. dxgkrnl only needs vsyncs to keep coming; it does not time the panel from them. */
-#define MW_VSYNC_PERIOD_MS      16
-#define MW_VSYNC_PERIOD_100NS   166667ULL       /* 1/60 s, for GetScanLine */
+ * period is 1/60 s on a high-resolution EX_TIMER (MwCommandInit), matching the 60 Hz the VidPN reports (display.c
+ * FillSignal). Fallback when ExAllocateTimer fails: a 16 ms KeSetTimerEx timer (whole ms, 62.5 Hz nominal) whose
+ * expiries land on the system clock tick (15.6 ms by default) and jitter by a tick - measured 8.9-39 ms intervals,
+ * enough to make media presenters late (notes/g17-dxva-mfc.md). */
+#define MW_VSYNC_PERIOD_MS      16              /* KeSetTimerEx fallback */
+#define MW_VSYNC_PERIOD_100NS   166667ULL       /* 1/60 s: the EX_TIMER period, and GetScanLine's frame */
 
 static BOOLEAN SyncVsync(PVOID Context)
 {
@@ -550,13 +666,7 @@ static void Latch(MW_ADAPTER *A)
             }
             MwPramText(TRUE, "Latch fb skips ", NULL, ((A->FbVa != NULL) << 24) | (A->PresentSkips & 0xFFFFFF), TRUE);
         }
-        /* G2b-3 (ScanoutDirect, 1.0.36): while the UMD's framebuffer alias is mapped, the UMD has copied each DWM frame
-         * into the framebuffer with the GPU before flipping - nothing to copy for a framebuffer-sized primary. */
-        if (p->ScanDirect || (A->FbAliasMapped > 0 && p->Width == A->Fb.Width && p->Height == A->Fb.Height &&
-                              p->Pitch == A->Fb.Pitch))
-            InterlockedIncrement(&A->DirectLatches);
-        else
-            DoPresent(A, &op);
+        DoPresent(A, &op);
         A->ScanoutAddress = A->PendingAddress;
         InterlockedIncrement(&A->Latches);
     }
@@ -623,13 +733,16 @@ MW_ALLOCATION *MwScanoutLookup(MW_ADAPTER *A, ULONG64 PrimaryAddress)
     return hit;
 }
 
-static VOID VsDpc(PKDPC Dpc, PVOID Context, PVOID Arg1, PVOID Arg2)
+static void VsCancel(MW_ADAPTER *a)
 {
-    MW_ADAPTER *a = (MW_ADAPTER *)Context;
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(Arg1);
-    UNREFERENCED_PARAMETER(Arg2);
+    if (a->VsHrTimer != NULL)
+        ExCancelTimer(a->VsHrTimer, NULL);
+    else
+        KeCancelTimer(&a->VsTimer);
+}
 
+static void VsTick(MW_ADAPTER *a)
+{
     if (a->Stopping || !a->VsEnabled)
         return;
     if (MwFlipMmio)
@@ -638,9 +751,24 @@ static VOID VsDpc(PKDPC Dpc, PVOID Context, PVOID Arg1, PVOID Arg2)
         InterlockedIncrement(&a->VsyncTicks);
     else if (a->VsyncTicks == 0 && InterlockedExchange(&a->VsEnabled, 0) != 0) {
         /* No interrupt object to synchronize with: stop instead of retrying 60 times a second. */
-        KeCancelTimer(&a->VsTimer);
+        VsCancel(a);
         MwPramText(TRUE, "SoftVsync sync failed, stopped", NULL, 0, FALSE);
     }
+}
+
+static VOID VsDpc(PKDPC Dpc, PVOID Context, PVOID Arg1, PVOID Arg2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(Arg1);
+    UNREFERENCED_PARAMETER(Arg2);
+    VsTick((MW_ADAPTER *)Context);
+}
+
+/* EXT_CALLBACK of the high-resolution timer (DISPATCH_LEVEL, like the DPC). */
+static VOID VsHrCallback(PEX_TIMER Timer, PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Timer);
+    VsTick((MW_ADAPTER *)Context);
 }
 
 void MwCommandInit(MW_ADAPTER *A)
@@ -650,6 +778,19 @@ void MwCommandInit(MW_ADAPTER *A)
     KeInitializeDpc(&A->PollDpc, PollDpc, A);
     KeInitializeTimer(&A->VsTimer);
     KeInitializeDpc(&A->VsDpc, VsDpc, A);
+    /* G17 pacing (notes/g17-dxva-mfc.md): the default-resolution KTIMER lands on the 15.6 ms clock tick (measured vblank
+     * intervals 8.9-39 ms); MS Learn "High-Resolution Timers": an EX_TIMER_HIGH_RESOLUTION timer "never expires early"
+     * and at most ~1 ms late. Its 16.67 ms period is above the default tick, as the page asks. */
+    A->VsHrTimer = ExAllocateTimer(VsHrCallback, A, EX_TIMER_HIGH_RESOLUTION);
+}
+
+/* RemoveDevice (PASSIVE): the high-resolution timer is cancelled and its callback has returned before the adapter goes. */
+void MwCommandFree(MW_ADAPTER *A)
+{
+    if (A->VsHrTimer != NULL) {
+        ExDeleteTimer(A->VsHrTimer, TRUE, TRUE, NULL);
+        A->VsHrTimer = NULL;
+    }
 }
 
 void MwCommandStop(MW_ADAPTER *A)
@@ -658,7 +799,7 @@ void MwCommandStop(MW_ADAPTER *A)
     KeMemoryBarrier();
     KeCancelTimer(&A->PollTimer);
     InterlockedExchange(&A->VsEnabled, 0);
-    KeCancelTimer(&A->VsTimer);
+    VsCancel(A);
     KeFlushQueuedDpcs();
     InterlockedExchange(&A->PollArmed, 0);
 }
@@ -670,13 +811,27 @@ NTSTATUS APIENTRY MwSubmitCommand(IN_CONST_HANDLE hAdapter, const DXGKARG_SUBMIT
     MW_SUBMISSION sub;
     MW_SYNC sync;
 
+    /* S7a: node 1 = the software copy/paging node (paging buffers arrive here; their operations ran on the CPU in
+     * BuildPagingBuffer) - nothing to execute, complete at once on that node. */
+    if (Arg->NodeOrdinal != 0) {
+        MwCompleteNow(a, Arg->NodeOrdinal, Arg->SubmissionFenceId);
+        a->Submits++;
+        return STATUS_SUCCESS;
+    }
+
     RtlZeroMemory(&sub, sizeof(sub));
     sub.FenceId = Arg->SubmissionFenceId;
     /* A present: done here, on the CPU; the submission then carries no
      * job and completes at once. */
     if (!Arg->Flags.Paging && priv != NULL && Arg->DmaBufferPrivateDataSize >= sizeof(*priv) &&
-        priv->Reserved == MW_DMA_MAGIC && priv->Present.Kind != MW_PRESENT_NONE)
-        DoPresent(a, &priv->Present);
+        priv->Reserved == MW_DMA_MAGIC && priv->Present.Kind != MW_PRESENT_NONE) {
+        if (MwDeferPresent) {   /* G32: done in order, by the DPC, once the queue reaches it (Kick, MwPresentDpc) */
+            sub.HasPresent = TRUE;
+            sub.Present = priv->Present;
+        } else {
+            DoPresent(a, &priv->Present);
+        }
+    }
     /* Paging buffers (empty: map/unmap happen on the CPU), presents and
      * anything without our private data carry no jobs. */
     if (!Arg->Flags.Paging && priv != NULL && Arg->DmaBufferPrivateDataSize >= sizeof(*priv) &&
@@ -707,7 +862,7 @@ NTSTATUS APIENTRY MwPreemptCommand(IN_CONST_HANDLE hAdapter, const DXGKARG_PREEM
 NTSTATUS APIENTRY MwQueryCurrentFence(IN_CONST_HANDLE hAdapter, DXGKARG_QUERYCURRENTFENCE *Arg)
 {
     MW_ADAPTER *a = (MW_ADAPTER *)hAdapter;
-    Arg->CurrentFence = a->LastCompletedFence;
+    Arg->CurrentFence = Arg->NodeOrdinal != 0 ? a->LastCompletedFenceCopy : a->LastCompletedFence;
     return STATUS_SUCCESS;
 }
 
@@ -722,6 +877,7 @@ static BOOLEAN SyncReset(PVOID Context)
     a->Running = FALSE;
     a->QHead = a->QCount = 0;
     a->NeedDpc = FALSE;
+    a->PresentAtHead = FALSE;   /* G32 */
     /* G76: only a GPU half that came up (MkGpuInit set Ready); never in the GpuEnable=0 modes, where Regs may be
      * mapped just to mask the interrupt outputs. */
     if (a->Gpu.Regs != NULL && a->Gpu.Ready && a->Mode == MwModeFullGpu) {
@@ -751,9 +907,9 @@ NTSTATUS APIENTRY MwCollectDbgInfo(IN_CONST_HANDLE hAdapter, const DXGKARG_COLLE
     if (Arg->pBuffer != NULL && Arg->BufferSize > 0)
         (void)RtlStringCbPrintfA((NTSTRSAFE_PSTR)Arg->pBuffer, Arg->BufferSize,
                                  "MaliG76Wddm: submitted %u completed %u running %u queued %u "
-                                 "done %u failed %u timedout %u refused %u js 0x%x fault 0x%x @0x%llx",
+                                 "done %u failed %u timedout %u js 0x%x fault 0x%x @0x%llx",
                                  a->LastSubmittedFence, a->LastCompletedFence, a->Running, a->QCount,
-                                 a->JobsDone, a->JobsFailed, a->JobsTimedOut, a->JobStartRefused, a->LastJsStatus,
+                                 a->JobsDone, a->JobsFailed, a->JobsTimedOut, a->LastJsStatus,
                                  a->LastFaultStatus, a->LastFaultAddress);
     return STATUS_SUCCESS;
 }
@@ -762,8 +918,16 @@ NTSTATUS APIENTRY MwGetNodeMetadata(IN_CONST_HANDLE hAdapter, UINT NodeOrdinal,
                                     DXGKARG_GETNODEMETADATA *Arg)
 {
     UNREFERENCED_PARAMETER(hAdapter);
-    UNREFERENCED_PARAMETER(NodeOrdinal);
     RtlZeroMemory(Arg, sizeof(*Arg));
+    if (MwWddm2Gpummu && NodeOrdinal == 1) {
+        /* S7a: the software copy node, GpuMmu (the paging node) */
+        Arg->EngineType = DXGK_ENGINE_TYPE_COPY;
+        Arg->GpuMmuSupported = TRUE;
+        (void)RtlStringCbCopyW(Arg->FriendlyName, sizeof(Arg->FriendlyName), L"CPU copy");
+        return STATUS_SUCCESS;
+    }
+    if (NodeOrdinal != 0)
+        return STATUS_INVALID_PARAMETER;
     Arg->EngineType = DXGK_ENGINE_TYPE_3D;
     (void)RtlStringCbCopyW(Arg->FriendlyName, sizeof(Arg->FriendlyName), L"Mali-G76 job manager");   /* G76: name only */
     return STATUS_SUCCESS;
@@ -809,12 +973,17 @@ NTSTATUS APIENTRY MwControlInterrupt(IN_CONST_HANDLE hAdapter, IN_CONST_DXGK_INT
         return STATUS_SUCCESS;
     if (Enable) {
         if (InterlockedExchange(&a->VsEnabled, 1) == 0) {
-            LARGE_INTEGER due;
-            due.QuadPart = -10000LL * MW_VSYNC_PERIOD_MS;
-            KeSetTimerEx(&a->VsTimer, due, MW_VSYNC_PERIOD_MS, &a->VsDpc);
+            if (a->VsHrTimer != NULL) {
+                /* 100 ns units: relative first expiry one frame from now, then every 1/60 s */
+                ExSetTimer(a->VsHrTimer, -(LONGLONG)MW_VSYNC_PERIOD_100NS, (LONGLONG)MW_VSYNC_PERIOD_100NS, NULL);
+            } else {
+                LARGE_INTEGER due;
+                due.QuadPart = -10000LL * MW_VSYNC_PERIOD_MS;
+                KeSetTimerEx(&a->VsTimer, due, MW_VSYNC_PERIOD_MS, &a->VsDpc);
+            }
         }
     } else if (InterlockedExchange(&a->VsEnabled, 0) != 0) {
-        KeCancelTimer(&a->VsTimer);
+        VsCancel(a);
     }
     return STATUS_SUCCESS;
 }
@@ -860,4 +1029,64 @@ NTSTATUS APIENTRY MwQueryDependentEngineGroup(IN_CONST_HANDLE hAdapter,
     UNREFERENCED_PARAMETER(hAdapter);
     Arg->DependentNodeOrdinalMask = 0;
     return STATUS_SUCCESS;
+}
+
+/* ---- G32 (notes/games-unity.md): deferred presents ----
+ * MwSubmitCommand queues a present with its submission (Parameters\DeferPresent); Kick stops at it once it is the head
+ * of the queue (its own and every earlier job chain done) and asks for the DPC. Here, at DISPATCH_LEVEL like the
+ * vsync latch's DoPresent: take the head's present under the interrupt lock, copy, then complete that submission and
+ * kick the next - only if the same fence is still at the head (a reset in between drops it). Its allocations stay
+ * valid: dxgkrnl keeps a DMA buffer's allocations until its fence completes, which is after the copy. */
+typedef struct {
+    MW_ADAPTER *A;
+    BOOLEAN Have;
+    ULONG Fence;
+    MW_PRESENT_OP Op;
+} MW_PRESENT_TAKE;
+
+static BOOLEAN SyncPresentTake(PVOID Context)
+{
+    MW_PRESENT_TAKE *t = (MW_PRESENT_TAKE *)Context;
+    MW_ADAPTER *a = t->A;
+    t->Have = FALSE;
+    if (a->PresentAtHead && a->QCount != 0 && a->Queue[a->QHead].HasPresent) {
+        t->Fence = a->Queue[a->QHead].FenceId;
+        t->Op = a->Queue[a->QHead].Present;
+        t->Have = TRUE;
+    }
+    return TRUE;
+}
+
+static BOOLEAN SyncPresentDone(PVOID Context)
+{
+    MW_PRESENT_TAKE *t = (MW_PRESENT_TAKE *)Context;
+    MW_ADAPTER *a = t->A;
+    if (a->PresentAtHead && a->QCount != 0 && a->Queue[a->QHead].HasPresent &&
+        a->Queue[a->QHead].FenceId == t->Fence) {
+        a->Queue[a->QHead].HasPresent = FALSE;
+        a->PresentAtHead = FALSE;
+        a->DeferredPresents++;
+        Kick(a);   /* completes it (no job chains left) and starts what follows */
+    }
+    if (a->NeedDpc) {
+        a->NeedDpc = FALSE;
+        a->Dxgk.DxgkCbQueueDpc(a->Dxgk.DeviceHandle);
+    }
+    return TRUE;
+}
+
+void MwPresentDpc(MW_ADAPTER *A)
+{
+    MW_PRESENT_TAKE t;
+    if (!A->PresentAtHead)
+        return;
+    RtlZeroMemory(&t, sizeof(t));
+    t.A = A;
+    (void)Synchronize(A, SyncPresentTake, &t);
+    if (!t.Have)
+        return;
+    DoPresent(A, &t.Op);
+    (void)Synchronize(A, SyncPresentDone, &t);
+    if (A->QCount != 0 && !A->Stopping && InterlockedExchange(&A->PollArmed, 1) == 0)
+        MwArmPoll(A);
 }

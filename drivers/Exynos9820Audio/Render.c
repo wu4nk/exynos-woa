@@ -24,8 +24,13 @@ static const GUID AudRenderComponentGuid =
 static const GUID AudModeDefault =
     { 0xc18e2f7e, 0x933d, 0x4965, { 0xb7, 0xd1, 0x1e, 0xef, 0x22, 0x8d, 0x2a, 0xf3 } };
 
-/* Must equal the KSNAME reference string in Exynos9820Audio.inf. */
+/* {B2C5E9A2-3D74-4F0E-9C1B-9820A0D1C35E}: component id of the headphone circuit (J4b). */
+static const GUID AudHeadphoneComponentGuid =
+    { 0xb2c5e9a2, 0x3d74, 0x4f0e, { 0x9c, 0x1b, 0x98, 0x20, 0xa0, 0xd1, 0xc3, 0x5e } };
+
+/* Must equal the KSNAME reference strings in Exynos9820Audio.inf. */
 DECLARE_CONST_UNICODE_STRING(AudRenderCircuitName, L"Speaker0");
+DECLARE_CONST_UNICODE_STRING(AudHeadphoneCircuitName, L"Headphone0");
 
 #define AUD_ALL_CHANNELS       0xFFFFFFFFu
 #define AUD_VOLUME_MIN         (-96 * 0x10000)   /* KS units, 1/65536 dB (sample VOLUME_LEVEL_MINIMUM) */
@@ -142,7 +147,7 @@ static LONG AudSwGainForLevel(_In_ LONG LevelKs)
     return AudGainQ30[(Steps < (LONG)AUD_SW_GAIN_STEPS) ? Steps : (LONG)AUD_SW_GAIN_STEPS - 1];
 }
 
-static VOID AudSwSetLevel(_Inout_ PAUD_DEVICE_CONTEXT Dev, _In_ ULONG Channel, _In_ LONG LevelKs)
+VOID AudSwSetLevel(_Inout_ PAUD_ENDPOINT Ep, _In_ ULONG Channel, _In_ LONG LevelKs)
 {
     if (LevelKs > AUD_VOLUME_MAX) {
         LevelKs = AUD_VOLUME_MAX;
@@ -150,19 +155,25 @@ static VOID AudSwSetLevel(_Inout_ PAUD_DEVICE_CONTEXT Dev, _In_ ULONG Channel, _
     if (LevelKs < AUD_VOLUME_MIN) {
         LevelKs = AUD_VOLUME_MIN;
     }
-    Dev->SwLevel[Channel] = LevelKs;
-    InterlockedExchange(&Dev->SwGainQ30[Channel], AudSwGainForLevel(LevelKs));
+    Ep->SwLevel[Channel] = LevelKs;
+    InterlockedExchange(&Ep->SwGainQ30[Channel], AudSwGainForLevel(LevelKs));
 }
 
 /* Device creation: both channels at LevelKs until Windows assigns the endpoint's persisted level; unmuted. */
 VOID AudSwVolumeInit(_Inout_ PAUD_DEVICE_CONTEXT Dev, _In_ LONG LevelKs)
 {
     ULONG Ch;
+    ULONG E;
 
-    for (Ch = 0; Ch < AUD_CHANNELS; Ch++) {
-        AudSwSetLevel(Dev, Ch, LevelKs);
+    for (E = 0; E < AUD_EP_COUNT; E++) {
+        Dev->Ep[E].Dev        = Dev;
+        Dev->Ep[E].Headphones = (E == 1);
+        Dev->Ep[E].Capture    = (E == AUD_EP_MIC);
+        for (Ch = 0; Ch < AUD_CHANNELS; Ch++) {
+            AudSwSetLevel(&Dev->Ep[E], Ch, (E == AUD_EP_MIC) ? 0 : LevelKs);   /* the mic level starts at 0 dB */
+        }
+        InterlockedExchange(&Dev->Ep[E].SwMuted, 0);
     }
-    InterlockedExchange(&Dev->SwMuted, 0);
 }
 
 _Use_decl_annotations_
@@ -170,6 +181,7 @@ NTSTATUS NTAPI AudEvtVolumeAssignLevel(ACXVOLUME Volume, ULONG Channel, LONG Vol
                                        ULONGLONG CurveDuration)
 {
     PAUD_DEVICE_CONTEXT Dev = AudGetElementContext(Volume)->Dev;
+    PAUD_ENDPOINT       Ep  = AudGetElementContext(Volume)->Ep;
     ULONG               Ch;
 
     UNREFERENCED_PARAMETER(CurveType);
@@ -180,16 +192,17 @@ NTSTATUS NTAPI AudEvtVolumeAssignLevel(ACXVOLUME Volume, ULONG Channel, LONG Vol
         return STATUS_INVALID_PARAMETER;
     }
 
-    AudLog(Dev->Log, "volume ch %ld <- %ld/65536 dB (%s)\r\n", (LONG)Channel, VolumeLevel,
+    AudLog(Dev->Log, "volume %s ch %ld <- %ld/65536 dB (%s)\r\n", Ep->Headphones ? "hp" : "spk", (LONG)Channel, VolumeLevel,
            Dev->Cfg.HwVolume ? "amp" : "software");
-    if (Dev->Cfg.HwVolume) {
-        /* One level for both amps (each amp plays one slot of the stereo frame); the last assignment wins. */
+    if (Dev->Cfg.HwVolume && !Ep->Headphones && !Ep->Capture) {
+        /* One level for both amps (each amp plays one slot of the stereo frame); the last assignment wins. The
+           headphone endpoint always uses the software volume (review of a821870: it must not move the amps). */
         return AmpSetVolume(Dev, VolumeLevel);
     }
 
     for (Ch = 0; Ch < AUD_CHANNELS; Ch++) {
         if (Channel == AUD_ALL_CHANNELS || Channel == Ch) {
-            AudSwSetLevel(Dev, Ch, VolumeLevel);
+            AudSwSetLevel(Ep, Ch, VolumeLevel);
         }
     }
     return STATUS_SUCCESS;
@@ -199,6 +212,7 @@ _Use_decl_annotations_
 NTSTATUS NTAPI AudEvtVolumeRetrieveLevel(ACXVOLUME Volume, ULONG Channel, LONG *VolumeLevel)
 {
     PAUD_DEVICE_CONTEXT Dev = AudGetElementContext(Volume)->Dev;
+    PAUD_ENDPOINT       Ep  = AudGetElementContext(Volume)->Ep;
 
     PAGED_CODE();
 
@@ -206,10 +220,10 @@ NTSTATUS NTAPI AudEvtVolumeRetrieveLevel(ACXVOLUME Volume, ULONG Channel, LONG *
         return STATUS_INVALID_PARAMETER;
     }
 
-    if (Dev->Cfg.HwVolume) {
+    if (Dev->Cfg.HwVolume && !Ep->Headphones && !Ep->Capture) {
         *VolumeLevel = Dev->VolumeLevel;
     } else {
-        *VolumeLevel = Dev->SwLevel[(Channel == AUD_ALL_CHANNELS) ? 0 : Channel];   /* sample: channel 0 for "all" */
+        *VolumeLevel = Ep->SwLevel[(Channel == AUD_ALL_CHANNELS) ? 0 : Channel];   /* sample: channel 0 for "all" */
     }
     return STATUS_SUCCESS;
 }
@@ -218,6 +232,7 @@ _Use_decl_annotations_
 NTSTATUS NTAPI AudEvtMuteAssignState(ACXMUTE Mute, ULONG Channel, ULONG State)
 {
     PAUD_DEVICE_CONTEXT Dev = AudGetElementContext(Mute)->Dev;
+    PAUD_ENDPOINT       Ep  = AudGetElementContext(Mute)->Ep;
 
     PAGED_CODE();
 
@@ -227,12 +242,12 @@ NTSTATUS NTAPI AudEvtMuteAssignState(ACXMUTE Mute, ULONG Channel, ULONG State)
 
     /* One mute state for the endpoint (the endpoint mute is not per channel); the last assignment wins. */
     AudLog(Dev->Log, "mute ch %ld <- %lu (%s)\r\n", (LONG)Channel, State, Dev->Cfg.HwVolume ? "amp" : "software");
-    if (Dev->Cfg.HwVolume) {
+    if (Dev->Cfg.HwVolume && !Ep->Headphones && !Ep->Capture) {
         Dev->Muted = (State != 0) ? 1 : 0;
         return AmpMute(Dev, State != 0);
     }
 
-    InterlockedExchange(&Dev->SwMuted, (State != 0) ? 1 : 0);
+    InterlockedExchange(&Ep->SwMuted, (State != 0) ? 1 : 0);
     return STATUS_SUCCESS;
 }
 
@@ -240,6 +255,7 @@ _Use_decl_annotations_
 NTSTATUS NTAPI AudEvtMuteRetrieveState(ACXMUTE Mute, ULONG Channel, ULONG *State)
 {
     PAUD_DEVICE_CONTEXT Dev = AudGetElementContext(Mute)->Dev;
+    PAUD_ENDPOINT       Ep  = AudGetElementContext(Mute)->Ep;
 
     PAGED_CODE();
 
@@ -247,11 +263,11 @@ NTSTATUS NTAPI AudEvtMuteRetrieveState(ACXMUTE Mute, ULONG Channel, ULONG *State
         return STATUS_INVALID_PARAMETER;
     }
 
-    *State = Dev->Cfg.HwVolume ? Dev->Muted : (ULONG)Dev->SwMuted;
+    *State = (Dev->Cfg.HwVolume && !Ep->Headphones && !Ep->Capture) ? Dev->Muted : (ULONG)Ep->SwMuted;
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS AudCreateElements(_In_ ACXCIRCUIT Circuit, _In_ PAUD_DEVICE_CONTEXT Dev)
+static NTSTATUS AudCreateElements(_In_ ACXCIRCUIT Circuit, _In_ PAUD_DEVICE_CONTEXT Dev, _In_ PAUD_ENDPOINT Ep)
 {
     NTSTATUS              Status;
     WDF_OBJECT_ATTRIBUTES Attr;
@@ -278,6 +294,7 @@ static NTSTATUS AudCreateElements(_In_ ACXCIRCUIT Circuit, _In_ PAUD_DEVICE_CONT
         return Status;
     }
     AudGetElementContext(Elements[0])->Dev = Dev;
+    AudGetElementContext(Elements[0])->Ep  = Ep;
 
     ACX_MUTE_CALLBACKS_INIT(&MuteCb);
     MuteCb.EvtAcxMuteAssignState   = AudEvtMuteAssignState;
@@ -293,6 +310,7 @@ static NTSTATUS AudCreateElements(_In_ ACXCIRCUIT Circuit, _In_ PAUD_DEVICE_CONT
         return Status;
     }
     AudGetElementContext(Elements[1])->Dev = Dev;
+    AudGetElementContext(Elements[1])->Ep  = Ep;
 
     Status = AcxCircuitAddElements(Circuit, Elements, ARRAYSIZE(Elements));
     if (NT_SUCCESS(Status)) {
@@ -304,6 +322,40 @@ static NTSTATUS AudCreateElements(_In_ ACXCIRCUIT Circuit, _In_ PAUD_DEVICE_CONT
 /* ================================================================================================================
  * Circuit.
  * ================================================================================================================ */
+
+/* J4b: is the headphone endpoint built? (codec up path enabled by Parameters CodecEnable + HpRoute) */
+BOOLEAN AudHeadphoneEndpoint(_In_ PAUD_DEVICE_CONTEXT Dev)
+{
+    return Dev->Cfg.CodecEnable && Dev->Cfg.HpRoute;
+}
+
+/* Jack presence for Windows (only the headphone jack asks): plugged and the codec up. */
+static NTSTATUS NTAPI AudEvtJackRetrievePresence(_In_ ACXJACK Jack, _Out_ PBOOLEAN IsConnected)
+{
+    PAUD_DEVICE_CONTEXT Dev = AudGetElementContext(Jack)->Dev;
+    PAUD_ENDPOINT       Ep  = AudGetElementContext(Jack)->Ep;
+    BOOLEAN             Plugged = Dev->CodecUp && Dev->JackKnown && Dev->JackPresent;
+
+    PAGED_CODE();
+
+    *IsConnected = Ep->Headphones ? Plugged : TRUE;
+    return STATUS_SUCCESS;
+}
+
+/* Jack presence changed (CodecJack.c poll): tell ACX for both jacks. PASSIVE_LEVEL. */
+_Use_decl_annotations_
+VOID AudJackNotify(PAUD_DEVICE_CONTEXT Dev)
+{
+    ULONG E;
+
+    PAGED_CODE();
+
+    for (E = 0; E < AUD_EP_COUNT; E++) {
+        if (Dev->Ep[E].Added && Dev->Ep[E].Jack != NULL) {
+            AcxJackChangeStateNotification(Dev->Ep[E].Jack);
+        }
+    }
+}
 
 static NTSTATUS AudAddFormat(_In_ WDFDEVICE Device, _In_ ACXCIRCUIT Circuit, _In_ ACXDATAFORMATLIST List,
                              _In_ PKSDATAFORMAT_WAVEFORMATEXTENSIBLE Wave, _In_ BOOLEAN Default)
@@ -332,8 +384,10 @@ static NTSTATUS AudAddFormat(_In_ WDFDEVICE Device, _In_ ACXCIRCUIT Circuit, _In
  * Created in EvtDeviceAdd, added to the device in PrepareHardware (the sample's split).
  */
 _IRQL_requires_(PASSIVE_LEVEL)
-NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT Dev)
+NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT Dev, _In_ ULONG Index)
 {
+    PAUD_ENDPOINT         Ep = &Dev->Ep[Index];
+    ACX_JACK_CALLBACKS    JackCb;
     NTSTATUS              Status;
     PACXCIRCUIT_INIT      Init;
     ACXCIRCUIT            Circuit;
@@ -353,8 +407,8 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    AcxCircuitInitSetComponentId(Init, &AudRenderComponentGuid);
-    Status = AcxCircuitInitAssignName(Init, &AudRenderCircuitName);
+    AcxCircuitInitSetComponentId(Init, Ep->Headphones ? &AudHeadphoneComponentGuid : &AudRenderComponentGuid);
+    Status = AcxCircuitInitAssignName(Init, Ep->Headphones ? &AudHeadphoneCircuitName : &AudRenderCircuitName);
     if (NT_SUCCESS(Status)) {
         AcxCircuitInitSetCircuitType(Init, AcxCircuitTypeRender);
         ACX_CIRCUIT_PNPPOWER_CALLBACKS_INIT(&PowerCb);
@@ -381,10 +435,11 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
         return Status;
     }
     AudGetCircuitContext(Circuit)->Dev = Dev;
+    AudGetCircuitContext(Circuit)->Ep  = Ep;
 
     /* Always (A5): the sample's topology (suspected: the host pin must reach the bridge pin through elements for the
        endpoint to get a format) and the carrier of the endpoint volume / mute. */
-    Status = AudCreateElements(Circuit, Dev);
+    Status = AudCreateElements(Circuit, Dev, Ep);
     if (!NT_SUCCESS(Status)) {
         return Status;
     }
@@ -403,7 +458,7 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
     ACX_PIN_CONFIG_INIT(&PinCfg);
     PinCfg.Type          = AcxPinTypeSource;
     PinCfg.Communication = AcxPinCommunicationNone;
-    PinCfg.Category      = &KSNODETYPE_SPEAKER;
+    PinCfg.Category      = Ep->Headphones ? &KSNODETYPE_HEADPHONES : &KSNODETYPE_SPEAKER;
     WDF_OBJECT_ATTRIBUTES_INIT(&Attr);
     Attr.ParentObject = Circuit;
     Status = AcxPinCreate(Circuit, &Attr, &PinCfg, &Pins[1]);
@@ -411,16 +466,37 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
         return Status;
     }
 
+    /* J4b: only the headphone jack has presence detection (present = plugged); the speakers stay present, so both
+       outputs are listed and selectable while the headphones are in, as on a laptop (user, 2026-10-16). Windows
+       moves the default to the headphones when they appear and back when they go. */
+    ACX_JACK_CALLBACKS_INIT(&JackCb);
+    JackCb.EvtAcxJackRetrievePresenceState = AudEvtJackRetrievePresence;
     ACX_JACK_CONFIG_INIT(&JackCfg);
     JackCfg.Description.ChannelMapping = KSAUDIO_SPEAKER_STEREO;
     JackCfg.Description.Color          = 0;
-    JackCfg.Description.ConnectionType = AcxConnTypeAtapiInternal;
-    JackCfg.Description.GeoLocation    = AcxGeoLocFront;
-    JackCfg.Description.GenLocation    = AcxGenLocPrimaryBox;
-    JackCfg.Description.PortConnection = AcxPortConnIntegratedDevice;
-    WDF_OBJECT_ATTRIBUTES_INIT(&Attr);
+    if (Ep->Headphones) {
+        JackCfg.Description.ConnectionType = AcxConnType3Point5mm;
+        JackCfg.Description.GeoLocation    = AcxGeoLocBottom;
+        JackCfg.Description.GenLocation    = AcxGenLocPrimaryBox;
+        JackCfg.Description.PortConnection = AcxPortConnJack;
+    } else {
+        JackCfg.Description.ConnectionType = AcxConnTypeAtapiInternal;
+        JackCfg.Description.GeoLocation    = AcxGeoLocFront;
+        JackCfg.Description.GenLocation    = AcxGenLocPrimaryBox;
+        JackCfg.Description.PortConnection = AcxPortConnIntegratedDevice;
+    }
+    if (Ep->Headphones) {
+        JackCfg.Flags     = AcxJackConfigJackDetection;
+        JackCfg.Callbacks = &JackCb;
+    }
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&Attr, AUD_ELEMENT_CONTEXT);
     Attr.ParentObject = Pins[1];
     Status = AcxJackCreate(Pins[1], &Attr, &JackCfg, &Jack);
+    if (NT_SUCCESS(Status)) {
+        AudGetElementContext(Jack)->Dev = Dev;
+        AudGetElementContext(Jack)->Ep  = Ep;
+        Ep->Jack = Jack;
+    }
     if (NT_SUCCESS(Status)) {
         Status = AcxPinAddJacks(Pins[1], &Jack, 1);
     }
@@ -484,10 +560,11 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
 
     Status = AcxCircuitAddPins(Circuit, Pins, ARRAYSIZE(Pins));
     if (NT_SUCCESS(Status)) {
-        Dev->Render    = Circuit;
-        Dev->HostPinId = AcxPinGetId(Pins[0]);
-        AudLog(Dev->Log, "circuit: host pin id %lu, bridge pin id %lu, volume element id %lu, KsOverride %lu\r\n",
-               Dev->HostPinId, AcxPinGetId(Pins[1]), Dev->VolumeElementId, Dev->Cfg.KsOverride);
+        Ep->Circuit    = Circuit;
+        Dev->HostPinId = AcxPinGetId(Pins[0]);   /* identical in both circuits (same build order) */
+        AudLog(Dev->Log, "circuit %s: host pin id %lu, bridge pin id %lu, volume element id %lu, KsOverride %lu\r\n",
+               Ep->Headphones ? "Headphone0" : "Speaker0", Dev->HostPinId, AcxPinGetId(Pins[1]), Dev->VolumeElementId,
+               Dev->Cfg.KsOverride);
     }
 
     return Status;
@@ -501,25 +578,21 @@ NTSTATUS AudRenderCircuitCreate(_In_ WDFDEVICE Device, _In_ PAUD_DEVICE_CONTEXT 
  * frames x 16 bytes (UAIF1 frame: 4 x 32-bit slots, left-justified; slot 1 = loudspeaker amp, slot 0 = earpiece amp).
  * Non-cached: the CPU writes it, only the RDMA reads it, so no cache maintenance and no aliasing with a user mapping.
  *
- * Timeline (per Run, j = ring periods elapsed, k0 = CurrentPacket at Run; 1.0.2.1, AUD_DMA_LEAD = L):
- *   at Run       : every ring slot zeroed, RDMA started at slot 0 (L periods of silence);
- *   boundary j>=1: packet k0+j-1 is complete on the client side: it is expanded into slot (j-1+L) % AUD_DMA_SLOTS
- *                  (L-1 full periods before the RDMA reaches it), slot j-1 (just played) is zeroed, then
- *                  CurrentPacket = k0+j and the completion is signalled (the client may now refill that buffer).
+ * Timeline (per Run, j = periods elapsed, k0 = CurrentPacket at Run):
+ *   at Run       : ring slots zeroed, packet k0 expanded into slot AUD_DMA_LEAD, RDMA started at slot 0 (LEAD periods
+ *                  of silence);
+ *   boundary j>=1: packet k0+j-1 is complete (the RDMA is now playing it), CurrentPacket = k0+j, and packet k0+j
+ *                  (written by the client during the previous period) is expanded into slot (j+LEAD) % AUD_DMA_SLOTS,
+ *                  LEAD periods before the RDMA reaches it.
  * Boundaries come from the RDMA ring position (STATUS[27:12] + [11:0], AboxRingPosition) while the hardware runs, so the client
  * follows the audio PLL, not the QPC; without hardware (disabled or failed) the QPC drives the same timeline.
  * ================================================================================================================ */
 
-/* 1.0.2.1 (S10 "crackling" report): more slack between the client and the RDMA. Every client packet is copied into
-   the ring when it COMPLETES (before the client may reuse its buffer and before CurrentPacket advances), AUD_DMA_LEAD
-   periods ahead of the RDMA. Up to 1.0.2.0 the packet that had just become current was copied with one period of
-   lead: a client still writing it, or a timer pass more than one period late (CPU-rendered desktop), put
-   half-written or four-periods-old audio on the speaker = crackle. Now: the client gets a whole extra period, the
-   timer may be up to two periods late, and the slot the RDMA has just left is zeroed so a later miss plays
-   silence, not stale audio. Cost: two more periods of output latency (reported position excludes them). */
-#define AUD_DMA_SLOTS        6u     /* periods in the DMA ring */
-#define AUD_DMA_LEAD         3u     /* packet n plays in ring period (n - first packet) + AUD_DMA_LEAD */
-C_ASSERT(AUD_DMA_LEAD + 1 < AUD_DMA_SLOTS);
+#define AUD_DMA_SLOTS        8u     /* periods in the DMA ring (2026-10-16: 4 -> 8 for the deeper lead below) */
+#define AUD_DMA_LEAD         3u     /* periods between the slot the RDMA reads (j) and the slot filled at boundary j:
+                                       the timer may run up to LEAD-1 periods late without an audible gap (was 1:
+                                       88 late passes / 52 late writes = choppy under post-boot CPU load); costs
+                                       LEAD-1 extra periods of latency, excluded from the reported position */
 
 static PUCHAR AudPacketVa(_In_ PAUD_STREAM_CONTEXT Ctx, _In_ ULONG Packet)
 {
@@ -541,12 +614,12 @@ static VOID AudDmaFillSlot(_In_ PAUD_STREAM_CONTEXT Ctx, _In_ ULONG Slot, _In_op
     LONG           GainR = 1 << 30;
 
     /* Endpoint volume / mute in software (HwVolume = 0), sampled once per period. */
-    if (!Dev->Cfg.HwVolume) {
-        if (Dev->SwMuted) {
+    if (!Dev->Cfg.HwVolume || Ctx->Ep->Headphones) {
+        if (Ctx->Ep->SwMuted) {
             Src = NULL;
         } else {
-            GainL = Dev->SwGainQ30[0];
-            GainR = Dev->SwGainQ30[1];
+            GainL = Ctx->Ep->SwGainQ30[0];
+            GainR = Ctx->Ep->SwGainQ30[1];
         }
     }
 
@@ -566,8 +639,8 @@ static VOID AudDmaFillSlot(_In_ PAUD_STREAM_CONTEXT Ctx, _In_ ULONG Slot, _In_op
             R = (LONG)(((LONGLONG)R * GainR) >> 30);
         }
 
-        if (Ctx->Dev->Cfg.Stereo) {
-            Dst[4 * F + 0] = L;                                  /* earpiece amp @0x41 */
+        if (Ctx->Dev->Cfg.Stereo || Ctx->Dev->HpActive) {
+            Dst[4 * F + 0] = L;                                  /* earpiece amp @0x41 / headphone left (AIF1RX1) */
             Dst[4 * F + 1] = R;                                  /* loudspeaker amp @0x40 */
         } else {
             Dst[4 * F + 0] = 0;
@@ -669,9 +742,7 @@ static VOID AudUpdatePosition(_Inout_ PAUD_STREAM_CONTEXT Ctx)
 
     Frames = AudElapsedFrames(Ctx);
     if (Ctx->HwStarted) {
-        ULONGLONG Lead = (ULONGLONG)AUD_DMA_LEAD * Ctx->FramesPerPacket;   /* silent periods at the start of a run */
-
-        Frames = (Frames > Lead) ? Frames - Lead : 0;
+        Frames = (Frames > AUD_DMA_LEAD * (ULONGLONG)Ctx->FramesPerPacket) ? Frames - AUD_DMA_LEAD * (ULONGLONG)Ctx->FramesPerPacket : 0;
     }
     Ctx->Position = Ctx->StartPosition + Frames * Ctx->BlockAlign;
 }
@@ -699,16 +770,11 @@ VOID AudEvtStreamTimer(WDFTIMER Timer)
     Frames = AudElapsedFrames(Ctx);
     while (Frames >= ((ULONGLONG)Ctx->Periods + 1) * Ctx->FramesPerPacket) {
         Ctx->Periods++;
-        Completed = (ULONG)InterlockedCompareExchange(&Ctx->CurrentPacket, -1, -1);
+        Completed = (ULONG)InterlockedIncrement(&Ctx->CurrentPacket) - 1;
         if (Ctx->HwStarted) {
-            /* Ring period P = Ctx->Periods is starting: P-1 just finished, packet Completed (= first + P - 1) is done
-               on the client side and goes to period P - 1 + AUD_DMA_LEAD. Copied BEFORE CurrentPacket advances, so
-               a polling client cannot already be refilling its buffer. */
-            AudDmaFillSlot(Ctx, Ctx->Periods - 1 + AUD_DMA_LEAD, AudPacketVa(Ctx, Completed));
-            AudDmaFillSlot(Ctx, Ctx->Periods - 1, NULL);
+            AudDmaFillSlot(Ctx, Ctx->Periods + AUD_DMA_LEAD, AudPacketVa(Ctx, Completed + 1));
             KeMemoryBarrier();
         }
-        (VOID)InterlockedIncrement(&Ctx->CurrentPacket);
         (VOID)AcxRtStreamNotifyPacketComplete(Ctx->Stream, Completed, (ULONGLONG)KeQueryPerformanceCounter(NULL).QuadPart);
         Done++;
 
@@ -858,7 +924,12 @@ static NTSTATUS AudStreamPrepareHardware(ACXSTREAM Stream)
 static VOID AudHwStop(_Inout_ PAUD_STREAM_CONTEXT Ctx)
 {
     if (Ctx->HwStarted) {
-        AmpPowerDown(Ctx->Dev);   /* amps first, with UAIF1 still clocked (AudioSpeaker.c :597-604) */
+        if (Ctx->Dev->HpActive) {
+            CodecHpStop(Ctx->Dev);    /* outputs + FLL2 off while UAIF0 still clocks */
+            Ctx->Dev->HpActive = FALSE;
+        } else {
+            AmpPowerDown(Ctx->Dev);   /* amps first, with UAIF1 still clocked (AudioSpeaker.c :597-604) */
+        }
         AboxStop(Ctx->Dev);
         Ctx->HwStarted = FALSE;
     }
@@ -892,8 +963,8 @@ static NTSTATUS AudStreamReleaseHardware(ACXSTREAM Stream)
 }
 
 /*
- * Hardware start for one Run, in the boot #99 order: stage-1 clocks, then the RDMA running over a silent ring (1.0.2.1:
- * packets enter it as they complete, AUD_DMA_LEAD periods ahead), and only then - from AudEvtStreamRun, with the packet timer already running - the amps,
+ * Hardware start for one Run, in the boot #99 order: stage-1 clocks, then the RDMA with data (slot 0 silence, slot 1
+ * = the current packet), and only then - from AudEvtStreamRun, with the packet timer already running - the amps,
  * which need data on UAIF1 for PUP_DONE. Any failure leaves the QPC-clocked stream running, silent.
  */
 static VOID AudHwStart(_Inout_ PAUD_STREAM_CONTEXT Ctx)
@@ -911,21 +982,52 @@ static VOID AudHwStart(_Inout_ PAUD_STREAM_CONTEXT Ctx)
         return;
     }
 
+    if (Dev->AboxRunning) {
+        /* one RDMA / one output at a time: the other endpoint's stream owns the hardware (HpActive belongs to it) */
+        AudLog(Dev->Log, "stream: hardware busy with the other endpoint - this %s stream runs silent\r\n",
+               Ctx->Ep->Headphones ? "headphone" : "speaker");
+        return;
+    }
+
     Status = AboxInit(Dev);
     if (!NT_SUCCESS(Status)) {
         AudLog(Dev->Log, "stream: ABOX stage 1 not ready (%08lX) - silent\r\n", Status);
         return;
     }
 
+    /* J4b: the endpoint decides - a Headphone0 stream plays on the jack, a Speaker0 stream on the amps. Windows moves
+       streams between the endpoints when the jack presence changes (AudJackNotify). */
+    if (Ctx->Ep->Headphones && (!Dev->CodecUp || !NT_SUCCESS(CodecHpPrepare(Dev)))) {
+        AudLog(Dev->Log, "stream: headphone codec path not available - this headphone stream runs silent\r\n");
+        return;   /* review of a821870: never fall back to the speakers for a Headphones stream */
+    }
+    Dev->HpActive = Ctx->Ep->Headphones;
+    Status = AboxSelectOutput(Dev, Dev->HpActive);
+    if (!NT_SUCCESS(Status)) {
+        AudLog(Dev->Log, "stream: output selection failed (%08lX) - silent\r\n", Status);
+        if (Dev->HpActive) {
+            CodecHpStop(Dev);
+            Dev->HpActive = FALSE;
+        }
+        return;
+    }
+
     for (Slot = 0; Slot < AUD_DMA_SLOTS; Slot++) {
-        AudDmaFillSlot(Ctx, Slot, NULL);   /* AUD_DMA_LEAD silent periods; packets arrive as they complete */
+        AudDmaFillSlot(Ctx, Slot, (Slot == AUD_DMA_LEAD) ? AudPacketVa(Ctx, (ULONG)Ctx->CurrentPacket) : NULL);
     }
     KeMemoryBarrier();
 
     Status = AboxStart(Dev, Ctx->DmaPhys, Ctx->DmaBytes, Ctx->DmaSlotBytes, AUD_RATE, AUD_HW_SLOTS, 32);
     if (!NT_SUCCESS(Status)) {
         AudLog(Dev->Log, "stream: ABOX DMA not started (%08lX) - silent\r\n", Status);
+        if (Dev->HpActive) {
+            CodecHpStop(Dev);
+            Dev->HpActive = FALSE;
+        }
         return;
+    }
+    if (Dev->HpActive) {
+        (VOID)CodecHpStart(Dev);   /* needs UAIF0 BCLK (FLL2 reference); failure = silent headphones, stream runs */
     }
 
     (VOID)AboxRingPosition(Dev, &Count, &Ctx->HwLastRaw);
@@ -956,7 +1058,7 @@ static NTSTATUS AudStreamRun(ACXSTREAM Stream)
     Ctx->State     = AcxStreamStateRun;
     (VOID)WdfTimerStart(Ctx->Timer, AudNextDue(Ctx, 0));
 
-    if (Ctx->HwStarted) {
+    if (Ctx->HwStarted && !Ctx->Dev->HpActive) {
         AmpStatus = AmpPowerUp(Ctx->Dev);
     }
 
@@ -1221,6 +1323,7 @@ static NTSTATUS AudCircuitCreateStream(_In_ WDFDEVICE Device, _In_ ACXCIRCUIT Ci
 
     Ctx = AudGetStreamContext(Stream);
     Ctx->Dev         = AudGetCircuitContext(Circuit)->Dev;
+    Ctx->Ep          = AudGetCircuitContext(Circuit)->Ep;
     Ctx->Stream      = Stream;
     Ctx->Format      = StreamFormat;
     Ctx->BlockAlign  = AcxDataFormatGetBlockAlign(StreamFormat);

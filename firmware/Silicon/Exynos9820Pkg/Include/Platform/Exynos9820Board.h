@@ -47,6 +47,10 @@
 #define EXYNOS_BOARD_EL2_EARLY_BASE_HI   0x9       // 0x9FD800000, split for asm-safe use
 #define EXYNOS_BOARD_EL2_EARLY_BASE_LO   0xFD800000
 #define EXYNOS_BOARD_EL2_EARLY_SIZE      0x2800000 // VERIFIED (live reserved-memory/el2_earlymem reg)
+// Framebuffer reservation (upstream H4b, a choice, not a hardware constant): 1440 x 3040 x 4 = 17510400 B, and the
+// 5760-byte line is already 64-byte aligned, so no re-stride room is needed; 18 MiB = 0xCA000000 .. 0xCB1FFFFF, below
+// EXYNOS_RSVD_MODEM_SPARE_BASE 0xD0000000 (nothing else reserved in between, Exynos9820.h).
+#define EXYNOS_BOARD_FB_RESERVED_SIZE    0x1200000
 
 #else
 
@@ -60,6 +64,7 @@
 #define EXYNOS_BOARD_EL2_EARLY_BASE_HI   0x9       // 0x97E000000
 #define EXYNOS_BOARD_EL2_EARLY_BASE_LO   0x7E000000
 #define EXYNOS_BOARD_EL2_EARLY_SIZE      0x2000000
+#define EXYNOS_BOARD_FB_RESERVED_SIZE    0xA00000  // upstream H4b: 10 MiB (re-stride room for 1088 px lines)
 
 #endif
 

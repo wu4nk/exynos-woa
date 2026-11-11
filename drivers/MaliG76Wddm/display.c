@@ -21,14 +21,45 @@ static UINT BytesPerPixel(D3DDDIFORMAT F)
     return (F == D3DDDIFMT_A8R8G8B8 || F == D3DDDIFMT_X8R8G8B8) ? 4 : 0;
 }
 
-static void FillSourceMode(MW_ADAPTER *Dev, D3DKMDT_VIDPN_SOURCE_MODE *M)
+/* G20 (notes/g20-scaled-modes.md): with Parameters\ScaledModes the full adapter offers a second, lower source mode,
+ * 2/3 of the panel (720x1520 on 1080x2280, the same aspect). The target mode stays the panel's; MS Learn
+ * D3DKMDT_VIDPN_PRESENT_PATH_SCALING: IDENTITY is "available only if the path's source mode has the same spatial
+ * resolution as the path's target mode", so the scaled mode goes with STRETCHED / ASPECTRATIOCENTEREDMAX (the same
+ * picture here), and the present path stretches it (Mesa d3d10_scanout_present on the GPU, DoPresent on the CPU). */
+static BOOLEAN ScaledOn(const MW_ADAPTER *Dev)
+{
+    return MwScaledModes != 0 && Dev->Mode != MwModeDisplayOnly && Dev->Fb.Width >= 3 && Dev->Fb.Height >= 3;
+}
+
+static ULONG ScaledW(const MW_ADAPTER *Dev) { return Dev->Fb.Width * 2 / 3; }
+static ULONG ScaledH(const MW_ADAPTER *Dev) { return Dev->Fb.Height * 2 / 3; }
+
+/* 1 = the native mode, 2 = the scaled mode (if offered), 0 = neither. */
+static int SourceKind(const MW_ADAPTER *Dev, const D3DKMDT_VIDPN_SOURCE_MODE *M)
+{
+    if (M->Type != D3DKMDT_RMT_GRAPHICS)
+        return 0;
+    if (M->Format.Graphics.PrimSurfSize.cx == Dev->Fb.Width && M->Format.Graphics.PrimSurfSize.cy == Dev->Fb.Height)
+        return 1;
+    if (ScaledOn(Dev) && M->Format.Graphics.PrimSurfSize.cx == ScaledW(Dev) &&
+        M->Format.Graphics.PrimSurfSize.cy == ScaledH(Dev))
+        return 2;
+    return 0;
+}
+
+/* G22 (notes/games-nfsu2.md): DXGI lists display modes per pixel format from our source modes - with A8R8G8B8 only,
+ * GetDisplayModeList(R8G8B8A8_UNORM) returned 0 modes and dgVoodoo / D3D11 games that enumerate RGBA modes found "no
+ * output device". With Parameters\RgbaModes (default 1) every mode is offered in A8B8G8R8 (= DXGI R8G8B8A8) too; an
+ * RGBA primary is converted at present (UMD GPU blit by format; KMD CPU copy swaps R/B, command.c). */
+static void FillSourceMode(MW_ADAPTER *Dev, D3DKMDT_VIDPN_SOURCE_MODE *M, BOOLEAN Scaled, D3DDDIFORMAT Fmt)
 {
     M->Type = D3DKMDT_RMT_GRAPHICS;
-    M->Format.Graphics.PrimSurfSize.cx = Dev->Fb.Width;
-    M->Format.Graphics.PrimSurfSize.cy = Dev->Fb.Height;
+    M->Format.Graphics.PrimSurfSize.cx = Scaled ? ScaledW(Dev) : Dev->Fb.Width;
+    M->Format.Graphics.PrimSurfSize.cy = Scaled ? ScaledH(Dev) : Dev->Fb.Height;
     M->Format.Graphics.VisibleRegionSize = M->Format.Graphics.PrimSurfSize;
-    M->Format.Graphics.Stride = Dev->Fb.Pitch;
-    M->Format.Graphics.PixelFormat = D3DDDIFMT_A8R8G8B8;
+    /* The scaled primary is an ordinary allocation (memory.c: pitch = width * 4), never the Fb itself. */
+    M->Format.Graphics.Stride = Scaled ? ScaledW(Dev) * 4 : Dev->Fb.Pitch;
+    M->Format.Graphics.PixelFormat = Fmt;
     M->Format.Graphics.ColorBasis = D3DKMDT_CB_SRGB;
     M->Format.Graphics.PixelValueAccessMode = D3DKMDT_PVAM_DIRECT;
 }
@@ -90,6 +121,132 @@ void MwModeRefresh(MW_ADAPTER *A, D3DDDI_RATIONAL *Refresh)
 
 /* ---- the firmware framebuffer ---- */
 
+/* TRUE if [Pa, Pa + Size) overlaps memory Windows owns as RAM: on firmware #115 the GOP reservation ends at
+ * 0xCA965000 and the pages behind it are RAM, so the wider layout must not be used there. */
+static BOOLEAN RangeIsRam(ULONG64 Pa, SIZE_T Size)
+{
+    PPHYSICAL_MEMORY_RANGE r = MmGetPhysicalMemoryRanges(), i;
+    BOOLEAN ram = TRUE;     /* unknown = refuse */
+
+    if (r == NULL)
+        return TRUE;
+    ram = FALSE;
+    for (i = r; i->BaseAddress.QuadPart != 0 || i->NumberOfBytes.QuadPart != 0; i++)
+        if ((ULONG64)i->BaseAddress.QuadPart < Pa + Size &&
+            Pa < (ULONG64)i->BaseAddress.QuadPart + (ULONG64)i->NumberOfBytes.QuadPart)
+            ram = TRUE;
+    ExFreePool(r);
+    return ram;
+}
+
+/* H4b: widen the DPU's source line from 1080 to MW_RESTRIDE_PIXELS (Parameters\ScanoutStride) so that Panfrost can
+ * render into the scan-out. Called with the GOP framebuffer mapped (FbVa, FbSize = 4320 x 2280). Only when the DPU
+ * channel G0 scans exactly what the GOP describes (base, 1080 x 2280 source and image). Rows move bottom-up into
+ * the wider lines, SRC_SIZE gets the new width and DECON's global shadow-update request commits it at the next TE
+ * frame (command mode, HW trigger). If the request never completes, everything is put back. Every step is logged
+ * (Restride*). Returns TRUE if Fb.Pitch / FbVa / FbSize now describe the 4352-byte layout. */
+static BOOLEAN MwRestride(MW_ADAPTER *A)
+{
+    PHYSICAL_ADDRESS pa;
+    volatile ULONG *g0, *decon;
+    PUCHAR va;
+    ULONG src, img, base, req = 0, newPitch = MW_RESTRIDE_PIXELS * 4, oldPitch = A->Fb.Pitch, h = A->Fb.Height;
+    ULONG latched, by;
+    ULONG want = (MW_GOP_HEIGHT << 16) | MW_GOP_WIDTH, ms;
+    SIZE_T newSize = (SIZE_T)newPitch * h;
+    LONG y;
+    BOOLEAN done = FALSE;
+
+    if (newSize > MW_FB_RESERVED)
+        return FALSE;
+    if (RangeIsRam((ULONG64)A->Fb.PhysicAddress.QuadPart, newSize)) {
+        MwLog(A, L"RestrideStep", 5);
+        return FALSE;
+    }
+    pa.QuadPart = MW_DPU_G0_PA;
+    g0 = (volatile ULONG *)MmMapIoSpaceEx(pa, PAGE_SIZE, PAGE_READWRITE | PAGE_NOCACHE);
+    pa.QuadPart = MW_DECON_PA;
+    decon = (volatile ULONG *)MmMapIoSpaceEx(pa, PAGE_SIZE, PAGE_READWRITE | PAGE_NOCACHE);
+    if (g0 == NULL || decon == NULL) {
+        MwLog(A, L"RestrideStep", 1);
+        goto out;
+    }
+    src = g0[MW_IDMA_SRC_SIZE / 4];
+    img = g0[MW_IDMA_IMG_SIZE / 4];
+    base = g0[MW_IDMA_IN_BASE_ADDR_Y / 4];
+    MwLog(A, L"RestrideSrcBefore", src);
+    MwLog(A, L"RestrideImg", img);
+    MwLog(A, L"RestrideBase", base);
+    MwLog(A, L"RestrideShadowReq", decon[MW_DECON_SHADOW_REQ / 4]);
+    MwLog(A, L"RestrideTrigControl", decon[MW_DECON_TRIG_CONTROL / 4]);
+    if (src != want || img != want || base != (ULONG)MW_GOP_FB_PA) {
+        MwLog(A, L"RestrideStep", 2);
+        goto out;
+    }
+    /* The reservation behind the GOP buffer (firmware #116 makes it 10 MiB; it is not RAM to Windows). */
+    va = (PUCHAR)MmMapIoSpaceEx(A->Fb.PhysicAddress, newSize, PAGE_READWRITE | PAGE_WRITECOMBINE);
+    if (va == NULL) {
+        MwLog(A, L"RestrideStep", 3);
+        goto out;
+    }
+    MmUnmapIoSpace(A->FbVa, A->FbSize);
+    A->FbVa = va;
+    A->FbSize = newSize;
+    for (y = (LONG)h - 1; y > 0; y--)
+        RtlMoveMemory(va + (SIZE_T)y * newPitch, va + (SIZE_T)y * oldPitch, oldPitch);
+    for (y = 0; y < (LONG)h; y++)       /* the 32 bytes past each visible line, never shown */
+        RtlZeroMemory(va + (SIZE_T)y * newPitch + oldPitch, newPitch - oldPitch);
+    g0[MW_IDMA_SRC_SIZE / 4] = (MW_GOP_HEIGHT << 16) | MW_RESTRIDE_PIXELS;
+    /* The register at +0x10 reads back what was written (the pending copy); the panel follows the latched copy at
+     * +0x800 + 0x10. 2026-10-14: GLOBAL alone left it at 1080 (sheared panel, 6 ms "success"). Request the global
+     * and every window update (Samsung commits a layer with GLOBAL | WIN(n)), then check the latched copy; only if
+     * that did not take, force the IDMA SFR update. RestrideLatchedBy: 1 = window request, 2 = IDMA force, 0 = neither. */
+    decon[MW_DECON_SHADOW_REQ / 4] = decon[MW_DECON_SHADOW_REQ / 4] | MW_DECON_SHADOW_GLOBAL | MW_DECON_SHADOW_WINS;
+    for (ms = 0; ms < 200; ms++) {      /* one TE frame is 16.7 ms */
+        req = decon[MW_DECON_SHADOW_REQ / 4];
+        if ((req & (MW_DECON_SHADOW_GLOBAL | MW_DECON_SHADOW_WINS)) == 0)
+            break;
+        KeStallExecutionProcessor(1000);
+    }
+    MwLog(A, L"RestrideShadowMs", ms);
+    MwLog(A, L"RestrideShadowAfter", req);
+    MwLog(A, L"RestrideSrcAfter", g0[MW_IDMA_SRC_SIZE / 4]);
+    latched = g0[(MW_IDMA_LATCHED + MW_IDMA_SRC_SIZE) / 4];
+    MwLog(A, L"RestrideLatched1", latched);
+    by = (latched == ((MW_GOP_HEIGHT << 16) | MW_RESTRIDE_PIXELS)) ? 1 : 0;
+    if (by == 0) {
+        g0[MW_IDMA_ENABLE / 4] = g0[MW_IDMA_ENABLE / 4] | MW_IDMA_SFR_UPDATE_FORCE;
+        KeStallExecutionProcessor(40000);   /* > 2 TE frames */
+        latched = g0[(MW_IDMA_LATCHED + MW_IDMA_SRC_SIZE) / 4];
+        MwLog(A, L"RestrideLatched2", latched);
+        if (latched == ((MW_GOP_HEIGHT << 16) | MW_RESTRIDE_PIXELS))
+            by = 2;
+    }
+    MwLog(A, L"RestrideLatchedBy", by);
+    if (by != 0) {
+        A->Fb.Pitch = newPitch;
+        done = TRUE;
+        MwLog(A, L"RestrideStep", 0);
+    } else {
+        /* Not latched by either request: back to the GOP layout, committed the same two ways (the scan-out keeps
+         * reading 1080-pixel lines, so the rows go back first). */
+        for (y = 1; y < (LONG)h; y++)
+            RtlMoveMemory(va + (SIZE_T)y * oldPitch, va + (SIZE_T)y * newPitch, oldPitch);
+        g0[MW_IDMA_SRC_SIZE / 4] = want;
+        decon[MW_DECON_SHADOW_REQ / 4] = decon[MW_DECON_SHADOW_REQ / 4] | MW_DECON_SHADOW_GLOBAL | MW_DECON_SHADOW_WINS;
+        KeStallExecutionProcessor(40000);
+        g0[MW_IDMA_ENABLE / 4] = g0[MW_IDMA_ENABLE / 4] | MW_IDMA_SFR_UPDATE_FORCE;
+        MwLog(A, L"RestrideLatchedBack", g0[(MW_IDMA_LATCHED + MW_IDMA_SRC_SIZE) / 4]);
+        MwLog(A, L"RestrideStep", 4);
+    }
+out:
+    if (g0 != NULL)
+        MmUnmapIoSpace((PVOID)g0, PAGE_SIZE);
+    if (decon != NULL)
+        MmUnmapIoSpace((PVOID)decon, PAGE_SIZE);
+    return done;
+}
+
 NTSTATUS MwDisplayStart(MW_ADAPTER *A)
 {
     PHYSICAL_ADDRESS pa;
@@ -119,13 +276,20 @@ NTSTATUS MwDisplayStart(MW_ADAPTER *A)
     A->FbVa = (PUCHAR)MmMapIoSpaceEx(pa, A->FbSize, PAGE_READWRITE | PAGE_WRITECOMBINE);
     if (A->FbVa == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
+    MwLog(A, L"ScanoutStride", MwScanoutStride);
+    if (gop && MwScanoutStride == MW_RESTRIDE_PIXELS)
+        MwLog(A, L"Restrided", MwRestride(A) ? 1 : 0);
+    MwPanelStart(A);
     A->SourceVisible = TRUE;
     A->PathActive = TRUE;
+    A->SrcW = A->Fb.Width;
+    A->SrcH = A->Fb.Height;
     return STATUS_SUCCESS;
 }
 
 void MwDisplayStop(MW_ADAPTER *A)
 {
+    MwPanelStop(A);
     if (A->FbVa != NULL) {
         MmUnmapIoSpace(A->FbVa, A->FbSize);
         A->FbVa = NULL;
@@ -313,12 +477,28 @@ NTSTATUS APIENTRY MwIsSupportedVidPn(IN_CONST_HANDLE hAdapter, DXGKARG_ISSUPPORT
     st = setIf->pfnAcquirePinnedModeInfo(set, &pinned);
     /* Supported if nothing is pinned yet, or what is pinned is our mode. */
     if (NT_SUCCESS(st)) {
-        Arg->IsVidPnSupported = pinned == NULL ||
-            (pinned->Type == D3DKMDT_RMT_GRAPHICS &&
-             pinned->Format.Graphics.PrimSurfSize.cx == dev->Fb.Width &&
-             pinned->Format.Graphics.PrimSurfSize.cy == dev->Fb.Height);
+        int kind = pinned != NULL ? SourceKind(dev, pinned) : -1;
+        Arg->IsVidPnSupported = kind != 0;
         if (pinned != NULL)
             setIf->pfnReleaseModeInfo(set, pinned);
+        /* G20: a scaled source cannot go with a pinned IDENTITY scaling (MS Learn D3DKMDT_VPPS_IDENTITY: "available
+         * only if the path's source mode has the same spatial resolution as the path's target mode"). */
+        if (kind == 2) {
+            D3DKMDT_HVIDPNTOPOLOGY topo;
+            const DXGK_VIDPNTOPOLOGY_INTERFACE *topoIf;
+            const D3DKMDT_VIDPN_PRESENT_PATH *path = NULL, *next;
+            if (NT_SUCCESS(vidpn->pfnGetTopology(Arg->hDesiredVidPn, &topo, &topoIf)) &&
+                topoIf->pfnAcquireFirstPathInfo(topo, &path) == STATUS_SUCCESS) {
+                while (path != NULL) {
+                    if (path->VidPnSourceId == 0 && path->ContentTransformation.Scaling == D3DKMDT_VPPS_IDENTITY)
+                        Arg->IsVidPnSupported = FALSE;
+                    if (topoIf->pfnAcquireNextPathInfo(topo, path, &next) != STATUS_SUCCESS)
+                        next = NULL;
+                    topoIf->pfnReleasePathInfo(topo, path);
+                    path = next;
+                }
+            }
+        }
     }
     vidpn->pfnReleaseSourceModeSet(Arg->hDesiredVidPn, set);
     MwPramText(FALSE, "IsSupported pinned.ok ", NULL, ((pinned != NULL) ? 0x10u : 0u) | (Arg->IsVidPnSupported ? 1u : 0u), TRUE);
@@ -342,7 +522,7 @@ static NTSTATUS PinSourceMode(MW_ADAPTER *Dev, const DXGK_VIDPN_INTERFACE *VidPn
         return st;
     st = setIf->pfnCreateNewModeInfo(set, &mode);
     if (NT_SUCCESS(st)) {
-        FillSourceMode(Dev, mode);
+        FillSourceMode(Dev, mode, FALSE, D3DDDIFMT_A8R8G8B8);
         id = mode->Id;
         st = setIf->pfnAddMode(set, mode);
         if (!NT_SUCCESS(st))
@@ -413,6 +593,8 @@ NTSTATUS APIENTRY MwRecommendFunctionalVidPn(IN_CONST_HANDLE hAdapter,
     path->ContentTransformation.ScalingSupport.Identity = 1;
     path->ContentTransformation.Rotation = D3DKMDT_VPPR_IDENTITY;
     path->ContentTransformation.RotationSupport.Identity = 1;
+    if (MwWddm2)
+        path->ContentTransformation.RotationSupport.Offset0 = 1;   /* clone-mode requirement, see EnumCofunc */
     path->VidPnTargetColorBasis = D3DKMDT_CB_SRGB;
     path->VidPnTargetColorCoeffDynamicRanges.FirstChannel = 8;
     path->VidPnTargetColorCoeffDynamicRanges.SecondChannel = 8;
@@ -433,15 +615,62 @@ NTSTATUS APIENTRY MwRecommendFunctionalVidPn(IN_CONST_HANDLE hAdapter,
     return NT_SUCCESS(st) ? STATUS_SUCCESS : STATUS_GRAPHICS_NO_RECOMMENDED_FUNCTIONAL_VIDPN;
 }
 
-/* Give the source and target of a path our mode if nothing is pinned. */
-static NTSTATUS AddSourceMode(MW_ADAPTER *Dev, const DXGK_VIDPN_INTERFACE *VidPn, D3DKMDT_HVIDPN H,
-                              D3DDDI_VIDEO_PRESENT_SOURCE_ID Src)
+/* G20: SourceKind of the pinned source mode of Src (0 = nothing pinned or not ours). */
+static int PinnedSourceKind(MW_ADAPTER *Dev, const DXGK_VIDPN_INTERFACE *VidPn, D3DKMDT_HVIDPN H,
+                            D3DDDI_VIDEO_PRESENT_SOURCE_ID Src)
 {
     D3DKMDT_HVIDPNSOURCEMODESET set;
     const DXGK_VIDPNSOURCEMODESET_INTERFACE *setIf;
     const D3DKMDT_VIDPN_SOURCE_MODE *pinned = NULL;
+    int kind = 0;
+
+    if (!NT_SUCCESS(VidPn->pfnAcquireSourceModeSet(H, Src, &set, &setIf)))
+        return 0;
+    if (NT_SUCCESS(setIf->pfnAcquirePinnedModeInfo(set, &pinned)) && pinned != NULL) {
+        kind = SourceKind(Dev, pinned);
+        setIf->pfnReleaseModeInfo(set, pinned);
+    }
+    VidPn->pfnReleaseSourceModeSet(H, set);
+    return kind;
+}
+
+static NTSTATUS AddOneSourceModeFmt(MW_ADAPTER *Dev, D3DKMDT_HVIDPNSOURCEMODESET Set,
+                                    const DXGK_VIDPNSOURCEMODESET_INTERFACE *SetIf, BOOLEAN Scaled, D3DDDIFORMAT Fmt)
+{
     D3DKMDT_VIDPN_SOURCE_MODE *mode;
-    NTSTATUS st;
+    NTSTATUS st = SetIf->pfnCreateNewModeInfo(Set, &mode);
+    if (!NT_SUCCESS(st))
+        return st;
+    FillSourceMode(Dev, mode, Scaled, Fmt);
+    st = SetIf->pfnAddMode(Set, mode);
+    if (!NT_SUCCESS(st))
+        SetIf->pfnReleaseModeInfo(Set, mode);
+    return st;
+}
+
+/* The mode in A8R8G8B8, and with RgbaModes (full adapter) also in A8B8G8R8 (G22). */
+static NTSTATUS AddOneSourceMode(MW_ADAPTER *Dev, D3DKMDT_HVIDPNSOURCEMODESET Set,
+                                 const DXGK_VIDPNSOURCEMODESET_INTERFACE *SetIf, BOOLEAN Scaled)
+{
+    NTSTATUS st = AddOneSourceModeFmt(Dev, Set, SetIf, Scaled, D3DDDIFMT_A8R8G8B8);
+    if (NT_SUCCESS(st) && MwRgbaModes && Dev->Mode != MwModeDisplayOnly)
+        st = AddOneSourceModeFmt(Dev, Set, SetIf, Scaled, D3DDDIFMT_A8B8G8R8);
+    return st;
+}
+
+/* Give the source and target of a path our mode if nothing is pinned. G20: the source modes cofunctional with the
+ * path's scaling - IDENTITY pinned: the native mode only; STRETCHED / ASPECTRATIOCENTEREDMAX pinned: the scaled
+ * mode only; otherwise both (the scaled one only with ScaledModes). */
+static NTSTATUS AddSourceMode(MW_ADAPTER *Dev, const DXGK_VIDPN_INTERFACE *VidPn, D3DKMDT_HVIDPN H,
+                              D3DDDI_VIDEO_PRESENT_SOURCE_ID Src, D3DKMDT_VIDPN_PRESENT_PATH_SCALING Scaling)
+{
+    BOOLEAN stretch = Scaling == D3DKMDT_VPPS_STRETCHED || Scaling == D3DKMDT_VPPS_ASPECTRATIOCENTEREDMAX;
+    BOOLEAN addNative = !stretch || !ScaledOn(Dev);
+    BOOLEAN addScaled = ScaledOn(Dev) && Scaling != D3DKMDT_VPPS_IDENTITY;
+    D3DKMDT_HVIDPNSOURCEMODESET set;
+    const DXGK_VIDPNSOURCEMODESET_INTERFACE *setIf;
+    const D3DKMDT_VIDPN_SOURCE_MODE *pinned = NULL;
+    NTSTATUS st = STATUS_SUCCESS;
 
     st = VidPn->pfnAcquireSourceModeSet(H, Src, &set, &setIf);
     if (!NT_SUCCESS(st))
@@ -456,13 +685,10 @@ static NTSTATUS AddSourceMode(MW_ADAPTER *Dev, const DXGK_VIDPN_INTERFACE *VidPn
     st = VidPn->pfnCreateNewSourceModeSet(H, Src, &set, &setIf);
     if (!NT_SUCCESS(st))
         return st;
-    st = setIf->pfnCreateNewModeInfo(set, &mode);
-    if (NT_SUCCESS(st)) {
-        FillSourceMode(Dev, mode);
-        st = setIf->pfnAddMode(set, mode);
-        if (!NT_SUCCESS(st))
-            setIf->pfnReleaseModeInfo(set, mode);
-    }
+    if (addNative)
+        st = AddOneSourceMode(Dev, set, setIf, FALSE);
+    if (NT_SUCCESS(st) && addScaled)
+        st = AddOneSourceMode(Dev, set, setIf, TRUE);
     if (NT_SUCCESS(st))
         st = VidPn->pfnAssignSourceModeSet(H, Src, set);
     if (!NT_SUCCESS(st))
@@ -551,7 +777,8 @@ NTSTATUS APIENTRY MwEnumVidPnCofuncModality(IN_CONST_HANDLE hAdapter,
                    (((ULONG)path->ContentTransformation.Scaling & 0xFF) << 8) |
                    ((ULONG)path->ContentTransformation.Rotation & 0xFF), TRUE);
         if (!srcPivot) {
-            r = AddSourceMode(dev, vidpn, Arg->hConstrainingVidPn, path->VidPnSourceId);
+            r = AddSourceMode(dev, vidpn, Arg->hConstrainingVidPn, path->VidPnSourceId,
+                              path->ContentTransformation.Scaling);
             if (!NT_SUCCESS(r))
                 MwLog(dev, L"Fail_AddSourceMode", (ULONG)r);
         }
@@ -561,7 +788,8 @@ NTSTATUS APIENTRY MwEnumVidPnCofuncModality(IN_CONST_HANDLE hAdapter,
                 MwLog(dev, L"Fail_AddTargetMode", (ULONG)r);
         }
 
-        /* Identity scaling and rotation, and nothing else. */
+        /* Identity scaling and rotation, and nothing else - G20: with ScaledModes, the scalings cofunctional with the
+         * pinned source mode (native: Identity; scaled: Stretched + AspectRatioCenteredMax; none pinned: all three). */
         if (NT_SUCCESS(r) && !xfPivot &&
             (path->ContentTransformation.Scaling == D3DKMDT_VPPS_UNPINNED ||
              path->ContentTransformation.Rotation == D3DKMDT_VPPR_UNPINNED)) {
@@ -569,12 +797,35 @@ NTSTATUS APIENTRY MwEnumVidPnCofuncModality(IN_CONST_HANDLE hAdapter,
             if (upd.ContentTransformation.Scaling == D3DKMDT_VPPS_UNPINNED) {
                 RtlZeroMemory(&upd.ContentTransformation.ScalingSupport,
                               sizeof(upd.ContentTransformation.ScalingSupport));
-                upd.ContentTransformation.ScalingSupport.Identity = 1;
+                if (ScaledOn(dev)) {
+                    int kind = PinnedSourceKind(dev, vidpn, Arg->hConstrainingVidPn, path->VidPnSourceId);
+                    upd.ContentTransformation.ScalingSupport.Identity = kind != 2;
+                    upd.ContentTransformation.ScalingSupport.Stretched = kind != 1;
+                    upd.ContentTransformation.ScalingSupport.AspectRatioCenteredMax = kind != 1;
+                } else {
+                    upd.ContentTransformation.ScalingSupport.Identity = 1;
+                }
             }
             if (upd.ContentTransformation.Rotation == D3DKMDT_VPPR_UNPINNED) {
                 RtlZeroMemory(&upd.ContentTransformation.RotationSupport,
                               sizeof(upd.ContentTransformation.RotationSupport));
                 upd.ContentTransformation.RotationSupport.Identity = 1;
+                /* G15 S1 run 9: MS Learn "Supporting Rotation in a Display Miniport Driver", clone-mode requirements:
+                 * the primary clone path must set Offset0 (and no other offset); "If test signing is enabled, a
+                 * system bugcheck will occur" - our WDDM 2.0 adapter took 0x113 subtype 0x1C, P2 = 0xF (the support
+                 * bits we passed) right after this call. dxgkrnl adds Offset0 itself for the 1.3 adapter. */
+                if (MwWddm2)
+                    upd.ContentTransformation.RotationSupport.Offset0 = 1;
+                /* 2026-10-14 (user: landscape does not work): offer the rotations. The source mode stays the
+                 * panel's 1080x2280 and QueryVidPnHWCapability reports no hardware rotation, so the OS (DWM) is
+                 * expected to compose the desktop rotated into it - verified or refuted by the scan-out dump. */
+                /* 13:05 run: DWM does NOT pre-rotate - with the offer on, a rotation blacked out the GPU scan-out
+                 * path (notes/gpu-hw-path.md). Off unless Parameters\OfferRotation = 1, until the presents rotate. */
+                if (MwOfferRotation) {
+                    upd.ContentTransformation.RotationSupport.Rotate90 = 1;
+                    upd.ContentTransformation.RotationSupport.Rotate180 = 1;
+                    upd.ContentTransformation.RotationSupport.Rotate270 = 1;
+                }
             }
             r = topoIf->pfnUpdatePathSupportInfo(topo, &upd);
         }
@@ -632,9 +883,12 @@ NTSTATUS APIENTRY MwCommitVidPn(IN_CONST_HANDLE hAdapter, const DXGKARG_COMMITVI
     }
     st = setIf->pfnAcquirePinnedModeInfo(set, &pinned);
     if (NT_SUCCESS(st) && pinned != NULL) {
-        BOOLEAN ours = pinned->Type == D3DKMDT_RMT_GRAPHICS &&
-                       pinned->Format.Graphics.PrimSurfSize.cx == dev->Fb.Width &&
-                       pinned->Format.Graphics.PrimSurfSize.cy == dev->Fb.Height;
+        BOOLEAN ours = SourceKind(dev, pinned) != 0;
+        if (ours) {
+            dev->SrcW = (ULONG)pinned->Format.Graphics.PrimSurfSize.cx;
+            dev->SrcH = (ULONG)pinned->Format.Graphics.PrimSurfSize.cy;
+            MwLog(dev, L"CommitSrcWxH", (dev->SrcW << 16) | (dev->SrcH & 0xFFFF));
+        }
         setIf->pfnReleaseModeInfo(set, pinned);
         st = ours ? STATUS_SUCCESS : STATUS_GRAPHICS_INVALID_VIDPN;
         dev->PathActive = ours;
@@ -654,8 +908,11 @@ NTSTATUS APIENTRY MwCommitVidPn(IN_CONST_HANDLE hAdapter, const DXGKARG_COMMITVI
 NTSTATUS APIENTRY MwUpdateActiveVidPnPresentPath(IN_CONST_HANDLE hAdapter,
                                                  const DXGKARG_UPDATEACTIVEVIDPNPRESENTPATH *Arg)
 {
-    UNREFERENCED_PARAMETER(hAdapter);
-    UNREFERENCED_PARAMETER(Arg);
+    MW_ADAPTER *dev = (MW_ADAPTER *)hAdapter;
+
+    /* Smooth rotation (SupportSmoothRotation) changes the path's rotation here without a mode set. */
+    MwLog(dev, L"ActivePathRotation", (ULONG)Arg->VidPnPresentPathInfo.ContentTransformation.Rotation);
+    dev->Rotation = (ULONG)Arg->VidPnPresentPathInfo.ContentTransformation.Rotation;
     return STATUS_SUCCESS;
 }
 
@@ -692,8 +949,17 @@ NTSTATUS APIENTRY MwRecommendMonitorModes(IN_CONST_HANDLE hAdapter,
 NTSTATUS APIENTRY MwQueryVidPnHWCapability(IN_CONST_HANDLE hAdapter,
                                            DXGKARG_QUERYVIDPNHWCAPABILITY *Arg)
 {
-    UNREFERENCED_PARAMETER(hAdapter);
+    MW_ADAPTER *dev = (MW_ADAPTER *)hAdapter;
+    const DXGK_VIDPN_INTERFACE *vidpn;
+
     RtlZeroMemory(&Arg->VidPnHWCaps, sizeof(Arg->VidPnHWCaps));
+    /* G20: MS Learn "Querying VidPN Hardware Capabilities" - hardware that "cannot perform ... scaling" reports
+     * DriverScaling = 1 ("These operations are performed by the driver"): the scaled mode is stretched by our
+     * present blit. Rotation stays reported as before (0). */
+    if (ScaledOn(dev) &&
+        NT_SUCCESS(dev->Dxgk.DxgkCbQueryVidPnInterface(Arg->hFunctionalVidPn, DXGK_VIDPN_INTERFACE_VERSION_V1, &vidpn)) &&
+        PinnedSourceKind(dev, vidpn, Arg->hFunctionalVidPn, Arg->SourceId) == 2)
+        Arg->VidPnHWCaps.DriverScaling = 1;
     return STATUS_SUCCESS;
 }
 

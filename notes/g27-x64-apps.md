@@ -1,0 +1,218 @@
+# G27 - x64 (emulated) apps on our GPU: an ARM64X UMD
+
+Why: x64 applications under emulation on Windows on Arm (most modern games) cannot use the Mali adapter - the UMD is
+a plain ARM64 DLL, which an x64/ARM64EC process cannot load (research-requests R10). User goal: games + browsers on
+the GPU, natively.
+
+## Research
+- MS Learn "Build Arm64X Files" (https://learn.microsoft.com/en-us/windows/arm/arm64x-build), section "Building an
+  Arm64X pure forwarder DLL": "An Arm64X pure forwarder DLL is a small Arm64X DLL that forwards APIs to separate DLLs
+  depending on their type: Arm64 APIs are forwarded to an Arm64 DLL. x64 APIs are forwarded to an x64 or Arm64EC
+  DLL." Built from empty arm64 + /arm64EC objects, two DEF files (EXPORTS X = foo_arm64.X / foo_x64.X), `link /lib`
+  import libs, then `link /dll /noentry /machine:arm64x /defArm64Native:<arm64 def> /def:<x64 def> ...`. "When an Arm64
+  process loads foo.dll, the operating system immediately loads foo_arm64.dll in its place". For merged Arm64X
+  binaries "the Arm64 and Arm64EC configurations must use the same C runtime" (ours: static /MT since 23ef073).
+- Prior art: osy/virtio-win-mesa Triton UMD, src/virtio/neptune/triton/tools/make-arm64x.bat (MIT) - exactly this
+  forwarder (neptune_umd.dll -> neptune_umd_arm64.dll / neptune_umd_ec.dll), DEFs generated from the UMD's .def.
+- Mesa docs: Visual Studio builds for ARM64EC are supported (docs.mesa3d.org/install.html, notes/d5-gpu-display.md).
+
+## Plan (one commit each)
+- G27.1 baseline: an x64 build of d3dcs on the phone (what does an emulated x64 app get today?).
+- G27.2 ARM64EC Mesa build stage (build-mesa-g76.ps1 -Stage ec) -> maliumd_ec.dll.
+- G27.3 ARM64X forwarder (tools/mesa-build/make-arm64x.ps1): maliumd.dll -> maliumd_arm64.dll / maliumd_ec.dll;
+  deploy by hand, x64 + ARM64 tests, DWM untouched until the reboot.
+- G27.4 INF: the three files to System32.
+
+## Progress log
+- G27.1 baseline: d3dcs built for x64 (build-d3dcs.cmd x64 -> d3dcs64x.exe), emulated on the phone: "Mali: D3D11CreateDevice 0x887a0004 FL 0x0" = DXGI_ERROR_UNSUPPORTED - an x64 process gets no device on the Mali adapter (the ARM64 UMD cannot load into it).
+- G27.2 ec build, attempt 1 (triple `--target=arm64ec-pc-windows-msvc` in the cross file): ~400 compile failures.
+  clang's arm64ec target predefines `__x86_64__`/`__x86_64`/`_M_X64` (the EC ABI is x64's) -> Mesa util/detect_arch.h
+  set DETECT_ARCH_X86_64 and SSE paths. Patched: `&& !defined(_M_ARM64EC)` on the X86_64 test.
+- attempt 2: 69 failures. All 171 `mmintrin.h` errors ("invalid conversion between vector type '__v2di'") come via
+  util/xxhash.h:4343 - the XXH_PREFETCH path for `_MSC_VER && (_M_X64 || _M_IX86)`. (XXH_VECTOR already picks NEON:
+  `_M_ARM64EC` is in its NEON list.) Patched: `&& !defined(_M_ARM64EC)` there.
+- zlib z-1.dll: `LNK1423: ARM32 is no longer a supported target` - build.ninja has `/MACHINE:arm` on every link and
+  llvm-lib rule. Cause (meson 1.12.1 = latest, venv/Lib/site-packages/mesonbuild/compilers/mixins/visualstudio.py
+  ~l.110): target canonicalisation `elif 'aarch64' in target ... elif 'arm' in target: self.machine = 'arm'` - clang-cl's
+  "Target: arm64ec-pc-windows-msvc" -> 'arm64ec' -> 'arm'. The static linker inherits the same machine.
+- Toolchain tests (scratchpad ectest, t.c one export):
+  - `clang-cl --target=aarch64-pc-windows-msvc /arm64EC`: "/arm64EC has been overridden by specified target; ignored".
+  - `clang-cl /arm64EC` (no triple): Target arm64ec; `link /MACHINE:x64 ... /machine:arm64ec` links fine, dumpbin
+    "8664 machine (x64) (ARM64X)" = an ARM64EC image. softintrin.lib not needed for this test (MS Learn
+    arm64ec-build: "Use the /arm64EC switch for cl and /MACHINE:ARM64EC for link"; softintrin.lib is implicit for MSVC
+    EC objects - llvm/llvm-project PR 89171 - add it only if _mm_* unresolved appear).
+  - archives: llvm-lib /MACHINE:x64 on an EC obj: "file machine type arm64ec conflicts with library machine type
+    x64"; MSVC lib /MACHINE:x64 or arm64: LNK1392 "Did you mean /machine:arm64x or /machine:arm64ec?". The archive
+    machine must be arm64ec -> meson's canonicalisation has to produce it.
+  - Decision: the ec stage uses its own venv ($Mali\venv-ec) whose visualstudio.py gets one idempotent line
+    (`elif 'arm64ec' in target: self.machine = 'arm64ec'` before the aarch64 test); the shared venv stays stock.
+    (Build-tool fix, not a runtime switch - AGENTS 12 n/a.)
+- ec build with the venv-ec meson: build.ninja now `/MACHINE:arm64ec` on all 4 rules; full build 0 FAILED.
+  s10e-artifacts\mali-umd-0129-ec\maliumd_ec.dll: "8664 machine (x64) (ARM64X)" (= ARM64EC image), sections include
+  .a64xrm / .hexpthk, imports only api-ms-win-core-synch, KERNEL32, USER32, GDI32, CFGMGR32 (static CRT, as ARM64).
+- G27.3 tools written: tools/mesa-build/make-arm64x.ps1 (MS Learn pure-forwarder steps; export list from dumpbin
+  /exports of the ARM64 DLL, must equal the EC DLL's), tools/phone/wddm2/umdxswap.cmd + `wddm2dbg.sh umdxswap DIR`
+  (live swap of the 3 files, rollback copy System32\maliumd.dll.pre-g27). ARM64 half rebuilt from the same tree
+  (cross,collect -> mali-umd-0129) so both halves are one source.
+- Review of 0cac259 (G27.2): rg for direct `__x86_64__|__x86_64|_M_X64|_M_AMD64|__amd64(__)` tests in util, gallium
+  aux/d3d10umd/panfrost/winsys, panfrost, compiler, c11 (outside detect_arch/xxhash): only blake3_dispatch.c:130 (inside
+  `#if IS_X86`, and upstream blake3_impl.h already excludes _M_ARM64EC from IS_X86 -> dead on EC) and hash_table.c:726
+  (`_WIN64 || __x86_64__` = 64-bit, right for EC). Patch 0129 guards are `&& !defined(_M_ARM64EC)` only -> ARM64 / x86
+  builds unchanged in behaviour. venv-ec pins meson==1.12.1, the version whose anchor line the patch needs (the
+  script throws if the anchor is gone). Nothing to fix.
+- G27.3 forwarder built (make-arm64x.ps1 -> s10e-artifacts\mali-umd-0129-x): maliumd.dll 679dfd16 "AA64 machine
+  (ARM64) (ARM64X)", 49 exports "forwarded to maliumd_arm64.*"; maliumd_arm64.dll 8efadef8 (= mali-umd-0129 ARM64,
+  Mesa 0001-0129); maliumd_ec.dll c64534df (mali-umd-0129-ec). Script fixes on the way: `link /lib` must be the first
+  argument (with /nologo first: LNK4044 "unrecognized option '/lib'" + LNK1104); a 0-byte .lib left by that failure
+  gave LNK1136 -> the script clears its arm64x-obj directory.
+- Deployed live 2026-10-18 ~13:15 (wddm2dbg.sh umdxswap, hashes verified; rollback System32\maliumd.dll.pre-g27 = 0127s;
+  DWM keeps its boot-time UMD until the next reboot). Battery 100 % charging.
+  - ARM64 d3dcs.exe (through the forwarder): 0 of 7 differ -> PASS.
+  - x64 d3dcs64x.exe (emulated): "Mali: D3D11CreateDevice 0x00000000 FL 0xa100" (G27.1 baseline: 0x887a0004),
+    0 of 7 differ -> PASS. tools/phone/games/d3dcsrun.sh got an arch argument (x86|arm64|x64).
+  - ARM64 Edge (native) on the forwarder: tools/phone/wddm2/edgecdp.ps1 (new; user session, --remote-debugging-port
+    + separate profile, tracing only) + cdp_webgl.py: clear 51,102,153,255 draw 255,128,0,255, renderer "ANGLE (...
+    Arm Mali-G76 MP12 ... Direct3D11 vs_4_1 ps_4_1, D3D11)". `tasklist /m maliumd*`: the new Edge GPU process (7436)
+    has "maliumd.dll, maliumd_arm64.DLL" loaded - the forwarder path, as MS Learn describes. dwm/explorer still hold
+    the boot-time maliumd.dll. (umdwhich.ps1 now also matches maliumd_arm64/_ec; from the ssh session it lists nothing
+    for other users' processes - use tasklist /m.)
+- Review of 3eab80e (G27.3): export counts checked mechanically (dumpbin: 49 functions / 49 names in maliumd.dll ARM64,
+  maliumd_ec.dll, forwarder); wddm2dbg.sh committed as LF (+9 lines; the CRLF warning is the working copy only).
+  Findings -> follow-ups: F1 umdxswap.cmd swapped the forwarder FIRST - a 64-bit process starting before
+  maliumd_arm64/_ec land would get a forwarder without targets -> order now targets first, forwarder last.
+  F2 run-as-user.ps1 passes no arguments, so `edgecdp.ps1 -Stop` cannot be run that way (my "stop" call restarted the
+  debug Edge instead) -> edgecdpstop.ps1.
+  F2 done: tools/phone/wddm2/edgecdpstop.ps1 (run-as-user) -> wmic: no msedge with edgeprof left; tasklist /m maliumd_arm64.dll: none.
+- 13:11 Windows reboot (shutdown /r) to put DWM on the forwarder; rollback = umdswap with System32\maliumd.dll.pre-g27.
+- G27.4 INF 1.0.71.1: SourceDisksFiles + MW_UmdFiles (System32, COPYFLG_IN_USE_TRY_RENAME) carry maliumd.dll
+  (forwarder), maliumd_arm64.dll, maliumd_ec.dll; UserModeDriverName unchanged (maliumd.dll x4 - the forwarder).
+  build-package.ps1: -Umd = make-arm64x output, all three signed. Package s10e-artifacts\mwddm-1.0.71.1 (Umd 0129-x,
+  Umd32 0128-x86): Inf2Cat OK (10_RS3/NI/GE ARM64), InfVerif /v "INF is VALID", /u rc 0. NOT installed (display
+  driver reinstall waits for an attended session; the live System32 copies are the same builds, unsigned).
+- Reboot result (ssh back after ~84 s): `tasklist /m maliumd*`: dwm, explorer, SearchHost, StartMenuExperienceHost,
+  TextInputHost all "maliumd.dll, maliumd_arm64.DLL" - DWM runs on the forwarder. GDI screenshot: normal desktop.
+  No new Application Error events attributable to this boot (the phone clock resets at boot - event times overlap
+  older boots; none name maliumd_arm64/maliumd_ec/dwm). d3dcs x64 + ARM64 again 0/7 differ.
+- User 2026-10-18: "Screenshot did not show explorer" - the post-reboot GDI shot (1013x480) had no taskbar. Checked
+  (tools/phone/wddm2/shellstate.ps1, taskbarstate.ps1, new): explorer/StartMenuExperienceHost running + responding;
+  Shell_TrayWnd visible, rect 0,612-1520,720 on a 1520x720 screen, StuckRects3 byte8 0x7a (no auto-hide). Cause: shot.ps1
+  was not DPI-aware - at 150 % VirtualScreen reports the virtualised 1013x480 and CopyFromScreen copied only the
+  top-left 1013x480 physical pixels (2/3 of the screen). Fixed (SetProcessDPIAware first): shot 1520x720 shows the
+  full desktop incl. taskbar (Start, Explorer, Brave, tray, clock). All earlier shot.ps1 images since the 150 % mode
+  (e.g. traces/games/browser-*-0123.png) are crops of the top-left 2/3 - keep that in mind when reading them.
+- G27.5 x64 test builds (build-d3dgs/d3dso/d3dbc.cmd x64 -> *64x.exe) run emulated on maliumd_ec.dll via
+  tools/phone/games/d3drun.sh (new generic runner; exit status via && / || - `%errorlevel%` in the cmd /c line is
+  expanded before the run): d3dgs64x 0 of 6 differ (pixel-exact, GS emulation incl. compute + XFB), d3dso64x 0 of 2,
+  d3dbc64x lossy 0 of 126 (ETC2/EAC transcode, thread pool). d3dbc64x plain 63/63 DIFF = expected since G26 (plain mode
+  is the bit-exact BC-decode check; the default path re-compresses to ETC2).
+- Review of eae5cb0: the .cmd edits left LF endings, but the working copies were LF before (build-d3dcs.cmd untouched is LF too), the repo stores LF, all three built after the edit -> no change needed. d3drun.sh assumes the repo root as cwd, like d3dcsrun.sh.
+- Real x64 apps on the phone (tools/phone/pearch.ps1, new - PE machine per file): Program Files is ARM64 (Brave
+  ARM64 too) except foobar2000 (x64). tools/phone/games/x64app.ps1 (new) started foobar2000 x64: runs, but
+  `tasklist /m maliumd*` lists no UMD for it - its UI is GDI, it never opens a D3D device. Not a UMD test; killed (/f).
+- Its shot (and one after g20/wake.ps1) came back all white; `wddm2dbg.sh fb` scan-out (base 0xCA000000) all zero
+  (extrema 0) = panel off: the known G20/G21 display-asleep signature + the open "screen slow-wake" item (the input
+  wake did not bring it back this time). dwm pid 1328 unchanged and responding, no LogonUI, no new error events ->
+  not a forwarder symptom. A real x64 D3D app (game) = next, with the display awake (user, or after slow-wake).
+
+## Remote viewing (user 2026-10-18: "Cant watch im working remotely can you figure out a solution? Some sort of screen recording?")
+- Webcam is no option (notes/gpu-hw-path.md: the lit OLED saturates it, it never resolved the panel).
+- GDI capture goes white while the display is off; scan-out dump goes black. So: (1) keep the display on during
+  unattended tests - AC monitor timeout 0 while on the charger (test-environment setting, reversible; recorded here),
+  the recorder also holds SetThreadExecutionState(ES_CONTINUOUS|ES_DISPLAY_REQUIRED) (MS Learn: "Forces the display to be
+  on by resetting the display idle timer" / ES_CONTINUOUS "should remain in effect until the next call ... cleared";
+  the doc does not say it turns on a display that is already off - G21's slow wake stays open); (2) record frames on
+  the phone (DPI-aware GDI, N fps, JPEG) and pack them on the PC (PIL: GIF + contact sheet), sent to the user.
+- CORRECTION (13:4x): the white GDI shots + all-zero scan-out after the foobar run were NOT display sleep - VIDEOIDLE
+  and STANDBYIDLE are 0 (never) on AC and DC; `tasklist` showed scrnsave.scr (the blank screensaver, the same one
+  that voids cube fps). taskkill /f -> shot 1520x720 normal again. The earlier "display asleep" readings (G20/G21
+  white shots / black dumps) were probably the screensaver too. MS Learn SetThreadExecutionState: "This function does
+  not stop the screen saver from executing." -> the recorder turns the screensaver off with
+  SystemParametersInfo(SPI_SETSCREENSAVEACTIVE, FALSE) for its run and restores the previous value afterwards.
+- screenrec.ps1 v1 was blocked by Defender/AMSI on the phone ("This script contains malicious content and has been
+  blocked by your antivirus software", ScriptContainedMaliciousContent) - screen capture + P/Invoke in one script
+  reads like spyware. Not worked around (no obfuscation / splitting to dodge AV). Replaced by a normal compiled test
+  tool: tools/phone/rec/screenrec (C++, GDI BitBlt + WIC JPEG, same behaviour), launched by a one-line wrapper. If
+  Defender flags the exe as well: stop, the user decides about an exclusion.
+- screenrec.exe (C++, /W4 /WX clean, Windows subsystem so no console window lands in the frames) runs - Defender
+  did not object. Smoke run `recfetch.sh smoke 10 2`: 21 frames 760x360 (screen 1520x720 x0.5), screensaver-was 1 ->
+  restored to 1; GIF 68 KB, contact sheet shows the full desktop + taskbar. Delivery to the user: SendUserFile.
+- First real x64 D3D app: mpv x86_64 (shinchiro/mpv-winbuild-cmake 20261018, mpv-x86_64 - not -v3, which needs AVX2)
+  in C:\S10eTmp\mpv64, `--vo=gpu --gpu-api=d3d11 --no-audio av://lavfi:testsrc2` (no media file, no sound).
+  - Attempt 1 (recorded): Windows "System Error: vulkan-1.dll was not found" - this mpv imports the Vulkan loader.
+    Fix: Khronos loader x64 from LunarG vulkan-runtime-components.zip (1.4.363.0, Authenticode valid "LunarG, Inc."),
+    app-local next to mpv.exe (no Vulkan ICD exists -> mpv uses D3D11 as asked).
+  - mpv log: "Using Direct3D 11 feature level 10_1", "Device Name: Arm Mali-G76 MP12 (Galaxy S10e, G10/G11)", flip
+    model, R8G8B8A8; `tasklist /m`: mpv.exe "maliumd.dll, maliumd_ec.DLL". 0 [e] lines, no dropped frames (only the
+    EOF pin disconnect). Recording traces/rec/mpv64run (80 s, 161 frames): colour bars + moving lines + counter
+    render correctly from t=3.5 s to the 45 s length, then mpv idles ("No file", black).
+  - Recorder fixes on the way: every BitBlt failed while scrnsave.scr ran (it starts right after a run restores
+    SPI_SETSCREENSAVEACTIVE, the input idle having passed) -> screenrec closes a running screensaver before each frame
+    (SPI_GETSCREENSAVERRUNNING; WM_CLOSE to the "Screen-saver" desktop windows or the foreground window if it is a
+    *.scr process). The stale hard-error box from attempt 1 cannot be found/closed from the user session
+    (tools/phone/rec/dismiss.ps1: FindWindow finds nothing; csrss-owned + UIPI) - needs one OK tap by the user.
+- x64 browser: ungoogled-chromium 155.0.8059.79 windows_x64 (portable zip, C:\S10eTmp\chr64; only flag
+  --no-first-run, no GPU flags) on https://webglsamples.org/aquarium/aquarium.html, recorded 60 s
+  (traces/rec/chr64aq): the GPU process loads "maliumd.dll, maliumd_ec.DLL"; window at ~21 s, page at ~31 s, textures
+  streaming 34-41 s (white/blue scenes = not yet loaded), full aquarium from ~44 s: fps counter 24-27 at 500 fish,
+  canvas 1024x1024. one "screensaver was running (close path 1)" line, before frame 0 (closed via the Screen-saver desktop, i.e. before the launch); not running afterwards (tasklist) -> number valid; it includes
+  the recorder's own 2 fps GDI capture. The stale mpv hard-error box was gone by then.
+- screenrec -dup (DXGI Desktop Duplication, CAP=dup in recfetch.sh): duplication reports ModeDesc 1520x720 rotation 2
+  (ROTATE90) but the acquired surface is 720x1520 (un-rotated, as MS Learn says) - the first build sized its staging
+  texture from ModeDesc and CopyResource silently did nothing (all-black frames, byte sum 0); staging now follows the
+  acquired texture. dup3: desktop upright + complete (rotation mapping right). Device = our Mali (FL 10_1, ARM64 UMD).
+- dupfs: fullscreen x64 mpv (--fs, 15 s) captured 7-23 s (GDI gives black for this) -> fullscreen capture works.
+  !! HARD RESET at the end (~23.5-25 s): Kernel-Power 41, no BugCheck 1001, no dump (= reset outside Windows' bugcheck
+  path, like earlier GPU-hang resets); frames.txt logged to 0046 / 23.0 s, frame_0047 truncated, 0048/0049 present
+  but empty (lost lazy writes) -> the recorder ran to its end (50 frames). mpv's playback ends ~22 s (start ~7 s +
+  15 s) -> suspects: mpv leaving fullscreen / exiting (x64, maliumd_ec) or the duplication teardown at screenrec exit.
+  Triage next: A = mpv --fs exit without the recorder; B = duplication of a windowed app, then exit.
+- 15:13 triage A: mpv x64 --fs --length=15, no recorder (tools/phone/rec/runapp.sh)
+- 15:17 triage A result: mpv --fs played to EOF (22.2 s) and idled fullscreen, no reset (boot time unchanged). Triage B: 4 s -dup capture ending while mpv is fullscreen-idle.
+- 15:18 triage B: no reset. mpv killed (/f) - no reset. Repeat of dupfs (dupfs2).
+- dupfs2 (exact repeat of dupfs): RESET AGAIN -> reproducible. This time the boot went to TWRP (firmware WINRUN.FLG
+  rule). debug_history: "SOFT, INFORM3(12345670) > NORMAL" (= our firmware ResetSystem normal) then REBOOTMODE4 >
+  RECOVERY. tools/phone/wddm2/pramget.sh (new): WINPRAM.BIN S10eDiag ring "0000688214 BUGCHECK callback" (~11.5 min
+  after the 20:10 boot = this crash) -> it IS a bugcheck (dump not written -> no 1001 event); no "BC" code lines
+  (AuxKlibGetBugCheckData gave nothing). KMD DDI trace right before: normal SubmitCommand/Patch pairs (seq 01503d), no
+  hung call. Triage so far: A (fullscreen mpv to EOF + idle, no recorder) no reset; B (4 s duplication ending during
+  fullscreen idle) no reset; full run (duplication active across the fullscreen entry + playback + EOF) resets 2/2.
+  Next: bugcheck code from the Kernel-Power 41 event data after booting Windows.
+- kp41.ps1 (new): Kernel-Power 41 BugcheckCode 0 / params 0 for both resets - no dump -> code not recorded. Bisect C: -dup 15 s across the fullscreen entry + playback, mpv --length=60 (no EOF during capture).
+- bisect C: no reset. Bisect D: -dup 40 s started while that mpv plays fullscreen, spanning its EOF (~65 s after start).
+- bisect D: no reset (frames all identical - mpv was probably already idle, EOF likely missed). Summary: full run
+  (-dup 25 s from before launch, fullscreen mpv entry + 15 s playback + EOF inside the capture) resets 2/2; A, B, C, D
+  (each a subset) 0/4 -> cumulative or timing-dependent, not one event. Stopped bisecting blind: each reset costs a
+  TWRP bounce and the code is unknown. OPEN (own task): get the bugcheck code - S10eDiag's callback logged
+  "BUGCHECK callback" but no "BC" lines (AuxKlibGetBugCheckData path - it worked in d8: "BC ...D1"), or KD attached;
+  then repeat dupfs. Until then: don't record fullscreen apps with -dup for long runs.
+- THIRD reset ~15:31-15:32 local (Windows boot 20:10:08 phone clock, straight back to Windows this time - no TWRP, so
+  no WINPRAM): ~1 min after `taskkill /f /im mpv.exe` of the fullscreen-idle x64 mpv left from bisect C/D, no capture
+  running. -> duplication is not required; the common factor is a fullscreen x64 mpv (maliumd_ec) being run/torn
+  down, possibly delayed. Revises the bisect summary: suspect = fullscreen flip on the EC UMD (teardown / mode
+  restore), not desktop duplication. Next: same with an ARM64 fullscreen D3D app (does EC matter?) once the bugcheck
+  code is capturable.
+- Bugcheck code capture: KD over USB works on this phone (notes/m17-usb-kd.md) but needs the device-mode KD firmware -
+  the current host-mode firmware serves the user's keyboard dongle -> not while the user is remote. Instead
+  S10eDiag.c now marks "AuxKlib init <status>" at load and "BC status <status>" in the bugcheck callback (MS Learn:
+  AuxKlibGetBugCheckData "can be called only from a BugCheckCallback routine", AuxKlibInitialize first). Built
+  (build.bat, test-signed), staged with the new `wddm2dbg.sh diagswap` (diagswap.cmd; old -> System32\drivers\
+  S10eDiag.sys.prev), sha 9e30b05b..., active from the next boot. Deployed build was 02b5f4a-era (no other changes).
+- 4th reset (15:42, NFSU2 x86 fullscreen + -dup 70 s): recording complete (138 frames, the last black) -> again AFTER
+  the recorder exited; came back straight to Windows (no TWRP), and the new boot re-initialised the mark ring - lines
+  lost (the ring only survives via the TWRP/WINPRAM path). HYPOTHESIS: screenrec restores SPI_SETSCREENSAVEACTIVE at
+  exit -> the blank screensaver starts at once (input idle long passed) over a fullscreen D3D app -> system dies.
+  Fits dupfs (reset seconds after the end), the post-taskkill reset, nfs5. Direct test: mpv --fs, then scrnsave.scr /s.
+- 15:47:10 mpv fullscreen ~35 s in; starting scrnsave.scr /s
+- Correction: nfs5 frame_0139 (the 140th = last frame of the 70 s run) exists but is empty, dupfs 0048/0049 likewise ->
+  both resets hit at the recorder's last frame / its teardown, BEFORE the screensaver restore. Screensaver test
+  (mpv --fs + scrnsave.scr /s): no reset in 60 s (screensaver gone when checked - inconclusive). New hypothesis: D3D
+  device teardown (screenrec's duplication device; mpv killed in reset 3) while a fullscreen app runs. Test: d3dcs
+  (create + destroy a device) with mpv fullscreen.
+- 15:50:47 d3dcs ARM64 with mpv fullscreen-idle: PASS, no reset. Now taskkill /f of that mpv (repeat of reset 3).
+- 2026-10-18 ~15:5x boot without any -dup run: screensaver over fullscreen mpv, d3dcs with mpv fullscreen, taskkill /f of the
+  fullscreen mpv - no reset. All 4 resets came in boots where screenrec -dup had run (dupfs; B + dupfs2; C + D + kill;
+  nfs5), 2 of them at the recorder's last frame/teardown with a fullscreen app presenting. Conclusion so far: DXGI
+  desktop duplication on our driver (DWM's duplication path / its teardown with a fullscreen flip app) is the prime
+  suspect - not reproducible on demand. Rule until fixed: no -dup capture; fullscreen frames via scan-out dumps.
+  OPEN (own task): repro with the new S10eDiag (BC status) + TWRP path to get the code; KMD side of duplication
+  (cross-process shared surfaces / present path) review.

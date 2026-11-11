@@ -381,3 +381,88 @@ What the logs must show (Exynos9820WlanCx.txt = bring-up, -run.txt = runtime):
 - Root cause of cx3/cx4 "unable to connect": rx frames had to be delivered as 802.11 data + LLC/SNAP (cx5), plus the
   association-result TLV (cx4). Open: throughput ("very slow"), firewall/remote access, power/D3, roaming.
 - Next: S10eAgent outbound remote-control channel to 192.168.137.1 (avoids inbound firewall + UAC; runs as SYSTEM).
+
+## User report 2026-10-13 ~22:40: "WiFi missing" / "wifi menu was not visible in all boots, regardless of gpu"
+Logs: s10e-artifacts/runs/user3 (wlan/ = System32\LogFiles\Exynos9820WlanCx*.txt pulled read-only via TWRP
+ntfs-3g `mount.ntfs -o ro /dev/block/by-name/userdata`; esp/ = UEFILOG + PRAM; out/ = ESP S10EDIAG\out).
+- Last boot (full GPU mode): UEFILOG `[PCIe] link up on try 1 ... WLAN: bring-up Success, ACPI WLAN visible`.
+  Driver bring-up log: RESULT 0, DL 0 (fw 18.41.117), MSG 0, CLM OK, SCAN 0 (6 BSS), RESIDENT, CX 0.
+  Run log (run.1 -> run.txt): WDI scans, **WDI connect to S10eTest (7E:B5:66:C3:74:E0), association status 0,
+  [link] connected, pairwise + group keys installed**, then DHCP/ARP/mDNS tx and unicast rx from the AP
+  (rx/tx fifo ~2400/2060, 0 drops). So the driver and the OS WLAN stack connected on their own (saved profile).
+- => "WiFi missing" is a **UI** symptom, not a driver/PCIe one (at least in that boot). Application.evtx:
+  ShellExperienceHost.exe 10.0.22621.2792 Application Hang (rec 6364; hosts the 22H2 Quick Settings/network
+  flyout), SearchHost / StartMenuExperienceHost hangs, LogonUI APPCRASH combase.dll 0x80070057 at +0x99d44 on
+  many boots (first rec 5259) - the same E_INVALIDARG as g49 (CreateCompositionBuffer/Acrylic).
+- Open: whether the display-only boots also connected (bring-up log is overwritten each boot; run.2 has a
+  DISASSOC + rescans from another boot); what exactly the user does not see (tray icon / flyout / list).
+- **Correction (same evening):** the user's next boot (runs/user4) showed the same "no WiFi" UI ("not connected"
+  globe; Quick Settings has no network list). After it, all six Exynos9820WlanCx*.txt in System32\LogFiles are
+  **byte-identical** (md5) to the runs/user3 pull, so the driver logs analysed above are **stale** - from an older
+  boot, not "the last boot". File times are useless: Windows' clock restarts at ~2026-10-12 22:29 every boot
+  (UEFILOG.TXT is also 22:29:10). Both recent boots ended in a hard reset (user's Vol Down + Power; the agent's
+  recovery action is `s10ediag flushreset`), which can drop NTFS writes still in Windows' cache, so offline reads
+  of the logs/hive can't tell whether the driver ran.
+- runs/user4 facts: UEFILOG `[PCIe] link up on try 1 ... ACPI WLAN visible` again (G3D already on = warm entry).
+  Offline SYSTEM hive (LOG1 applied with regipy 6.5.0, scratch venv): Enum\ACPI\SAMS9825\0 Service
+  Exynos9820WlanCx, Driver oem11.inf (0.37.30.366 = cx5), ConfigFlags 0 (not disabled); Services\Exynos9820WlanCx
+  Start 3; WlanSvc Start 2. System.evtx: WLAN AutoConfig 4000 started, no driver/SCM errors for the WLAN device.
+  agent.log: collect.cmd started at 72.6 s, collect.log stops at "--- extra" (gfxperf still running) - power menu
+  long-presses at 124 s and 181 s produced no "request:" line (s10ekeys popup runs in the session on its own
+  thread, not blocked by collect; likely just slow in full GPU mode), then the user's force reset at ~205 s.
+- New step f69aa7b extra-wifi-state.cmd (read-only, ~seconds, before gfxperf via extra-wifi-gfx.cmd = ESP
+  extra.cmd): pnputil device+Net class, sc (WlanCx, Wlan, WlanSvc, wcmsvc), netsh wlan drivers/interfaces/networks/
+  settings/profiles, ipconfig, Get-NetAdapter -IncludeHidden + Get-PnpDevice, RadioManagement, WLAN-AutoConfig
+  Operational (60), System PnP/SCM/NDIS events (400), live copies of the driver logs; out\last\wifistate +
+  out\wifi-history\<n>. Tested on the PC (dummy ESP, history 1). Deployed: md5 extra.cmd ba4628ec..,
+  extra-wifi-state.cmd c3907a1d.., extra-gfxperf.cmd 815dcbb4...
+- **runs/user5 (live snapshot, first run of extra-wifi-state): Windows does not see the WLAN device at all.**
+  pnputil ACPI\SAMS9825\0 Status **Disconnected**, IsPresent FALSE, HasProblem FALSE (never enumerated this boot,
+  no removal); sc Exynos9820WlanCx STOPPED 1077 (never started); netsh "There is no wireless interface on the
+  system". GPU0 (ACPI\SAMS9828) also Disconnected this boot (gfx\mode.txt). But the firmware's own WINPRAM.BIN,
+  dumped at ReadyToBoot of THIS boot, has words [2..5] 'USBH' 'WLAN' 'GPU0' 'NOAU' at 0x8FE0F008..17, and UEFILOG
+  says link up / "ACPI WLAN visible" / "ACPI GPU0 visible". So the words are right at hand-off, yet both
+  status-word-gated devices are absent in Windows. S10eDiag mark ring is 0x8FE0A000+16 KiB (ends 0x8FE0E000) -
+  does not overlap the progress page.
+- 16eea6f: extra-wifi-state adds `s10ediag peek 0x8FE0F000 0x20` (runtime value of the words) + the connected
+  device list. Deployed (md5 ad7ae6db..).
+- Kernel debugger for the answer (user: "whats the point of the kernel debugger you wrote if not for these
+  instances?"): phone BCD had debug off ({dbgsettings} Local). Offline edit of a pulled copy with
+  `bcdedit /store` (no elevation needed): net hostip 169.254.255.255 port 50005 key 1.2.3.4, busparams 0, dhcp No,
+  {default} debug Yes (= m17 boot #77 settings). Pushed to ESP EFI\Microsoft\Boot\BCD (md5 108bbbc4..), original
+  kept as BCD.nokd (md5 db0825ed..) - **undo: copy BCD.nokd over BCD**. Host: tools/kd-runner/kdrun.py ->
+  s10e-artifacts/runs/kd1/kd.log, break-in at 150 s, then !dd 8fe0f000 (physical read of the words),
+  !amli dns /s \_SB.WLAN / GPU0 / XHC0, !devnode 0 1, g.
+- **ROOT CAUSE (runs/user6, live peek from Windows):** `8fe0f000: 00000000 00000072 00000000 00000000 / 0...` -
+  every status word zero at runtime, [1] = 0x72 (BootLogDxe's ExitBootServices write). The zeroing is our own
+  Beyond0LteBootLogDxe ReadyToBoot pair logic: the 2026-10-12 interactive branch (previous boot ran Windows, no
+  0x80 restart marker, \S10EDIAG\stay.flg present) did DumpMemoryToEsp(WINPRAM.BIN) then
+  ZeroMem(0x8FE00000, 64 KiB) **and continued into Windows** - the 64 KiB includes the progress page, so this
+  boot's 'USBH'/'WLAN'/'GPU0' (set by the DXEs before ReadyToBoot, still visible in the dump) were wiped and
+  XHC0/WLAN/GPU0 _STA returned 0. Explains: WiFi absent after every hard reset regardless of GPU mode; GPU0
+  Disconnected after hard resets but Started after a Windows-requested restart (that branch saves
+  WINPRAM-RESTART.BIN without zeroing); WiFi worked on the same #114 image before stay.flg existed (18:59).
+  The two other branches zero too but reboot to TWRP (SEC rewrites the words) - harmless.
+- Fix 9ffee79: the interactive branch zeroes BASE .. BASE+0xF000 only (keeps the 4 KiB progress page; its other
+  users - shim FDT pointer +0x20/+0x28, progress words - are rewritten every boot).
+- **boot #115** = boot114 recipe (main + BEYOND0LTE_GPU_POWER_ON 1 for the build only, not committed) + 9ffee79:
+  build-uefi.ps1 -Platform Beyond0LtePkg (CLANGPDB DEBUG, exit 0, 23:31) -> pack-uefi-beyond0lte.ps1 -Ref
+  ref-recovery.img -SkipFreshCheck (the guard tripped only on GpuProbeDxe.c restored to 0 after the build) ->
+  s10e-artifacts\boot115-wlanfix-v2.img 18 255 872 B sha256 358e52bd1fff4649…; phone had #114 (85e4e0c5…),
+  dd to by-name/boot, readback 358e52bd… = match. BCD restored from BCD.nokd (md5 db0825ed..; KD needs the
+  BEYOND0LTE_USB_KD_DEVICE 1 image, the host image has no UFN0 - BCD debug must match the image).
+- Validation (needs-boot): wifistate\progress.txt shows 'USBH' 'WLAN' 'GPU0' at runtime, ACPI\SAMS9825\0 Started,
+  netsh shows the interface; also after a hard reset (the branch that was broken).
+- Review of 9ffee79: comment claimed the zeroing "hid all four devices" - wrong for AUD0 (DSDT AUD0._STA returns 0
+  only on 'NOAU', so zero **exposed** the audio device despite noaudio.flg on hard-reset boots). Comment fixed in
+  a follow-up commit (comment only; the #115 binary is unaffected). Diff checked: one ZeroMem length change
+  (DUMP - SIZE_4KB = 0xF000), other branches untouched (they reboot to TWRP).
+- **VALIDATED on device (boot #115, 2026-10-13 ~23:37-23:41, runs/user7, wifi-history 3 and 4):** progress page at
+  runtime `00000072 00000072 'USBH' 'WLAN' / 'GPU0' 'NOAU'`, ACPI\SAMS9825\0 Started, GPU0 Started, netsh
+  "State connected, SSID S10eTest, 54 Mbps, signal 100 %"; phonestate.sh saw the phone answer ping at
+  192.168.137.90 in both boots. History 4 = the boot after a **forced restart** ([0] = 0x32, the broken path) -
+  fixed. (User could not see the tray: in GPU full mode the desktop is wider than the panel, taskbar cut on the
+  right - separate GPU-mode display bug.)
+- Consequence: GPU0 is now present after hard resets too, so with MaliG76Wddm FullAdapter 1 EVERY boot is the slow
+  softpipe desktop (the earlier "good performance" boots were the bug hiding GPU0). For interactive use the ESP
+  now has \S10EDIAG\nogpu.flg (GPU0 hidden -> Basic Display/WARP); remove it for GPU work.

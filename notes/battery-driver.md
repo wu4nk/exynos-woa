@@ -197,3 +197,54 @@ free.
   (SOC/voltage/current/temperature conversions, 2026-10-10)
 - https://github.com/ianmacd/winnerx/blob/master/include/linux/mfd/max77705-private.h
   (fuel-gauge register addresses, 8-bit slave addrs 0x6C/0xD2/0xCC/0x4A, 2026-10-10)
+
+### 2026-10-15 user report: barely charges under Windows (parked: "fix bt first")
+- User: TWRP 13 -> ~35 % in ~10 min; Windows 12 -> 13 % over a similar time. Either the charger is not configured
+  under Windows (MAX77705 charger 0x69 at power-on defaults: input current limit / fast-charge current; Linux's
+  max77705_charger sets them per cable type) or the Windows load (no idle states, 5 ms Wi-Fi poll) eats the input,
+  or the reported % lags. Next: S10eBattery AvgCurrentMa + CHG_DETAILS/CNFG_00 under Windows vs Linux power_supply
+  (current_now, input_current_limit, constant_charge_current) in TWRP; then vendor max77705_charger.c ILIM/CC regs.
+- 2026-10-15 23:45 TWRP reference (cable to the PC, idle): battery uevent STATUS Charging, CHARGE_TYPE Fast, ONLINE 4
+  (USB), CAPACITY 50, VOLTAGE_NOW 3.89 V, CURRENT_NOW 119 / CURRENT_AVG 77 (Samsung sysfs, mA, net into the battery),
+  POWER_NOW 868, TEMP 30.3 C, TIME_TO_FULL 6191 s. User: wall charger in TWRP 13 -> 50 % in ~20 min; CPU temp jumps
+  when on PC USB instead of the charger (TWRP). Windows comparison pending (S10eBattery AvgCurrentMa).
+- 2026-10-16 00:35 TWRP, PC USB (battery uevent online 4 = USB, usb online 1, ac 0), 6 x 10 s: CAPACITY 47 %,
+  STATUS Charging, CHARGE_TYPE Fast, CURRENT_NOW +94..+460 mA, CURRENT_AVG +167..+394 mA (net into the battery),
+  VOLTAGE_NOW 3.845-3.892 V, TEMP 32.7-33.1 C, POWER_NOW 533-858. top: 83.5 % idle, /sbin/recovery (GUI) 13 % of one
+  core (load average was still rising from boot). Wall charger (user): 13 -> 50 % in ~20 min ~ 1.1 Ah / 0.33 h ~ 3 A
+  into the battery = Samsung AFC (9 V) negotiated by the Linux charger stack. Windows measurement next, same cable.
+- Vendor charger driver (ianmacd/winnerx drivers/battery_v2/max77705_charger.c, 2026-10-16): Linux programs, per
+  cable type, the CHGIN input current limit CHG_CNFG_09 = 0xC0 (25 mA steps, reg = I/25 - 1, max 3200 mA;
+  max77705_set_input_current :590-625) and the fast-charge current CHG_CNFG_02 = 0xB9 (CHG_CC, 50 mA steps,
+  <= 2 -> 100 mA, max 3150; max77705_set_charge_current :627-648); register addresses in max77705-private.h:77/84.
+  S10eBattery reads only CHG_DETAILS_00/01 and never sets these -> under Windows the charger runs with whatever was
+  left by the bootloader/power-on defaults. Next: read 0xB9 / 0xC0 under Windows (read-only) and compare.
+- **2026-10-16 00:55 Windows charging regression = stale driver.** Same PC USB cable. Windows ran S10eBattery 1.0.0.1
+  (no charger-WDT kick): BatteryStatus online / not charging / discharging 330-1260 mW, AvgCurrent -106 mA,
+  ChgDetails 0x3BE0 = CHGIN_DTLS 3 (VBUS valid), CHG_DTLS 0xB (charger watchdog expired -> charging off) = the
+  2026-10-12 bug fixed in db0c25d, but that build was no longer installed. Installed 1.0.0.4 (WDT kick + CHG_CNFG_02/09
+  diagnostics): CHG_DTLS 1 (charging), CNFG_00 0x15 (WDTEN, mode 5 CHG+BUCK), WdtKicked 1, CHG_CC 0x09 = 450 mA,
+  CHGIN_ILIM 0x13 = 500 mA, net battery current still -77 mA (CPU 18-22 % busy).
+  => (1) Windows load ~2.5 W + 0.3 W from the battery = ~2.7 W vs TWRP ~1.1 W (+170..+390 mA net on the same 500 mA
+  port). (2) CHGIN_ILIM stays 500 mA whatever the cable: Linux sets it per detected cable type (BC1.2 DCP/SDP + AFC
+  9 V via MUIC) -> wall-charger fast charge works only in Linux. Next: Windows idle power (services, device idle);
+  cable-type detection + ILIM/CC from the vendor dtsi charging tables (not guessed).
+
+### 2026-10-18 user report: "the hub driver disables charging completely"
+- chgstate.ps1 (new, tools/phone/power): SOC 16.6 %, AvgCurrent -1.2..-1.8 A, ChgDetails 0x48E0/0x38E0
+  (CHGIN_DTLS 3, CHG_DTLS 8 = charger off), **CHG_CNFG_00 0x1E = mode 0xE BUCK+BOOST+OTG: the phone sources 5 V, charger
+  OFF** (notes/d1b-usb-vbus-hcd.md bit table), WdtKicked 1. S10eBattery 1.0.0.6 never writes CNFG_00 (only CNFG_06
+  WDTCLR) and nothing in Windows does.
+- Cause: firmware Beyond0LteUsbHostDxe step 4 turns the VBUS boost on at power-on when a sink (the hub) is on CC (or
+  the CC-termination-without-VBUS fallback) and nothing turns it off after the hub is unplugged - so after a boot
+  with the hub attached the charger stays in OTG mode until the next boot. Code unchanged since 10-12 (git log), not
+  part of the G18 hub work; no driver or firmware was flashed for the hub (S10eBattery 1.0.0.7 writes never built).
+- Fix without a flash: reboot with the hub unplugged (no boost -> mode back to charge). Proper fix (follow-up): turn
+  the boost off when the sink detaches (Windows-side CC watcher in S10eBattery, needs a CNFG_00 write) or let the
+  boot decide charge vs. OTG from CC each time.
+- CORRECTION 21:23 (same day): charging resumed WITHOUT a reboot (LastBootUpTime still 14:15): CNFG_00 0x15 (mode 5
+  CHG+BUCK), ChgDetails 0x31E0 (CHG_DTLS 1 = fast charge), AvgCurrent +1262 mA, PowerState 5 (online+charging), SOC
+  9.0 %. Something reset the charger mode from 0xE to 5 when the hub came off / the charger went on - nothing of ours
+  writes CNFG_00 in Windows, so most likely the MAX77705 itself (CC detach / VBUS-in). UNVERIFIED which event did it;
+  read CNFG_00 every 100 ms (usbcwatch-style) across an unplug to find out. The "stays until the next boot" claim
+  above was wrong: earlier reads were taken while the hub (or no external supply) was still attached.

@@ -153,6 +153,14 @@ NTSTATUS S10eMax77705Read(_Inout_ PS10E_BATT_FDO Fdo, _Out_ PS10E_BATT_READING R
         Reading->ChgCnfg00  = Chg[0];
         Reading->Cnfg00Read = TRUE;
     }
+    Reading->ChgCnfg02 = 0xFF;
+    Reading->ChgCnfg09 = 0xFF;
+    if (NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_CHG_ADDR, MAX77705_CHG_CNFG_02, Chg, sizeof(Chg)))) {
+        Reading->ChgCnfg02 = Chg[0];
+    }
+    if (NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_CHG_ADDR, MAX77705_CHG_CNFG_09, Chg, sizeof(Chg)))) {
+        Reading->ChgCnfg09 = Chg[0];
+    }
     if (NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_CHG_ADDR, MAX77705_CHG_CNFG_06, Chg, sizeof(Chg)))) {
         UCHAR Write[2];
 
@@ -160,6 +168,15 @@ NTSTATUS S10eMax77705Read(_Inout_ PS10E_BATT_FDO Fdo, _Out_ PS10E_BATT_READING R
         Write[0] = MAX77705_CHG_CNFG_06;
         Write[1] = (UCHAR)((Chg[0] & ~MAX77705_CHG_CNFG_06_WDTCLR_MASK) | MAX77705_CHG_CNFG_06_WDTCLR);
         Reading->WdtKicked = NT_SUCCESS(S10eHsi2cXfer(Fdo, MAX77705_CHG_ADDR, FALSE, Write, sizeof(Write), TRUE));
+    }
+
+    /* G18 H1: USB-C / PD block snapshot, read-only, revisions + status registers only (no interrupt latches). A
+       failure leaves the battery reading intact. */
+    if (NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_USBC_ADDR, MAX77705_USBC_HW_REV, Reading->UsbcRev,
+                                     sizeof(Reading->UsbcRev))) &&
+        NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_USBC_ADDR, MAX77705_USBC_STATUS1, Reading->UsbcStatus,
+                                     sizeof(Reading->UsbcStatus)))) {
+        Reading->UsbcRead = TRUE;
     }
 
     return STATUS_SUCCESS;

@@ -15,6 +15,35 @@
 #define CX_LINK_KBPS        54000       /* placeholder Tx/Rx link speed for LINK_STATE_CHANGE (UNVERIFIED unit kbit/s;
                                            the firmware rate is not read yet) */
 
+/* notes/wifi-throughput.md (no Block Ack session): IE ids + lengths of an association frame, full bytes only for the
+   capability elements that decide aggregation (HT cap 45, HT op 61, ext cap 127, VHT cap 191, VHT op 192, WMM
+   vendor 221 00-50-F2 type 2). The SSID and other elements are not printed. */
+static VOID
+CxLogIes(PCX_DEVICE Dev, PCSTR Tag, const UCHAR *Ies, ULONG Len)
+{
+    CHAR  Line[200];
+    ULONG Off = 0;
+
+    while (Off + 2 <= Len && Off + 2 + Ies[Off + 1] <= Len) {
+        UCHAR  Id = Ies[Off], L = Ies[Off + 1];
+        const UCHAR *V = Ies + Off + 2;
+        /* vendor elements in full too (2.4 vs 5 GHz association comparison, notes/wifi-throughput.md 2026-10-16) */
+        BOOLEAN Full = (Id == 48 || Id == 45 || Id == 61 || Id == 127 || Id == 191 || Id == 192 || Id == 1 ||
+                        Id == 50 || Id == 59 || Id == 221);
+        size_t Pos = 0;
+
+        (VOID)RtlStringCbPrintfA(Line, sizeof(Line), "[ie %s] id %u len %u", Tag, Id, L);
+        if (Full) {
+            (VOID)RtlStringCbLengthA(Line, sizeof(Line), &Pos);
+            for (ULONG I = 0; I < L && Pos + 4 < sizeof(Line); I++, Pos += 3) {
+                (VOID)RtlStringCbPrintfA(Line + Pos, sizeof(Line) - Pos, " %02X", V[I]);
+            }
+        }
+        CxLog(Dev, "%s\r\n", Line);
+        Off += 2 + L;
+    }
+}
+
 /* First IE with Id in an IE blob, or NULL. */
 static const UCHAR *
 CxFindIe(const UCHAR *Ies, ULONG Len, UCHAR Id)
@@ -53,6 +82,41 @@ CxSetLinked(PCX_DEVICE Dev, BOOLEAN Linked)
         NetAdapterSetLinkState(Dev->Adapter, &Ls);
     }
     CxLog(Dev, "[link] %s\r\n", Linked ? "connected (adapter link up, 5 ms worker poll)" : "disconnected");
+    if (Linked) {
+        ULONG Old;
+        ULONG Rc = WlanMsgSetPm(&Dev->Msg, Dev->RunR, WL_PM_FAST, &Old);
+        CxLog(Dev, "[link] power save: firmware had PM %lu, set PM_FAST -> MSG %lu\r\n", Old, Rc);
+        /* throughput diagnostics (notes/wifi-throughput.md: 144 Mbit/s PHY but ~14 Mbit/s TCP, deep tx queue) */
+        static const PCSTR Vars[] = { "ampdu", "ampdu_ba_wsize", "ampdu_mpdu", "frameburst", "nmode", "vhtmode", "wme", "wme_apsd", "ampdu_rx", "ampdu_tx" };
+        for (ULONG I = 0; I < ARRAYSIZE(Vars); I++) {
+            ULONG Val;
+            ULONG VRc = WlanMsgGetIntVar(&Dev->Msg, Dev->RunR, Vars[I], &Val);
+            CxLog(Dev, "[link] iovar %s = %ld (MSG %lu)\r\n", Vars[I], (LONG)Val, VRc);
+        }
+    }
+    CxUpdateRate(Dev);
+}
+
+/* Worker thread only (it owns the firmware command path). Reads the firmware's current rate and reports it to
+   NetAdapterCx instead of the CX_LINK_KBPS placeholder (notes/wifi-throughput.md). */
+VOID
+CxUpdateRate(PCX_DEVICE Dev)
+{
+    NET_ADAPTER_LINK_STATE Ls;
+    ULONG                  R500 = 0;
+    ULONG                  Rc;
+
+    if (!Dev->Linked) {
+        return;
+    }
+    Rc = WlanMsgGetRate(&Dev->Msg, Dev->RunR, &R500);
+    CxLog(Dev, "[link] firmware rate %lu.%lu Mbit/s (MSG %lu)\r\n", R500 / 2, (R500 & 1) ? 5ul : 0ul, Rc);
+    if (Rc != MSG_OK || R500 == 0 || Dev->Adapter == NULL) {
+        return;
+    }
+    NET_ADAPTER_LINK_STATE_INIT(&Ls, (ULONG64)R500 * 500000, MediaConnectStateConnected, MediaDuplexStateHalf,
+                                NetAdapterPauseFunctionTypeUnsupported, NetAdapterAutoNegotiationFlagNone);
+    NetAdapterSetLinkState(Dev->Adapter, &Ls);
 }
 
 /* Unsolicited WDI_INDICATION_DISASSOCIATION for the current peer. */
@@ -158,6 +222,8 @@ CxIndicateAssoc(PCX_DEVICE Dev, const UCHAR *Bssid, WDI_ASSOC_STATUS St, const W
         }
     }
     if (A != NULL && St == WDI_ASSOC_STATUS_SUCCESS) {
+        CxLogIes(Dev, "req", A->ReqIes, A->ReqIesLen);
+        CxLogIes(Dev, "resp", A->RespIes, A->RespIesLen);
         /* frame bodies: assoc request = capability + listen interval + IEs, response = capability + status + AID
            + IEs (802.11-2016 9.3.3.6 / 9.3.3.7; firmware gives the fixed fields in assoc_info, the IEs separately) */
         Req  = (PUCHAR)ExAllocatePool2(POOL_FLAG_NON_PAGED, 4 + WLAN_ASSOC_IES_MAX, CX_POOL_TAG);
@@ -322,6 +388,9 @@ CxTaskConnect(PCX_DEVICE Dev, PCX_CMD Cmd, const WDI_MESSAGE_HEADER *H, const UI
             IesLen = E->BeaconFrame.ElementCount - 12;
         }
         Rsn = (Ies != NULL) ? CxFindIe(Ies, IesLen, RSN_IE_ID) : NULL;
+        if (Rsn != NULL) {
+            CxLogIes(Dev, "ap-rsn", Rsn, 2UL + Rsn[1]);   /* AP's RSN capabilities (PMF bits) - notes/wifi-throughput.md */
+        }
         if (C->Rsn) {
             if (Rsn == NULL || 2UL + Rsn[1] > RSN_IE_MAX) {
                 CxLog(Dev, "[join] entry %lu: no usable RSN IE for %02X:%02X:%02X:%02X:%02X:%02X\r\n", I, C->Bssid[0],
@@ -413,6 +482,14 @@ CxSetAddKeys(PCX_DEVICE Dev, PCX_CMD Cmd, const UINT8 *Tlv, ULONG TlvLen)
             Status = STATUS_UNSUCCESSFUL;
         } else if (Pairwise) {
             Dev->KeysSet = TRUE;
+            /* the pairwise key = the OS supplicant finished the 4-way handshake: port authorized (dhd does the same,
+               WlanMsgScbAuthorize) - lets the firmware set up Block Ack (notes/wifi-throughput.md) */
+            (VOID)WlanMsgScbAuthorize(&Dev->Msg, Dev->RunR,
+                                      K->Optional.PeerMacAddress_IsPresent ? K->PeerMacAddress.Address : Dev->Bssid);
+            /* 1.0.10.2 still showed ini_off / txaddbareq 5 rxaddbaresp 0: reset TID 0's initiator now that the port
+               is authorized, so the firmware tries ADDBA again (WlanMsgAmpduTid) */
+            (VOID)WlanMsgAmpduTid(&Dev->Msg, Dev->RunR, 0, FALSE);
+            (VOID)WlanMsgAmpduTid(&Dev->Msg, Dev->RunR, 0, TRUE);
         }
     }
     CleanupParsedWdiSetAddCipherKeys(P);

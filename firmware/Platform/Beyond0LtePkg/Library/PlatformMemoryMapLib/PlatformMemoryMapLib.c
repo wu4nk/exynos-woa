@@ -43,6 +43,17 @@
 // the bank0-only boot tells whether the new ranges (uH stage-2?) are the cause.
 //
 #define BEYOND0LTE_PUBLISH_BANK12      1   // W33: back on, and now actually published as RAM (resource HOBs below)
+//
+// R1 (notes/ram-6gb.md, user 2026-10-18 "see about getting the full 6gb of ram"): 1 = the CP (modem) reservations and
+// sec_rdx_bootdev are RAM for UEFI and Windows - the modem is never booted under Windows, sec_rdx_bootdev is
+// sboot's ramdump area, and the r2 probe (notes/cpu-ram-plan-20261012.md) read/wrote/read back every one of them from
+// Windows EL1 without a fault. debug_snapshot (cp_ram_logging end 0xFD900000 .. 4 GiB: Samsung's reset logs,
+// AGENTS.md 9) and secure_camera stay carved. 0 = the previous carve-outs.
+//
+#define BEYOND0LTE_PUBLISH_CP_RDX      1
+#ifndef BEYOND0LTE_MEM_GUARD
+#define BEYOND0LTE_MEM_GUARD           0   // m14 M4 test: 2 MiB reserved guards around reservations and bank edges
+#endif
 
 #define MMAP_DRAM   ARM_MEMORY_REGION_ATTRIBUTE_WRITE_BACK
 #define MMAP_DEV    ARM_MEMORY_REGION_ATTRIBUTE_DEVICE
@@ -144,16 +155,21 @@ STATIC CONST MONITOR_RESERVATION  mMonitorReservations[] = {
   //
   // Bank1/bank2 carve-outs (W2, notes/m10-windows-deploy-plan.md): with those banks published as
   // RAM, these stay out of it. seclog (live read), the boot framebuffer (mapped as DEVICE below,
-  // page-rounded), the modem block modem_spare..s5100_msi (modem_spare is a live read; IF2/CP2CP/
+  // EXYNOS_FB_RESERVED_SIZE), the modem block modem_spare..s5100_msi (modem_spare is a live read; IF2/CP2CP/
   // MSI are vendor-DT values - carved conservatively), and everything from modem_if up to 4 GiB
   // (modem_if, cp_ram_logging, debug_snapshot, log_bcm - live reads).
   //
   { EXYNOS_RSVD_SECLOG_BASE,  EXYNOS_RSVD_SECLOG_SIZE  },  // seclog 0xC0000000
-  { EXYNOS_FB_BASE,           ((EXYNOS_FB_SIZE + 0xFFFULL) & ~0xFFFULL) },  // boot framebuffer
+  { EXYNOS_FB_BASE,           EXYNOS_FB_RESERVED_SIZE },  // boot framebuffer (+ room to re-stride it, H4b)
+#if BEYOND0LTE_PUBLISH_CP_RDX
+  { EXYNOS_RSVD_CP_RAM_BASE + EXYNOS_RSVD_CP_RAM_SIZE,
+      0x0000000100000000ULL - (EXYNOS_RSVD_CP_RAM_BASE + EXYNOS_RSVD_CP_RAM_SIZE) },  // debug_snapshot .. 4 GiB (R1)
+#else
   { EXYNOS_RSVD_MODEM_SPARE_BASE,
       (EXYNOS_RSVD_S5100_MSI_BASE + EXYNOS_RSVD_S5100_MSI_SIZE - EXYNOS_RSVD_MODEM_SPARE_BASE) },  // modem block
   { EXYNOS_RSVD_MODEM_IF_BASE, 0x0000000100000000ULL - EXYNOS_RSVD_MODEM_IF_BASE },  // modem_if .. 4 GiB
   { EXYNOS_RS_RDX_BOOTDEV_BASE, EXYNOS_RS_RDX_BOOTDEV_SIZE },  // sec_rdx_bootdev (m13)
+#endif
   { EXYNOS_RS_EL2_EARLY_BASE, EXYNOS_RS_EL2_EARLY_SIZE },  // el2_earlymem
 };
 
@@ -220,6 +236,9 @@ STATIC CONST MMIO_REGION  mMmioRegions[] = {
   { EXYNOS_PERIC1_USI_SYSREG_BASE, EXYNOS_PERIC1_USI_SYSREG_SIZE, "PERIC1_USI" },
   { EXYNOS_PERIC1_GPIO_BASE,   EXYNOS_PERIC1_GPIO_SIZE,   "GPIO_PERIC1" },
   { EXYNOS_CMU_PERIC1_BASE,    EXYNOS_CMU_PERIC1_SIZE,    "CMU_PERIC1"  },
+  { EXYNOS_UART_BT_BASE,       SIZE_4KB,                  "UART_BT"     },  // D4c: BT UART (reg 0x100 inside the page); USI mode reg is in PERIC1_USI
+  { EXYNOS_CMU_MFC_BASE,       EXYNOS_CMU_MFC_SIZE,       "CMU_MFC"     },  // D10: read only while PMU MFC_STATUS bit0 = 1
+  { EXYNOS_MFC_BASE,           EXYNOS_MFC_SIZE,           "MFC"         },  // D10: same rule (inside pd-mfc)
   //
   // D8a m3 (speaker path): the AUD block, read by AudioAbox.c only while PMU AUD_STATUS says pd-aud is on.
   // Mapping is not an access; boot #95 took a translation fault on ABOX IP_INDEX because these were missing.
@@ -430,7 +449,7 @@ ArmPlatformGetVirtualMemoryMap (
   if (EXYNOS_FB_BASE != 0) {
     Table[Index].PhysicalBase = EXYNOS_FB_BASE;
     Table[Index].VirtualBase  = EXYNOS_FB_BASE;
-    Table[Index].Length       = EFI_PAGES_TO_SIZE (EFI_SIZE_TO_PAGES (EXYNOS_FB_SIZE));
+    Table[Index].Length       = EXYNOS_FB_RESERVED_SIZE;   // H4b: the whole reservation, as the carve-out list
 #if BEYOND0LTE_FB_DISPLAY_RESERVED_WT
     Table[Index].Attributes   = ARM_MEMORY_REGION_ATTRIBUTE_WRITE_THROUGH;
 #else
@@ -607,7 +626,7 @@ ArmPlatformGetVirtualMemoryMap (
         EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED |
         EFI_RESOURCE_ATTRIBUTE_TESTED | EFI_RESOURCE_ATTRIBUTE_WRITE_THROUGH_CACHEABLE,
         EXYNOS_FB_BASE,
-        (EXYNOS_FB_SIZE + 0xFFFULL) & ~0xFFFULL
+        EXYNOS_FB_RESERVED_SIZE   // the whole reservation, the extent mMonitorReservations carves out (upstream H4b)
         );
       BuildMemoryAllocationHob (EXYNOS_FB_BASE, (EXYNOS_FB_SIZE + 0xFFFULL) & ~0xFFFULL, EfiReservedMemoryType);
 #endif
@@ -618,6 +637,92 @@ ArmPlatformGetVirtualMemoryMap (
       // W31: runtime data (still never handed to the OS as RAM) so the runtime ResetSystem can
       // reach the boot progress word at 0x8FE0F000 after SetVirtualAddressMap.
       BuildMemoryAllocationHob (BEYOND0LTE_WINPRAM_BASE, BEYOND0LTE_WINPRAM_SIZE, EfiRuntimeServicesData);
+
+#if BEYOND0LTE_MEM_GUARD
+      //
+      // m14 M4 test (notes/m14-smp.md m4one2): the M4s die under Windows with no Windows-side fault; theory = the
+      // M4's aggressive prefetch reaches a protected range next to RAM Windows uses. Reserve a 2 MiB-aligned guard
+      // on both sides of every monitor reservation and at every published DRAM entry's edge. A guard is built
+      // only where it lies entirely inside a published RAM entry and clear of the firmware's fixed allocations.
+      //
+      {
+        STATIC CONST UINT64  Fixed[][2] = {
+          { BEYOND0LTE_WINPRAM_BASE,      BEYOND0LTE_WINPRAM_SIZE + BEYOND0LTE_BOOTLOG_SIZE },  // 0x8FE00000..0x90000000
+          { 0x90000000ULL,                0x01000000ULL },                                      // UEFI FD + its runtime
+          { BEYOND0LTE_UFS_DMA_POOL_BASE, BEYOND0LTE_UFS_DMA_POOL_SIZE }
+        };
+        UINT64  Edge[2 * (sizeof (mMonitorReservations) / sizeof (mMonitorReservations[0])) + 2 * 16];
+        UINTN   EdgeCount;
+        UINTN   E;
+        UINTN   T;
+
+        EdgeCount = 0;
+        for (Region = 0; Region < sizeof (mMonitorReservations) / sizeof (mMonitorReservations[0]); Region++) {
+          Edge[EdgeCount++] = mMonitorReservations[Region].Base;
+          Edge[EdgeCount++] = mMonitorReservations[Region].Base + mMonitorReservations[Region].Size;
+        }
+        for (T = 0; (T < Index) && (EdgeCount + 2 <= ARRAY_SIZE (Edge)); T++) {
+          if (Table[T].Attributes == MMAP_DRAM) {
+            Edge[EdgeCount++] = Table[T].PhysicalBase;
+            Edge[EdgeCount++] = Table[T].PhysicalBase + Table[T].Length;
+          }
+        }
+
+        for (E = 0; E < EdgeCount; E++) {
+          UINTN  Side;
+
+          for (Side = 0; Side < 2; Side++) {
+            UINT64   GBase;
+            UINT64   GEnd;
+            BOOLEAN  InRam;
+            BOOLEAN  Clear;
+            UINTN    F;
+
+            // below the edge: [align_down(edge) - 2M, align_down(edge)); above: [align_up(edge), +2M)
+            if (Side == 0) {
+              GEnd  = Edge[E] & ~(UINT64)(SIZE_2MB - 1);
+              GBase = GEnd - SIZE_2MB;
+            } else {
+              GBase = (Edge[E] + SIZE_2MB - 1) & ~(UINT64)(SIZE_2MB - 1);
+              GEnd  = GBase + SIZE_2MB;
+            }
+
+            InRam = FALSE;
+            for (T = 0; T < Index; T++) {
+              if ((Table[T].Attributes == MMAP_DRAM) && (GBase >= Table[T].PhysicalBase) &&
+                  (GEnd <= Table[T].PhysicalBase + Table[T].Length))
+              {
+                InRam = TRUE;
+              }
+            }
+
+            Clear = TRUE;
+            for (F = 0; F < ARRAY_SIZE (Fixed); F++) {
+              if ((GBase < Fixed[F][0] + Fixed[F][1]) && (Fixed[F][0] < GEnd)) {
+                Clear = FALSE;
+              }
+            }
+            for (Region = 0; Region < sizeof (mMonitorReservations) / sizeof (mMonitorReservations[0]); Region++) {
+              if ((GBase < mMonitorReservations[Region].Base + mMonitorReservations[Region].Size) &&
+                  (mMonitorReservations[Region].Base < GEnd))
+              {
+                Clear = FALSE;
+              }
+            }
+            for (F = 0; F < E; F++) {   // same guard requested by an earlier edge
+              if ((Edge[F] & ~(UINT64)(SIZE_2MB - 1)) == (Edge[E] & ~(UINT64)(SIZE_2MB - 1))) {
+                Clear = FALSE;
+              }
+            }
+
+            if (InRam && Clear) {
+              BuildMemoryAllocationHob (GBase, SIZE_2MB, EfiReservedMemoryType);
+              DEBUG ((DEBUG_ERROR, "MemGuard: reserved %lx..%lx (edge %lx)\n", GBase, GEnd, Edge[E]));
+            }
+          }
+        }
+      }
+#endif
     }
   }
 

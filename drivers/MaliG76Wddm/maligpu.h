@@ -59,9 +59,6 @@
 #define TILER_PWRON_LO          0x190
 #define L2_PWRON_LO             0x1A0
 #define GPU_COHERENCY_FEATURES  0x300
-#define GPU_COHERENCY_ENABLE    0x304       /* panfrost_regs.h:110 */
-#define COHERENCY_NONE          31u         /* panfrost_regs.h:113; kbase writes it after every reset on a non-coherent
-                                             * system (Samsung bv_r32p1 mali_kbase_cache_policy_backend.c:27-38) */
 #define GPU_THREAD_TLS_ALLOC    0x310
 #define GPU_STACK_PRESENT_LO    0xE00
 #define GPU_STACK_PRESENT_HI    0xE04
@@ -71,6 +68,11 @@
 
 #define GPU_CMD_SOFT_RESET      0x01
 #define GPU_CMD_HARD_RESET      0x02
+#define GPU_CMD_CYCLE_COUNT_START 0x05     /* panfrost_regs.h GPU_CMD_CYCLE_COUNT_START */
+#define GPU_CYCLE_COUNT_LO      0x090       /* panfrost_regs.h; counts GPU clock cycles once started */
+#define GPU_CYCLE_COUNT_HI      0x094
+#define GPU_TIMESTAMP_LO        0x098
+#define GPU_TIMESTAMP_HI        0x09C
 #define GPU_IRQ_FAULT           (1u << 0)
 #define GPU_IRQ_MULTIPLE_FAULT  (1u << 7)
 #define GPU_IRQ_RESET_COMPLETED (1u << 8)
@@ -127,7 +129,6 @@
 #define AS_COMMAND_UPDATE       0x01
 #define AS_COMMAND_LOCK         0x02
 #define AS_COMMAND_FLUSH_PT     0x04
-#define AS_COMMAND_FLUSH_MEM    0x05        /* panfrost_regs.h:299: wait for memory accesses, flush L1s and L2 */
 #define AS_STATUS_ACTIVE        0x01
 
 /* ---- the GPU virtual address space, as Linux Panfrost lays it out ---- */
@@ -205,6 +206,7 @@ void MkGpuQuiet(MK_GPU *Gpu);
 NTSTATUS MkGpuInit(MK_GPU *Gpu);
 BOOLEAN MkGpuBringup(MK_GPU *Gpu);
 void MkGpuStop(MK_GPU *Gpu);
+BOOLEAN MkReadClock(MK_GPU *Gpu, ULONG64 *Cycles, ULONG64 *Timestamp);   /* MW_ESCAPE_CLOCK */
 
 /* Page tables and addresses. MkVaAlloc keeps executable ranges inside one
  * 16 MB window (the shader program counter is 24 bits). */
@@ -215,10 +217,9 @@ void MkVaFree(MK_GPU *Gpu, ULONG64 Va, ULONG Pages);
 NTSTATUS MkMmuMapPages(MK_GPU *Gpu, ULONG64 Va, const PFN_NUMBER *Pfn, ULONG Pages, BOOLEAN NoExec);
 void MkMmuUnmapPages(MK_GPU *Gpu, ULONG64 Va, ULONG Pages);
 
-/* Jobs: start a chain on a slot without waiting (FALSE = the slot's _NEXT registers still hold a job that has not
- * started, nothing written - panfrost_job_hw_submit refuses the same case); collect its done (bit slot) and error
- * (bit 16 + slot) status, from the ISR or the raw register. */
-BOOLEAN MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag);
+/* Jobs: start a chain on a slot without waiting; collect its done (bit
+ * slot) and error (bit 16 + slot) status, from the ISR or the raw register. */
+void MkJobStart(MK_GPU *Gpu, ULONG Slot, ULONG64 Jc, BOOLEAN ChainFlag);
 ULONG MkJobTakeStatus(MK_GPU *Gpu, ULONG Slot);
 ULONG MkJobSlotStatus(MK_GPU *Gpu, ULONG Slot);
 void MkJobHardStop(MK_GPU *Gpu, ULONG Slot);

@@ -12,6 +12,16 @@ Follows wddm-mali-g52 .github/workflows/mesa.yml (job `panfrost`), adapted to an
   4 cross    the ARM64 build: clang-cl --target=aarch64-pc-windows-msvc + MSVC ARM64 libs/link,
              -Dmesa-clc=system (reference stubs) -Dprecomp-compiler=system (step 3's exe).
   5 collect  DLLs -> s10e-artifacts\mali-g12 with SHA256SUMS and dumpbin /headers.
+  6 x86      G-game (notes/g17-dxva-mfc.md): the 32-bit x86 UMD for WOW64 processes (MS Learn "WDDM 64-Bit Issues":
+             UserModeDriverNameWow, SysWOW64). clang-cl --target=i686-pc-windows-msvc + MSVC x86 libs, a cross
+             build that runs its own x86 panfrost_compile.exe on the x64 host (-Dprecomp-compiler=enabled,
+             needs_exe_wrapper = false): the precompiled shader blobs memcpy Mesa structs, so the compiler that
+             writes them must have the x86 layout. Collected to $Out-x86 (maliumd32.dll + libgallium_d3d10.dll).
+  7 ec       G27 (notes/g27-x64-apps.md): the ARM64EC UMD for x64 (emulated) processes, behind an ARM64X forwarder
+             (make-arm64x.ps1). clang-cl --target=arm64ec-pc-windows-msvc, link /machine:arm64ec with the MSVC
+             arm64ec libs (MS Learn "Get started with Arm64EC": the Arm64 developer environment, /arm64EC,
+             /MACHINE:ARM64EC); the x64 host panfrost_compile.exe fits (ARM64EC uses the x64 ABI). Static CRT like
+             the others. Collected to $Out-ec (maliumd_ec.dll).
 Nothing of Mesa is vendored in this repo; all paths below are external.
 #>
 param(
@@ -29,7 +39,7 @@ $ErrorActionPreference = 'Continue'
 
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 foreach ($s in $Stage) {
-  if ($s -notin 'all', 'source', 'libpan', 'host', 'cross', 'collect') { throw "unknown stage '$s'" }
+  if ($s -notin 'all', 'source', 'libpan', 'host', 'cross', 'collect', 'x86', 'ec', 'gl', 'glec') { throw "unknown stage '$s'" }
 }
 
 $MesaOrig = Join-Path $Mali 'mesa-26.2'          # never modified
@@ -45,9 +55,13 @@ $Venv = Join-Path $Mali 'venv'
 $Libpan = Join-Path $Work 'libpan-prebuilt'
 $HostBuild = Join-Path $Work 'build-host-x64'
 $CrossBuild = Join-Path $Work 'build-arm64'
+$X86Build = Join-Path $Work 'build-x86'
+$EcBuild = Join-Path $Work 'build-arm64ec'
+$GlBuild = Join-Path $Work 'build-arm64-gl'
+$GlEcBuild = Join-Path $Work 'build-arm64ec-gl'
 $Flex = Join-Path $Work 'winflexbison'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-function Want($s) { $Stage -contains 'all' -or $Stage -contains $s }
+function Want($s) { ($Stage -contains 'all' -and $s -notin 'x86', 'ec', 'gl', 'glec') -or $Stage -contains $s }   # x86 / ec / gl / glec only on request
 function Check($what) { if ($LASTEXITCODE) { throw "$what failed ($LASTEXITCODE)" } }
 function ToWsl($p) { '/mnt/' + $p.Substring(0, 1).ToLower() + ($p.Substring(2) -replace '\\', '/') }
 
@@ -88,7 +102,8 @@ $MesonOpts = @(
   '-Dmesa-clc=system', '-Dvulkan-drivers=', '-Dllvm=disabled',
   '-Dopengl=false', '-Dgles1=disabled', '-Dgles2=disabled', '-Degl=disabled', '-Dglx=disabled', '-Dgbm=disabled',
   '-Dvideo-codecs=', '-Dmicrosoft-clc=disabled', '-Dspirv-to-dxil=false',
-  '-Dzstd=disabled', '-Dshader-cache=disabled', '-Dbuild-tests=false',
+  '-Dzstd=disabled', '-Dshader-cache=enabled', '-Dshader-cache-max-size=256M',   # G33: Windows disk cache backend (Mesa 0192)
+  '-Dbuild-tests=false',
   '-Dc_args=-DHAVE_FUNC_ATTRIBUTE_PACKED', '-Dcpp_args=-DHAVE_FUNC_ATTRIBUTE_PACKED'
 )
 
@@ -169,6 +184,9 @@ endian = 'little'
     meson setup $CrossBuild $Mesa --backend=ninja --cross-file $cross -Dbuildtype=debugoptimized -Dprecomp-compiler=system @MesonOpts
     Check 'cross meson setup'
   }
+  # G24 packaging: the UMD links the CRT statically (b_vscrt=mt) - its only non-OS import was VCRUNTIME140.dll, which a
+  # clean system does not have (a driver must not need the VC redistributable). Applied to existing build dirs too.
+  meson configure $CrossBuild -Db_vscrt=mt -Dzlib:default_library=static -Dshader-cache=enabled -Dshader-cache-max-size=256M; Check 'cross meson configure'
   ninja -C $CrossBuild -k 0 2>&1 | Tee-Object (Join-Path $Work 'build-arm64.log')
   Check 'cross build'
 }
@@ -195,4 +213,214 @@ if (Want 'collect') {
   Pop-Location
   Get-Content (Join-Path $Out 'SHA256SUMS')
   Select-String -Path (Join-Path $Out 'dumpbin-headers.txt') -Pattern 'machine \(|subsystem|DLL characteristics' | ForEach-Object Line
+}
+
+# The ARM64EC build environment (G27): the 'ec' and 'glec' stages.
+function Use-EcEnv {
+  Use-VcVars 'vcvarsamd64_arm64.bat'   # the Arm64 developer environment (MS Learn: Arm64EC is built from it)
+  Common-Tools
+  # meson (1.12.1) canonicalises clang-cl's target 'arm64ec' to machine 'arm' (compilers/mixins/visualstudio.py:
+  # `elif 'arm' in target`), so every link / lib rule got /MACHINE:arm (LNK1423), and lib/llvm-lib accept EC objects
+  # only with /machine:arm64ec. Own venv with that one mapping added; the shared venv stays stock.
+  $VenvEc = Join-Path $Mali 'venv-ec'
+  if (-not (Test-Path "$VenvEc\Scripts\meson.exe")) {
+    & python -m venv $VenvEc; Check 'venv-ec'
+    & "$VenvEc\Scripts\python.exe" -m pip install -q meson==1.12.1 ninja mako pyyaml packaging; Check 'pip ec'
+  }
+  $vsmix = Join-Path $VenvEc 'Lib\site-packages\mesonbuild\compilers\mixins\visualstudio.py'
+  $src = [IO.File]::ReadAllText($vsmix)
+  if ($src -notmatch "'arm64ec' in target") {
+    $anchor = "        elif 'aarch64' in target:"
+    if (-not $src.Contains($anchor)) { throw "meson visualstudio.py: no aarch64 anchor ($vsmix)" }
+    $src = $src.Replace($anchor, "        elif 'arm64ec' in target:  # exynos-woa G27`n            self.machine = 'arm64ec'`n$anchor")
+    [IO.File]::WriteAllText($vsmix, $src)
+  }
+  $env:PATH = "$VenvEc\Scripts;$env:PATH"
+  Remove-Item env:CC, env:CXX -ErrorAction SilentlyContinue
+  $env:PATH = "$HostBuild\src\panfrost\clc;$env:PATH"   # panfrost_compile.exe (x64 ABI = the ARM64EC ABI)
+  # the MSVC arm64ec CRT / runtime libraries first (vcvarsamd64_arm64 lists lib\arm64)
+  $ecLib = ($env:LIB -split ';' | Where-Object { $_ -match '\\VC\\Tools\\MSVC\\[^\\]+\\lib\\arm64$' } |
+            Select-Object -First 1) -replace '\\arm64$', '\arm64ec'
+  if (-not $ecLib -or -not (Test-Path $ecLib)) { throw "no MSVC arm64ec library directory ($ecLib)" }
+  $env:LIB = "$ecLib;$env:LIB"
+}
+
+if (Want 'gl') {
+  # GL1 (notes/gl-icd.md): the Mali OpenGL ICD = Mesa's WGL target (libgallium_wgl.dll, exports the Drv* ICD entry
+  # points) with Panfrost (Mesa patch 0150). Own build dir, ARM64 cross file of the 'cross' stage, the D3D10 UMD
+  # off: the shipping UMD build is untouched. Static CRT like the UMDs. Collected to $Out-gl as maligl.dll.
+  Use-VcVars 'vcvarsamd64_arm64.bat'
+  Common-Tools
+  Remove-Item env:CC, env:CXX -ErrorAction SilentlyContinue
+  $env:PATH = "$HostBuild\src\panfrost\clc;$env:PATH"   # panfrost_compile.exe (x64, MSVC ABI)
+  $cross = Join-Path $Work 'arm64-windows.cross'   # written by the 'cross' stage
+  if (-not (Test-Path $cross)) { throw "$cross missing - run the cross stage once" }
+  # The working copy checks out with CRLF (Mesa's `* text=auto`, Windows native eol); win_flex fails on CRLF lexers
+  # ("end of file in string", glcpp-lex.l / glsl_lexer.ll - never built for the D3D10 UMD). Lexers and grammars
+  # check out with LF instead (local attributes, not a source change).
+  $attr = Join-Path $Mesa '.git\info\attributes'
+  if (-not (Select-String -Path $attr -Pattern '^\*\.ll eol=lf' -Quiet -ErrorAction SilentlyContinue)) {
+    Add-Content -Encoding ascii $attr "*.l eol=lf`n*.ll eol=lf`n*.y eol=lf`n*.yy eol=lf"
+    $lex = git -C $Mesa ls-files '*.l' '*.ll' '*.y' '*.yy'
+    foreach ($f in $lex) { Remove-Item (Join-Path $Mesa $f) }
+    git -C $Mesa checkout -- $lex; Check 'lexer re-checkout'
+  }
+  $glOpts = $MesonOpts | ForEach-Object {
+    if ($_ -eq '-Dopengl=false') { '-Dopengl=true' } elseif ($_ -eq '-Dgallium-d3d10umd=true') { '-Dgallium-d3d10umd=false' } else { $_ }
+  }
+  if (-not (Test-Path "$GlBuild\build.ninja")) {
+    meson setup $GlBuild $Mesa --backend=ninja --cross-file $cross -Dbuildtype=debugoptimized -Dprecomp-compiler=system @glOpts
+    Check 'gl meson setup'
+  }
+  # zlib (meson subproject) static: the GL build imports it (the UMD does not), and an ICD must not need a z-1.dll.
+  meson configure $GlBuild -Db_vscrt=mt -Dzlib:default_library=static; Check 'gl meson configure b_vscrt/zlib'
+  ninja -C $GlBuild -k 0 2>&1 | Tee-Object (Join-Path $Work 'build-arm64-gl.log')
+  Check 'gl build'
+  $icd = Join-Path $GlBuild 'src\gallium\targets\wgl\libgallium_wgl.dll'
+  if (-not (Test-Path $icd)) { throw 'libgallium_wgl.dll was not built' }
+  $ogl = "$Out-gl"
+  New-Item -ItemType Directory -Force $ogl | Out-Null
+  Copy-Item $icd, ($icd -replace '\.dll$', '.pdb') $ogl -Force
+  Copy-Item $icd (Join-Path $ogl 'maligl.dll') -Force
+  Push-Location $ogl
+  Get-ChildItem -Path * -File -Include *.dll, *.pdb | Get-FileHash -Algorithm SHA256 |
+    ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } | Set-Content -Encoding ascii SHA256SUMS
+  & { dumpbin /nologo /headers maligl.dll | Select-String 'machine \(' ; dumpbin /nologo /dependents maligl.dll; dumpbin /nologo /exports maligl.dll } |
+    Set-Content -Encoding ascii dumpbin-gl.txt
+  Pop-Location
+  Get-Content (Join-Path $ogl 'SHA256SUMS')
+}
+
+if (Want 'glec') {
+  # GL4 (notes/gl-icd.md): the ARM64EC OpenGL ICD for x64 (emulated) processes (Stardew Valley is x64 .NET), behind an
+  # ARM64X forwarder like maliumd (make-arm64x.ps1 -Name maligl). The 'gl' stage's options, the 'ec' stage's cross file.
+  Use-EcEnv
+  $eccross = Join-Path $Work 'arm64ec-windows.cross'   # written by the 'ec' stage
+  if (-not (Test-Path $eccross)) { throw "$eccross missing - run the ec stage once" }
+  $glOpts = $MesonOpts | ForEach-Object {
+    if ($_ -eq '-Dopengl=false') { '-Dopengl=true' } elseif ($_ -eq '-Dgallium-d3d10umd=true') { '-Dgallium-d3d10umd=false' } else { $_ }
+  }
+  if (-not (Test-Path (Join-Path $GlEcBuild 'build.ninja'))) {
+    meson setup $GlEcBuild $Mesa --backend=ninja --cross-file $eccross -Dbuildtype=debugoptimized -Dprecomp-compiler=system @glOpts
+    Check 'glec meson setup'
+  }
+  meson configure $GlEcBuild -Db_vscrt=mt -Dzlib:default_library=static; Check 'glec meson configure'
+  ninja -C $GlEcBuild -k 0 2>&1 | Tee-Object (Join-Path $Work 'build-arm64ec-gl.log')
+  Check 'glec build'
+  $icd = Join-Path $GlEcBuild 'src\gallium\targets\wgl\libgallium_wgl.dll'
+  if (-not (Test-Path $icd)) { throw 'arm64ec libgallium_wgl.dll was not built' }
+  $ogl = "$Out-gl-ec"
+  New-Item -ItemType Directory -Force $ogl | Out-Null
+  Copy-Item $icd, ($icd -replace '\.dll$', '.pdb') $ogl -Force
+  Copy-Item $icd (Join-Path $ogl 'maligl_ec.dll') -Force
+  Push-Location $ogl
+  Get-ChildItem -Path * -File -Include *.dll, *.pdb | Get-FileHash -Algorithm SHA256 |
+    ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } | Set-Content -Encoding ascii SHA256SUMS
+  & { dumpbin /nologo /headers maligl_ec.dll | Select-String 'machine \(' ; dumpbin /nologo /dependents maligl_ec.dll } |
+    Set-Content -Encoding ascii dumpbin-gl-ec.txt
+  Pop-Location
+  Get-Content (Join-Path $ogl 'SHA256SUMS')
+  Get-Content (Join-Path $ogl 'dumpbin-gl-ec.txt')
+}
+
+if (Want 'x86') {
+  Use-VcVars 'vcvarsamd64_x86.bat'   # first: it resets the environment (x64-hosted tools, x86 libs)
+  Common-Tools
+  Remove-Item env:CC, env:CXX -ErrorAction SilentlyContinue
+  $cl = (Join-Path $Llvm 'clang-cl.exe') -replace '\\', '/'
+  $lib = (Join-Path $Llvm 'llvm-lib.exe') -replace '\\', '/'
+  $rc = (Join-Path $Llvm 'llvm-rc.exe') -replace '\\', '/'
+  New-Item -ItemType Directory -Force $Work | Out-Null
+  $x86cross = Join-Path $Work 'x86-windows.cross'
+  @"
+[binaries]
+c = ['$cl', '--target=i686-pc-windows-msvc']
+cpp = ['$cl', '--target=i686-pc-windows-msvc']
+c_ld = 'link'
+cpp_ld = 'link'
+ar = '$lib'
+windres = '$rc'
+
+[properties]
+needs_exe_wrapper = false
+
+[host_machine]
+system = 'windows'
+cpu_family = 'x86'
+cpu = 'i686'
+endian = 'little'
+"@ | Set-Content -Encoding ascii $x86cross
+  if (-not (Test-Path (Join-Path $X86Build 'build.ninja'))) {
+    meson setup $X86Build $Mesa --backend=ninja --cross-file $x86cross -Dbuildtype=debugoptimized -Dprecomp-compiler=enabled @MesonOpts
+    Check 'x86 meson setup'
+  }
+  meson configure $X86Build -Db_vscrt=mt -Dzlib:default_library=static -Dshader-cache=enabled -Dshader-cache-max-size=256M; Check 'x86 meson configure'   # static CRT, as the ARM64 UMD
+  ninja -C $X86Build -k 0 2>&1 | Tee-Object (Join-Path $Work 'build-x86.log')
+  Check 'x86 build'
+  $umd = Join-Path $X86Build 'src\gallium\targets\d3d10umd\libgallium_d3d10.dll'
+  if (-not (Test-Path $umd)) { throw 'x86 libgallium_d3d10.dll was not built' }
+  $o86 = "$Out-x86"
+  New-Item -ItemType Directory -Force $o86 | Out-Null
+  Copy-Item $umd, ($umd -replace '\.dll$', '.pdb') $o86 -Force
+  Copy-Item $umd (Join-Path $o86 'maliumd32.dll') -Force
+  Push-Location $o86
+  Get-ChildItem -Path * -File -Include *.dll, *.pdb | Get-FileHash -Algorithm SHA256 |
+    ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } | Set-Content -Encoding ascii SHA256SUMS
+  & { dumpbin /nologo /headers libgallium_d3d10.dll | Select-String 'machine \(' ; dumpbin /nologo /dependents libgallium_d3d10.dll } |
+    Set-Content -Encoding ascii dumpbin-x86.txt
+  Pop-Location
+  Get-Content (Join-Path $o86 'SHA256SUMS')
+  Get-Content (Join-Path $o86 'dumpbin-x86.txt')
+}
+
+if (Want 'ec') {
+  Use-EcEnv
+  $cl = (Join-Path $Llvm 'clang-cl.exe') -replace '\\', '/'
+  $lib = (Join-Path $Llvm 'llvm-lib.exe') -replace '\\', '/'
+  $rc = (Join-Path $Llvm 'llvm-rc.exe') -replace '\\', '/'
+  New-Item -ItemType Directory -Force $Work | Out-Null
+  $eccross = Join-Path $Work 'arm64ec-windows.cross'
+  @"
+[binaries]
+c = ['$cl', '--target=arm64ec-pc-windows-msvc']
+cpp = ['$cl', '--target=arm64ec-pc-windows-msvc']
+c_ld = 'link'
+cpp_ld = 'link'
+ar = '$lib'
+windres = '$rc'
+
+[built-in options]
+c_link_args = ['/machine:arm64ec']
+cpp_link_args = ['/machine:arm64ec']
+
+[properties]
+needs_exe_wrapper = true
+
+[host_machine]
+system = 'windows'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+"@ | Set-Content -Encoding ascii $eccross
+  if (-not (Test-Path (Join-Path $EcBuild 'build.ninja'))) {
+    meson setup $EcBuild $Mesa --backend=ninja --cross-file $eccross -Dbuildtype=debugoptimized -Dprecomp-compiler=system @MesonOpts
+    Check 'ec meson setup'
+  }
+  meson configure $EcBuild -Db_vscrt=mt -Dzlib:default_library=static -Dshader-cache=enabled -Dshader-cache-max-size=256M; Check 'ec meson configure'   # static CRT, as the ARM64 UMD
+  ninja -C $EcBuild -k 0 2>&1 | Tee-Object (Join-Path $Work 'build-arm64ec.log')
+  Check 'ec build'
+  $umd = Join-Path $EcBuild 'src\gallium\targets\d3d10umd\libgallium_d3d10.dll'
+  if (-not (Test-Path $umd)) { throw 'arm64ec libgallium_d3d10.dll was not built' }
+  $oec = "$Out-ec"
+  New-Item -ItemType Directory -Force $oec | Out-Null
+  Copy-Item $umd, ($umd -replace '\.dll$', '.pdb') $oec -Force
+  Copy-Item $umd (Join-Path $oec 'maliumd_ec.dll') -Force
+  Push-Location $oec
+  Get-ChildItem -Path * -File -Include *.dll, *.pdb | Get-FileHash -Algorithm SHA256 |
+    ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } | Set-Content -Encoding ascii SHA256SUMS
+  & { dumpbin /nologo /headers libgallium_d3d10.dll | Select-String 'machine \(' ; dumpbin /nologo /dependents libgallium_d3d10.dll } |
+    Set-Content -Encoding ascii dumpbin-ec.txt
+  Pop-Location
+  Get-Content (Join-Path $oec 'SHA256SUMS')
+  Get-Content (Join-Path $oec 'dumpbin-ec.txt')
 }

@@ -1,27 +1,30 @@
 # Galaxy S10e Windows driver status
 
-As of 2026-10-12 evening. Windows was just reinstalled, so everything below describes the last known state on the previous install.
+As of 2026-10-20 (tag alpha9). Windows 11 Pro 23H2, build 22631.6199. Windows Update is turned off on the phone.
 
 🔴 nothing at all · 🟠 detected, but not usable · 🟡 works, not perfect · 🟢 working
 
 | Device | Status | In short |
 |---|---|---|
-| Booting Windows | 🟡 | boots, sometimes hangs |
-| CPU | 🟡 | 6 of 8 cores |
-| RAM | 🟡 | 5.2 of 6 GB |
-| Storage (UFS) | 🟡 | works, 6x faster today |
-| Display | 🟡 | works, basic driver only |
-| Screen rotation | 🟡 | manual only (Bixby hold) |
-| Touch | 🟡 | sometimes double taps |
+| Booting Windows | 🟡 | boots reliably; custom boot screen, remembers brightness |
+| CPU | 🟡 | 6 of 8 cores, clocks now change with load (up to 1.95 / 2.4 GHz) |
+| Temperature / clocks | 🟡 | temperatures read, automatic clocks and throttling |
+| RAM | 🟡 | 5.9 of 6 GB |
+| Storage (UFS) | 🟢 | ~500 MB/s reads, close to Android |
+| Display | 🟢 | our own display driver, brightness works |
+| Screen rotation | 🟡 | portrait and landscape work (button / tool); redraw glitch while switching |
+| Touch | 🟢 | works, smooth; touch keyboard works |
 | Hardware buttons | 🟢 | power, Bixby work |
 | USB (docks, mouse, keyboard, drives) | 🟡 | works, no hot-plug |
 | Battery / charging | 🟡 | works, slow to update |
-| GPU (graphics acceleration) | 🔴 | written, never tested |
-| Speaker | 🟡 | works, quiet-tested only |
-| Headphone jack | 🟠 | detected, no sound |
-| Microphones | 🔴 | nothing yet |
-| WiFi | 🟡 | works, slow |
-| Bluetooth | 🔴 | researched, driver skeleton only |
+| GPU (graphics acceleration) | 🟡 | desktop, browsers, D3D11 and OpenGL apps and games on the Mali GPU |
+| Hardware video decode | 🟡 | H.264 on the video chip for Windows apps (Photos, mpv) and browsers (Edge, Brave) |
+| Speakers | 🟢 | both speakers, stereo, balance app |
+| Headphone jack | 🟢 | sound out, own "Headphones" device; no headset mic |
+| Microphones | 🟢 | both built-in mics, "Microphone" device, boost slider in the speaker app |
+| WiFi | 🟡 | fast on 5 GHz; 2.4 GHz slower and disturbs Bluetooth |
+| Bluetooth | 🟡 | pairing, headphones and music work; choppy when WiFi is on 2.4 GHz |
+| External display (USB-C to HDMI) | 🔴 | researched only; Remote Desktop works |
 | Cellular / SIM | 🔴 | nothing yet |
 | Cameras | 🔴 | nothing yet |
 | Fingerprint scanner | 🔴 | nothing yet |
@@ -33,18 +36,32 @@ As of 2026-10-12 evening. Windows was just reinstalled, so everything below desc
 
 ## Details
 
-- **Booting:** Windows reaches the desktop in about 80 seconds. Before today's reinstall, every boot hung for about 2 minutes. Most likely the disk was damaged by edits made from TWRP. The phone also once powered itself off with a power-chip overload warning. We'll watch whether either comes back on the fresh install.
-- **CPU:** 6 of the 8 cores work. The 2 big Samsung-designed cores aren't used because they lack a couple of features the other cores have, and Windows refuses them. Next step is to look at it with the kernel debugger, which hasn't managed to connect yet.
-- **RAM:** Windows sees 5.2 GB of 6 GB. About 0.1 GB doesn't exist even for Android. The rest is set aside for things like the modem and logs. I tested it and up to about 0.5 GB of that could be given back to Windows, but we agreed to discuss that first.
-- **Storage:** works and is safe. Today it went from about 20 MB/s to about 117 MB/s for large reads, after fixing two problems in our driver: the chip asked Windows to split reads into tiny 8 KB pieces, and a leftover debug check was re-reading every block byte by byte. Android still reads faster (about 600 MB/s), so there is more to gain; writes have not been re-measured yet.
-- **Display:** shows the desktop through Windows' basic display driver, so there's no graphics acceleration and no brightness control.
-- **Screen rotation:** holding Bixby switches between portrait and landscape. Automatic rotation needs the motion sensor, which has no driver yet.
-- **Touch:** works, including right-click by holding. A single tap sometimes registers as a double click.
-- **Buttons:** power short press turns the screen off and on. Power long press opens a reboot/shutdown menu. Bixby opens Task Manager. Volume keys don't change the volume yet; that comes with sound.
+- **Booting:** Windows reaches the desktop in about 80 seconds. The reset that used to hit every boot after about 47 minutes was our own disk driver's watchdog rule; it is fixed.
+- **CPU:** 6 of the 8 cores work. The 2 big Samsung-designed cores (M4) pass every bare-metal test we ran, but with all 8 cores Windows still crashes with memory corruption at every boot, so the phone runs on 6. Windows' own scheduler puts foreground work on the 2 faster cores.
+- **Temperature / clocks:** our power driver reads the chip temperatures and sets the clocks, and a small service (the governor) raises and lowers them with load and turns everything down with the screen off. With the big cores off, the full speeds are usable in bursts: small cores 1.95 GHz, fast cores 2.4 GHz, GPU 702 MHz. A thermal guard steps clocks down at 83 °C. "clocks.exe" on the desktop shows the live speeds.
+- **RAM:** Windows sees 5.9 GB and reports 6 GB installed (was 5.2 GB): memory that was only set aside for Android is given back to Windows.
+- **Storage:** large reads went from about 117 MB/s to about 500-560 MB/s, and small reads take half the time, after our disk driver learned to use interrupts and keep several commands in flight. Apps start much faster: Brave's first start 6.6 → 2.4 s, Steam about 50 → 30 s. Data integrity is checked with hash tests after every driver change.
+- **Display:** our own display driver (MaliG76Wddm) drives the screen. Brightness works through the normal Windows slider. A 720p mode is offered for games. A blank screen saver turns the picture black after 2 minutes idle; the screen itself can't switch off yet.
+- **Screen rotation:** portrait and landscape both work. Switch with the Bixby button or the desktop rotate shortcuts. While switching, the screen shows a few broken frames. Automatic rotation needs the motion sensor, which has no driver yet.
+- **Touch:** works, including right-click by holding. Windows treats the phone as a tablet: touch-sized taskbar and an on-screen keyboard.
+- **Buttons:** power short press turns the screen off and on, long press opens a reboot/shutdown menu. Bixby opens Task Manager.
 - **USB:** dock, mouse, keyboard and USB drive all work, but only if plugged in before boot. Plugging in later doesn't work yet. The phone can't charge while a dock is powering USB devices.
 - **Battery:** the battery icon shows the real level, but takes a few seconds to update. If the battery runs out, plugging in the charger boots the phone back up.
-- **GPU:** the drivers and graphics library are written and built, but haven't run on the phone yet. That's next after the storage tests. The S9+ developer showed it working on their phone, but never released code.
-- **Speaker / headphones:** Windows now plays sound through the speaker, and the Windows volume and mute work (tested quietly, heard by the PC mic). There are small pops when sound starts/stops, the physical volume buttons are being hooked up, and the headphone jack is not done in Windows yet.
-- **WiFi:** works through the normal Windows WiFi menu (pick a network, type the password). It is slow for now; speed, sleep/wake and roaming come next.
-- **Bluetooth:** same Broadcom chip as WiFi, on a separate serial line. The research, design and an untested driver skeleton are done (parkinglot/bluetooth-d4c.md).
-- **Cellular, cameras, fingerprint, sensors, vibration, NFC, GPS, microphones, wireless charging:** not started.
+- **GPU:** the Mali GPU runs the whole Windows desktop (Start menu, Search, transparency) and apps through our driver (now a modern WDDM 2.0 driver) and a ported open-source graphics library (Mesa/Panfrost):
+  - Direct3D 11 up to feature level 11_0: shader model 5, compute shaders, tessellation (emulated, on the CPU) and geometry shaders (emulated). Dave the Diver now runs at level 11_0.
+  - Browsers: Edge runs with Canvas, compositing and WebGL on the GPU (WebGPU pages find no adapter yet); an x64 Chromium build runs WebGL too.
+  - Apps of all three kinds: native ARM64, emulated x64 and old 32-bit x86 programs.
+  - OpenGL apps through our own OpenGL driver: Stardew Valley runs at 58-60 fps.
+  - Compressed game textures (DXT/BC), which this GPU can't read, are converted on the fly.
+  - Shaders are saved per program, so the second start of a game compiles less. A "Shader cache" app on the desktop lists each program's cache and can clear one or all.
+  - Games: Dave the Diver runs at about 26 fps (measured at feature level 10_1, before 11_0), and reaches its title screen 18 s faster than before (122 s); most of that wait is the game itself under x64 emulation. Need for Speed Underground 2 runs through dgVoodoo, and Game Dev Story runs.
+  - Not perfect yet: tessellation is computed on the CPU (its speed is not measured yet), the GPU loses some speed to our driver's own overhead, and DirectX 12 / Vulkan are not supported.
+- **Hardware video decode:** H.264 video is decoded by the phone's video chip for normal Windows apps (Media Foundation: Photos, mpv), with smooth 1080p playback in mpv. Edge and Brave decode H.264 video on it too (1080p at full speed, about 24 fps instead of 14 in software). Photos itself still plays slowly, and sites that send VP9 or AV1 (YouTube by default) are still decoded in software.
+- **Speakers:** the earpiece and bottom speaker play together in stereo, with a balance set by ear. "S10e Speakers" in the Start menu adjusts them live.
+- **Headphone jack:** plugging in headphones switches to a separate "Headphones" device and back. The headset microphone isn't done.
+- **WiFi:** works through the normal Windows WiFi menu. 5 GHz reaches 220-280 Mbit/s; 2.4 GHz about 35-40 Mbit/s.
+- **Bluetooth:** pairing works, and Bluetooth headphones play music. When WiFi uses 2.4 GHz the sound cuts out, because WiFi and Bluetooth share one radio and the coordination Android does isn't done yet; on 5 GHz WiFi it's fine. Transfers are slow (the chip's serial link still runs at the start-up speed).
+- **External display:** the USB-C chip's DisplayPort mode is researched but not switched on yet. Remote Desktop works for using the phone from another screen; a virtual-monitor prototype runs but streams black frames.
+- **Microphones:** the two built-in microphones record in stereo through a "Microphone" device. "S10e Speakers" has a microphone boost slider (0 to +31.5 dB, default +12 dB). The headset microphone isn't done.
+- **Cellular, cameras, fingerprint, sensors, vibration, NFC, GPS, wireless charging:** not started.
+- **Remote access (for development):** an SSH server on the phone allows remote control and driver updates over WiFi.

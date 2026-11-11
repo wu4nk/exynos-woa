@@ -331,6 +331,8 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdHiiOsRuntimeSupport|FALSE
 
 [PcdsFixedAtBuild.common]
+  # R2: SMBIOS 3.x with the 64-bit (SMBIOS3) entry point only - what ARM64 Windows reads
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosEntryPointProvideMethod|0x2
   # --- Debug mask (errors+warnings+info+load). Trim for RELEASE. ---
   # ERROR|WARN only (was 0x8000004F = +INFO|LOAD): the on-panel log (B54) is read from photos, and
   # the hundreds of Loading driver / InstallProtocolInterface lines buried the UFS errors (B73).
@@ -369,6 +371,9 @@
   #     contiguous 729 MB, 0xD0000000..0xFD900000, for the modem/CP stack
   #     (Exynos9820.h:96-107, notes/dock-desktop.md §17); publishing all of bank0
   #     would hand that to Windows as conventional RAM.
+  #     (Since R1 2026-10-18 the modem/CP part IS published on purpose - the CP never
+  #     runs under Windows; only cp_ram_logging end 0xFD900000 .. 4 GiB (debug_snapshot)
+  #     stays carved: PlatformMemoryMapLib.c BEYOND0LTE_PUBLISH_CP_RDX, notes/ram-6gb.md.)
   #
   #     The 9810's window (0x90000000..0xBC800000) and its whole ext72/ext99
   #     experiment log are NOT carried over: they are 9810 observations about the
@@ -492,8 +497,9 @@
   #     partition is future work (see docs/08-edk2-internals.md). ---
   gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable|TRUE
 
-  # --- BDS: short timeout; show the boot menu only briefly. ---
-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
+  # --- BDS: no countdown (2026-10-14, user: clean boot screen). ArmPkg's PlatformBootManagerWaitCallback drew a
+  #     white progress bar + "Press ESCAPE for boot options" for these seconds; 0 skips the wait (and 3 s per boot).
+  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
 
 ################################################################################
 #
@@ -572,7 +578,9 @@
   MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
   MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
   MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
-  MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+  # GraphicsConsoleDxe removed 2026-10-14 (user: clean boot screen): it cleared the panel and rendered BDS text
+  # ("Press ESCAPE for boot options", the firmware version) over the boot screen. ConOut is then serial only (the RAM
+  # log); Windows Boot Manager draws through the GOP itself.
   MdeModulePkg/Universal/SerialDxe/SerialDxe.inf
 
   # --- ACPI (FADT/MADT/GTDT/PPTT + DSDT) and the installer that publishes them.
@@ -588,6 +596,13 @@
   Platform/Beyond0LtePkg/Drivers/Beyond0LteTouchPowerDxe/Beyond0LteTouchPowerDxe.inf
   # D8a: read the CS47L93 codec / CS35L40 amp IDs into UEFILOG, buses restored (notes/d8-audio-m1.md)
   Platform/Beyond0LtePkg/Drivers/Beyond0LteAudioProbeDxe/Beyond0LteAudioProbeDxe.inf
+  # D4c: BT UART role latch + R1 loopback / R2 HCI version into UEFILOG (off unless BEYOND0LTE_BT_UART_PROBE)
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteBtUartDxe/Beyond0LteBtUartDxe.inf
+  # R2 (notes/ram-6gb.md): SMBIOS for Windows - the edk2 core table driver + our records (types 0/1/3/16/17/19)
+  MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteSmbiosDxe/Beyond0LteSmbiosDxe.inf
+  # D10: MFC probe - pd-mfc status, CMU_MFC + MFC version only while powered (off unless BEYOND0LTE_MFC_PROBE)
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteMfcDxe/Beyond0LteMfcDxe.inf
   # M16 G3: read-only Mali-G76 probe (PMU G3D status first, GPU_ID only if on) into UEFILOG (notes/gpu-m16-g2g3.md)
   Platform/Beyond0LtePkg/Drivers/Beyond0LteGpuProbeDxe/Beyond0LteGpuProbeDxe.inf
 

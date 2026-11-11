@@ -2,8 +2,11 @@
 
 Starts kd.exe as the KDNET host, logs everything, and:
   - on any "kd>" prompt (a bugcheck break, an assertion, or our own break-in) runs the analysis commands once;
-  - if no prompt arrived after --break-after seconds, sends CTRL_BREAK to kd (break into a hung target).
-usage: python -I kdrun.py LOGFILE [--break-after 240] [--total 600] [--cmds "cmd1;cmd2"]
+  - if no prompt arrived --break-after seconds after the target connected ("Kernel Debugger connection
+    established"), sends CTRL_BREAK to kd (break into a hung target, or a timed look at a booted one).
+  --break-at EPOCH sends the CTRL_BREAK at that absolute time instead (a hang predicted from the reset time,
+    notes/thermal-clocks.md 2026-10-16), connected or not.
+usage: python -I kdrun.py LOGFILE [--break-after 240 | --break-at EPOCH] [--total 600] [--cmds "cmd1;cmd2"]
 """
 import os
 import signal
@@ -13,7 +16,7 @@ import threading
 import time
 
 KD = r'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\kd.exe'
-DEFAULT_CMDS = ['.symfix+ C:\\symbols', '.reload', '!analyze -v', 'r', 'kb 40', '!running -ti', '!cpuinfo', 'lm o', 'q']
+DEFAULT_CMDS = ['.symfix+ C:\\symbols', '.reload', '!analyze -v', 'r', 'kb 40', '!running -ti', '!cpuinfo', 'lm o', 'g']  # g, not q: q leaves the target halted (2026-10-15: a Code Integrity first-chance break on a test-signed UMD froze the phone)
 
 
 def main():
@@ -26,6 +29,7 @@ def main():
         break_after = int(a[a.index('--break-after') + 1])
     if '--total' in a:
         total = int(a[a.index('--total') + 1])
+    break_at = float(a[a.index('--break-at') + 1]) if '--break-at' in a else None
     if '--cmds' in a:
         cmds = a[a.index('--cmds') + 1].split(';')
     env = dict(os.environ)
@@ -33,7 +37,7 @@ def main():
     p = subprocess.Popen([KD, '-k', 'net:port=50005,key=1.2.3.4', '-logo', log], stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
                          creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
-    state = {'prompt': 0, 'out': '', 'sent': False}
+    state = {'prompt': 0, 'out': '', 'sent': False, 'connected': None}
 
     def reader():
         buf = ''
@@ -42,6 +46,8 @@ def main():
             if not ch:
                 break
             buf += ch.decode('latin1')
+            if state['connected'] is None and buf.endswith('connection established'):
+                state['connected'] = time.time()
             if buf.endswith('kd> '):
                 state['prompt'] += 1
                 buf = ''
@@ -59,7 +65,11 @@ def main():
                 p.stdin.write((c + '\n').encode())
                 p.stdin.flush()
                 time.sleep(4 if c.startswith('!analyze') or c == '.reload' else 1.5)
-        if not broke and not state['prompt'] and time.time() - t0 > break_after:
+        if break_at is not None:
+            due = time.time() >= break_at
+        else:
+            due = state['connected'] and time.time() - state['connected'] > break_after
+        if not broke and not state['prompt'] and due:
             broke = True
             p.send_signal(signal.CTRL_BREAK_EVENT)
         time.sleep(1)

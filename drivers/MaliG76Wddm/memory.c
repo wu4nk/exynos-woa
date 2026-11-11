@@ -40,11 +40,44 @@ NTSTATUS MwQuerySegment(MW_ADAPTER *A, const DXGKARG_QUERYADAPTERINFO *Info)
      * are CPU copies anyway (AllocationVa), so the segment is CPU visible; Parameters\SegmentCpuVisible 0 = the
      * original's flags. */
     d->Flags.CpuVisible = MwSegmentCpuVisible ? TRUE : FALSE;
+    d->Flags.DirectFlip = MwDirectFlip ? TRUE : FALSE;   /* G15 S4, see adapter.c MwDirectFlip */
     /* As viogpu3d. Paging buffers stay empty: map and unmap are done on
      * the CPU while the paging buffer is built. */
     out->PagingBufferSegmentId = MW_SEGMENT_ID;
     out->PagingBufferSize = 10 * PAGE_SIZE;
     out->PagingBufferPrivateDataSize = 0;
+    return STATUS_SUCCESS;
+}
+
+/* G15 S1: WDDM 2.0 asks QUERYSEGMENT4 - the same single aperture segment as MwQuerySegment, described through
+ * DXGK_SEGMENTDESCRIPTOR4 elements of SegmentDescriptorStride bytes (d3dkmddi.h). */
+NTSTATUS MwQuerySegment4(MW_ADAPTER *A, const DXGKARG_QUERYADAPTERINFO *Info)
+{
+    DXGK_QUERYSEGMENTOUT4 *out = (DXGK_QUERYSEGMENTOUT4 *)Info->pOutputData;
+    UNREFERENCED_PARAMETER(A);
+
+    if (Info->OutputDataSize < sizeof(*out))
+        return STATUS_BUFFER_TOO_SMALL;
+    if (out->pSegmentDescriptor == NULL) {
+        out->NbSegment = 1;
+        out->SegmentDescriptorStride = sizeof(DXGK_SEGMENTDESCRIPTOR4);
+        return STATUS_SUCCESS;
+    }
+    if (out->SegmentDescriptorStride != 0 && out->SegmentDescriptorStride < sizeof(DXGK_SEGMENTDESCRIPTOR4))
+        return STATUS_INVALID_PARAMETER;
+    DXGK_SEGMENTDESCRIPTOR4 *d = (DXGK_SEGMENTDESCRIPTOR4 *)out->pSegmentDescriptor;
+    RtlZeroMemory(d, sizeof(*d));
+    d->BaseAddress.QuadPart = MK_VA_START;
+    d->Size = MW_SEGMENT_SIZE;
+    d->CommitLimit = MW_SEGMENT_SIZE;
+    d->Flags.Aperture = TRUE;
+    d->Flags.CacheCoherent = FALSE;
+    d->Flags.CpuVisible = (MwSegmentCpuVisible && !(MwWddm2Quirk & 4)) ? TRUE : FALSE;
+    d->Flags.DirectFlip = MwDirectFlip ? TRUE : FALSE;
+    out->PagingBufferSegmentId = MW_SEGMENT_ID;
+    out->PagingBufferSize = 10 * PAGE_SIZE;
+    out->PagingBufferPrivateDataSize = 0;
+    out->SegmentDescriptorStride = sizeof(DXGK_SEGMENTDESCRIPTOR4);
     return STATUS_SUCCESS;
 }
 
@@ -95,6 +128,24 @@ static NTSTATUS NewAllocation(MW_ADAPTER *A, const MW_ALLOCATION_INFO *In, DXGK_
     Out->AllocationPriority = D3DDDI_ALLOCATIONPRIORITY_NORMAL;
     Out->Flags.Value = 0;
     Out->Flags.CpuVisible = TRUE;
+    /* S7a: on the GpuMmu adapter the Mali node stays physical and names allocations through the allocation list;
+     * Learn gpu-segments "Accessing allocations by physical address": only AccessedPhysically allocations may be. */
+    if (MwWddm2Gpummu)
+        Out->FlagsWddm2.AccessedPhysically = 1;
+    /* G-game: CPU address space for the CPU view only while it is mapped (adapter.c MwCpuOnDemand) */
+    if (MwWddm2 && MwCpuOnDemand) {
+        /* 1: both flags (no effect: CpuVisible keeps the permanent VA); 2: on-demand only (VA gone, but the logon
+         * never finished - a display surface needs CpuVisible); 3: on-demand only except primaries (boot hung);
+         * 4: on-demand only for allocations the UMD shim marks MW_ALLOC_CPU_ONDEMAND (Panfrost BOs) - every
+         * runtime/system allocation (primaries, CDD, shared surfaces) keeps CpuVisible */
+        BOOLEAN primary = (In->Flags & MW_ALLOC_PRIMARY) != 0;
+        BOOLEAN marked = (In->Flags & MW_ALLOC_CPU_ONDEMAND) != 0;
+        BOOLEAN ondemand = MwCpuOnDemand == 2 || (MwCpuOnDemand == 3 && !primary) || (MwCpuOnDemand == 4 && marked);
+        if (MwCpuOnDemand == 1 || ondemand)
+            Out->FlagsWddm2.CpuVisibleOnDemand = 1;
+        if (ondemand)
+            Out->FlagsWddm2.CpuVisible = 0;
+    }
     return STATUS_SUCCESS;
 }
 
@@ -104,8 +155,6 @@ static void FreeAllocation(MW_ADAPTER *A, MW_ALLOCATION *Alloc)
     ExAcquireFastMutex(&A->MmuLock);
     if (Alloc->Mapped && A->GpuUp)
         MkMmuUnmapPages(&A->Gpu, Alloc->GpuVa, Alloc->Pages);
-    if (Alloc->Mapped && Alloc->ScanDirect)
-        InterlockedDecrement(&A->FbAliasMapped);    /* 1.0.36: freed while still mapped */
     if (Alloc->GpuVa != 0 && A->GpuUp)
         MkVaFree(&A->Gpu, Alloc->GpuVa, Alloc->Pages);
     ExReleaseFastMutex(&A->MmuLock);
@@ -246,19 +295,44 @@ NTSTATUS APIENTRY MwGetStandardAllocationDriverData(IN_CONST_HANDLE hAdapter,
     return STATUS_SUCCESS;
 }
 
+/* Allocation handle -> our MW_ALLOCATION. G15 S1 run 10: on the WDDM 2.0 adapter DxgkCbGetHandleData returned NULL
+ * for every allocation (OpenAllocation and the UMD's escapes failed 0xC0000008). DxgkCbAcquireHandleData is the
+ * WDDM 2.0 callback for the same lookup (MS Learn DXGKCB_ACQUIREHANDLEDATA, DXGKRNL_INTERFACE WDDM2_0 block;
+ * qemus/virtio-drivers-windows adapter.rs allocation_from_handle falls back to it the same way). The reference is
+ * dropped at once: the caller only uses the pointer while dxgkrnl holds the allocation (open, or named by the
+ * escaping device). Only filled in for a 2.x interface, hence the guard. */
+MW_ALLOCATION *MwAllocationFromHandle(MW_ADAPTER *A, D3DKMT_HANDLE h)
+{
+    DXGKRNL_INTERFACE *dx = &A->Dxgk;
+    DXGKARGCB_GETHANDLEDATA get = {0};
+    PVOID p;
+
+    get.hObject = h;
+    get.Type = DXGK_HANDLE_ALLOCATION;
+    p = dx->DxgkCbGetHandleData(&get);
+    if (p == NULL && MwWddm2 && dx->DxgkCbAcquireHandleData != NULL && dx->DxgkCbReleaseHandleData != NULL) {
+        DXGKARG_RELEASE_HANDLE rel = NULL;
+        p = dx->DxgkCbAcquireHandleData(&get, &rel);
+        if (rel != NULL) {
+            DXGKARGCB_RELEASEHANDLEDATA r = {0};
+            r.ReleaseHandle = rel;
+            r.Type = DXGK_HANDLE_ALLOCATION;
+            dx->DxgkCbReleaseHandleData(r);
+        }
+    }
+    return (MW_ALLOCATION *)p;
+}
+
 NTSTATUS APIENTRY MwOpenAllocation(IN_CONST_HANDLE hDevice, const DXGKARG_OPENALLOCATION *Arg)
 {
     MW_DEVICE *dev = (MW_DEVICE *)hDevice;
-    DXGKRNL_INTERFACE *dx = &dev->Adapter->Dxgk;
 
     LONG n = InterlockedIncrement(&dev->Adapter->Opens);
     NTSTATUS st = STATUS_SUCCESS;
 
     for (UINT i = 0; i < Arg->NumAllocations; i++) {
-        DXGKARGCB_GETHANDLEDATA get = {0};
-        get.hObject = Arg->pOpenAllocation[i].hAllocation;
-        get.Type = DXGK_HANDLE_ALLOCATION;
-        Arg->pOpenAllocation[i].hDeviceSpecificAllocation = dx->DxgkCbGetHandleData(&get);
+        Arg->pOpenAllocation[i].hDeviceSpecificAllocation =
+            MwAllocationFromHandle(dev->Adapter, Arg->pOpenAllocation[i].hAllocation);
         /* MS Learn DXGKCB_GETHANDLEDATA: "If a NULL pointer is returned, the display miniport driver should fail
          * its currently running DDI function with STATUS_INVALID_HANDLE." (g41full: every open got NULL here and
          * this function still returned success.) */
@@ -296,46 +370,6 @@ NTSTATUS APIENTRY MwCloseAllocation(IN_CONST_HANDLE hDevice, const DXGKARG_CLOSE
 
 /* ---- residency ---- */
 
-/* G2b-3 run 31 (Parameters\ScanoutDirect; 1.0.36: the UMD's framebuffer alias, not DWM's primaries - run 32):
- * may this allocation be mapped onto the GOP framebuffer itself? Only with
- * FlipMmio (the latch is where the copy it replaces happens), only for a 32-bit primary with exactly the
- * framebuffer's width, height and pitch, and only when the framebuffer is whole pages - the GPU mapping is per page,
- * and a page past the framebuffer would be someone else's memory. */
-static BOOLEAN ScanoutDirectEligible(const MW_ADAPTER *A, const MW_ALLOCATION *Alloc)
-{
-    const ULONG64 pa = (ULONG64)A->Fb.PhysicAddress.QuadPart;
-    return MwScanoutDirect && MwFlipMmio && (Alloc->Flags & MW_ALLOC_FBALIAS) && A->FbVa != NULL && pa != 0 &&
-           (pa & (PAGE_SIZE - 1)) == 0 && (A->FbSize & (PAGE_SIZE - 1)) == 0 &&
-           (Alloc->Format == D3DDDIFMT_A8R8G8B8 || Alloc->Format == D3DDDIFMT_X8R8G8B8) &&
-           (A->Fb.ColorFormat == D3DDDIFMT_A8R8G8B8 || A->Fb.ColorFormat == D3DDDIFMT_X8R8G8B8) &&
-           Alloc->Width == A->Fb.Width && Alloc->Height == A->Fb.Height && Alloc->Pitch == A->Fb.Pitch;
-}
-
-/* MmuLock held. Map the allocation's GPU range: its first pages onto the framebuffer's (as many as the framebuffer
- * has), any further ones onto VidMm's (Pfn, for the rows past Height a padded allocation may have). On failure
- * nothing stays mapped. */
-static NTSTATUS MapScanoutDirect(MW_ADAPTER *A, MW_ALLOCATION *Alloc, const PFN_NUMBER *Pfn, ULONG Pages)
-{
-    const PFN_NUMBER base = (PFN_NUMBER)((ULONG64)A->Fb.PhysicAddress.QuadPart >> PAGE_SHIFT);
-    const ULONG fbPages = (ULONG)(A->FbSize >> PAGE_SHIFT);
-    const BOOLEAN noExec = (Alloc->Flags & MW_ALLOC_NOEXEC) != 0;
-    PFN_NUMBER run[64];
-    ULONG done = 0;
-    NTSTATUS st = STATUS_SUCCESS;
-
-    while (done < Pages && NT_SUCCESS(st)) {
-        ULONG n = Pages - done < 64 ? Pages - done : 64;
-        for (ULONG i = 0; i < n; i++)
-            run[i] = done + i < fbPages ? base + done + i : Pfn[done + i];
-        st = MkMmuMapPages(&A->Gpu, Alloc->GpuVa + ((ULONG64)done << PAGE_SHIFT), run, n, noExec);
-        if (NT_SUCCESS(st))
-            done += n;
-    }
-    if (!NT_SUCCESS(st) && done != 0)
-        MkMmuUnmapPages(&A->Gpu, Alloc->GpuVa, done);
-    return st;
-}
-
 /* Map and unmap happen here, on the CPU, as viogpu3d does: the paging
  * buffer itself stays empty. Everything else VidMm may ask (transfers,
  * fills) is not supported, as in viogpu3d; with one aperture segment it
@@ -368,25 +402,11 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
             return STATUS_SUCCESS;
         }
         ULONG pages = (ULONG)Arg->MapApertureSegment.NumberOfPages;
-        if (Arg->MapApertureSegment.MdlOffset != 0 || pages != alloc->Pages) {
-            a->PartialMaps++;
-            a->LastPartialMdlOffset = (ULONG)Arg->MapApertureSegment.MdlOffset;
-        }
         if (pages > alloc->Pages)
             pages = alloc->Pages;
         PPFN_NUMBER pfn = MmGetMdlPfnArray(Arg->MapApertureSegment.pMdl) + Arg->MapApertureSegment.MdlOffset;
         ExAcquireFastMutex(&a->MmuLock);
-        /* G2b-3: the UMD's framebuffer alias (MW_ALLOC_FBALIAS) is the framebuffer for the GPU. */
-        alloc->ScanDirect = FALSE;
-        if (ScanoutDirectEligible(a, alloc) && NT_SUCCESS(MapScanoutDirect(a, alloc, pfn, pages))) {
-            st = STATUS_SUCCESS;
-            alloc->ScanDirect = TRUE;
-            InterlockedIncrement(&a->FbAliasMapped);
-            if (InterlockedIncrement(&a->DirectMaps) <= 4)
-                MwPramText(TRUE, "ScanDirect pages ", NULL, pages, TRUE);
-        } else {
-            st = MkMmuMapPages(&a->Gpu, alloc->GpuVa, pfn, pages, (alloc->Flags & MW_ALLOC_NOEXEC) != 0);
-        }
+        st = MkMmuMapPages(&a->Gpu, alloc->GpuVa, pfn, pages, (alloc->Flags & MW_ALLOC_NOEXEC) != 0);
         alloc->Mapped = NT_SUCCESS(st);
         alloc->Mdl = Arg->MapApertureSegment.pMdl;
         alloc->MdlPage = (ULONG)Arg->MapApertureSegment.MdlOffset;
@@ -419,14 +439,27 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
         ExAcquireFastMutex(&a->MmuLock);
         if (alloc->Mapped)
             MkMmuUnmapPages(&a->Gpu, alloc->GpuVa, alloc->Pages);
-        if (alloc->ScanDirect)
-            InterlockedDecrement(&a->FbAliasMapped);
         alloc->Mapped = FALSE;
-        alloc->ScanDirect = FALSE;
         alloc->Mdl = NULL;
         ExReleaseFastMutex(&a->MmuLock);
         return STATUS_SUCCESS;
     }
+    case DXGK_OPERATION_UPDATE_PAGE_TABLE:
+    case DXGK_OPERATION_FLUSH_TLB:
+    case DXGK_OPERATION_COPY_PAGE_TABLE_ENTRIES:
+    case DXGK_OPERATION_VIRTUAL_TRANSFER:
+    case DXGK_OPERATION_VIRTUAL_FILL:
+    case DXGK_OPERATION_UPDATE_CONTEXT_ALLOCATION:
+        /* S7a: the GpuMmu page tables belong to the software copy node and nothing walks them (the Mali node is
+         * physical); virtual transfers/fills only move data between segments, and the one aperture segment never
+         * needs it. Accepted as no-ops, counted in PagingOps. */
+        if (MwWddm2Gpummu)
+            return STATUS_SUCCESS;
+        return STATUS_NOT_SUPPORTED;
+    case DXGK_OPERATION_NOTIFY_RESIDENCY:
+        /* G15 S1: WDDM 2.0 tells the driver an allocation became resident / was evicted. Our mapping happens in
+         * MAP/UNMAP_APERTURE_SEGMENT (both "common WDDMv1 and WDDMv2"), so nothing to do here. */
+        return STATUS_SUCCESS;
     default:
         return STATUS_NOT_SUPPORTED;
     }
@@ -434,16 +467,64 @@ NTSTATUS APIENTRY MwBuildPagingBuffer(IN_CONST_HANDLE hAdapter, DXGKARG_BUILDPAG
 
 /* ---- the UMD's question: where is this allocation on the GPU? ---- */
 
+/* H4a (notes/gpu-hw-path.md): the GOP framebuffer the panel scans (A->Fb, physically contiguous, from
+ * DxgkCbAcquirePostDisplayOwnership) mapped into the GPU's address space once, NoExec, so that the UMD can copy
+ * DWM's frame into it with the GPU instead of three CPU passes. PASSIVE, after the GPU half is up. */
+void MwMapScanout(MW_ADAPTER *A)
+{
+    ULONG pages;
+    PFN_NUMBER *pfn;
+    ULONG64 va = 0;
+    NTSTATUS st = STATUS_UNSUCCESSFUL;
+
+    if (!A->GpuUp || A->FbVa == NULL || A->FbSize == 0 || A->Fb.PhysicAddress.QuadPart == 0)
+        return;
+    pages = (ULONG)((A->FbSize + PAGE_SIZE - 1) >> PAGE_SHIFT);
+    pfn = (PFN_NUMBER *)ExAllocatePool2(POOL_FLAG_NON_PAGED, (SIZE_T)pages * sizeof(PFN_NUMBER), MW_TAG);
+    if (pfn == NULL)
+        return;
+    for (ULONG i = 0; i < pages; i++)
+        pfn[i] = (PFN_NUMBER)((A->Fb.PhysicAddress.QuadPart >> PAGE_SHIFT) + i);
+    ExAcquireFastMutex(&A->MmuLock);
+    if (MkVaAlloc(&A->Gpu, pages, FALSE, &va)) {
+        st = MkMmuMapPages(&A->Gpu, va, pfn, pages, TRUE);
+        if (!NT_SUCCESS(st))
+            MkVaFree(&A->Gpu, va, pages);
+    }
+    ExReleaseFastMutex(&A->MmuLock);
+    ExFreePoolWithTag(pfn, MW_TAG);
+    A->ScanoutGpuVa = NT_SUCCESS(st) ? va : 0;
+    MwLog(A, L"ScanoutGpuVa", (ULONG)A->ScanoutGpuVa);
+    MwLog(A, L"ScanoutMap", (ULONG)st);
+}
+
+NTSTATUS MwEscapeScanout(MW_ADAPTER *A, const DXGKARG_ESCAPE *Esc, MW_ESCAPE_SCANOUT_DATA *D)
+{
+    if (D->hAllocation != 0) {
+        MW_ALLOCATION *alloc;
+
+        if (Esc->hDevice == NULL)
+            return STATUS_INVALID_PARAMETER;
+        alloc = MwAllocationFromHandle(A, (D3DKMT_HANDLE)D->hAllocation);
+        if (alloc == NULL)
+            return STATUS_INVALID_HANDLE;
+        alloc->GpuPresented = A->ScanoutGpuVa != 0;
+    }
+    D->GpuVa = A->ScanoutGpuVa;
+    D->Width = A->Fb.Width;
+    D->Height = A->Fb.Height;
+    D->Pitch = A->Fb.Pitch;
+    D->Format = (mw_u32)A->Fb.ColorFormat;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS MwEscapeAllocInfo(MW_ADAPTER *A, const DXGKARG_ESCAPE *Esc, MW_ESCAPE_ALLOC_INFO_DATA *D)
 {
-    DXGKARGCB_GETHANDLEDATA get = {0};
     MW_ALLOCATION *alloc;
 
     if (Esc->hDevice == NULL)
         return STATUS_INVALID_PARAMETER;
-    get.hObject = (D3DKMT_HANDLE)D->hAllocation;
-    get.Type = DXGK_HANDLE_ALLOCATION;
-    alloc = (MW_ALLOCATION *)A->Dxgk.DxgkCbGetHandleData(&get);
+    alloc = MwAllocationFromHandle(A, (D3DKMT_HANDLE)D->hAllocation);
     if (alloc == NULL)
         return STATUS_INVALID_HANDLE;
     D->GpuVa = alloc->GpuVa;

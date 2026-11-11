@@ -50,6 +50,10 @@
       leaves them in agreement.
 **/
 
+#ifndef BEYOND0LTE_UFS_GSIV
+#define BEYOND0LTE_UFS_GSIV  281   // real UFS line (VERIFIED, default since 2026-10-19 with driver w45); 259 = the old parked line. PAIRING RULE: 281 needs Exynos9820Ufs.sys >= w43
+#endif
+
 DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
 {
     Scope (\_SB)
@@ -239,9 +243,13 @@ DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
                 // GSIV 259 = GIC SPI 227, which has no consumer in the device tree,
                 // so the line never asserts. The miniport completes by polling with
                 // UTRD IOC cleared and a no-op ISR, so a level-triggered parked line
-                // is inert. The real UFS line is GSIV 274 / SPI 242 and stays absent.
+                // is inert. The real UFS line is GSIV 281 / SPI 249 (VERIFIED 2026-10-19: TWRP
+                // /proc/interrupts "GIC-0 281 Edge ufshcd"; stock DT interrupts <0 0xf9 0>; the
+                // earlier "274 / SPI 242" here was wrong). BEYOND0LTE_UFS_GSIV 281 connects it - ONLY
+                // with Exynos9820Ufs.sys >= w43, whose ISR acknowledges IS armed or not (an older
+                // driver's ISR returns FALSE -> level-interrupt storm). notes/ufs-async-plan.md stage 3.
                 //
-                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 259 }
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { BEYOND0LTE_UFS_GSIV }
             })
             Method (_STA, 0, NotSerialized) { Return (0x0F) }
         }
@@ -400,6 +408,65 @@ DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
             Method (_STA, 0, NotSerialized)
             {
                 If (LEqual (WLNS, 0x4E414C57)) { Return (0x0F) }
+                Return (Zero)
+            }
+        }
+
+        // D4c Bluetooth (notes/bt-driver.md, D4c-BT-DESIGN.md): the BT function of the same BCM4375, on the dedicated
+        // BT UART uart@10840000. Windows half = drivers/Exynos9820Bt (serialhcibus-based BthxDDI transport, direct MMIO).
+        // _CRS ORDER: the driver takes the first Memory (UART window, >= 0x100) and the first Interrupt.
+        // GSIV 440 = DT SPI 408 + 32 (Exynos9820.h EXYNOS_UART_BT_GSIV). No GpioInt hostwake: no GPIO controller
+        // device exists in this DSDT yet. NOT in _CRS (role latch by Beyond0LteBtUartDxe): CMU_PERIC1 UART_BT clock,
+        // gpq0 pin mux, USI mode register, bt_en gpm8-0. _HID SAMS9829 (SAMS9826 is BAT0).
+        // Present only when this boot's Beyond0LteBtUartDxe latched the role: progress word [11] = 'BTH0' (0x30485442)
+        // at 0x8FE0F02C; the DXE clears it at entry every boot.
+        Device (BTH0)
+        {
+            Name (_HID, "SAMS9829")
+            Name (_UID, Zero)
+            Name (_CCA, Zero)
+            Name (_CRS, ResourceTemplate ()
+            {
+                Memory32Fixed (ReadWrite, 0x10840000, 0x00000100)  // VERIFIED uart@10840000 reg (base.dtb)
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive)
+                {
+                    440  // VERIFIED: SPI 408 + 32
+                }
+            })
+            OperationRegion (BTST, SystemMemory, 0x8FE0F02C, 4)
+            Field (BTST, DWordAcc, NoLock, Preserve) { BTNS, 32 }
+            Method (_STA, 0, NotSerialized)
+            {
+                If (LEqual (BTNS, 0x30485442)) { Return (0x0F) }
+                Return (Zero)
+            }
+        }
+
+        // D10 video codec (notes/d10-mfc-main.md): the MFC v13 (ip_ver 0x1300). Windows half = drivers/Exynos9820Mfc.
+        // _CRS ORDER: driver takes the first Memory (MFC core window) and the first Interrupt (GSIV 370 = SPI 338 + 32).
+        // NOT in _CRS: pd-mfc (sboot leaves it on, UEFI R1 read), CMU_MFC clocks (on at hand-off), the two SYSMMUs
+        // (left in reset bypass: the driver uses physically contiguous buffers below 4 GiB, as UEFI R3/R4 proved).
+        // _HID SAMS982A (the branch's SAMS9828 is GPU0 on main).
+        // Present only when this boot's Beyond0LteMfcDxe saw pd-mfc on: progress word [13] = 'VIDC' (0x43444956) at
+        // 0x8FE0F034; the DXE clears it at entry every boot.
+        Device (VIDC)
+        {
+            Name (_HID, "SAMS982A")
+            Name (_UID, Zero)
+            Name (_CCA, Zero)
+            Name (_CRS, ResourceTemplate ()
+            {
+                Memory32Fixed (ReadWrite, 0x188D0000, 0x00010000)  // VERIFIED base.dtb /mfc@188D0000 reg
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive)
+                {
+                    370  // VERIFIED: DT cell 0x152 = SPI 338 + 32
+                }
+            })
+            OperationRegion (VDST, SystemMemory, 0x8FE0F034, 4)
+            Field (VDST, DWordAcc, NoLock, Preserve) { VDNS, 32 }
+            Method (_STA, 0, NotSerialized)
+            {
+                If (LEqual (VDNS, 0x43444956)) { Return (0x0F) }
                 Return (Zero)
             }
         }

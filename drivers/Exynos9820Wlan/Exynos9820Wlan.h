@@ -461,6 +461,11 @@
 #define DLOAD_CRC                   8              /* u32 */
 #define DLOAD_HDR_SIZE              12
 /* ---- milestone 6: WPA2-PSK join with the firmware supplicant (notes/m12-wifi-m6.md) ---- */
+#define WLC_SCB_AUTHORIZE           121            /* dhd wlioctl_defs.h:764, fmac fwil.h:59 BRCMF_C_SET_SCB_AUTHORIZE; in: peer MAC */
+#define WLC_GET_PM                  85             /* fmac fwil.h:51 BRCMF_C_GET_PM */
+#define WLC_SET_PM                  86             /* fmac fwil.h:52 BRCMF_C_SET_PM */
+#define WL_PM_FAST                  2              /* brcm80211 include/defs.h:76-78 PM_OFF 0 / PM_MAX 1 / PM_FAST 2 */
+#define WLC_GET_RATE                12             /* fmac fwil.h:18 BRCMF_C_GET_RATE: current rate, 500 kbit/s units */
 #define WLC_SET_INFRA               20             /* fmac fwil.h:20, dhd wlioctl_defs.h:622 */
 #define WLC_SET_SSID                26             /* fmac fwil.h:25, dhd wlioctl_defs.h:628 */
 #define WLC_SET_WSEC_PMK            268            /* fmac fwil.h:82, dhd wlioctl_defs.h:875 */
@@ -665,6 +670,28 @@
 #define MCST_RXF0OVFL               180            /* "receive fifo 0 overflows" wlioctl.h:4299 */
 #define MCST80_RXDTUCASTMBSS        76
 #define MCST80_RXF0OVFL             256            /* wlioctl.h:4505 */
+/* more wl_cnt_ge80mcst_v1_t fields (bcmdhd_101_16 wlioctl.h, all uint32: index x 4; the two above match it) */
+#define MCST80_TXALLFRM             0
+#define MCST80_TXACKFRM             12
+#define MCST80_RXANYERR             56
+#define MCST80_RXBADFCS             60
+#define MCST80_RXBADPLCP            64
+#define MCST80_RXCRSGLITCH          68
+#define MCST80_RXSTRT               72
+#define MCST80_RXDTOCAST            100
+#define MCST80_RXBEACONMBSS         132
+#define MCST80_RXRSPTMOUT           144
+#define MCST80_MISSBCN              156
+#define MCST80_TXUCAST              188
+#define MCST80_RXTOOLATE            212
+#define MCST80_TXRTSFRM             4
+#define MCST80_TXCTSFRM             8
+#define MCST80_TXDNLFRM             16
+#define MCST80_TXPHYERROR           36
+#define MCST80_RXRTSUCAST           88
+#define MCST80_RXCTSUCAST           92
+#define MCST80_RXACKUCAST           96
+#define MCST80_RXCTSOCAST           116
 #define CNT_HEX_MAX                 2048           /* host choice: hex dump cap (the run report is 32 KB) */
 #define PCIE2_MAILBOXMASK_REV64     0xC34          /* PCIMailBoxMask(rev >= 64), pcie_core.h:962 */
 #define PCIE2_MAILBOXMASK_OLD       0x4C

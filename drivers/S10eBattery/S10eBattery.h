@@ -110,6 +110,31 @@
 #define MAX77705_FG_RESISTOR_UNVERIFIED     2
 
 #define MAX77705_CHG_ADDR         0x69    /* [K] 0xD2 >> 1 */
+/* G18 H1 (notes/g18-hdmi-dp-alt.md): the USB-C / PD controller block, READ-ONLY. [K] = vendor
+ * include/linux/mfd/max77705-private.h (LineageOS lineage-23.2): USBC/MUIC client 0x4A (8-bit), registers
+ * UIC_HW_REV 0x00, UIC_FW_REV 0x01, UIC_INT..VDM_INT 0x02-0x05 (interrupt latches - NOT read here, a read would
+ * clear them), USBC_STATUS1 0x06, USBC_STATUS2 0x07, BC_STATUS 0x08, CC_STATUS0 0x0A, CC_STATUS1 0x0B,
+ * PD_STATUS0 0x0C, PD_STATUS1 0x0D. */
+#define MAX77705_USBC_ADDR        0x25    /* [K] 0x4A >> 1 */
+#define MAX77705_USBC_HW_REV      0x00
+#define MAX77705_USBC_STATUS1     0x06    /* 0x06..0x0D read as one 8-byte block */
+
+/* G18 H1b (notes/g18-hdmi-dp-alt.md): read-only window on the USB-C block for tools/phone/usbc/usbcwatch - a private
+   IOCTL on the battery device (preprocessed before BatteryClassIoctl): input S10E_USBC_READ_IN, output Length bytes
+   from Reg. Reading 0x02..0x05 clears those interrupt latches (nothing else consumes them under Windows). */
+#define IOCTL_S10E_USBC_READ      CTL_CODE(FILE_DEVICE_UNKNOWN, 0x8A0, METHOD_BUFFERED, FILE_READ_ACCESS)
+typedef struct _S10E_USBC_READ_IN { UCHAR Reg; UCHAR Length; } S10E_USBC_READ_IN;
+#define S10E_USBC_READ_MAX        128
+
+/* G18 H2 (notes/g18-h2-altmode-research.md): the max77705 opcode interface, ALLOWLISTED to the DP alt-mode entry
+   (no VBUS / role / charging writes - research section G): 0x55 SET_ALTERNATEMODE data 0x00/0x01/0x03, 0x48 SEND_VDM
+   with exactly the Discover Identity / Enter Mode / DP Configure payloads, 0x4B GET_VDM_RESP. The driver writes
+   [opcode, data] from reg 0x21, commits with 0x00 at 0x41 (when shorter than 32), polls UIC_INT 0x02 b7 (3 s) and
+   reads ReadLen + 1 reply bytes from 0x51 (byte 0 = the opcode). WRITE_REG: only the INT mask regs 0x0E..0x11. */
+#define IOCTL_S10E_USBC_OPCODE    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x8A1, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+#define IOCTL_S10E_USBC_WRITE_REG CTL_CODE(FILE_DEVICE_UNKNOWN, 0x8A2, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+typedef struct _S10E_USBC_OPCODE_IN { UCHAR Opcode; UCHAR DataLen; UCHAR ReadLen; UCHAR Data[32]; } S10E_USBC_OPCODE_IN;
+typedef struct _S10E_USBC_WRITE_IN { UCHAR Reg; UCHAR Value; } S10E_USBC_WRITE_IN;
 /* Charger watchdog (kernel max77705_charger.c set_wdtmr_kick / get_wdtmr_status, max77705_charger.h:124-245):
    CNFG_00 bit4 WDTEN; kick = CNFG_06 bits 1:0 <- 01 (WDTCLR); CHG_DTLS 0x0B = watchdog expired -> charging off.
    Linux kicks it on every health poll; under Windows nobody did, so the phone stopped charging (run batt1). */
@@ -118,6 +143,11 @@
 #define   MAX77705_MODE_OTG_ON              0xE   /* [K] BUCK+BOOST+OTG, charger off (UsbHw.h:320) */
 #define   MAX77705_MODE_CHG_OTG_ON          0xF   /* [K] same + charger engine (UsbHw.h:321) */
 #define MAX77705_CHG_CNFG_06      0xBD
+/* Charging-current limits (vendor max77705_charger.c :590-648, max77705-private.h:77/84, max77705_charger.h:194/275):
+   CHG_CNFG_02 0xB9 bits 5:0 CHG_CC fast-charge current, 50 mA steps (<= 2 -> 100 mA); CHG_CNFG_09 0xC0 bits 6:0
+   CHGIN_ILIM input current limit, (field + 1) x 25 mA. Read only (notes/battery-driver.md). */
+#define MAX77705_CHG_CNFG_02      0xB9
+#define MAX77705_CHG_CNFG_09      0xC0
 #define   MAX77705_CHG_CNFG_06_WDTCLR_MASK  0x03
 #define   MAX77705_CHG_CNFG_06_WDTCLR       0x01
 #define MAX77705_CHG_DETAILS_00   0xB3    /* [K] bits 6:5 CHGIN_DTLS (3 = VBUS valid) */
@@ -156,7 +186,12 @@ typedef struct _S10E_BATT_READING {
     UCHAR   ChgCnfg00;       /* CHG_CNFG_00 0xB7 (mode, bit4 WDTEN) */
     BOOLEAN Cnfg00Read;      /* ChgCnfg00 is valid */
     UCHAR   ChgCnfg06;       /* CHG_CNFG_06 0xBD before the watchdog kick - diagnostics */
+    UCHAR   ChgCnfg02;       /* CHG_CNFG_02 0xB9 (CHG_CC) - diagnostics, 0xFF = not read */
+    UCHAR   ChgCnfg09;       /* CHG_CNFG_09 0xC0 (CHGIN_ILIM) - diagnostics, 0xFF = not read */
     BOOLEAN WdtKicked;       /* the charger watchdog kick write succeeded this poll */
+    BOOLEAN UsbcRead;        /* G18 H1: the USB-C block answered */
+    UCHAR   UsbcRev[2];      /* UIC_HW_REV, UIC_FW_REV */
+    UCHAR   UsbcStatus[8];   /* 0x06 USBC_STATUS1 .. 0x0D PD_STATUS1 */
 } S10E_BATT_READING, *PS10E_BATT_READING;
 
 typedef struct _S10E_BATT_GLOBAL {

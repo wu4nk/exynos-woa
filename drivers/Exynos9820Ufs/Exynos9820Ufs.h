@@ -1560,6 +1560,10 @@ C_ASSERT(UFS_MAX_TRANSFER_LENGTH <= UFS_BOUNCE_SIZE);
 /* The multi-entry descriptor must collapse to the proven single-entry constant. */
 C_ASSERT(UFS_UTRD_PRDT_WORD_FOR(1) == UFS_UTRD_PRDT_WORD);
 C_ASSERT(UFS_UTRD_PRDT_WORD_FOR(UFS_PRDT_MAX_ENTRIES) == 0x08000800UL);
+C_ASSERT(UFS_LARGE_PRDT_ENTRIES * UFS_PRDT_ENTRY_SIZE <= 0xFFFFUL);                         /* 16-bit byte-encoded PRDTL */
+C_ASSERT(UFS_LARGE_TRANSFER_LENGTH <= (UFS_FMP_PRDT_DATA_BYTE_COUNT_MASK + 1UL));
+C_ASSERT(UFS_LARGE_UCD_REGION_SIZE == UFS_UCD_PRDT_OFFSET + UFS_LARGE_PRDT_ENTRIES * UFS_PRDT_ENTRY_SIZE);
+C_ASSERT(UFS_LARGE_UCD_REGION_SIZE <= UFS_BOUNCE_SIZE);   /* fits the firmware-pool bounce area it takes over */
 /*
  * Worst-case workspace consumption when StorPortGetUncachedExtension hands back
  * a base that is maximally misaligned for every region in turn. Keeps the
@@ -1668,6 +1672,21 @@ typedef struct _UFS_PRAM_SIGNATURE {
     UCHAR LastDataInBlock1[UFS_LAST_DATA_PREFIX];
 } UFS_PRAM_SIGNATURE, *PUFS_PRAM_SIGNATURE;
 
+#define UFS_MAX_SLOTS                        4UL          /* w46: transfer-request slots used (UTRL holds 32) */
+#define UFS_ALL_SLOTS_MASK                   ((1UL << UFS_MAX_SLOTS) - 1UL)
+
+typedef struct _UFS_SLOT {            /* w46: per-slot resources and the command it carries */
+    PUCHAR Ucd;
+    STOR_PHYSICAL_ADDRESS UcdPhysical;
+    PUCHAR Bounce;                    /* coherent RAM bounce (cached; Bounce == BounceCached for the slot) */
+    STOR_PHYSICAL_ADDRESS BouncePhysical;
+    PSCSI_REQUEST_BLOCK Srb;          /* outstanding async command, or NULL */
+    UFS_COMMAND_DIRECTION Direction;
+    ULONG DataLength;
+    ULONGLONG DoorbellTick;
+    ULONGLONG Start100ns;
+} UFS_SLOT, *PUFS_SLOT;
+
 typedef struct _UFS_ADAPTER_EXTENSION {
     PUCHAR Hci;
     ULONG HciLength;
@@ -1716,6 +1735,12 @@ typedef struct _UFS_ADAPTER_EXTENSION {
     STOR_PHYSICAL_ADDRESS BouncePhysical;
     PUCHAR BounceCached;      /* m15 w34: cacheable view of the bounce pages, READ copy-back only (or NULL) */
     ULONG DcacheLineSize;     /* from CTR_EL0.DminLine */
+    BOOLEAN BounceCoherent;   /* w40: UFS DMA IO-coherent + UFS_IO_COHERENT_BOUNCE -> bounce data via BounceCached only */
+    ULONG MaxTransfer;        /* w42: per-command byte limit (UFS_MAX_TRANSFER_LENGTH, or UFS_LARGE_TRANSFER_LENGTH) */
+    ULONG PrdtMaxEntries;     /* w42: PRDT entries available in the UCD */
+    ULONG UcdRegionSize;      /* w42: bytes of the (possibly relocated) UCD */
+    ULONG BounceSize;         /* w42: bytes of the bounce */
+    ULONG IoCoherencyValue;   /* w40: SYSREG_FSYS1+0x700 as read at FindAdapter (diagnostics) */
     ULONG Capabilities;
     ULONG InitialHostStatus;
     ULONG InitialInterruptStatus;
@@ -1856,6 +1881,23 @@ typedef struct _UFS_ADAPTER_EXTENSION {
     ULONG GptHeadersTranslated;
     ULONG GptHeadersRejected;
     volatile LONG InterruptCallbacks;
+    volatile LONG IsrLatchedStatus;   /* w43: IS bits the ISR acknowledged, merged by UfsAcknowledgeInterruptStatus */
+    volatile LONG IsrTransferCompletions;   /* w43: ISR invocations that saw UTRCS */
+    ULONG ArmedInterruptEnable;       /* w43: IE value the command path expects (0 = gated, as before) */
+    ULONG LastNexus;                  /* w47: NEXUS value last written + read back (0 = rewrite) */
+    STOR_DPC CompletionDpc;           /* w44: async completion DPC (passive init) */
+    PVOID AsyncTimer;                 /* w44: extended backstop timer (passive init) */
+    volatile BOOLEAN AsyncReady;      /* w44: DPC + timer initialised */
+    BOOLEAN AsyncDisabled;            /* w44: sticky off for this boot (too many backstop completions) */
+    ULONG NumSlots;                   /* w46: slots with resources (1 = slot 0 only) */
+    ULONG CurrentSlot;                /* w46: slot whose TRD/UCD/bounce the build/finish code uses */
+    ULONG OutstandingMask;            /* w46: slots carrying an async command (StartIo lock) */
+    BOOLEAN WriteOutstanding;         /* w46: an async write is outstanding (admits nothing else) */
+    UFS_SLOT Slot[UFS_MAX_SLOTS];
+    ULONG AsyncIssued;
+    ULONG AsyncTimerCompletions;
+    BOOLEAN CommandAsync;             /* w45: the command being built goes async */
+    BOOLEAN CommandIoc;               /* w45: the command being built requests the completion interrupt */
     UFS_DIAGNOSTIC_DATA Diagnostic;
 
     /*

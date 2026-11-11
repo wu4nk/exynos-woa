@@ -27,9 +27,11 @@
 
 #define MW_TAG                  'dwlM'
 #define MW_SEGMENT_ID           1           /* the aperture segment */
-/* 1 GiB of GPU VA that VidMm commits system pages into (not a carve-out). The S10e gives Windows 5.24 GiB; the
- * VA allocator spans MK_VA_START..MK_VA_END, so this must stay below 4 GB - 32 MB (notes/gpu-m16-g10.md). */
-#define MW_SEGMENT_SIZE         (1024ULL * 1024 * 1024)
+/* GPU VA that VidMm commits system pages into (not a carve-out). The S10e gives Windows 5.24 GiB; the VA allocator
+ * spans MK_VA_START..MK_VA_END, so this must stay below 4 GB - 32 MB (notes/gpu-m16-g10.md). G-game (notes/
+ * g17-dxva-mfc.md): 1 GiB was the whole system's budget - DWM + Explorer held ~900 MB and a Unity game got
+ * D3DERR_OUTOFVIDEOMEMORY; 2.5 GiB = about half of RAM, the usual integrated-GPU share. A limit, not a reservation. */
+#define MW_SEGMENT_SIZE         (2560ULL * 1024 * 1024)
 #define MW_QUEUE_DEPTH          16          /* submissions the KMD holds */
 
 #define MW_W2(x)                L##x
@@ -45,9 +47,9 @@
 /* ---- the GOP framebuffer the firmware leaves (Exynos9820.h EXYNOS_FB_*, SimpleFramebufferDxe.c:420-430) ----
  * Only compared with what dxgkrnl reports (FbMatchesGop); dxgkrnl's values are the ones used. */
 #define MW_GOP_FB_PA            0xCA000000ULL   /* EXYNOS_FB_BASE (VERIFIED, s3cfb.bootloaderfb; same on the S10) */
-/* Board switch: EXYNOS9820_BOARD_BEYOND1 = 1 for the Galaxy S10 (MSBuild /p:ExynosBoardBeyond1=1, set by the S10
- * kit's build-s10.cmd), the values of firmware Exynos9820Board.h. Only FbMatchesGop uses them: the driver itself
- * takes the geometry dxgkrnl hands over (DxgkCbAcquirePostDisplayOwnership), so it is board-agnostic. */
+/* S10 port: board switch EXYNOS9820_BOARD_BEYOND1 = 1 for the Galaxy S10 (MSBuild /p:ExynosBoardBeyond1=1, set by the
+ * S10 kit's build-s10.cmd), the values of firmware Exynos9820Board.h. The driver takes the geometry dxgkrnl hands over;
+ * these only decide FbMatchesGop / the H4b re-stride (never on the S10: its 5760-byte line is 64-byte aligned already). */
 #ifndef EXYNOS9820_BOARD_BEYOND1
 #define EXYNOS9820_BOARD_BEYOND1 0
 #endif
@@ -61,6 +63,75 @@
 #define MW_GOP_PITCH            (1080u * 4u)    /* EXYNOS_FB_STRIDE_PIXELS * 4 (GOP PixelBlueGreenRedReserved8) */
 #endif
 
+/* ---- H4b: re-striding the scan-out to a Panfrost-aligned line (notes/gpu-hw-path.md) ----
+ * Panfrost renders linear surfaces only with a 64-byte-aligned pitch; the GOP's 4320 is not. With
+ * Parameters\ScanoutStride = 1088 (pixels) the KMD widens the DPU's source buffer to 1088 px = 4352 B per line
+ * (IMG_SIZE, the visible 1080 px, unchanged), moves the rows and reports Fb.Pitch 4352. Any other value = off. */
+#if EXYNOS9820_BOARD_BEYOND1
+#define MW_FB_RESERVED          0x01200000u     /* EXYNOS_FB_RESERVED_SIZE on the S10 (Exynos9820Board.h, 18 MiB) */
+#else
+#define MW_FB_RESERVED          0x00A00000u     /* EXYNOS_FB_RESERVED_SIZE (firmware #116; #115 reserves 0x965000) */
+#endif
+#define MW_DPU_G0_PA            0x19071000ULL   /* EXYNOS_DPU_DMA_G0_BASE (VERIFIED: DT + h3k peek) */
+#define MW_IDMA_SRC_SIZE        0x10u           /* WIDTH 15:0, HEIGHT 29:16 = the full buffer (Samsung regs-dpp.h) */
+#define MW_IDMA_IMG_SIZE        0x18u           /* the cropped image */
+#define MW_IDMA_IN_BASE_ADDR_Y  0x40u
+#define MW_DECON_PA             0x19030000ULL   /* EXYNOS_DECON_F_BASE (VERIFIED) */
+#define MW_DECON_SHADOW_REQ     0x60u           /* SHADOW_REG_UPDATE_REQ (Samsung cal_9820/regs-decon.h; UNVERIFIED) */
+#define MW_DECON_SHADOW_GLOBAL  0x80000000u     /* SHADOW_REG_UPDATE_REQ_GLOBAL bit 31 (UNVERIFIED) */
+#define MW_DECON_TRIG_CONTROL   0x70u           /* HW_SW_TRIG_CONTROL, logged only */
+/* 2026-10-14 (first human look at a re-strided panel: sheared): GLOBAL alone never moved the active SRC_SIZE. */
+#define MW_DECON_SHADOW_WINS    0x0000003Fu     /* WIN(0..5) = Samsung's FOR_DECON mask; GLOBAL|WINS fixed the panel
+                                                   live (poke 2) - or poke 3 did, see below; which one is logged */
+#define MW_IDMA_ENABLE          0x00u           /* IDMA_ENABLE (Samsung regs-dpp.h): bit 2 OP_STATUS (reads 0x04) */
+#define MW_IDMA_SFR_UPDATE_FORCE 0x10u          /* IDMA_SFR_UPDATE_FORCE bit 4 (regs-dpp.h; self-clearing on device) */
+#define MW_IDMA_LATCHED         0x800u          /* the latched SFR copy (dpp_reg.c "DPU_DMA SHADOW SFR DUMP" at
+                                                   +0x800): +0x810 read 0x08E80440 only once the panel was right */
+#define MW_RESTRIDE_PIXELS      1088u           /* 1088 * 4 = 4352 = 68 * 64 */
+
+/* ---- panel commands (panel.c; notes/brightness-research.md D1-D10). Offsets/bits are Samsung cal_9820 regs-decon.h /
+ * regs-dsim.h; "D10" = exercised on the S10e under Windows on 2026-10-14 with the expected result. ---- */
+#define MW_DECON_GLOBAL_CONTROL     0x00u       /* D10: reads 0x1011 from sboot, 0x1111 after the switch */
+#define MW_DECON_GLOBAL_OPMODE_CMD  0x100u      /* OPERATION_MODE bit 8: 1 = command mode (D10) */
+#define MW_DECON_GLOBAL_RUN_STATUS  0x10u       /* RUN_STATUS bit 4 (read only here) */
+#define MW_DSIM_PA                  0x19080000ULL   /* EXYNOS_DSIM_BASE (VERIFIED, Exynos9820.h) */
+#define MW_DSIM_MIPI_STATUS         0x18u       /* D6/D10 */
+#define MW_DSIM_MIPI_FRM_PROCESSING 0x20000000u /* bit 29 (D10: drops between frames once DECON is in command mode) */
+#define MW_DSIM_CONFIG              0x4Cu       /* D1: 0x04807cff */
+#define MW_DSIM_CONFIG_VIDEO_MODE   0x40000u    /* bit 18, 0 = command mode (D1) */
+#define MW_DSIM_INTSRC              0x50u       /* write-1-to-clear (D10) */
+#define MW_DSIM_INTSRC_RX_DATA_DONE 0x40000u    /* bit 18 (D10) */
+#define MW_DSIM_PKTHDR              0x58u       /* DT | data0 << 8 | data1 << 16 | BTA << 24 (D10) */
+#define MW_DSIM_PKTHDR_BTA          0x01000000u
+#define MW_DSIM_PAYLOAD             0x5Cu       /* D10 */
+#define MW_DSIM_RXFIFO              0x60u       /* D10: DT | d0 << 8 | d1 << 16 for short responses */
+#define MW_DSIM_FIFOCTRL            0x68u
+#define MW_DSIM_FIFOCTRL_EMPTY_RX   0x1000u     /* bit 12 (D10) */
+#define MW_DSIM_FIFOCTRL_EMPTY_PH   0x400u      /* bit 10 (D10) */
+#define MW_DSIM_CMD_STATUS          0x8Cu       /* logged only (ABNORMAL_CAUSE, 8 from sboot) */
+#define MW_DSIM_WRITE_TIMEOUT_MS    50u         /* Samsung dsim.h MIPI_WR_TIMEOUT */
+#define MW_DSIM_READ_TIMEOUT_MS     100u        /* MIPI_RD_TIMEOUT */
+#define MW_DSI_DCS_LONG_WRITE       0x39u
+#define MW_DSI_DCS_SHORT_WRITE      0x05u
+#define MW_DCS_DISPLAY_OFF          0x28u       /* MIPI DCS set_display_off */
+#define MW_DCS_DISPLAY_ON           0x29u       /* MIPI DCS set_display_on */       /* MIPI DSI data types (spec, not SoC-specific) */
+#define MW_DSI_SET_MAX_RETURN       0x37u
+#define MW_DSI_DCS_READ             0x06u
+#define MW_DSI_RESP_SHORT1          0x21u
+#define MW_DSI_RESP_SHORT2          0x22u
+/* AOR (B1) 0x08D4 = Samsung's 2-nit row (s6e3fa7 dimming_aor_table row 0, UNVERIFIED on device as a luminance): the
+ * value used for brightness 0 %. Never exceeded, and 100 % is sboot's own AOR read back at start (D10: 0x0014). */
+#define MW_PANEL_AOR_MIN_LUMA       0x08D4u
+/* Firmware hand-off (UEFI SimpleFramebufferDxe): the WINPRAM progress page, a firmware choice (Beyond0LteBootLog.h
+ * BEYOND0LTE_WINPRAM_BASE + 0xF000), reserved RAM that survives a warm reset; SEC clears only words [2]..[4]. */
+#define MW_PANEL_HANDOFF_PA         0x8FE0F000ULL
+#define MW_PANEL_HANDOFF_LEVEL      6u          /* word [6]: 'BR' << 16 | level 0..100, written after every fade */
+#define MW_PANEL_HANDOFF_AOR0       7u          /* word [7]: 'A0' << 16 | sboot's AOR, written by UEFI every boot */
+#define MW_PANEL_TAG_LEVEL          0x4252u     /* 'BR' */
+#define MW_PANEL_TAG_AOR0           0x4130u     /* 'A0' */
+#define MW_PANEL_RAMP_STEP          5u          /* brightness fade: levels per tick (user: steps of 5 % every tick) */
+#define MW_PANEL_RAMP_TICK_MS       16u         /* ~one 60 Hz frame; the write itself waits for a frame gap too */
+
 /* ---- modes ---- */
 typedef enum _MW_MODE {
     MwModeDisplayOnly = 0,      /* KMDOD */
@@ -72,9 +143,31 @@ extern MW_MODE MwMode;          /* set once in DriverEntry */
 /* Parameters\SoftVsync (default 1): the full adapter reports a 60 Hz software vsync while dxgkrnl has it enabled
  * (command.c); 0 = the original's behaviour (ControlInterrupt says yes, no vsync is ever reported). */
 extern ULONG MwSoftVsync;
+/* Parameters\ScanoutStride (default 0 = off): see MW_RESTRIDE_PIXELS (display.c MwRestride). */
+extern ULONG MwScanoutStride;
+extern ULONG MwOfferRotation;
+/* Parameters\ScaledModes (default 1 since 1.0.68.1 - user-validated in landscape and portrait; 0 = off): G20 - one lower desktop mode (2/3 of the panel, 720x1520), stretched onto the
+ * panel by the present path (display.c ScaledOn). */
+extern ULONG MwScaledModes;
+/* Parameters\RgbaModes (default 1): G22 - every source mode is offered in A8B8G8R8 (DXGI R8G8B8A8) as well as A8R8G8B8
+ * (display.c AddOneSourceMode); 0 = A8R8G8B8 only, the old mode list. */
+extern ULONG MwRgbaModes;
+/* Parameters\PanelCmdMode / PanelBrightness (default 1 / 1): panel.c. */
+extern ULONG MwPanelCmdMode;
+extern ULONG MwPanelBrightness;
+/* Parameters\CddDwmInterop (default 1): DXGK_PRESENTATIONCAPS.DriverSupportsCddDwmInterop (adapter.c). */
+extern ULONG MwCddDwmInterop;
+extern ULONG MwWddm2;
+extern ULONG MwWddm2Va;
+extern ULONG MwWddm2Quirk;
+extern ULONG MwWddm2Gpummu;
+extern ULONG MwDirectFlip;
+extern ULONG MwCpuOnDemand;   /* adapter.c: Parameters\CpuVisibleOnDemand */
+extern ULONG MwFlipIndependent;
 /* Parameters\FlipBlt (default 1): a Flip present is carried out as a CPU copy of the new primary into the GOP
  * framebuffer (command.c); 0 = the original's behaviour (flips are dropped, the panel never shows them). */
 extern ULONG MwFlipBlt;
+extern ULONG MwDeferPresent;   /* G32: Parameters\DeferPresent */
 /* Parameters\RecommendVidPn (default 1): the full adapter answers RecommendFunctionalVidPn with its one path and
  * mode pinned (display.c); 0 = the original's "no recommendation". Display-only never recommends (malidod). */
 extern ULONG MwRecommendVidPn;
@@ -93,15 +186,6 @@ extern ULONG MwRefresh601;
  * SetVidPnSourceAddress, the software vsync "latches" the new primary (CPU copy into the GOP fb) and reports its
  * address (command.c). 0 = no flip caps (DMA flips, FlipBlt at SubmitCommand). */
 extern ULONG MwFlipMmio;
-/* Parameters\ScanoutDirect (default 1, G2b-3 run 31; 1.0.36: only MW_ALLOC_FBALIAS allocations): with FlipMmio, an
- * allocation the UMD marks MW_ALLOC_FBALIAS, with the GOP framebuffer's exact geometry, is mapped for the GPU onto
- * the framebuffer's own pages (memory.c MapScanoutDirect); the UMD copies each finished DWM frame into it, so while
- * one is mapped a flip of a framebuffer-sized primary needs no CPU copy (command.c Latch). 1.0.35 mapped DWM's
- * primaries themselves (run 32: 20-34 frames/s, but flicker / ghost edges / tearing - every intermediate state of a
- * frame was on screen). 0 = every latch copies the primary
- * into the framebuffer on the CPU, as before (17.5 MB from uncached memory inside the vsync DPC: 50-130 ms per frame
- * on the S10, DWM stuck at 2-13 frames/s, the vsync starved to ~22 Hz - gpubench v1.0). */
-extern ULONG MwScanoutDirect;
 
 /* ---- objects ---- */
 
@@ -111,6 +195,7 @@ typedef struct _MW_ALLOCATION {
     ULONG Flags;                /* MW_ALLOC_* */
     ULONG64 GpuVa;              /* reserved at creation, fixed for life */
     BOOLEAN Mapped;             /* resident: pages mapped at GpuVa */
+    BOOLEAN GpuPresented;       /* H4a: the UMD copies this primary's frame into the framebuffer on the GPU */
     /* Standard allocations (primary, shadow, staging) the runtime creates. */
     UINT Width, Height, Pitch;
     D3DDDIFORMAT Format;
@@ -122,12 +207,10 @@ typedef struct _MW_ALLOCATION {
      * matched against for flips that come without hAllocation (UNVERIFIED form - the PRAM lookup lines check it). */
     ULONG64 SegAddress;
     ULONG64 SegOffset;          /* OffsetInPages * PAGE_SIZE alone, matched too */
-    /* ScanoutDirect: while mapped, GpuVa covers the GOP framebuffer's pages, not VidMm's (Mdl): the GPU's view of
-     * the primary IS the panel's picture. The CPU view (AllocationVa) is then stale - DoPresent reads FbVa instead. */
-    BOOLEAN ScanDirect;
 } MW_ALLOCATION;
 
 typedef struct _MW_ADAPTER MW_ADAPTER;
+void MwPresentDpc(MW_ADAPTER *A);   /* G32: command.c, from the DPC routine */
 
 typedef struct _MW_DEVICE {
     MW_ADAPTER *Adapter;
@@ -168,6 +251,10 @@ typedef struct _MW_SUBMISSION {
     ULONG FenceId;
     ULONG Count, Next;          /* commands, and the next one to start */
     MW_COMMAND Commands[MW_MAX_COMMANDS];
+    /* G32 (Parameters\DeferPresent): a present done when the submission reaches the head of the queue (every earlier
+     * job chain complete), by the DPC - not at SubmitCommand time, when the GPU may still be drawing its source */
+    BOOLEAN HasPresent;
+    MW_PRESENT_OP Present;
 } MW_SUBMISSION;
 
 struct _MW_ADAPTER {
@@ -183,6 +270,9 @@ struct _MW_ADAPTER {
     PUCHAR FbVa;
     SIZE_T FbSize;
     BOOLEAN SourceVisible, PathActive;
+    ULONG Rotation;                 /* D3DKMDT_VIDPN_PRESENT_PATH_ROTATION of the active path (UpdateActiveVidPnPresentPath) */
+    ULONG SrcW, SrcH;               /* G20: the committed source mode's size (= Fb size unless a scaled mode is set) */
+    volatile LONG RgbaPresents;     /* G22: CPU presents from an A8B8G8R8 source (R/B swapped; first one -> PRAM) */
 
     /* GPU. MmuLock serialises the address allocator and the page tables. */
     MK_GPU Gpu;
@@ -192,6 +282,8 @@ struct _MW_ADAPTER {
 
     /* Submissions, shared with the ISR (DxgkCbSynchronizeExecution). */
     MW_SUBMISSION Queue[MW_QUEUE_DEPTH];
+    BOOLEAN PresentAtHead;      /* G32: the head submission's present waits for the DPC (Kick stops there) */
+    ULONG DeferredPresents;     /* G32: presents done by the DPC */
     ULONG QHead;                /* ring; QHead is the one running */
     volatile ULONG QCount;
     BOOLEAN Running;            /* a job chain of Queue[QHead] is on the GPU */
@@ -199,8 +291,8 @@ struct _MW_ADAPTER {
     ULONG RunningSlot;
     ULONG64 JobStart;           /* interrupt time the running chain started */
     ULONG LastSubmittedFence, LastCompletedFence;
+    ULONG LastCompletedFenceCopy;   /* S7a: node 1, the software copy/paging node (Wddm2 = 5) */
     ULONG JobsDone, JobsFailed, JobsTimedOut, ChainFlag;
-    ULONG JobStartRefused;     /* MkJobStart found the slot's NEXT still busy (command.c Kick) */
     ULONG LastJsStatus, LastFaultStatus;
     ULONG64 LastFaultAddress;
 
@@ -214,14 +306,11 @@ struct _MW_ADAPTER {
     ULONG Renders, Presents, Submits, DodPresents;
     ULONG PagingOps[16];
     ULONG Maps, MapFails, Unmaps, LastMapPages, Allocations;
-    /* MAP_APERTURE_SEGMENT calls that do not cover the allocation from its first page (MdlOffset != 0 or fewer
-     * pages): the GPU mapping (always at GpuVa) and AllocationVa (MDL page MdlOffset) assume whole maps.
-     * UNVERIFIED whether VidMm ever splits them; counted so a GpuEnable 1 run answers it (notes/gpu-s10-review.md). */
-    ULONG PartialMaps, LastPartialMdlOffset;
     NTSTATUS LastMapStatus;
     ULONG64 LastMapVa, LastAllocVa;
     ULONG Patches, PatchAllocations, PatchPatchLocations, PatchSegment0;
-    ULONG PresentBlts, PresentFills, PresentSkips;
+    ULONG PresentBlts, PresentFills, PresentSkips, PresentGpu;
+    ULONG64 ScanoutGpuVa;       /* H4a: the GOP framebuffer in the GPU address space (0 = not mapped) */
     ULONG64 PatchAddress0;
 
     /* PRAM trace heartbeat (pram.c): a 1 Hz timer from StartDevice to StopDevice, and what it reports. */
@@ -232,6 +321,7 @@ struct _MW_ADAPTER {
     /* Software vsync (command.c, Parameters\SoftVsync): a 60 Hz timer while dxgkrnl has CRTC_VSYNC enabled. */
     KTIMER VsTimer;
     KDPC VsDpc;
+    PEX_TIMER VsHrTimer;                /* high-resolution 60 Hz timer (ExAllocateTimer), NULL -> VsTimer above */
     volatile LONG VsEnabled;
     PHYSICAL_ADDRESS ScanoutAddress;    /* the last SetVidPnSourceAddress PrimaryAddress, reported with each vsync */
     /* FlipMmio: the primary SetVidPnSourceAddress named, copied to the GOP fb at the next vsync (ScanLock). */
@@ -247,9 +337,39 @@ struct _MW_ADAPTER {
     volatile LONG StdRefused;           /* bit per refused standard allocation type */
     volatile LONG Latches;
     volatile LONG IsrCalls, DpcCalls, VsyncTicks;
-    volatile LONG DirectMaps, DirectLatches;
-    volatile LONG FbAliasMapped;                /* 1.0.36: MW_ALLOC_FBALIAS allocations mapped onto the fb now */    /* ScanoutDirect: primaries mapped onto the fb, flips that needed no copy */
+
+    /* Panel commands and brightness (panel.c). PanelLock serialises every DSIM packet. */
+    volatile ULONG *PanelDsim, *PanelDecon, *PanelHandoff;
+    FAST_MUTEX PanelLock;
+    BOOLEAN PanelOk;            /* DECON in command mode, DSIM reaching frame boundaries, no command failure yet */
+    BOOLEAN BrightnessOk;       /* sboot's AOR read back: the brightness interface is offered */
+    volatile UCHAR Brightness;  /* target level from Windows (0-100) */
+    USHORT PanelAor0, PanelAor; /* sboot's AOR, and the one now on the panel */
+    ULONG PanelRxUnexpected;    /* last DCS reply word that was not the expected short response (0 = none) */
+    BOOLEAN PanelDisplayOn;     /* last DCS display on/off sent (TRUE at start: sboot leaves it on) */
+    volatile LONG PanelPowerChanges;
+    KEVENT RampEvent;           /* brightness fade (panel.c PanelRampThread): set by SetBrightness */
+    PVOID RampThread;           /* referenced thread object, NULL when not running */
+    volatile LONG RampStop;
+    /* Panel-off owner watch (panel.c, 2026-10-17): MW_ESCAPE_PANEL_POWER off references the escaping process (s10ekeys'
+     * blank window); if that process ends without sending "on" (killed by a shutdown, logoff, crash) the watcher lights
+     * the panel - otherwise the AMOLED stays dark over a live desktop / LogonUI ("Updates are underway" run). */
+    KEVENT PanelWatchEvent;     /* owner changed / stop */
+    PVOID PanelWatchThread;     /* referenced thread object, NULL when not running */
+    volatile LONG PanelWatchStop;
+    PVOID PanelOffOwner;        /* referenced PEPROCESS that turned the panel off, NULL when on / none */
+    KSPIN_LOCK PanelOwnerLock;
+    volatile LONG PanelOwnerExits; /* times the watcher relit the panel after the owner ended */
+    volatile UCHAR RampLevel;   /* level now on the panel (Brightness = the target) */
+    volatile LONG BrightnessQueries, BrightnessSets;
 };
+
+/* panel.c */
+void MwPanelStart(MW_ADAPTER *A);
+void MwPanelStop(MW_ADAPTER *A);
+void MwPanelDisplayPower(MW_ADAPTER *A, BOOLEAN On);
+void MwPanelEscapePower(MW_ADAPTER *A, BOOLEAN On);   /* escape: off makes the caller the owner (panel.c) */
+NTSTATUS MwPanelQueryInterface(MW_ADAPTER *A, PQUERY_INTERFACE Qi);
 
 /* ---- trace: Seen_<ddi>, Fail_<ddi> in the device's registry key ---- */
 void MwLog(MW_ADAPTER *A, PCWSTR Name, ULONG Value);
@@ -296,7 +416,11 @@ DXGKDDI_OPENALLOCATIONINFO MwOpenAllocation;
 DXGKDDI_CLOSEALLOCATION MwCloseAllocation;
 DXGKDDI_BUILDPAGINGBUFFER MwBuildPagingBuffer;
 NTSTATUS MwQuerySegment(MW_ADAPTER *A, const DXGKARG_QUERYADAPTERINFO *Info);
+NTSTATUS MwQuerySegment4(MW_ADAPTER *A, const DXGKARG_QUERYADAPTERINFO *Info);
+MW_ALLOCATION *MwAllocationFromHandle(MW_ADAPTER *A, D3DKMT_HANDLE h);
 NTSTATUS MwEscapeAllocInfo(MW_ADAPTER *A, const DXGKARG_ESCAPE *Esc, MW_ESCAPE_ALLOC_INFO_DATA *D);
+void MwMapScanout(MW_ADAPTER *A);
+NTSTATUS MwEscapeScanout(MW_ADAPTER *A, const DXGKARG_ESCAPE *Esc, MW_ESCAPE_SCANOUT_DATA *D);
 
 /* command.c: devices, contexts, render, submission, fences */
 DXGKDDI_CREATEDEVICE MwCreateDevice;
@@ -308,6 +432,7 @@ DXGKDDI_RENDERKM MwRenderKm;
 DXGKDDI_PRESENT MwPresent;
 DXGKDDI_PATCH MwPatch;
 DXGKDDI_SUBMITCOMMAND MwSubmitCommand;
+void MwCompleteNow(MW_ADAPTER *A, UINT Node, ULONG Fence);
 DXGKDDI_PREEMPTCOMMAND MwPreemptCommand;
 DXGKDDI_QUERYCURRENTFENCE MwQueryCurrentFence;
 DXGKDDI_RESETFROMTIMEOUT MwResetFromTimeout;
@@ -326,4 +451,5 @@ void MwScanoutRegister(MW_ADAPTER *A, MW_ALLOCATION *Alloc, BOOLEAN Mapped); /* 
 MW_ALLOCATION *MwScanoutLookup(MW_ADAPTER *A, ULONG64 PrimaryAddress);     /* display.c, any IRQL */
 void MwCommandInit(MW_ADAPTER *A);
 void MwCommandStop(MW_ADAPTER *A);
+void MwCommandFree(MW_ADAPTER *A);
 void MwArmPoll(MW_ADAPTER *A);

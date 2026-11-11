@@ -33,6 +33,7 @@
 #include <Guid/DebugImageInfoTable.h>
 #include <Library/IoLib.h>
 #include <Library/TimerLib.h>
+#include <Library/CacheMaintenanceLib.h>
 #include <Protocol/BlockIo.h>
 #include <Platform/Exynos9820.h>
 
@@ -40,6 +41,19 @@
 
 #define BEYOND0LTE_AUTO_RECOVERY  1   // W21: after the dump + flush, reboot into TWRP
 #define BEYOND0LTE_WINDOWS_PAIR   1   // W23: the boot after a Windows run saves \WINPRAM.BIN and goes to TWRP
+#ifndef BEYOND0LTE_DSS_DUMP
+#define BEYOND0LTE_DSS_DUMP  0   // m14: after a Windows death (stay.flg path) save log_s2d / log_arraydump heads to the ESP
+#endif
+//
+// m14 HW access-flag test (notes/m14-smp.md): 1 = at ExitBootServices make ntoskrnl 22621.1's HAFDBS check
+// report 0, so Windows keeps TCR_EL1.HA off on every core (like the stock Linux, CONFIG_ARM64_HW_AFDBM off).
+//
+#ifndef BEYOND0LTE_STAY_MAX_DEATHS
+#define BEYOND0LTE_STAY_MAX_DEATHS  2   // stay.flg is ignored after this many Windows deaths in a row (-> TWRP)
+#endif
+#ifndef BEYOND0LTE_NT_NO_HWAF
+#define BEYOND0LTE_NT_NO_HWAF  0
+#endif
 #define BEYOND0LTE_HANDOFF_WATCHDOG  1   // W24: arm WDT cl0 (82 s) at ExitBootServices - bring-up only
 //
 // W37 (user: "disable the reboot watchdog (add a flag)"): 1 = the 82 s watchdog stays armed into Windows
@@ -442,6 +456,147 @@ DumpMemoryToEsp (
   DEBUG ((DEBUG_ERROR, "DUMP %s 0x%lx+0x%lx -> %r\n", Name, (UINT64)Address, (UINT64)Size, Status));
 }
 
+/** m14 PC sampler: save the ring the parking code kept from the previous boot (PREV) as \PCSAMP.BIN, once. **/
+STATIC
+VOID
+DumpPcSamples (
+  VOID
+  )
+{
+  volatile UINT32  *Prev;
+
+  Prev = (volatile UINT32 *)(UINTN)BEYOND0LTE_PCSAMP_PREV;
+  if (Prev[0] != BEYOND0LTE_PCSAMP_MAGIC) {
+    return;
+  }
+
+  DumpMemoryToEsp (L"\\PCSAMP.BIN", (UINTN)BEYOND0LTE_PCSAMP_PREV, (UINTN)BEYOND0LTE_PCSAMP_SIZE);
+  Prev[0] = 0;
+}
+
+#if BEYOND0LTE_NT_NO_HWAF
+//
+// ntoskrnl.exe 10.0.22621.1 arm64, RVA 0xA7DCD0..0xA7DD1F: the HAFDBS check (unique in the file). Sections are
+// page aligned, so the run starts at page offset 0xCD0 wherever winload put that page. Word at +0x14 is changed.
+//
+STATIC CONST UINT8  mNtHwAfSig[0x50] = {
+  0x7F, 0x23, 0x03, 0xD5, 0xFD, 0x7B, 0xBE, 0xA9, 0xFD, 0x03, 0x00, 0x91, 0xBF, 0x13, 0x00, 0xB9,
+  0x28, 0x07, 0x38, 0xD5, 0x0A, 0x0D, 0x00, 0x12, 0xAA, 0x13, 0x00, 0xB9, 0x02, 0x00, 0x00, 0x14,
+  0xAA, 0x13, 0x40, 0xB9, 0x6A, 0x00, 0x00, 0x35, 0x00, 0x00, 0x80, 0x52, 0x08, 0x00, 0x00, 0x14,
+  0x48, 0x20, 0x38, 0xD5, 0x09, 0x01, 0x59, 0xB2, 0x5F, 0x09, 0x00, 0x71, 0x43, 0x00, 0x00, 0x54,
+  0x29, 0xF9, 0x57, 0x92, 0x49, 0x20, 0x18, 0xD5, 0x20, 0x00, 0x80, 0x52, 0xFD, 0x7B, 0xC2, 0xA8
+};
+#define NT_HWAF_PAGE_OFF    0xCD0u
+#define NT_HWAF_WORD_OFF    0x14u
+#define NT_HWAF_OLD         0x12000D0Au   // and w10, w8, #0xf   (w10 = HAFDBS)
+#define NT_HWAF_NEW         0x5280000Au   // mov w10, #0
+#define NT_HWAF_MAX_RANGES  64u
+
+STATIC UINT64  mHwAfBase[NT_HWAF_MAX_RANGES];
+STATIC UINT64  mHwAfEnd[NT_HWAF_MAX_RANGES];
+STATIC UINTN   mHwAfRanges;
+
+/** ReadyToBoot: keep the RAM ranges winload can still allocate from (adjacent ones merged). **/
+STATIC
+VOID
+NtHwAfCollect (
+  VOID
+  )
+{
+  EFI_MEMORY_DESCRIPTOR  *Map;
+  EFI_MEMORY_DESCRIPTOR  *Desc;
+  UINTN                  MapSize;
+  UINTN                  MapKey;
+  UINTN                  DescSize;
+  UINT32                 DescVersion;
+  UINT64                 End;
+
+  MapSize = 0;
+  Map     = NULL;
+  if (gBS->GetMemoryMap (&MapSize, NULL, &MapKey, &DescSize, &DescVersion) != EFI_BUFFER_TOO_SMALL) {
+    return;
+  }
+
+  MapSize += 8 * DescSize;
+  Map      = AllocatePool (MapSize);
+  if ((Map == NULL) || EFI_ERROR (gBS->GetMemoryMap (&MapSize, Map, &MapKey, &DescSize, &DescVersion))) {
+    if (Map != NULL) {
+      FreePool (Map);
+    }
+
+    return;
+  }
+
+  mHwAfRanges = 0;
+  for (Desc = Map; (UINT8 *)Desc < (UINT8 *)Map + MapSize; Desc = NEXT_MEMORY_DESCRIPTOR (Desc, DescSize)) {
+    if ((Desc->Type != EfiConventionalMemory) && (Desc->Type != EfiLoaderCode) && (Desc->Type != EfiLoaderData) &&
+        (Desc->Type != EfiBootServicesCode) && (Desc->Type != EfiBootServicesData))
+    {
+      continue;
+    }
+
+    End = Desc->PhysicalStart + EFI_PAGES_TO_SIZE ((UINTN)Desc->NumberOfPages);
+    if ((mHwAfRanges != 0) && (mHwAfEnd[mHwAfRanges - 1] == Desc->PhysicalStart)) {
+      mHwAfEnd[mHwAfRanges - 1] = End;
+    } else if (mHwAfRanges < NT_HWAF_MAX_RANGES) {
+      mHwAfBase[mHwAfRanges] = Desc->PhysicalStart;
+      mHwAfEnd[mHwAfRanges]  = End;
+      mHwAfRanges++;
+    }
+  }
+
+  FreePool (Map);
+  DEBUG ((DEBUG_ERROR, "HWAF: %u RAM range(s) to search at ExitBootServices\n", (UINT32)mHwAfRanges));
+}
+
+/**
+  ExitBootServices: winload has loaded ntoskrnl but not run it. Find the check (page offset 0xCD0 of a page in the
+  recorded ranges) and change its HAFDBS read to 0 - only when exactly one copy is found. Progress page words:
+  [8] copies found, [9]/[10] PA of the changed word (lo/hi), 0 when nothing was changed.
+**/
+STATIC
+VOID
+NtHwAfApply (
+  VOID
+  )
+{
+  volatile UINT32  *Progress;
+  UINT64           Page;
+  UINT64           Found;
+  UINTN            Range;
+  UINT32           Count;
+  UINT32           First;
+
+  Progress = (volatile UINT32 *)(UINTN)0x8FE0F000ULL;
+  Found    = 0;
+  Count    = 0;
+  CopyMem (&First, mNtHwAfSig, sizeof (First));
+  for (Range = 0; Range < mHwAfRanges; Range++) {
+    for (Page = ALIGN_VALUE (mHwAfBase[Range], SIZE_4KB); Page + SIZE_4KB <= mHwAfEnd[Range]; Page += SIZE_4KB) {
+      if ((*(volatile UINT32 *)(UINTN)(Page + NT_HWAF_PAGE_OFF) == First) &&
+          (CompareMem ((VOID *)(UINTN)(Page + NT_HWAF_PAGE_OFF), mNtHwAfSig, sizeof (mNtHwAfSig)) == 0))
+      {
+        Found = Page + NT_HWAF_PAGE_OFF + NT_HWAF_WORD_OFF;
+        Count++;
+      }
+    }
+  }
+
+  Progress[8]  = Count;
+  Progress[9]  = 0;
+  Progress[10] = 0;
+  if ((Count == 1) && (*(volatile UINT32 *)(UINTN)Found == NT_HWAF_OLD)) {
+    *(volatile UINT32 *)(UINTN)Found = NT_HWAF_NEW;
+    WriteBackDataCacheRange ((VOID *)(UINTN)Found, sizeof (UINT32));
+    InvalidateInstructionCacheRange ((VOID *)(UINTN)Found, sizeof (UINT32));
+    Progress[9]  = (UINT32)Found;
+    Progress[10] = (UINT32)(Found >> 32);
+  }
+
+  __asm__ __volatile__ ("dsb sy" ::: "memory");
+}
+#endif
+
 STATIC
 VOID
 EFIAPI
@@ -555,14 +710,17 @@ OnReadyToBoot (
             Root->Close (Root);
             DEBUG ((DEBUG_ERROR, "BootLog: clean Windows restart with torecovery.flg - saving its PRAM, then recovery\n"));
             DumpMemoryToEsp (L"\\WINPRAM.BIN", (UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);
+            DumpPcSamples ();   // m14 PC sampler ring of that run, if one was kept
             ZeroMem ((VOID *)(UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);
             FlushBootLog ("after-windows");
             RebootToRecovery ();
           }
 
           Root->Close (Root);
+          ((volatile UINT32 *)(UINTN)0x8FE0F000ULL)[12] = 0;   // clean restart: the death counter starts over
           DEBUG ((DEBUG_ERROR, "BootLog: Windows asked for this restart - saving its PRAM and continuing\n"));
           DumpMemoryToEsp (L"\\WINPRAM-RESTART.BIN", (UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);
+          DumpPcSamples ();   // m14 PC sampler ring of that run, if one was kept
           Root = OpenEspRoot ();
         } else if (!EFI_ERROR (Root->Open (Root, &Flag, L"\\WINRUN.FLG", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0))) {
           EFI_FILE_PROTOCOL  *Stay;
@@ -579,16 +737,54 @@ OnReadyToBoot (
             Stay->Close (Stay);
           }
 
+          //
+          // 2026-10-15 (user: "add some sort of safeguard in case of crashes like these to reboot to twrp"): with
+          // stay.flg a Windows that dies on every boot looped forever (hwaf8: watchdog reset -> Windows -> hang ->
+          // ...). Progress word [12] counts unexplained Windows deaths ('DE' << 16 | n). RAM survives the watchdog
+          // and key resets but not a cold power-on, and a clean OS restart clears it, so normal interactive use
+          // never trips it. The second death without a cold boot or clean restart in between goes to TWRP.
+          //
+          if (Interactive) {
+            volatile UINT32  *Progress;
+            UINT32           Deaths;
+
+            Progress     = (volatile UINT32 *)(UINTN)0x8FE0F000ULL;
+            Deaths       = ((Progress[12] >> 16) == 0x4445u) ? (Progress[12] & 0xFFFFu) + 1 : 1;
+            Progress[12] = 0x44450000u | Deaths;
+            if (Deaths >= BEYOND0LTE_STAY_MAX_DEATHS) {
+              DEBUG ((DEBUG_ERROR, "BootLog: Windows died %u times in a row - ignoring stay.flg, going to TWRP\n", Deaths));
+              Progress[12] = 0;
+              Interactive  = FALSE;
+            }
+          }
+
           Root->Close (Root);
           if (Interactive) {
             DEBUG ((DEBUG_ERROR, "BootLog: previous boot ran Windows (no restart marker) - interactive (stay.flg): "
                     "saving its PRAM and continuing\n"));
             DumpMemoryToEsp (L"\\WINPRAM.BIN", (UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);
-            ZeroMem ((VOID *)(UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);
+            DumpPcSamples ();   // m14 PC sampler ring of that run, if one was kept
+ #if BEYOND0LTE_DSS_DUMP
+            //
+            // m14: Samsung debug-snapshot areas a debug reset may have filled (live DT: log_s2d 0xEB310000,
+            // log_arraydump 0xEC810000 - both inside bank2, mapped as RAM here). First 1 MiB of each.
+            //
+            DumpMemoryToEsp (L"\\S2D.BIN", (UINTN)0xEB310000ULL, SIZE_1MB);
+            DumpMemoryToEsp (L"\\ARRAYDUMP.BIN", (UINTN)0xEC810000ULL, SIZE_1MB);
+ #endif
+            //
+            // This boot continues into Windows: keep the progress page (0x8FE0F000, the last 4 KiB of the
+            // dump). Its words [2..5] are this boot's 'USBH'/'WLAN'/'GPU0'/'NOAU' (set by the DXEs before
+            // ReadyToBoot) and the DSDT _STA of XHC0/WLAN/GPU0/AUD0 reads them; zeroing the whole dump hid
+            // XHC0, WLAN and GPU0 from Windows after every hard reset, and un-hid AUD0 despite noaudio.flg
+            // ('NOAU' hides it, 0 shows it) (2026-10-13, notes/m12-wifi-wificx.md).
+            //
+            ZeroMem ((VOID *)(UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP - SIZE_4KB);
             Root = OpenEspRoot ();
           } else {
             DEBUG ((DEBUG_ERROR, "BootLog: previous boot ran Windows - saving its PRAM, then recovery\n"));
             DumpMemoryToEsp (L"\\WINPRAM.BIN", (UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);
+            DumpPcSamples ();   // m14 PC sampler ring of that run, if one was kept
             ZeroMem ((VOID *)(UINTN)BEYOND0LTE_WINPRAM_BASE, (UINTN)BEYOND0LTE_WINPRAM_DUMP);   // one run per dump
             FlushBootLog ("after-windows");
             RebootToRecovery ();
@@ -628,6 +824,9 @@ OnReadyToBoot (
   // reason back to normal, watchdog re-armed for another 82 s (re-armed again at EBS).
   //
   OnExitBootServices (NULL, NULL);
+ #endif
+ #if BEYOND0LTE_NT_NO_HWAF
+  NtHwAfCollect ();
  #endif
   DEBUG ((DEBUG_ERROR, "BootLog: ReadyToBoot flush\n"));
   Status = FlushBootLog ("ReadyToBoot");
@@ -878,6 +1077,9 @@ OnExitBootServices (
   Wdt = (UINTN)EXYNOS_WDT_BASE;
   if (Event != NULL) {
     ((volatile UINT32 *)(UINTN)0x8FE0F000ULL)[1] = 0x72;   // W28 progress: ExitBootServices (Windows owns the CPU)
+ #if BEYOND0LTE_NT_NO_HWAF
+    NtHwAfApply ();
+ #endif
   }
 
   MmioWrite32 ((UINTN)EXYNOS_PMU_BASE + EXYNOS_PMU_INFORM3_OFFSET, EXYNOS_REBOOT_REASON_BASE);

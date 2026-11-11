@@ -118,3 +118,26 @@ is always recoverable - but the key timing gets harder as our firmware runs long
 - TWRP: the moment it goes black switch to **Volume Up + Bixby + Power** and keep holding until
   TWRP appears (releasing at the Samsung logo may boot our image again).
 - Rollback to Android: from TWRP write the stock `boot.img` back to `by-name/boot`.
+
+## 11. Windows internals: document, don't do
+
+When the easiest solution to a problem is something in Windows internals (checking or disassembling Windows
+system files/binaries, reading their internal code paths or undocumented structures), do not do it. Add an entry to
+[`notes/skipped-windows-internals.md`](notes/skipped-windows-internals.md) instead: "The best way to get the answer
+to this problem would have been to look at XXXX to solve the problem of YYYY, but due to security concerns I chose
+not to do that", plus what was done instead (our own instrumentation, documented sources, behavioural tests).
+
+## 12. Native only - no hacks as solutions
+
+Whatever is delivered must work natively: stock Windows, stock apps, default settings. Passing special arguments,
+flags or environment variables to a process (e.g. browser `--enable-angle-features=...`, `D3D10UMD_REDIRECT=1` in
+a test's environment) so that our driver works is **not** a solution. Such switches are allowed only as tracing /
+diagnosis tools for finding the native fix, and must be recorded as such in the notes. A milestone is reached only
+when it works without them.
+
+## 13. Stuck? Microsoft docs first
+
+When stuck - an unexplained failure code, unclear DDI/runtime behaviour, a rule the runtime enforces - research
+learn.microsoft.com (DDI reference, WDDM/DXGI/D3D design guides) **before** guessing or iterating blindly. Record
+what the docs say (URL + the sentence) in the task's notes file. Iterating by trial (build-test-build) without a
+docs check first is not allowed.

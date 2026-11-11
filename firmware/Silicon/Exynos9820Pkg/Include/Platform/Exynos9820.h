@@ -272,6 +272,22 @@
 #define EXYNOS_GICD_ISPENDRN_SIZE 0x0000000000000100ULL   // VERIFIED
 
 //
+// CoreSight per-core external debug blocks (stock dt.dtb /coresight@1e000000, compatible
+// "exynos,coresight": base 0x1E000000, each cpu node's dbg-offset; read with an FDT parser,
+// notes/m14-smp.md "PC sampler"). Listed in MADT GICC order: cl0 A55 x4, cl1 A75 x2, cl2 M4 x2.
+// Register offsets inside a block are the ARMv8 external debug map (architectural).
+//
+#define EXYNOS_CORESIGHT_BASE        0x000000001E000000ULL   // VERIFIED (DT base)
+#define EXYNOS_CS_DBG_CL0_CPU0       0x000000001E810000ULL   // VERIFIED (dbg-offset 0x810000)
+#define EXYNOS_CS_DBG_CL0_CPU1       0x000000001E910000ULL   // VERIFIED (dbg-offset 0x910000)
+#define EXYNOS_CS_DBG_CL0_CPU2       0x000000001EA10000ULL   // VERIFIED (dbg-offset 0xa10000)
+#define EXYNOS_CS_DBG_CL0_CPU3       0x000000001EB10000ULL   // VERIFIED (dbg-offset 0xb10000)
+#define EXYNOS_CS_DBG_CL1_CPU0       0x000000001EC10000ULL   // VERIFIED (dbg-offset 0xc10000)
+#define EXYNOS_CS_DBG_CL1_CPU1       0x000000001ED10000ULL   // VERIFIED (dbg-offset 0xd10000)
+#define EXYNOS_CS_DBG_CL2_CPU0       0x000000001E410000ULL   // VERIFIED (dbg-offset 0x410000)
+#define EXYNOS_CS_DBG_CL2_CPU1       0x000000001E510000ULL   // VERIFIED (dbg-offset 0x510000)
+
+//
 // ---------------------------------------------------------------------------
 // Architected generic timer  [UNVERIFIED on this SoC]
 //
@@ -604,6 +620,89 @@
 #define BCM4375_CHIP_ID           0x4375                  // VERIFIED (bcmdevs.h:520, read from chipcommon over BAR0 window)
 #define BCM4375_FW_RAM_BASE       0x00170000              // VERIFIED (CR4_4369_RAM_BASE, sbchipc.h:3285; dhd_pcie.c:1600-1602 maps 4375 to it)
 
+//
+// ---------------------------------------------------------------------------
+// Bluetooth: the BT function of the SAME BCM4375, on a dedicated UART (D4c, notes/bt-driver.md B3 + B6).
+// Ported from origin/drivers; bt_en and the clock/pin offsets are from B6 (this phone + lineage-22.2 tables).
+//
+// Transport: uart@10840000 (uart1, PERIC1 block), a USI v2 FIFO UART; its mode-select register is the 4-byte
+// usi@10821000. USI v2 UART quirks: USI_CON written 1 then 0 releases the reset, USI_OPTION bit1 CLKREQ_ON.
+// ---------------------------------------------------------------------------
+//
+#define EXYNOS_UART_BT_BASE       0x0000000010840000ULL   // VERIFIED (base.dtb uart@10840000 reg)
+#define EXYNOS_UART_BT_SIZE       0x0000000000000100ULL   // VERIFIED (same reg, size cell; fifo-size 0x100)
+#define EXYNOS_USI_BT_MODE_BASE   0x0000000010821000ULL   // VERIFIED (base.dtb usi@10821000 reg)
+#define EXYNOS_USI_BT_MODE_SIZE   0x0000000000000004ULL   // VERIFIED
+#define EXYNOS_USI_MODE_UART      0x1                     // VERIFIED (usi_v2.c UART_SW_CONF=1<<0)
+#define EXYNOS_UART_USI_CON_OFF   0xC4                    // VERIFIED (serial_s3c.h:46; 1=SET_RESET, 0=release)
+#define EXYNOS_UART_USI_OPT_OFF   0xC8                    // VERIFIED (serial_s3c.h:47; bit1 CLKREQ_ON, bit2 CLKSTOP_ON)
+#define EXYNOS_UART_BT_GSIV       440                     // VERIFIED (interrupts <0 0x198 0>: SPI 408 + 32)
+//
+// CMU_PERIC1 (EXYNOS_CMU_PERIC1_BASE) registers of the BT UART clock (cmucal-sfr.c / cmucal-node.c, B6).
+// The user mux's parent 0 is OSCCLK_PERIC1 (26 MHz), parent 1 CLKCMU_PERIC1_IP from CMU_TOP.
+//
+#define EXYNOS_CMU_PERIC1_UART_BT_MUX    0x01C0u          // VERIFIED (PLL_CON0_MUX_CLKCMU_PERIC1_UART_BT_USER: SEL bit4, BUSY bit7)
+#define EXYNOS_CMU_PERIC1_UART_BT_DIV    0x1814u          // VERIFIED (CLK_CON_DIV_DIV_CLK_PERIC1_UART_BT: ratio [3:0], BUSY bit16)
+#define EXYNOS_CMU_PERIC1_UART_BT_IPCLK  0x2098u          // VERIFIED (GOUT UART_BT IPCLK: CG_VAL bit21, MANUAL bit20)
+#define EXYNOS_CMU_PERIC1_UART_BT_PCLK   0x209Cu          // VERIFIED (GOUT UART_BT PCLK)
+#define EXYNOS_CMU_PERIC1_UART_BT_RSTN   0x2020u          // VERIFIED (RSTNSYNC_CLK_PERIC1_UART_BT clk gate)
+#define EXYNOS_CMU_PERIC1_UART_BT_QCH    0x3038u          // VERIFIED (QCH_CON_UART_BT_QCH: ENABLE bit0)
+#define EXYNOS_OSCCLK_HZ                 26000000u        // VERIFIED (CNTFRQ 26 MHz on every core; WDT fin_pll 26 MHz)
+//
+// Pins (base.dtb pinctrl states + exynos9820_pin_banks*, B6). Bank registers: CON +0 (4 bits/pin), DAT +4, PUD +8.
+//   ALIVE pinctrl@15850000: uart1-bus = gpq0-3..0 function 2 (UART); bt_hostwake = gpa2-3.
+//   PERIC0 pinctrl@10430000: bt_wake = gpg2-0 (function 1, out).
+//   CMGP pinctrl@15C30000: bt_en = gpm8-0 (this phone, androidboot.revision 26: live /proc/device-tree/bluetooth
+//   gpios[0] -> pinctrl@15C30000/gpm8; NOT the PCAL6524 expander of the older overlay).
+//
+#define EXYNOS_ALIVE_GPQ0_OFFSET  0x0A0u                  // VERIFIED (exynos9820_pin_banks0 "gpq0")
+#define EXYNOS_ALIVE_GPA2_OFFSET  0x040u                  // VERIFIED (exynos9820_pin_banks0 "gpa2")
+#define EXYNOS_PERIC0_GPG2_OFFSET 0x0C0u                  // VERIFIED (exynos9820_pin_banks5 "gpg2"; bank base EXYNOS_PERIC0_GPIO_BASE)
+#define EXYNOS_CMGP_GPM8_OFFSET   0x100u                  // VERIFIED (exynos9820_pin_banks2 "gpm8")
+#define EXYNOS_BT_UART_FN         0x2u                    // VERIFIED (uart1-bus samsung,pin-function <2>)
+#define EXYNOS_BT_UART_PINS       4u                      // gpq0-0 RXD, -1 TXD, -2 RTS, -3 CTS (uart1-bus pins 0..3)
+#define EXYNOS_BT_HOST_WAKE_PIN   3u                      // VERIFIED (gpa2-3)
+#define EXYNOS_BT_WAKE_PIN        0u                      // VERIFIED (gpg2-0)
+#define EXYNOS_BT_EN_PIN          0u                      // VERIFIED (gpm8-0, live read)
+//
+// Broadcom BT-over-UART vendor opcodes (semantics from mainline btbcm.c / hci_bcm.c, GPL reference only):
+#define BCM_HCI_OP_SET_BAUDRATE   0xFC18                  // VERIFIED (hci_bcm.c; u16 zero + u32 baud)
+#define BCM_HCI_OP_SET_UART_CLOCK 0xFC45                  // VERIFIED (hci_bcm.c; 1-byte clock type, used >3 Mbaud)
+#define BCM_HCI_OP_START_DOWNLOAD 0xFC2E                  // VERIFIED (btbcm.c btbcm_patchram start)
+#define BCM_HCI_OP_WRITE_RAM      0xFC4C                  // VERIFIED (record opcode of the device .hcd)
+#define BCM_HCI_OP_LAUNCH_RAM     0xFC4E                  // VERIFIED (last .hcd record)
+
+//
+// ---------------------------------------------------------------------------
+// Video codec / MFC (D10, notes/d10-mfc-main.md). Core, SYSMMUs, IRQs, ip_ver and register offsets ported from
+// origin/drivers (base.dtb + vendor mfc_regs.h reads there). Clock and power from lineage-22.2 (2026-10-15):
+//   - DT clock cell 422 = GATE_MFC (CLK_MFC_BASE 420 + 2) = HWACG_VCLK on MFC_QCH, i.e. a CMU_MFC clock
+//     (SFR_BLOCK(CMU_MFC, 0x18800000, 0x8000)) - NOT CMU_TOP as the branch assumed (its open question P5).
+//   - pd-mfc = PMU MFC_CONFIGURATION +0x2600 / MFC_STATUS +0x2604, bit0 (flexpmu_cal_local mfc_on: write, wait).
+//   CMU_MFC lives inside pd-mfc: read it (and the MFC) only while MFC_STATUS bit0 is 1.
+// ---------------------------------------------------------------------------
+//
+#define EXYNOS_MFC_BASE                0x00000000188D0000ULL   // VERIFIED (base.dtb /mfc@188D0000 reg)
+#define EXYNOS_MFC_SIZE                0x0000000000010000ULL   // VERIFIED
+#define EXYNOS_MFC_GSIV                370                     // VERIFIED (DT cell 0x152 = SPI 338, +32)
+#define EXYNOS_MFC_IP_VER              0x1300u                 // VERIFIED (base.dtb ip_ver)
+#define EXYNOS_MFC_SYSMMU0_BASE        0x0000000018890000ULL   // VERIFIED (base.dtb /sysmmu@18890000)
+#define EXYNOS_MFC_SYSMMU1_BASE        0x00000000188B0000ULL   // VERIFIED (base.dtb /sysmmu@188B0000)
+#define EXYNOS_MFC_SYSMMU_SIZE         0x0000000000009000ULL   // VERIFIED
+#define EXYNOS_MFC_SYSMMU0_GSIV        375                     // VERIFIED (SPI 343)
+#define EXYNOS_MFC_SYSMMU1_GSIV        377                     // VERIFIED (SPI 345)
+#define EXYNOS_CMU_MFC_BASE            0x0000000018800000ULL   // VERIFIED (cmucal-sfr.c SFR_BLOCK(CMU_MFC))
+#define EXYNOS_CMU_MFC_SIZE            0x0000000000008000ULL   // VERIFIED
+#define EXYNOS_CMU_MFC_MFC_USER_MUX    0x0100u                 // VERIFIED (PLL_CON0_MUX_CLKCMU_MFC_MFC_USER)
+#define EXYNOS_CMU_MFC_MFC_ACLK        0x2070u                 // VERIFIED (GOUT_BLK_MFC_UID_MFC_IPCLKPORT_ACLK)
+#define EXYNOS_CMU_MFC_MFC_QCH         0x3030u                 // VERIFIED (QCH_CON_MFC_QCH)
+#define EXYNOS_PMU_MFC_CONFIGURATION   0x2600u                 // VERIFIED (flexpmu mfc_on write bit0)
+#define EXYNOS_PMU_MFC_STATUS          0x2604u                 // VERIFIED (flexpmu mfc_on wait bit0)
+#define MFC_REG_RISC_ON                0x0000u                 // VERIFIED (branch: mfc_regs.h:24)
+#define MFC_REG_RISC_BASE_ADDR         0x0054u                 // VERIFIED (branch: mfc_regs.h:27)
+#define MFC_REG_MFC_RESET              0x1070u                 // VERIFIED (branch: mfc_regs.h:30)
+#define MFC_REG_MFC_VERSION            0xF028u                 // VERIFIED (branch: mfc_regs.h:51)
+
 // USI_CMGP3 mode register (hsi2c_45 is the USI_CMGP3 USI block). VERIFIED from the live DT (TWRP,
 // 2026-10-11): __symbols__/usi_03_cmgp -> /usi@15C22030, compatible "samsung,exynos-usi-v2",
 // usi_v2_mode "i2c", reg <0x15C22030 0x4>. M16 run 4: at UEFI handoff the USI was held in reset
@@ -886,6 +985,11 @@
 #define EXYNOS_DECON_F_SIZE       0x0000000000010000ULL   // VERIFIED
 #define EXYNOS_DECON_T_BASE       0x0000000019050000ULL   // VERIFIED (decon_t@0x19050000)
 #define EXYNOS_DECON_T_SIZE       0x0000000000010000ULL   // VERIFIED (live DTB reg, notes/s10e-dtb-mmio.md S02)
+// DPU_DMA (IDMA) scan-out channel G0: dpp@0x19071000 reg[0] (TWRP DT read 2026-10-14, notes/gpu-hw-path.md) and
+// live peek run h3k: IN_BASE_ADDR_Y (+0x40) = 0xCA000000, SRC_SIZE (+0x10) = IMG_SIZE (+0x18) = 2280 << 16 | 1080.
+// DECON SHADOW_REG_UPDATE_REQ +0x60 (GLOBAL bit 31) from Samsung cal_9820/regs-decon.h (offset not read on device).
+#define EXYNOS_DPU_DMA_G0_BASE    0x0000000019071000ULL   // VERIFIED (dpp@0x19071000 reg + h3k peek)
+#define EXYNOS_DPU_DMA_G0_SIZE    0x0000000000001000ULL   // VERIFIED (dpp@0x19071000 reg size 0x1000)
 #define EXYNOS_DSIM_BASE          0x0000000019080000ULL   // VERIFIED (dsim@0x19080000)
 #define EXYNOS_DSIM_SIZE          0x0000000000010000ULL   // CONSERVATIVE: the live DTB declares THREE ranges - 0x19080000+0x300, 0x19161000+0x800, 0x19160000+0x100 - so 0x10000 is a superset of the first and the extent discrepancy stays open (notes/s10e-dtb-mmio.md S02)
 
@@ -932,6 +1036,11 @@
 #define EXYNOS_FB_STRIDE_PIXELS   EXYNOS_FB_WIDTH         // width*4, as on the 9810
 #define EXYNOS_FB_SIZE            ((UINT64)EXYNOS_FB_STRIDE_PIXELS * \
                                    EXYNOS_FB_HEIGHT * EXYNOS_FB_BYTES_PER_PIXEL)
+// H4b (notes/gpu-hw-path.md): what the memory map reserves for the framebuffer. Larger than EXYNOS_FB_SIZE so that
+// the Windows display driver can re-stride the scan-out to a 64-byte-aligned line (DPU_DMA G0 IDMA_SRC_SIZE width
+// 1088 px = 4352 B x 2280 = 9922560 B, which Panfrost can render into). A choice, not a hardware constant:
+// nothing is reserved between 0xCA000000 and EXYNOS_RSVD_MODEM_SPARE_BASE 0xD0000000 (this file).
+#define EXYNOS_FB_RESERVED_SIZE   ((UINT64)EXYNOS_BOARD_FB_RESERVED_SIZE)   // S10e 10 MiB (0xCA000000 .. 0xCA9FFFFF), S10 18 MiB (Exynos9820Board.h)
 
 //
 // ---------------------------------------------------------------------------
