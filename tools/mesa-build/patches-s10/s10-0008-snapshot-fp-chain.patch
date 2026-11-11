@@ -1,0 +1,79 @@
+From 11a374c313d6199d4582a6f04f0e18fad299798e Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 04:47:29 +0700
+Subject: [PATCH] S10: snapshot frame-pointer chain, first snapshot at 600 ms
+
+---
+ include/win32-compat/malikm_drm.c | 29 +++++++++++++++++++++++------
+ 1 file changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 654eb70..093a7c5 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -1618,8 +1618,8 @@ mk_snapshot_ddi_thread(void)
+       malikm_tlog("tc: no DDI thread to inspect (tid %lu)", tid);
+       return;
+    }
+-   static uintptr_t words[1024];
+-   uintptr_t pc = 0, lr = 0;
++   static uintptr_t words[4096];
++   uintptr_t pc = 0, lr = 0, fp = 0, sp0 = 0;
+    int nw = 0;
+    MEMORY_BASIC_INFORMATION mb;
+    if (SuspendThread(t) != (DWORD)-1) {
+@@ -1629,11 +1629,13 @@ mk_snapshot_ddi_thread(void)
+       if (GetThreadContext(t, &c)) {
+          pc = (uintptr_t)c.Pc;
+          lr = (uintptr_t)c.Lr;
++         fp = (uintptr_t)c.Fp;
++         sp0 = (uintptr_t)c.Sp;
+          const uintptr_t *sp = (const uintptr_t *)(uintptr_t)c.Sp;
+          uintptr_t top = (uintptr_t)sp;
+          if (VirtualQuery(sp, &mb, sizeof mb))
+             top = (uintptr_t)mb.BaseAddress + mb.RegionSize;
+-         for (const uintptr_t *q = sp; (uintptr_t)(q + 1) <= top && nw < 1024; q++)
++         for (const uintptr_t *q = sp; (uintptr_t)(q + 1) <= top && nw < 4096; q++)
+             words[nw++] = *q;
+       }
+       ResumeThread(t);
+@@ -1659,8 +1661,21 @@ mk_snapshot_ddi_thread(void)
+    MK_RESOLVE(pc);
+    o += snprintf(line + o, sizeof line - o, " | lr");
+    MK_RESOLVE(lr);
++   /* s10-0008: the frame-pointer chain (ARM64 Windows keeps x29 frames: [fp] = caller fp, [fp + 8] = return
++    * address) - the real call stack, from the words copied while the thread was suspended */
++   o += snprintf(line + o, sizeof line - o, " | frames");
++   for (int d = 0; d < 40 && fp >= sp0 && fp + 16 <= sp0 + (uintptr_t)nw * sizeof(uintptr_t) && (fp & 7) == 0 &&
++                   o < (int)sizeof line - 80; d++) {
++      size_t i = (fp - sp0) / sizeof(uintptr_t);
++      uintptr_t next = words[i], ret = words[i + 1];
++      o += snprintf(line + o, sizeof line - o, " <");
++      MK_RESOLVE(ret);
++      if (next <= fp)
++         break;
++      fp = next;
++   }
+    o += snprintf(line + o, sizeof line - o, " | stack");
+-   for (int i = 0; i < nw && found < 50 && o < (int)sizeof line - 80; i++)
++   for (int i = 0; i < nw && found < 70 && o < (int)sizeof line - 80; i++)
+       if (words[i] > 0x10000)
+          MK_RESOLVE(words[i]);
+ #undef MK_RESOLVE
+@@ -1758,9 +1773,11 @@ mk_call(struct mk_req *r)
+       rescue_s = e && *e ? atoi(e) : 0;
+    }
+    while (!r->done) {
+-      WaitForSingleObject(mk_done_ev, 500);
++      WaitForSingleObject(mk_done_ev, 200);
+       DWORD waited = GetTickCount() - t0;
+-      if (!r->done && logged < 6 && waited > 2000u + 5000u * (DWORD)logged) {
++      /* s10-0008: the first snapshot at 600 ms - DWM's log ended right after the 2 s line twice (Windows restarts a
++       * DWM that stops responding, presumably before a later snapshot) */
++      if (!r->done && logged < 6 && waited > 600u + 5000u * (DWORD)logged) {
+          malikm_tlog("tc: driver thread waits %lu ms for the DDI thread to run callback op %d (DDI thread last "
+                      "seen %lu ms ago, submit queue %u)", (unsigned long)waited, r->op,
+                      (unsigned long)(GetTickCount() - mk_ddi_tick), wq_n);
+-- 
+2.43.0
+

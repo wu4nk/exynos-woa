@@ -1,0 +1,90 @@
+From 1086991a85154f5bbb824eaf50708e93af937713 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 04:48:17 +0700
+Subject: [PATCH] S10: real TLS - __declspec(thread) is ignored by the mingw
+ build (_Thread_local / thread_local)
+
+---
+ include/win32-compat/malikm_drm.c          | 13 +++++++++----
+ src/gallium/frontends/d3d10umd/DxgiFns.cpp |  6 +++---
+ src/gallium/targets/d3d10umd/d3d10_gdi.c   |  6 +++---
+ 3 files changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index 093a7c5..28c1d21 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -579,7 +579,12 @@ struct mk_req {
+    volatile LONG done;
+    int bind;   /* T1c: the device binding (cur_bind) a queued destroy/unlock belongs to */
+ };
+-static __declspec(thread) int mk_worker;       /* this thread is a threaded-context driver thread */
++/* S10 s10-0009 (notes/perf-threaded-context.md 2026-11-12): was __declspec(thread). The S10 builds with zig / mingw,
++ * whose headers define __declspec(a) as __attribute__((a)) - "unknown attribute 'thread' ignored": mk_worker, wq_skip,
++ * tls_pending and tls_selected were ONE process-wide variable each. Once the driver thread marked itself a worker,
++ * every thread was one: the DDI thread took the blocking wddm_lock path (no pumping) while the driver thread held
++ * the lock and waited for it = the DWM deadlock. _Thread_local is real TLS on both clang and MSVC (C11). */
++static _Thread_local int mk_worker;       /* this thread is a threaded-context driver thread */
+ static volatile LONG mk_on;
+ static struct mk_req *volatile mk_box;         /* the one pending request with a result */
+ static HANDLE mk_done_ev;
+@@ -611,7 +616,7 @@ wddm_lock_acquire_raw(void)
+  * before anything else touches the shim - every entry takes the lock here; wddm_ioctl sets wq_skip for the calls that
+  * cannot observe them (SUBMIT itself, MADVISE, GET_PARAM, CREATE_BO, MMAP_BO, GET_BO_OFFSET, MAP/UNMAP, WAIT_BO). */
+ static unsigned wq_n;
+-static __declspec(thread) int wq_skip;
++static _Thread_local int wq_skip;
+ static void wq_flush(void);
+ static void
+ wddm_lock_acquire(void)
+@@ -2084,8 +2089,8 @@ struct binding {
+ };
+ static struct binding binds[MAX_BINDINGS];
+ static int cur_bind = -1;                      /* whose state the globals hold */
+-static __declspec(thread) int tls_pending = -1;  /* bound on this thread, its screen's fd not seen yet */
+-static __declspec(thread) int tls_selected = -1; /* d3d10umd's device for this thread's API calls */
++static _Thread_local int tls_pending = -1;  /* bound on this thread, its screen's fd not seen yet */
++static _Thread_local int tls_selected = -1; /* d3d10umd's device for this thread's API calls */
+ 
+ static void
+ bind_save(struct binding *b)
+diff --git a/src/gallium/frontends/d3d10umd/DxgiFns.cpp b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+index b56b3b5..b23ef4b 100644
+--- a/src/gallium/frontends/d3d10umd/DxgiFns.cpp
++++ b/src/gallium/frontends/d3d10umd/DxgiFns.cpp
+@@ -50,12 +50,12 @@ extern "C" int malikm_allocation_present(unsigned hAlloc, unsigned hDst, void *d
+ /* G13 (exynos-woa): whether the present being carried out is a flip (DXGI_DDI_PRESENT_FLAGS.Flip). The target's
+  * flush_frontbuffer (d3d10_gdi.c) reads it: dxgkrnl only flips to allocations created as primaries ("Source of Flip
+  * must be primary", DxgKrnl ETW, run g21full), so a flip needs a primary present surface. Per thread. */
+-extern "C" __declspec(thread) int d3d10_present_flip = 0;
++extern "C" thread_local int d3d10_present_flip = 0;
+ /* G13: the kernel primary allocation of the resource being presented (Resource.kmt_primary), 0 if none. */
+-extern "C" __declspec(thread) unsigned d3d10_present_alloc = 0;
++extern "C" thread_local unsigned d3d10_present_alloc = 0;
+ /* G13 (0025): the kernel allocation of the present's destination resource (DXGI_DDI_ARG_PRESENT.hDstResource), 0
+  * if none - passed on as DXGIDDICB_PRESENT.hDstAllocation. */
+-extern "C" __declspec(thread) unsigned d3d10_present_dst = 0;
++extern "C" thread_local unsigned d3d10_present_dst = 0;
+ 
+ 
+ /* exynos-woa H4c (0061, notes/gpu-hw-path.md): no windowed DXGI swap chain reached DWM through the runtime present
+diff --git a/src/gallium/targets/d3d10umd/d3d10_gdi.c b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+index 28b9cea..2bf9c14 100644
+--- a/src/gallium/targets/d3d10umd/d3d10_gdi.c
++++ b/src/gallium/targets/d3d10umd/d3d10_gdi.c
+@@ -115,9 +115,9 @@ d3d10_gdi_release_hdc(void *winsys_drawable_handle, HDC hDC) {
+  * owns the display. */
+ int malikm_present_d3dddi(const void *bgrx, unsigned w, unsigned h, void *dxgi_context, int primary);
+ void malikm_tlog(const char *fmt, ...);   /* exynos-woa H4: timing log (malikm_drm.c) */
+-extern __declspec(thread) int d3d10_present_flip;   /* frontend DxgiFns.cpp (G13) */
+-extern __declspec(thread) unsigned d3d10_present_alloc;   /* frontend DxgiFns.cpp (G13) */
+-extern __declspec(thread) unsigned d3d10_present_dst;     /* frontend DxgiFns.cpp (G13 0025) */
++extern _Thread_local int d3d10_present_flip;   /* frontend DxgiFns.cpp (G13) */
++extern _Thread_local unsigned d3d10_present_alloc;   /* frontend DxgiFns.cpp (G13) */
++extern _Thread_local unsigned d3d10_present_dst;     /* frontend DxgiFns.cpp (G13 0025) */
+ int malikm_primary_present(unsigned hAlloc, unsigned hDst, const void *bgrx, unsigned w, unsigned h,
+                            void *dxgi_context);
+ int malikm_scanout_bo(int *prime_fd, unsigned *w, unsigned *h, unsigned *pitch, unsigned *d3dfmt);
+-- 
+2.43.0
+

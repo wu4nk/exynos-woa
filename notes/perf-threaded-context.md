@@ -279,3 +279,19 @@ thread is still emulated x86 in 32-bit games); also helps every D3D app (DWM, br
 - s10-0007: snapshot copies pc / lr / 1024 stack words while suspended, resolves after resuming against a module
   table made at malikm_marshal_enable (K32EnumProcessModules), logs tc_fence_wait loop count over 20 ms and the
   futex WaitOnAddress timeout (last / max finite). Diagnosis UMD maliumd 1387928a (PDB scratchpad tcdsym2/).
+- 2026-11-12 04:45 tc-diag run 2 (zip a9dbb4dd, maliumd 1387928a): DWM's log again ends at the first wait line (2047
+  ms) - most likely Windows restarts a non-responding DWM before the 2 s+ snapshot. SearchHost-4676 snapshot (no
+  loader lock now): DDI thread pc/lr in ntdll waits, stack CreateResource (Resource.cpp:436) -> malikm_select_device
+  -> wddm_lock_acquire, NO callee frames of ours above it, and "pumping-wait loops 0" = it sat in the BLOCKING
+  AcquireSRWLockExclusive(&wddm_lock) branch, which only "!mk_on || mk_worker" takes - while the driver thread held
+  wddm_lock waiting in mk_call. => the DDI thread believed it was a worker.
+- ROOT CAUSE: the build log has "warning: unknown attribute 'thread' ignored" x10. mingw's headers define
+  __declspec(a) as __attribute__((a)); clang has no 'thread' attribute -> every __declspec(thread) variable is a plain
+  global in the zig/mingw build: malikm_drm.c mk_worker, wq_skip, tls_pending, tls_selected; DxgiFns.cpp /
+  d3d10_gdi.c d3d10_present_flip / _alloc / _dst. The first driver thread set mk_worker = 1 for the whole process.
+  The upstream S10e build is MSVC/clang-cl (real TLS) - why only the S10 deadlocked. Also latent with TC off:
+  tls_selected / d3d10_present_* shared between threads (wrong device binding / present data under multi-threaded
+  D3D use).
+- s10-0009: _Thread_local (C) / thread_local (C++ extern "C") - 0 'thread' warnings in arm64 / x86 / gl builds,
+  x86 layout-check OK. s10-0008: snapshot fp chain + first snapshot at 600 ms. Test UMD maliumd 3111b7c2 (PDB
+  tcdsym3/) with MALIUMD_TC=1 via tc-diag.ps1. NOT validated.
