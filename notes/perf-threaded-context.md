@@ -250,3 +250,19 @@ thread is still emulated x86 in 32-bit games); also helps every D3D app (DWM, br
   cleanly - no event, no dump (tools/phone/wddm2/tlogrecent.ps1 for this boot's logs). Page heap + LocalDumps removed
   again (reg delete). All 9 tests PASS on 0148 (d3dcbdyn x86/ARM64/x64, d3dtri x86/ARM64, d3dvbring x86/ARM64, d3dcs
   ARM64/x64), Edge WebGL clear/draw correct. DWM/explorer/TabTip/TextInputHost/taskmgr run "threaded 1".
+
+## S10 port: the DWM deadlock (2026-11-11/12, notes/beyond1-port.md)
+- S10, WDDM 2.0 adapter: DWM froze at the desktop: "tc: driver thread tid N" (first async batch), then "driver thread
+  waits > 2 s for the DDI thread to run callback op 4 (render) (DDI thread last seen 2016 ms ago)": the DDI thread
+  left the UMD right after a present and never re-entered it. MALIUMD_NO_TC=1 -> desktop OK. Shipped fix:
+  patches-s10/s10-0001 (TC opt-in, MALIUMD_TC=1).
+- Why no stack: 0175's snapshot has x86 and x64/ARM64EC branches only; native ARM64 DWM compiled to nothing.
+- s10-0006: ARM64 branch (pc, lr, stack scan, module+offset), snapshot every 5 s up to 6x, MALIUMD_TC_RESCUE=<s>
+  (diagnosis only): after <s> seconds the driver thread takes the request back from mk_box (CAS) and runs it itself,
+  then logs whether the DDI thread came back within 5 s - separates "waits for this submission" from "stuck elsewhere".
+  Code reading so far: every TC wait pumps (tc_fence_wait 1 ms + hook); wddm_idle waits on ddi.last_event without
+  pumping but times out at 10 s and logs - not seen. Hypothesis: DWM blocks in the runtime/kernel on GPU work queued
+  after the present (async batch) that only the DDI thread can submit.
+- Diagnosis UMD: build-arm64 now configured -Ddebug=true (PDB emitted, code unchanged) -> maliumd 4a785df4 + PDB
+  (scratchpad maliumd-tcdiag.pdb; llvm-symbolizer-18 --obj=maliumd-tcdiag.dll --relative-address works).
+  tools/s10-kit/tc-diag.ps1 on|collect|off (swap maliumd, MALIUMD_TC=1, MALIUMD_TC_RESCUE=8, MALIKM_TGSI_DIR).
