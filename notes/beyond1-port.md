@@ -1370,3 +1370,35 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   unreachable from the D3D10 DDI (needs the D3D11 DDI, FL11), so it waits. Then gputest geometry-shader should PASS
   and the d3d10umd stand-in GS hooks (0071) go away when the driver has create_gs_state. Attribution: their files keep
   their MIT header + a note in the patch. gputest v2 (panprobe-style report) half-written, not built.
+
+### G2c UMD 0073 - geometry shaders (2026-11-11 07:10), port of JimVulkan/mali-panfrost's GS emulation
+- tools/mesa-build/patches/0073-g2c-geometry-shader-emulation.patch. Copied verbatim (MIT header "Copyright 2026
+  XclipseTools" kept): pan_gs.h, pan_nir_lower_gs.c. Ported by hand into our 26.2 tree: pan_context.h
+  (emu_params[], viewports[16]/scissors[16], PAN_SYSVAL_GS_PARAMS 22, vs key keep_clip_space, fs key
+  viewport_clip/emulated_producer, panfrost_gs_draw, panfrost_gs_key, uncompiled .gs info); compiler
+  inputs.vs_keep_clip_space (bifrost_nir.c skips nir_lower_viewport_transform + noperspective lowering);
+  pan_nir_lower_sysvals (load_geometry_param_buffer_poly -> GS_PARAMS), pan_helpers (GS_PARAMS dirty = PARAMS),
+  sysval upload; pan_shader.c (GS lowered to a 64-wide compute shader at variant compile, GS key, FS moves
+  viewport/layer inputs + viewport clip, bind_gs re-keys VS+FS, create/delete/bind_gs_state on v6/v7 only);
+  pan_cmdstream.c (panfrost_gs_topology / prims_per_instance / emit_vs_varyings / emit_out_varyings /
+  emit_viewports / prepare, GS branch in panfrost_single_draw_direct, active prim = the GS output primitive,
+  indirect draws with a GS go to util_draw_indirect, adjacency dropped without a GS, prim restart split on the CPU);
+  pan_jm.c GENX(jm_launch_draw_gs) (vertex job -> COMPUTE job (barrier) -> tiler job, indexed UINT32 list over the
+  emulation's buffers); pan_context.c (viewport/scissor arrays, point size from the GS); pan_screen.c (GEOMETRY shader
+  caps on v6/v7, adjacency prim modes, max_geometry_output_vertices 256, total components 1024, invocations 32,
+  max_viewports 16).
+- Ours on top: a VS feeding the GS is compiled with no_idvs (the emulation launches it as a plain vertex job; the
+  fork turns IDVS off for all of Bifrost, we keep it for normal draws); d3d10umd's token-less GS
+  (CreateGeometryShaderWithStreamOutput without code = SO from the VS) becomes a sentinel meaning "no GS" (as the
+  0071 stand-in did; SO from it still not wired); a log line for the first 4 GS draws ("panfrost: geometry shader
+  draw (emulated): ..."). The 0071 d3d10umd stand-ins stay but are inert (create_gs_state exists now).
+- Not ported: tessellation (needs the D3D11 DDI), GS + xfb, multi-stream GS, layered rendering, the fork's
+  "no IDVS on Bifrost" (we have no evidence of the INDEXED_VERTEX failure they saw - our desktop draws with IDVS).
+- Review (self, adversarial): index records - VS runs from offset_start = min_index + bias, GS record = index -
+  (offset_start - bias) = index - min_index: matches params->index_bias. Integer varyings: GS copies raw 32-bit words,
+  FS attribute format is u32/f32 from the FS's own slot type (0067 makes flat TGSI varyings ints) - bit exact.
+  Risk: the GS compute job reads the vertex job's varyings with plain loads after a job barrier (fork's measured
+  path); the whole NIR path for a TGSI-born GS (tgsi_to_nir -> nir_lower_io -> pan_preprocess_nir -> lower_gs) was
+  only compile-tested on Linux - first device run decides. If DWM breaks: UMD 0072 back (GS draws do not occur in
+  DWM, so it should not).
+- UMD 0073 maliumd.dll sha256 79adcdc4. Not run yet. Target: gputest geometry-shader PASS.
