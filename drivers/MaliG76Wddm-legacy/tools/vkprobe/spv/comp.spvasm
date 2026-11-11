@@ -1,0 +1,36 @@
+; layout(local_size_x = 64) in; layout(std430, binding = 0) buffer B { uint v[]; };
+; void main() { uint i = gl_GlobalInvocationID.x; v[i] = i * 3u + 1u; }
+               OpCapability Shader
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %main "main" %gid
+               OpExecutionMode %main LocalSize 64 1 1
+               OpDecorate %gid BuiltIn GlobalInvocationId
+               OpDecorate %rta ArrayStride 4
+               OpMemberDecorate %B 0 Offset 0
+               OpDecorate %B Block
+               OpDecorate %buf DescriptorSet 0
+               OpDecorate %buf Binding 0
+       %void = OpTypeVoid
+         %fn = OpTypeFunction %void
+       %uint = OpTypeInt 32 0
+      %v3u = OpTypeVector %uint 3
+   %p_in_v3u = OpTypePointer Input %v3u
+        %gid = OpVariable %p_in_v3u Input
+        %rta = OpTypeRuntimeArray %uint
+          %B = OpTypeStruct %rta
+      %p_sb = OpTypePointer StorageBuffer %B
+        %buf = OpVariable %p_sb StorageBuffer
+   %p_sb_u = OpTypePointer StorageBuffer %uint
+         %c0 = OpConstant %uint 0
+         %c1 = OpConstant %uint 1
+         %c3 = OpConstant %uint 3
+       %main = OpFunction %void None %fn
+         %lb = OpLabel
+         %g = OpLoad %v3u %gid
+         %i = OpCompositeExtract %uint %g 0
+         %m = OpIMul %uint %i %c3
+         %a = OpIAdd %uint %m %c1
+         %p = OpAccessChain %p_sb_u %buf %c0 %i
+               OpStore %p %a
+               OpReturn
+               OpFunctionEnd

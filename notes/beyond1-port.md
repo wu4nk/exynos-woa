@@ -1627,3 +1627,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   gpu-s10 v1.22 sets machine MALIKM_TGSI_DIR=C:\ProgramData\S10e\umd for full/gpu/gpu-dwm (upstream shim per-process
   logs + crash evidence), removes it for display/off; s10-log v1.11 collects malikm-*. Next run: gpu (DWM softpipe)
   first, then gpu-dwm; rescue without TWRP if possible so the PRAM survives.
+- 2026-11-11 17:27 log de246bbc ("still broken"): gpu mode (FullAdapter 1, GpuEnable 1, DWM softpipe) with upstream
+  1.0.72.1 + UMD 603a7885: Windows reached the desktop (explorer/StartMenu/Brave running, gpuwatch passes), DWM
+  presents (malikm-dwm log: frontbuffer 1440x3040, present primary ok), KMD registry log healthy (Mode 2,
+  FbMatchesGop 1, GpuUp 1, ScanoutMap 0 = success, ScanoutGpuVa 0x2000000) - but the panel stays black. The KMD
+  PRAM was not readable live (gpuwatch "pram:" empty) and the rescue went through TWRP again, so no latch trace.
+  Upstream full-adapter scan-out on the S10 is the open item.
+- Fallback: drivers/MaliG76Wddm-legacy = KMD 1.0.36.1 (git 8604bf2^1), the stack validated on the S10 this morning
+  with UMD 0075 (build stamp Nov 11 09:00:12 = the umd-log lines of the working DWM runs). build-s10 v1.12
+  S10_GPU_LEGACY=1, gpu-s10 v1.23 (display removes every MaliG76Wddm package first; out-gpu\umd UMD with matching
+  SHA256SUMS wins), make-kit UMD_LEGACY. Kit v2.4.

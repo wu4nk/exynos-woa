@@ -1,0 +1,60 @@
+; const vec2 P[3] = vec2[](vec2(-0.8,-0.8), vec2(0.8,-0.8), vec2(0.0,0.8));
+; const vec3 C[3] = vec3[](vec3(1,0,0), vec3(0,1,0), vec3(0,0,1));
+; layout(location=0) out vec3 col; void main(){ gl_Position = vec4(P[gl_VertexIndex],0,1); col = C[gl_VertexIndex]; }
+               OpCapability Shader
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Vertex %main "main" %vid %pos %col
+               OpDecorate %vid BuiltIn VertexIndex
+               OpDecorate %pos BuiltIn Position
+               OpDecorate %col Location 0
+       %void = OpTypeVoid
+         %fn = OpTypeFunction %void
+        %int = OpTypeInt 32 1
+       %uint = OpTypeInt 32 0
+      %float = OpTypeFloat 32
+       %v2f = OpTypeVector %float 2
+       %v3f = OpTypeVector %float 3
+       %v4f = OpTypeVector %float 4
+     %p_in_i = OpTypePointer Input %int
+        %vid = OpVariable %p_in_i Input
+   %p_out_v4 = OpTypePointer Output %v4f
+        %pos = OpVariable %p_out_v4 Output
+   %p_out_v3 = OpTypePointer Output %v3f
+        %col = OpVariable %p_out_v3 Output
+         %u3 = OpConstant %uint 3
+      %arr2 = OpTypeArray %v2f %u3
+      %arr3 = OpTypeArray %v3f %u3
+   %p_fn_a2 = OpTypePointer Function %arr2
+   %p_fn_a3 = OpTypePointer Function %arr3
+   %p_fn_v2 = OpTypePointer Function %v2f
+   %p_fn_v3 = OpTypePointer Function %v3f
+        %fm8 = OpConstant %float -0.8
+        %fp8 = OpConstant %float 0.8
+         %f0 = OpConstant %float 0
+         %f1 = OpConstant %float 1
+        %pa = OpConstantComposite %v2f %fm8 %fm8
+        %pb = OpConstantComposite %v2f %fp8 %fm8
+        %pc = OpConstantComposite %v2f %f0 %fp8
+        %P = OpConstantComposite %arr2 %pa %pb %pc
+        %ca = OpConstantComposite %v3f %f1 %f0 %f0
+        %cb = OpConstantComposite %v3f %f0 %f1 %f0
+        %cc = OpConstantComposite %v3f %f0 %f0 %f1
+        %C = OpConstantComposite %arr3 %ca %cb %cc
+       %main = OpFunction %void None %fn
+         %lb = OpLabel
+        %vp = OpVariable %p_fn_a2 Function
+        %vc = OpVariable %p_fn_a3 Function
+               OpStore %vp %P
+               OpStore %vc %C
+         %i = OpLoad %int %vid
+        %pp = OpAccessChain %p_fn_v2 %vp %i
+        %xy = OpLoad %v2f %pp
+         %x = OpCompositeExtract %float %xy 0
+         %y = OpCompositeExtract %float %xy 1
+        %p4 = OpCompositeConstruct %v4f %x %y %f0 %f1
+               OpStore %pos %p4
+        %cp = OpAccessChain %p_fn_v3 %vc %i
+        %c3 = OpLoad %v3f %cp
+               OpStore %col %c3
+               OpReturn
+               OpFunctionEnd

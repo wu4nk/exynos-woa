@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.22) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.23) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,9 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.23: legacy stack (build-s10 v1.12 S10_GPU_LEGACY=1: KMD 1.0.36.1 + UMD 0075): "display" removes every installed
+  MaliG76Wddm package before adding the kit's (1.0.72.1 would otherwise outrank 1.0.36.1), and a loose UMD with a
+  matching SHA256SUMS in out-gpu\umd\ is preferred over any other loose copy.
   v1.22: upstream's UMD (kit v2.x) logs nothing to umd-log.txt; its shim writes per-process logs and crash
   evidence (malikm-<exe>-<pid>.txt) only when MALIKM_TGSI_DIR is set - "gpu" / "gpu-dwm" now set it machine-wide to
   C:\ProgramData\S10e\umd (DWM and LogonUI see it), "display" / "off" remove it; s10-log v1.11 collects the files.
@@ -58,7 +61,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.22  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.23  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -383,7 +386,11 @@ function Set-FullMode([int]$Gpu) {
   # v1.13: the copy next to this script wins (that is where a UMD zip is unpacked); only without one the newest file.
   # The phone's clock restarts at 2026-11-01 23:17 every boot, so "newest" alone picked an older build (run g2b3-7).
   $own = $good | Where-Object { $_.DirectoryName -eq $PSScriptRoot } | Select-Object -First 1
-  if ($own) { $src = $own.FullName } else { $src = ($good | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName }
+  # v1.23: the kit's own UMD (out-gpu\umd\ with SHA256SUMS, put there by build-s10) wins over stray copies
+  $kitUmd = $good | Where-Object { $_.DirectoryName -eq (Join-Path $Out 'umd') -and (Test-Path (Join-Path $_.DirectoryName 'SHA256SUMS')) -and
+                                   (Select-String -Path (Join-Path $_.DirectoryName 'SHA256SUMS') -Pattern (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() -SimpleMatch -Quiet) } | Select-Object -First 1
+  if ($kitUmd) { $src = $kitUmd.FullName }
+  elseif ($own) { $src = $own.FullName } else { $src = ($good | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName }
   $sum = Join-Path (Split-Path $src) 'SHA256SUMS'
   $h = (Get-FileHash $src -Algorithm SHA256).Hash.ToLower()
   if ((Test-Path $sum) -and -not (Select-String -Path $sum -Pattern $h -SimpleMatch -Quiet)) {
@@ -458,6 +465,7 @@ switch ($Action) {
       exit 0
     }
     Remove-Pkg 'maliG76probe.inf'
+    Remove-Pkg 'maliG76wddm.inf'     # v1.23: the kit's package must win, whatever version is in the store
     Add-Pkg 'MaliG76Wddm'
     New-Item -Force $SvcParams | Out-Null
     Set-ItemProperty $SvcParams GpuEnable 0 -Type DWord

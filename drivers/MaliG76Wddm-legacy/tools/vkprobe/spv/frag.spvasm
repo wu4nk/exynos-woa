@@ -1,0 +1,27 @@
+; layout(location=0) in vec3 col; layout(location=0) out vec4 o; void main(){ o = vec4(col,1); }
+               OpCapability Shader
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main" %col %o
+               OpExecutionMode %main OriginUpperLeft
+               OpDecorate %col Location 0
+               OpDecorate %o Location 0
+       %void = OpTypeVoid
+         %fn = OpTypeFunction %void
+      %float = OpTypeFloat 32
+       %v3f = OpTypeVector %float 3
+       %v4f = OpTypeVector %float 4
+    %p_in_v3 = OpTypePointer Input %v3f
+        %col = OpVariable %p_in_v3 Input
+   %p_out_v4 = OpTypePointer Output %v4f
+          %o = OpVariable %p_out_v4 Output
+         %f1 = OpConstant %float 1
+       %main = OpFunction %void None %fn
+         %lb = OpLabel
+         %c = OpLoad %v3f %col
+         %r = OpCompositeExtract %float %c 0
+         %g = OpCompositeExtract %float %c 1
+         %b = OpCompositeExtract %float %c 2
+         %v = OpCompositeConstruct %v4f %r %g %b %f1
+               OpStore %o %v
+               OpReturn
+               OpFunctionEnd

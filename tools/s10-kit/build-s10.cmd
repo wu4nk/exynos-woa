@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.11) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.12) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
@@ -80,12 +80,18 @@ if exist "%ROOT%bcm4375\bt\bcm4375B1_semco.hcd" (call :msb Exynos9820Bt "/p:Skip
 rem GPU (parked; S10_GPU=1 to build). /p:MwNoWx=1: keep /W4 but do not fail on warnings a newer SDK adds.
 if not "%S10_GPU%"=="1" goto :nogpu
 call :msb MaliG76Probe "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1" || (echo [WARN] MaliG76Probe not built - GPU test skipped & if exist "%OUT%\MaliG76Probe" rmdir /s /q "%OUT%\MaliG76Probe")
+rem v1.12: set S10_GPU_LEGACY=1 = the S10's last known-good GPU stack: KMD 1.0.36.1 from MaliG76Wddm-legacy (our
+rem WDDM 1.3 driver with the framebuffer alias) + UMD 0075 from umd-legacy\ (loose maliumd.dll in out-gpu\umd\, which
+rem gpu-s10.ps1 copies to System32). Upstream 1.0.72.1 gives a black panel on the S10 in full mode (2026-11-11).
+if "%S10_GPU_LEGACY%"=="1" (set "MSBDIR=MaliG76Wddm-legacy") else (set "MSBDIR=")
 call :msb MaliG76Wddm "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:MwNoWx=1 /p:ExynosBoardBeyond1=1" || (echo [WARN] MaliG76Wddm not built - GPU display skipped & if exist "%OUT%\MaliG76Wddm" rmdir /s /q "%OUT%\MaliG76Wddm")
+set "MSBDIR="
 rem v1.7: the two GPU packages go to out-gpu\, NOT out\: both bind ACPI\SAMS9828 (only one may be installed), and
 rem make-windows v2.3 / push-to-windows / install-in-windows take EVERYTHING in out\. gpu-s10.ps1 reads out-gpu\.
 if exist "%ROOT%out-gpu" rmdir /s /q "%ROOT%out-gpu"
 mkdir "%ROOT%out-gpu"
 for %%G in (MaliG76Probe MaliG76Wddm) do if exist "%OUT%\%%G" move "%OUT%\%%G" "%ROOT%out-gpu\" >nul
+if "%S10_GPU_LEGACY%"=="1" if exist "%ROOT%umd-legacy\maliumd.dll" (mkdir "%ROOT%out-gpu\umd" & copy /y "%ROOT%umd-legacy\maliumd.dll" "%ROOT%out-gpu\umd\" >nul & copy /y "%ROOT%umd-legacy\SHA256SUMS" "%ROOT%out-gpu\umd\" >nul & echo [ OK ] legacy GPU stack: KMD 1.0.36.1 + UMD 0075 in out-gpu\umd\)
 if exist "%OUT%\kit-test-cert.cer" copy /y "%OUT%\kit-test-cert.cer" "%ROOT%out-gpu\" >nul
 echo [ OK ] GPU packages in %ROOT%out-gpu ^(use gpu-s10.ps1^)
 :nogpu
@@ -99,9 +105,10 @@ rem ---------------------------------------------------------------------------
 :msb
 set "NAME=%~1"
 set "SRC=%SRCROOT%%NAME%"
+if defined MSBDIR set "SRC=%SRCROOT%%MSBDIR%"
 set "DST=%OUT%\%NAME%"
 echo.
-echo ==== %NAME% ====
+echo ==== %NAME% (%SRC%) ====
 pushd "%SRC%" || exit /b 1
 msbuild "%NAME%.vcxproj" /nologo /m /v:minimal /p:Configuration=Release /p:Platform=ARM64 /p:SignMode=Off /p:EnableInf2cat=false %~2
 if errorlevel 1 (popd & echo [FAIL] build %NAME% & exit /b 1)
@@ -120,9 +127,9 @@ rem v1.8 (S10 on upstream 1.0.72): the package carries the user-mode driver the 
 rem Linux/mingw ARM64 build); s10-wddm-inf.ps1 drops the INF lines of the files it has not (ARM64EC, x86, OpenGL).
 rem v1.10: every user-mode file the kit has - maliumd.dll (ARM64 D3D), maliumd32.dll (x86 D3D, WOW64), maligl.dll
 rem (ARM64 OpenGL ICD); s10-wddm-inf.ps1 then drops what is not there.
-if /i "%NAME%"=="MaliG76Wddm" for %%U in (maliumd.dll maliumd32.dll maligl.dll) do if exist "%ROOT%umd\%%U" copy /y "%ROOT%umd\%%U" "%DST%\" >nul
+if /i "%NAME%"=="MaliG76Wddm" if not defined MSBDIR for %%U in (maliumd.dll maliumd32.dll maligl.dll) do if exist "%ROOT%umd\%%U" copy /y "%ROOT%umd\%%U" "%DST%\" >nul
 if /i "%NAME%"=="Exynos9820Bt" copy /y "%ROOT%bcm4375\bt\bcm4375B1_semco.hcd" "%DST%\" >nul
-if /i "%NAME%"=="MaliG76Wddm" powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%s10-wddm-inf.ps1" "%DST%\%NAME%.inf"
+if /i "%NAME%"=="MaliG76Wddm" if not defined MSBDIR powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%s10-wddm-inf.ps1" "%DST%\%NAME%.inf"
 if errorlevel 1 (popd & echo [FAIL] s10-wddm-inf.ps1 & exit /b 1)
 popd
 goto :catsign

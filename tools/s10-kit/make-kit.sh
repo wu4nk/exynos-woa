@@ -17,7 +17,7 @@ cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs
 cp "$KIT/../S10eSpeakerTrim/S10eSpeakerTrim.cs" "$D/"
 mkdir -p "$D/setup" && cp "$KIT/setup/SetupComplete.cmd" "$KIT/setup/S10-install-once.cmd" "$D/setup/"
 cp "$UEFI" "$D/"
-for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag MaliG76Wddm MaliG76Probe include; do
+for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag MaliG76Wddm MaliG76Wddm-legacy MaliG76Probe include; do
   (cd "$REPO/drivers" && git ls-files -z "$d" | xargs -0 -I{} cp --parents {} "$D/")
 done
 # v2.0: the Linux-built user-mode driver (tools/mesa-build/linux-build-g76.sh collect) goes into umd\ when
@@ -30,6 +30,8 @@ if [ -n "${UMD_DIR:-}" ]; then
   for u in "${UDIRS[@]}"; do for f in maliumd.dll maliumd32.dll maligl.dll; do [ -f "$u/$f" ] && cp "$u/$f" "$D/umd/"; done; done
   ( cd "$D/umd" && sha256sum *.dll > SHA256SUMS )
 fi
+# v2.4: the legacy GPU stack's UMD (0075) when UMD_LEGACY points at its folder (maliumd.dll + SHA256SUMS)
+if [ -n "${UMD_LEGACY:-}" ]; then mkdir -p "$D/umd-legacy" && cp "$UMD_LEGACY/maliumd.dll" "$UMD_LEGACY/SHA256SUMS" "$D/umd-legacy/"; fi
 echo "s10-woa-kit v$VER  repo $(git -C "$REPO" rev-parse --short HEAD)  uefi $(basename "$UEFI")" > "$D/VERSION.txt"
 (cd "$TMP" && zip -qr "$OUTDIR/s10-woa-kit-v$VER.zip" "s10-woa-kit-v$VER")
 echo "$OUTDIR/s10-woa-kit-v$VER.zip"
