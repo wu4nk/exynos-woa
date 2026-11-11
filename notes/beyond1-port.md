@@ -1469,3 +1469,16 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   unless PAN_I_WANT_A_BROKEN_VULKAN_DRIVER is set (INCOMPATIBLE_DRIVER = silently skipped); the Android launcher
   sets it. V1.1: gate off on _WIN32 (panvk patch 0004); vkprobe v1.1 also sets the variable, PANVK_DEBUG=startup and
   MALIKM_TRACE=1, and writes stderr to vkprobe-stderr.txt. vulkan_panfrost.dll 2a7be5c5, vkprobe 83cd3ae5.
+
+### G2c run 40 (UMD 0075 f66ae84a + panvk V1.1; 2026-11-11 09:19): gputest 95 PASS, 0 FAIL
+- gputest v1.0: 95 PASS, 0 FAIL, 5 MISSING (msaa4 x2, B5G6R5 / B5G5R5A1 texture + B5G6R5 RT), 0 BROKEN.
+  geometry-shader PASS with 0 px differ: the emulation (0073) + TTN GS (0075) work on the G76 end to end
+  (VS vertex job -> GS COMPUTE job -> indexed tiler job). cube-map still 208 px edge diffs (open).
+- vkprobe v1.1: instance created; shim found the maliwddm adapter (adapter 0x40000000, 256 allocation slots), VERSION
+  panfrost 1.1, "Found compatible device 'malikm'", 17 GET_PARAMs (the last -22 = a param the KMD does not know,
+  tolerated), then "panvk is not a conformant Vulkan implementation" (panvk_physical_device_init, after sync types)
+  and the process ended silently inside vkEnumeratePhysicalDevices (no line after "loader interface version 5").
+  So the crash is after vk_warn_non_conformant_implementation: extension/feature/property tables, disk cache,
+  vk_physical_device_init or panvk_wsi_init (win32 WSI).
+- vkprobe v1.2: unhandled-exception filter printing the code, module+offset and an RtlVirtualUnwind call stack
+  (vulkan_panfrost.dll has .pdata), "enumerating physical devices..." marker. DLL unchanged (2a7be5c5).

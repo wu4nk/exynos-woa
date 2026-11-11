@@ -1,5 +1,5 @@
 /*
- * vkprobe (v1.1) - exynos-woa: first light of panvk (Mesa's Vulkan driver for Mali) on the S10 under Windows.
+ * vkprobe (v1.2) - exynos-woa: first light of panvk (Mesa's Vulkan driver for Mali) on the S10 under Windows.
  *
  * Loads the Vulkan ICD directly (vulkan_panfrost.dll next to this exe, or the path given as argument 1) - no Vulkan
  * loader (vulkan-1.dll) is needed - and runs a short ladder of tests, each one depending on the last:
@@ -14,7 +14,8 @@
  * Every GPU wait has a 5 s timeout: a hang shows up as TIMEOUT, not a frozen tool.
  * Output goes to the console and to vkprobe.log next to the exe; the driver's own messages (stderr) to
  * vkprobe-stderr.txt. v1.1: sets PANVK_DEBUG=startup and MALIKM_TRACE=1 unless already set (v1.0's run found
- * 0 devices and said nothing about why).
+ * 0 devices and said nothing about why). v1.2: a crash prints the exception, the faulting module+offset and an
+ * unwound call stack (v1.1 died silently inside vkEnumeratePhysicalDevices).
  *
  * Build: zig cc -target aarch64-windows-gnu -O2 -I<mesa>/include vkprobe.c -o vkprobe.exe
  */
@@ -54,6 +55,59 @@ now_ms(void)
       QueryPerformanceFrequency(&f);
    QueryPerformanceCounter(&c);
    return (double)c.QuadPart * 1000.0 / (double)f.QuadPart;
+}
+
+/* ---- crash report (v1.2) ---- */
+static void
+where(DWORD64 addr, char *buf, size_t size)
+{
+   HMODULE m = NULL;
+   char name[MAX_PATH] = "?";
+   if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)(uintptr_t)addr, &m) && m) {
+      GetModuleFileNameA(m, name, sizeof(name));
+      const char *b = strrchr(name, '\\');
+      snprintf(buf, size, "%s+0x%llx", b ? b + 1 : name, (unsigned long long)(addr - (DWORD64)(uintptr_t)m));
+   } else {
+      snprintf(buf, size, "0x%llx", (unsigned long long)addr);
+   }
+}
+
+static LONG WINAPI
+crash_filter(EXCEPTION_POINTERS *ep)
+{
+   char w[300];
+   const EXCEPTION_RECORD *er = ep->ExceptionRecord;
+   where((DWORD64)(uintptr_t)er->ExceptionAddress, w, sizeof(w));
+   out("\nCRASH: exception 0x%08lx at %s", (unsigned long)er->ExceptionCode, w);
+   if (er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2)
+      out(" (%s 0x%llx)", er->ExceptionInformation[0] == 8 ? "execute" : er->ExceptionInformation[0] ? "write" : "read",
+          (unsigned long long)er->ExceptionInformation[1]);
+   out("\n");
+#if defined(__aarch64__) || defined(_M_ARM64)
+   CONTEXT ctx = *ep->ContextRecord;
+   where(ctx.Lr, w, sizeof(w));
+   out("  lr %s\n", w);
+   for (int i = 0; i < 24 && ctx.Pc; i++) {
+      where(ctx.Pc, w, sizeof(w));
+      out("  #%02d %s\n", i, w);
+      DWORD64 base = 0;
+      PRUNTIME_FUNCTION f = RtlLookupFunctionEntry(ctx.Pc, &base, NULL);
+      if (!f) {
+         if (ctx.Pc == ctx.Lr)
+            break;
+         ctx.Pc = ctx.Lr;
+         continue;
+      }
+      PVOID hd = NULL;
+      DWORD64 ef = 0;
+      RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx.Pc, f, &ctx, &hd, &ef, NULL);
+   }
+#endif
+   out("vkprobe: crashed - send vkprobe.log and vkprobe-stderr.txt\n");
+   if (logf_)
+      fflush(logf_);
+   return EXCEPTION_EXECUTE_HANDLER;
 }
 
 /* ---- entry points ---- */
@@ -552,13 +606,14 @@ main(int argc, char **argv)
    if (!getenv("MALIKM_TRACE"))
       _putenv_s("MALIKM_TRACE", "1");
    _putenv_s("PAN_I_WANT_A_BROKEN_VULKAN_DRIVER", "1");
+   SetUnhandledExceptionFilter(crash_filter);
    const char *icd = argc > 1 ? argv[1] : NULL;
    char icdbuf[MAX_PATH];
    if (!icd) {
       snprintf(icdbuf, sizeof(icdbuf), "%svulkan_panfrost.dll", exe);
       icd = icdbuf;
    }
-   out("vkprobe v1.1 - ICD %s (driver messages: vkprobe-stderr.txt)\n", icd);
+   out("vkprobe v1.2 - ICD %s (driver messages: vkprobe-stderr.txt)\n", icd);
    double t0 = now_ms();
    HMODULE h = LoadLibraryA(icd);
    if (!h) {
@@ -594,6 +649,7 @@ main(int argc, char **argv)
    GI(vkCreateDevice);
    gdpa = (PFN_vkGetDeviceProcAddr)gipa(inst, "vkGetDeviceProcAddr");
    uint32_t n = 1;
+   out("enumerating physical devices...\n");
    r = vkEnumeratePhysicalDevices(inst, &n, &pdev);
    if ((r && r != VK_INCOMPLETE) || n == 0) {
       result("instance", 0, "vkEnumeratePhysicalDevices VkResult %d, %u devices - is MaliG76Wddm running in gpu mode?",
