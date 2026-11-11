@@ -1492,3 +1492,16 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   WB_MMAP BOs would need it), get_ctr_el0() = 64-byte lines on _WIN32. Disassembly of the new DLL: no `mrs
   ctr_el0` left, the only mrs is FPCR. V1.3: vulkan_panfrost.dll 573504d3, vkprobe 0c626027.
 - Note: second load of the DLL took 9 ms (first 8.3-8.9 s = cold read of 34 MB from storage).
+
+### panvk run 42 (V1.3 573504d3, vkprobe v1.2; 2026-11-11 09:31): 7 PASS, 0 FAIL - Vulkan works on the G76 under Windows
+- instance 37 ms: "Mali-G76 MC12" (vendor 0x13b5, device 0x72110000), Vulkan 1.3.363, driver panvk / Mesa 26.3.0-devel
+  (git-83df52d604, p0175). geometryShader 1, tessellationShader 1, multiViewport 1, textureCompressionBC 1,
+  shaderFloat64 0. One heap 5552 MiB DEVICE_LOCAL; types: 0x1 and 0x7 (device-local + host-visible + coherent).
+- device 10 ms; fill 1 MiB OK (209 ms first submit = meta shader compile + warm-up); copy 256 KiB 1.25 ms; compute
+  4096 invocations OK (compile 1.7 ms, run 0.99 ms); triangle 256x256 OK (compile 4.2 ms, run 12 ms, 20808 px lit,
+  red/green/blue corners interpolated, black clear - picture checked); stress 200 fill submits 171 ms (0.85 ms each,
+  worst 8.6 ms). DLL load 328 ms.
+- Shim trace: BOs created through CREATE_BO (3 HEAP BOs for the tiler heap, flags 0x3), MMAP_BO, each atom = SYNCOBJ
+  CREATE + SUBMIT ("0 BOs named, 11-14 listed for residency") + SYNCOBJ_WAIT; no errors. malikm_atoms.c's ring works.
+- Logs: notes/logs/run42-vkprobe.log. Next: V3 = a window (WSI win32 GDI path), V4 = a Vulkan loader for the phone
+  (vulkan-1.dll ARM64) + DXVK.
