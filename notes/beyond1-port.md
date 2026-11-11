@@ -1402,3 +1402,35 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   only compile-tested on Linux - first device run decides. If DWM breaks: UMD 0072 back (GS draws do not occur in
   DWM, so it should not).
 - UMD 0073 maliumd.dll sha256 79adcdc4. Not run yet. Target: gputest geometry-shader PASS.
+
+### V1 - panvk (Vulkan) on Windows, first build (2026-11-11 07:56)
+- User gave the source of the panvk he ran on Android: github.com/zenithblue-oss/panvk-kbase-android @cf70e02b
+  (Mesa PanVK 26.3.0-devel git-795ca7ff3e build 122i / p0175). It is a patch stack, not a Mesa tree: Mesa main
+  5a07217f (gitlab) + 228 series patches + 170 jm-v7-wip patches; scripts/prepare-rc5-tree.sh reproduces it
+  exactly here ("OK base=228 jm-v7-wip=170", .panvk-patchlevel p0175). License: MIT scaffolding, Mesa code keeps
+  Mesa's licenses, vendored kbase UAPI headers GPL-2.0 WITH syscall note (NOTICE.md).
+- Finding: p0175's JM (v6/v7) queue is kbase-ONLY - jm/panvk_vX_gpu_queue.c submits kbase atoms
+  (kbase_kmod_job_submit_dep / _retry, kbase_kmod_wait_atom) and tracks them with a CPU vk_sync type
+  (kbase_cpu_sync_type, panvk_kbase_sync_set_pending); upstream's DRM/syncobj JM path is gone. Rather than rewrite
+  their (device-tested) queue, V1 implements those atom calls over our shim: src/panfrost/lib/kmod/malikm_atoms.c,
+  an atom = one PANFROST_SUBMIT whose out_sync is a binary syncobj from a 1024-slot ring (slot reused only after
+  its atom completed), deps -> in_syncs, wait -> drmSyncobjWait. The physical device opens through the DRM path
+  (drmGetDevices2 in the shim returns one platform device "malikm"; create_kmod_dev calls malikm_open() = the
+  D3DKMT path of maliwddm) but uses the kbase CPU sync types on _WIN32.
+- Our patches (tools/mesa-build/panvk/patches, on the p0175 tree): 0001 include/win32-compat (shim @0073);
+  0002 wddm-mali-g52 0003-0011/0015/0016 adapted (4 hunks redone by hand: kmod meson, pan_bi_tex_flags bitfields,
+  PATH_MAX); 0003 the panvk port: drmDevice API + drmGetCap in the shim, malikm_atoms.c, kbase sync code built on
+  _WIN32 minus sync files, libcl uint typedef, vk_image drm_format_mod on Windows, no ELF build-id (blake3 of
+  version+git sha), strndup/sysmacros/usleep/sched_yield/clock (os_time) fixes, BC raw spill file off on Windows,
+  ICD exports via vs_module_defs vulkan_api.def. Build: tools/mesa-build/linux-build-panvk.sh (source clc host cross
+  collect); clc stubs for the cross build in tools/mesa-build/panvk/clc-stubs (now also libpoly).
+- Result: vulkan_panfrost.dll 33.9 MB (all arches v6..v14), exports vk_icdGetInstanceProcAddr /
+  GetPhysicalDeviceProcAddr / NegotiateLoaderICDInterfaceVersion, sha256 37f5f6a8. Link warnings: vk_drm_syncobj_*
+  undefined - referenced only by the CSF (v10+) queue and the sparse-binding queue (not exposed on v7:
+  has_sparse = PAN_ARCH >= 10). Not loaded on any device yet.
+- vkprobe v1.0 (drivers/MaliG76Wddm/tools/vkprobe): loads the ICD directly (no vulkan-1.dll - the phone has no
+  Vulkan loader), tests instance/device/fill/copy/compute/triangle/stress with 5 s fence timeouts, hand-written
+  SPIR-V (spv/*.spvasm, spirv-as + spirv-val vulkan1.0/1.1). Kit S10-panvk-V1.zip. Not run yet.
+- Risks for the first run: the shim's D3DKMT path in a non-D3D process (worked for m5test/fill tools); our KMD and
+  the tiler heap growth panvk expects (jm-v7/003 grows it on kbase); the series' v7 code assuming kbase
+  behaviour elsewhere (SAME_VA / AUTO_VA, imports). Next: vkcube-style present (WSI win32 = GDI blit), then DXVK.

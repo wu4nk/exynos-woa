@@ -1,0 +1,950 @@
+From f3db3a039ac2661b22f415db70d759c90b56ebff Mon Sep 17 00:00:00 2001
+From: exynos-woa build <build@localhost>
+Date: Wed, 11 Nov 2026 07:22:14 +0700
+Subject: [PATCH 2/3] win: wddm-mali-g52 portability patches
+ 0003-0011/0015/0016 (adapted to 26.3-devel)
+
+---
+ src/gallium/auxiliary/renderonly/renderonly.h |   5 +
+ src/gallium/drivers/panfrost/pan_blend_cso.h  |   1 +
+ src/gallium/drivers/panfrost/pan_device.h     |   1 +
+ src/gallium/drivers/panfrost/pan_fb_preload.c |  10 +-
+ src/gallium/drivers/panfrost/pan_fb_preload.h |   1 +
+ src/gallium/drivers/panfrost/pan_mempool.c    |   2 +-
+ .../drivers/panfrost/pan_mod_conv_cso.h       |   1 +
+ src/gallium/drivers/panfrost/pan_resource.c   |  21 ++-
+ src/panfrost/clc/pan_compile.c                |  15 ++
+ src/panfrost/compiler/bifrost/bi_opcodes.h.py |   6 +-
+ src/panfrost/compiler/bifrost/bi_spill_ssa.c  |   1 +
+ src/panfrost/compiler/bifrost/bifrost.h       | 138 +++++++++++++++---
+ .../compiler/bifrost/bifrost/bi_pack.c        |  11 +-
+ .../compiler/bifrost/bifrost_compile.c        |  16 +-
+ src/panfrost/compiler/bifrost/compiler.h      |   7 +-
+ .../compiler/bifrost/valhall/valhall.h        |   6 +-
+ src/panfrost/compiler/midgard/midgard.h       |  10 +-
+ src/panfrost/compiler/pan_compiler.h          |   8 +-
+ src/panfrost/compiler/pan_nir.h               |  22 +--
+ src/panfrost/compiler/pan_nir_lower_tex.c     |   6 +-
+ src/panfrost/genxml/decode.h                  |   2 +-
+ src/panfrost/lib/kmod/meson.build             |   6 +
+ src/panfrost/lib/pan_blend.h                  |  12 +-
+ src/panfrost/lib/pan_samples.c                |   5 +-
+ src/panfrost/lib/pan_trace.c                  |   3 +
+ src/panfrost/perf/pan_perf.h                  |   7 +
+ src/util/os_mman.h                            |  10 +-
+ src/util/u_atomic.h                           |   4 +
+ src/util/u_math.c                             |   4 +-
+ 29 files changed, 259 insertions(+), 82 deletions(-)
+
+diff --git a/src/gallium/auxiliary/renderonly/renderonly.h b/src/gallium/auxiliary/renderonly/renderonly.h
+index de22b37..f790b23 100644
+--- a/src/gallium/auxiliary/renderonly/renderonly.h
++++ b/src/gallium/auxiliary/renderonly/renderonly.h
+@@ -105,7 +105,12 @@ renderonly_get_handle(struct renderonly_scanout *scanout,
+       return false;
+ 
+    assert(handle->type == WINSYS_HANDLE_TYPE_KMS);
++#ifdef _WIN32
++   /* struct winsys_handle carries a HANDLE on Windows */
++   handle->handle = (HANDLE)(uintptr_t)scanout->handle;
++#else
+    handle->handle = scanout->handle;
++#endif
+    handle->stride = scanout->stride;
+ 
+    return true;
+diff --git a/src/gallium/drivers/panfrost/pan_blend_cso.h b/src/gallium/drivers/panfrost/pan_blend_cso.h
+index caeb6d4..6ff064e 100644
+--- a/src/gallium/drivers/panfrost/pan_blend_cso.h
++++ b/src/gallium/drivers/panfrost/pan_blend_cso.h
+@@ -6,6 +6,7 @@
+ #ifndef __PAN_BLEND_CSO_H
+ #define __PAN_BLEND_CSO_H
+ 
++#include <pthread.h>
+ #include "util/hash_table.h"
+ #include "nir.h"
+ #include "pipe/p_state.h"
+diff --git a/src/gallium/drivers/panfrost/pan_device.h b/src/gallium/drivers/panfrost/pan_device.h
+index 3512273..34c239c 100644
+--- a/src/gallium/drivers/panfrost/pan_device.h
++++ b/src/gallium/drivers/panfrost/pan_device.h
+@@ -9,6 +9,7 @@
+ #ifndef PAN_DEVICE_H
+ #define PAN_DEVICE_H
+ 
++#include <pthread.h>
+ #include <xf86drm.h>
+ #include "renderonly/renderonly.h"
+ #include "util/bitset.h"
+diff --git a/src/gallium/drivers/panfrost/pan_fb_preload.c b/src/gallium/drivers/panfrost/pan_fb_preload.c
+index f321509..5c03301 100644
+--- a/src/gallium/drivers/panfrost/pan_fb_preload.c
++++ b/src/gallium/drivers/panfrost/pan_fb_preload.c
+@@ -62,9 +62,9 @@ enum pan_preload_resource_table {
+ };
+ 
+ struct pan_preload_surface {
+-   gl_frag_result loc              : 4;
+-   nir_alu_type type               : 8;
+-   enum mali_texture_dimension dim : 3;
++   unsigned loc                    : 4; /* gl_frag_result */
++   unsigned type                   : 8; /* nir_alu_type */
++   unsigned dim : 3; /* enum mali_texture_dimension */
+    bool array                      : 1;
+    unsigned samples                : 5;
+ };
+@@ -84,9 +84,9 @@ struct pan_preload_shader_data {
+ struct pan_preload_rsd_key {
+    struct {
+       enum pipe_format format;
+-      nir_alu_type type               : 8;
++      unsigned type                   : 8; /* nir_alu_type */
+       unsigned samples                : 5;
+-      enum mali_texture_dimension dim : 3;
++      unsigned dim : 3; /* enum mali_texture_dimension */
+       bool array                      : 1;
+    } rts[8], z, s;
+ };
+diff --git a/src/gallium/drivers/panfrost/pan_fb_preload.h b/src/gallium/drivers/panfrost/pan_fb_preload.h
+index c4eac6a..1dbd593 100644
+--- a/src/gallium/drivers/panfrost/pan_fb_preload.h
++++ b/src/gallium/drivers/panfrost/pan_fb_preload.h
+@@ -6,6 +6,7 @@
+ #ifndef __PAN_FB_PRELOAD_H
+ #define __PAN_FB_PRELOAD_H
+ 
++#include <pthread.h>
+ #include "util/format/u_format.h"
+ #include "pan_desc.h"
+ #include "pan_pool.h"
+diff --git a/src/gallium/drivers/panfrost/pan_mempool.c b/src/gallium/drivers/panfrost/pan_mempool.c
+index fbdd1bb..ae0e592 100644
+--- a/src/gallium/drivers/panfrost/pan_mempool.c
++++ b/src/gallium/drivers/panfrost/pan_mempool.c
+@@ -173,7 +173,7 @@ panfrost_pool_alloc_aligned(struct panfrost_pool *pool, size_t sz,
+ 
+    /* The first 32MB are reserved, so pick a dumb address from there. */
+    if (dev->fault_injection_rate &&
+-       !(random() % dev->fault_injection_rate)) {
++       !(rand() % dev->fault_injection_rate)) {
+       ret.gpu =
+          0x1a7af00ull & ~((uint64_t)util_next_power_of_two(alignment) - 1);
+    }
+diff --git a/src/gallium/drivers/panfrost/pan_mod_conv_cso.h b/src/gallium/drivers/panfrost/pan_mod_conv_cso.h
+index 7a69f4e..e338cd0 100644
+--- a/src/gallium/drivers/panfrost/pan_mod_conv_cso.h
++++ b/src/gallium/drivers/panfrost/pan_mod_conv_cso.h
+@@ -6,6 +6,7 @@
+ #ifndef __PAN_MOD_CONV_CSO_H__
+ #define __PAN_MOD_CONV_CSO_H__
+ 
++#include <pthread.h>
+ #include "util/hash_table.h"
+ 
+ #include "panfrost/compiler/pan_compiler.h"
+diff --git a/src/gallium/drivers/panfrost/pan_resource.c b/src/gallium/drivers/panfrost/pan_resource.c
+index 2829e9e..72eb638 100644
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -8,6 +8,17 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include "util/u_string.h"
++
++/* struct winsys_handle carries a HANDLE on Windows and an int/unsigned
++ * elsewhere; Panfrost's handles are GEM handles and fds either way. */
++#ifdef _WIN32
++#define PAN_WSH_TO_INT(h) ((int)(intptr_t)(h))
++#define PAN_INT_TO_WSH(i) ((HANDLE)(intptr_t)(i))
++#else
++#define PAN_WSH_TO_INT(h) (h)
++#define PAN_INT_TO_WSH(i) (i)
++#endif
+ #include <fcntl.h>
+ #include <xf86drm.h>
+ #include "drm-uapi/drm_fourcc.h"
+@@ -375,7 +386,7 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
+       return NULL;
+    }
+ 
+-   int ret = panfrost_resource_import_bo(rsc, dev, whandle->handle);
++   int ret = panfrost_resource_import_bo(rsc, dev, PAN_WSH_TO_INT(whandle->handle));
+    /* Sometimes an import can fail e.g. on an invalid buffer fd, out of
+     * memory space to mmap it etc.
+     */
+@@ -443,14 +454,14 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
+    if (handle->type == WINSYS_HANDLE_TYPE_KMS && dev->ro) {
+       return renderonly_get_handle(scanout, handle);
+    } else if (handle->type == WINSYS_HANDLE_TYPE_KMS) {
+-      handle->handle = panfrost_bo_handle(rsrc->bo);
++      handle->handle = PAN_INT_TO_WSH(panfrost_bo_handle(rsrc->bo));
+    } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
+       int fd = panfrost_bo_export(rsrc->bo);
+ 
+       if (fd < 0)
+          return false;
+ 
+-      handle->handle = fd;
++      handle->handle = PAN_INT_TO_WSH(fd);
+    } else {
+       /* Other handle types not supported */
+       return false;
+@@ -1103,8 +1114,8 @@ panfrost_resource_create_with_modifier(struct pipe_screen *screen,
+          return NULL;
+       }
+       assert(handle.type == WINSYS_HANDLE_TYPE_FD);
+-      int ret = panfrost_resource_import_bo(so, dev, handle.handle);
+-      close(handle.handle);
++      int ret = panfrost_resource_import_bo(so, dev, PAN_WSH_TO_INT(handle.handle));
++      close(PAN_WSH_TO_INT(handle.handle));
+ 
+       if (ret) {
+          panfrost_resource_destroy(screen, &so->base);
+diff --git a/src/panfrost/clc/pan_compile.c b/src/panfrost/clc/pan_compile.c
+index bf50884..357407d 100644
+--- a/src/panfrost/clc/pan_compile.c
++++ b/src/panfrost/clc/pan_compile.c
+@@ -289,7 +289,12 @@ main(int argc, const char **argv)
+       goto err_out;
+    }
+ 
++#ifdef _WIN32
++   /* Binary mode, or the CRT rewrites line endings inside the SPIR-V. */
++   int fd = open(input_spirv_path, O_RDONLY | O_BINARY);
++#else
+    int fd = open(input_spirv_path, O_RDONLY);
++#endif
+    if (fd < 0) {
+       fprintf(stderr, "Failed to open %s\n", input_spirv_path);
+       goto input_spirv_open_failed;
+@@ -303,7 +308,17 @@ main(int argc, const char **argv)
+       goto input_spirv_open_failed;
+    }
+ 
++#ifdef _WIN32
++   /* No file mapping on Windows here: read the whole file instead. */
++   void *spirv_map = malloc(spirv_len);
++   if (spirv_map == NULL || lseek(fd, 0, SEEK_SET) != 0 ||
++       read(fd, spirv_map, (unsigned)spirv_len) != spirv_len) {
++      free(spirv_map);
++      spirv_map = MAP_FAILED;
++   }
++#else
+    const void *spirv_map = mmap(NULL, spirv_len, PROT_READ, MAP_PRIVATE, fd, 0);
++#endif
+    close(fd);
+ 
+    if (spirv_map == MAP_FAILED) {
+diff --git a/src/panfrost/compiler/bifrost/bi_opcodes.h.py b/src/panfrost/compiler/bifrost/bi_opcodes.h.py
+index 30cf720..13092d9 100644
+--- a/src/panfrost/compiler/bifrost/bi_opcodes.h.py
++++ b/src/panfrost/compiler/bifrost/bi_opcodes.h.py
+@@ -61,9 +61,9 @@ enum bi_size {
+ struct bi_op_props {
+         const char *name;
+ 
+-        enum bifrost_message_type message : 4;
+-        enum bi_size size : 3;
+-        enum bi_sr_count sr_count : 3;
++        unsigned message : 4; /* enum bifrost_message_type */
++        unsigned size : 3; /* enum bi_size */
++        unsigned sr_count : 3; /* enum bi_sr_count */
+         bool sr_read : 1;
+         bool sr_write : 1;
+         bool last : 1;
+diff --git a/src/panfrost/compiler/bifrost/bi_spill_ssa.c b/src/panfrost/compiler/bifrost/bi_spill_ssa.c
+index d9d24f6..b61f855 100644
+--- a/src/panfrost/compiler/bifrost/bi_spill_ssa.c
++++ b/src/panfrost/compiler/bifrost/bi_spill_ssa.c
+@@ -6,6 +6,7 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include "c99_alloca.h"
+ #include "util/bitset.h"
+ #include "util/hash_table.h"
+ #include "util/ralloc.h"
+diff --git a/src/panfrost/compiler/bifrost/bifrost.h b/src/panfrost/compiler/bifrost/bifrost.h
+index 9f98d11..cdefafc 100644
+--- a/src/panfrost/compiler/bifrost/bifrost.h
++++ b/src/panfrost/compiler/bifrost/bifrost.h
+@@ -13,6 +13,8 @@
+ #include <stdint.h>
+ #include <string.h>
+ 
++#include "util/macros.h"
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -103,7 +105,7 @@ struct bifrost_header {
+    unsigned zero1 : 5;
+ 
+    /* Flush-to-zero mode, leave zero for GL */
+-   enum bifrost_ftz flush_to_zero : 2;
++   unsigned flush_to_zero : 2; /* enum bifrost_ftz */
+ 
+    /* Convert any infinite result of any floating-point operation to the
+     * biggest representable number */
+@@ -113,11 +115,11 @@ struct bifrost_header {
+    unsigned suppress_nan : 1;
+ 
+    /* Floating-point excception handling mode */
+-   enum bifrost_exceptions float_exceptions : 2;
++   unsigned float_exceptions : 2; /* enum bifrost_exceptions */
+ 
+    /* Enum describing the flow control, which matters for handling
+     * divergence and reconvergence efficiently */
+-   enum bifrost_flow flow_control : 3;
++   unsigned flow_control : 3; /* enum bifrost_flow */
+ 
+    /* Reserved */
+    unsigned zero2 : 1;
+@@ -143,9 +145,34 @@ struct bifrost_header {
+    unsigned dependency_wait : 8;
+    unsigned dependency_slot : 3;
+ 
+-   enum bifrost_message_type message_type      : 5;
+-   enum bifrost_message_type next_message_type : 5;
+-} __attribute__((packed));
++   unsigned message_type      : 5; /* enum bifrost_message_type */
++   unsigned next_message_type : 5; /* enum bifrost_message_type */
++} PACKED;
++
++/* Packs struct bifrost_header in GCC's packed, LSB-first bitfield layout, which is the
++ * hardware encoding. MSVC lays mixed-type bitfields out differently, so the
++ * encoding must not depend on the struct's in-memory layout. */
++static inline uint64_t
++bifrost_header_pack(const struct bifrost_header *f)
++{
++   uint64_t v = 0;
++   v |= ((uint64_t)f->zero1 & 0x1full) << 0;
++   v |= ((uint64_t)f->flush_to_zero & 0x3ull) << 5;
++   v |= ((uint64_t)f->suppress_inf & 0x1ull) << 7;
++   v |= ((uint64_t)f->suppress_nan & 0x1ull) << 8;
++   v |= ((uint64_t)f->float_exceptions & 0x3ull) << 9;
++   v |= ((uint64_t)f->flow_control & 0x7ull) << 11;
++   v |= ((uint64_t)f->zero2 & 0x1ull) << 14;
++   v |= ((uint64_t)f->terminate_discarded_threads & 0x1ull) << 15;
++   v |= ((uint64_t)f->next_clause_prefetch & 0x1ull) << 16;
++   v |= ((uint64_t)f->staging_barrier & 0x1ull) << 17;
++   v |= ((uint64_t)f->staging_register & 0x3full) << 18;
++   v |= ((uint64_t)f->dependency_wait & 0xffull) << 24;
++   v |= ((uint64_t)f->dependency_slot & 0x7ull) << 32;
++   v |= ((uint64_t)f->message_type & 0x1full) << 35;
++   v |= ((uint64_t)f->next_message_type & 0x1full) << 40;
++   return (uint64_t)v;
++}
+ 
+ enum bifrost_packed_src {
+    BIFROST_SRC_PORT0 = 0,
+@@ -161,12 +188,12 @@ enum bifrost_packed_src {
+ struct bifrost_fma_inst {
+    unsigned src0 : 3;
+    unsigned op   : 20;
+-} __attribute__((packed));
++} PACKED;
+ 
+ struct bifrost_add_inst {
+    unsigned src0 : 3;
+    unsigned op   : 17;
+-} __attribute__((packed));
++} PACKED;
+ 
+ enum branch_bit_size {
+    BR_SIZE_32 = 0,
+@@ -195,7 +222,23 @@ struct bifrost_regs {
+    unsigned reg0    : 5;
+    unsigned reg1    : 6;
+    unsigned ctrl    : 4;
+-} __attribute__((packed));
++} PACKED;
++
++/* Packs struct bifrost_regs in GCC's packed, LSB-first bitfield layout, which is the
++ * hardware encoding. MSVC lays mixed-type bitfields out differently, so the
++ * encoding must not depend on the struct's in-memory layout. */
++static inline uint64_t
++bifrost_regs_pack(const struct bifrost_regs *f)
++{
++   uint64_t v = 0;
++   v |= ((uint64_t)f->fau_idx & 0xffull) << 0;
++   v |= ((uint64_t)f->reg3 & 0x3full) << 8;
++   v |= ((uint64_t)f->reg2 & 0x3full) << 14;
++   v |= ((uint64_t)f->reg0 & 0x1full) << 20;
++   v |= ((uint64_t)f->reg1 & 0x3full) << 25;
++   v |= ((uint64_t)f->ctrl & 0xfull) << 31;
++   return (uint64_t)v;
++}
+ 
+ #define BIFROST_FMTC_CONSTANTS 0b0011
+ #define BIFROST_FMTC_FINAL     0b0111
+@@ -205,7 +248,19 @@ struct bifrost_fmt_constant {
+    unsigned tag   : 4;
+    uint64_t imm_1 : 60;
+    uint64_t imm_2 : 60;
+-} __attribute__((packed));
++} PACKED;
++
++/* Packs struct bifrost_fmt_constant (128 bits: pos 4, tag 4, imm_1 60,
++ * imm_2 60) in GCC's packed bitfield layout; imm_1 straddles bit 64. */
++static inline void
++bifrost_fmt_constant_pack(const struct bifrost_fmt_constant *f, uint64_t out[2])
++{
++   uint64_t imm_1 = f->imm_1 & ((1ull << 60) - 1);
++   uint64_t imm_2 = f->imm_2 & ((1ull << 60) - 1);
++
++   out[0] = (f->pos & 0xfull) | ((f->tag & 0xfull) << 4) | (imm_1 << 8);
++   out[1] = (imm_1 >> 56) | (imm_2 << 4);
++}
+ 
+ /* Clause formats, encoded in a table */
+ 
+@@ -494,7 +549,7 @@ struct bifrost_texture_operation {
+          unsigned sampler_index_or_mode : 4;
+          unsigned index                 : 7;
+          bool immediate_indices         : 1;
+-         enum bifrost_tex_op op         : 3;
++         unsigned op         : 3; /* enum bifrost_tex_op */
+ 
+          /* If set for TEX/FETCH, loads texel offsets and multisample index from
+           * a staging register containing offset_x:offset_y:offset_z:ms_index
+@@ -521,7 +576,7 @@ struct bifrost_texture_operation {
+          unsigned zero : 1;
+ 
+          /* Register format for the result */
+-         enum bifrost_texture_format_full format : 4;
++         unsigned format : 4; /* enum bifrost_texture_format_full */
+ 
+          /* Write mask for the result */
+          unsigned mask : 4;
+@@ -529,7 +584,29 @@ struct bifrost_texture_operation {
+ 
+       uint32_t packed;
+    };
+-} __attribute__((packed));
++} PACKED;
++
++/* Packs struct bifrost_texture_operation in GCC's packed, LSB-first bitfield layout, which is the
++ * hardware encoding. MSVC lays mixed-type bitfields out differently, so the
++ * encoding must not depend on the struct's in-memory layout. */
++static inline uint32_t
++bifrost_texture_operation_pack(const struct bifrost_texture_operation *f)
++{
++   uint64_t v = 0;
++   v |= ((uint64_t)f->sampler_index_or_mode & 0xfull) << 0;
++   v |= ((uint64_t)f->index & 0x7full) << 4;
++   v |= ((uint64_t)f->immediate_indices & 0x1ull) << 11;
++   v |= ((uint64_t)f->op & 0x7ull) << 12;
++   v |= ((uint64_t)f->offset_or_bias_disable & 0x1ull) << 15;
++   v |= ((uint64_t)f->shadow_or_clamp_disable & 0x1ull) << 16;
++   v |= ((uint64_t)f->array & 0x1ull) << 17;
++   v |= ((uint64_t)f->dimension & 0x3ull) << 18;
++   v |= ((uint64_t)f->lod_or_fetch & 0x7ull) << 20;
++   v |= ((uint64_t)f->zero & 0x1ull) << 23;
++   v |= ((uint64_t)f->format & 0xfull) << 24;
++   v |= ((uint64_t)f->mask & 0xfull) << 28;
++   return (uint32_t)v;
++}
+ 
+ struct bifrost_dual_texture_operation {
+    unsigned primary_sampler_index   : 2;
+@@ -546,20 +623,39 @@ struct bifrost_dual_texture_operation {
+    unsigned secondary_register : 6;
+ 
+    /* Format/mask for each texture */
+-   enum bifrost_texture_format secondary_format : 3;
++   unsigned secondary_format : 3; /* enum bifrost_texture_format */
+    unsigned secondary_mask                      : 4;
+ 
+-   enum bifrost_texture_format primary_format : 3;
++   unsigned primary_format : 3; /* enum bifrost_texture_format */
+    unsigned primary_mask                      : 4;
+-} __attribute__((packed));
++} PACKED;
+ 
++/* Packs struct bifrost_dual_texture_operation in GCC's packed, LSB-first bitfield layout, which is the
++ * hardware encoding. MSVC lays mixed-type bitfields out differently, so the
++ * encoding must not depend on the struct's in-memory layout. */
+ static inline uint32_t
+-bi_dual_tex_as_u32(struct bifrost_dual_texture_operation desc)
++bifrost_dual_texture_operation_pack(const struct bifrost_dual_texture_operation *f)
+ {
+-   uint32_t desc_u;
+-   memcpy(&desc_u, &desc, sizeof(desc));
++   uint64_t v = 0;
++   v |= ((uint64_t)f->primary_sampler_index & 0x3ull) << 0;
++   v |= ((uint64_t)f->mode & 0x3ull) << 2;
++   v |= ((uint64_t)f->primary_texture_index & 0x3ull) << 4;
++   v |= ((uint64_t)f->secondary_sampler_index & 0x3ull) << 6;
++   v |= ((uint64_t)f->secondary_texture_index & 0x3ull) << 8;
++   v |= ((uint64_t)f->reserved & 0x1ull) << 10;
++   v |= ((uint64_t)f->index_mode_zero & 0x1ull) << 11;
++   v |= ((uint64_t)f->secondary_register & 0x3full) << 12;
++   v |= ((uint64_t)f->secondary_format & 0x7ull) << 18;
++   v |= ((uint64_t)f->secondary_mask & 0xfull) << 21;
++   v |= ((uint64_t)f->primary_format & 0x7ull) << 25;
++   v |= ((uint64_t)f->primary_mask & 0xfull) << 28;
++   return (uint32_t)v;
++}
+ 
+-   return desc_u;
++static inline uint32_t
++bi_dual_tex_as_u32(struct bifrost_dual_texture_operation desc)
++{
++   return bifrost_dual_texture_operation_pack(&desc);
+ }
+ 
+ #define BIFROST_MEGA_SAMPLE   128
+@@ -571,7 +667,7 @@ struct bifrost_pixel_indices {
+    unsigned rt     : 8;
+    unsigned x      : 8;
+    unsigned y      : 8;
+-} __attribute__((packed));
++} PACKED;
+ 
+ enum bi_constmod {
+    BI_CONSTMOD_NONE,
+diff --git a/src/panfrost/compiler/bifrost/bifrost/bi_pack.c b/src/panfrost/compiler/bifrost/bifrost/bi_pack.c
+index 7469615..b89bbda 100644
+--- a/src/panfrost/compiler/bifrost/bifrost/bi_pack.c
++++ b/src/panfrost/compiler/bifrost/bifrost/bi_pack.c
+@@ -42,9 +42,7 @@ bi_pack_header(bi_clause *clause, bi_clause *next_1, bi_clause *next_2)
+       .flush_to_zero = clause->ftz ? BIFROST_FTZ_ALWAYS : BIFROST_FTZ_DISABLE,
+    };
+ 
+-   uint64_t u = 0;
+-   memcpy(&u, &header, sizeof(header));
+-   return u;
++   return bifrost_header_pack(&header);
+ }
+ 
+ /* Assigns a slot for reading, before anything is written */
+@@ -251,7 +249,7 @@ bi_pack_registers(bi_registers regs)
+    s.reg3 = regs.slot[3];
+    s.fau_idx = regs.fau_idx;
+ 
+-   memcpy(&packed, &s, sizeof(s));
++   packed = bifrost_regs_pack(&s);
+    return packed;
+ }
+ 
+@@ -413,7 +411,10 @@ bi_pack_constants(unsigned tuple_count, uint64_t *constants, unsigned word_idx,
+       .imm_2 = constants[index + 1] >> 4,
+    };
+ 
+-   util_dynarray_append(emission, quad);
++   uint64_t words[2];
++   bifrost_fmt_constant_pack(&quad, words);
++   util_dynarray_append(emission, words[0]);
++   util_dynarray_append(emission, words[1]);
+ }
+ 
+ uint8_t
+diff --git a/src/panfrost/compiler/bifrost/bifrost_compile.c b/src/panfrost/compiler/bifrost/bifrost_compile.c
+index 4c61608..2e7da9d 100644
+--- a/src/panfrost/compiler/bifrost/bifrost_compile.c
++++ b/src/panfrost/compiler/bifrost/bifrost_compile.c
+@@ -112,10 +112,18 @@ bi_emit_jump(bi_builder *b, nir_jump_instr *instr)
+ static uint64_t
+ bi_index_to_key(bi_index idx)
+ {
+-   static_assert(sizeof(idx) <= sizeof(uint64_t), "too much padding");
+-
+-   uint64_t key = 0;
+-   memcpy(&key, &idx, sizeof(idx));
++   /* Built field by field rather than by copying the struct: under the MSVC
++    * ABI each bool bitfield run takes its own storage unit, bi_index grows
++    * past 64 bits and a copy of its first 8 bytes would drop fields. */
++   uint64_t key = idx.value;
++   key |= (uint64_t)idx.abs << 32;
++   key |= (uint64_t)idx.neg << 33;
++   key |= (uint64_t)idx.discard << 34;
++   key |= (uint64_t)(idx.swizzle & 0x1f) << 35;
++   key |= (uint64_t)(idx.offset & 0x7) << 40;
++   key |= (uint64_t)(idx.type & 0x7) << 43;
++   key |= (uint64_t)idx.kill_ssa << 46;
++   key |= (uint64_t)idx.memory << 47;
+    return key;
+ }
+ 
+diff --git a/src/panfrost/compiler/bifrost/compiler.h b/src/panfrost/compiler/bifrost/compiler.h
+index 0c82ece..35b6e96 100644
+--- a/src/panfrost/compiler/bifrost/compiler.h
++++ b/src/panfrost/compiler/bifrost/compiler.h
+@@ -290,6 +290,9 @@ enum bi_index_type {
+    BI_INDEX_FAU = 5
+ };
+ 
++/* Enum-typed bitfields are declared unsigned throughout Panfrost: under the
++ * MSVC ABI an enum bitfield is signed, so e.g. a 3-bit enum bi_size field read
++ * back BI_SIZE_64 as a negative number. */
+ typedef struct {
+    uint32_t value;
+ 
+@@ -306,9 +309,9 @@ typedef struct {
+    /* For a source, the swizzle. For a destination, acts a bit like a
+     * write mask. Identity for the full 32-bit, H00 for only caring about
+     * the lower half, other values unused. */
+-   enum bi_swizzle swizzle : 5;
++   unsigned swizzle : 5; /* enum bi_swizzle */
+    uint32_t offset         : 3;
+-   enum bi_index_type type : 3;
++   unsigned type : 3; /* enum bi_index_type */
+ 
+    /* Last use of an SSA value; similar to discard, but applies to the
+     * SSA analysis and does not have any HW restrictions (discard gets
+diff --git a/src/panfrost/compiler/bifrost/valhall/valhall.h b/src/panfrost/compiler/bifrost/valhall/valhall.h
+index 522832c..48aa69e 100644
+--- a/src/panfrost/compiler/bifrost/valhall/valhall.h
++++ b/src/panfrost/compiler/bifrost/valhall/valhall.h
+@@ -62,14 +62,14 @@ struct va_src_info {
+    bool halfswizzle  : 1;
+    bool widen        : 1;
+    bool combine      : 1;
+-   enum va_size size : 2;
+-} __attribute__((packed));
++   unsigned size : 2; /* enum va_size */
++} PACKED;
+ 
+ struct va_opcode_info {
+    uint64_t exact;
+    struct va_src_info srcs[4];
+    uint8_t type_size         : 8;
+-   enum va_unit unit         : 3;
++   unsigned unit         : 3; /* enum va_unit */
+    unsigned nr_srcs          : 3;
+    unsigned nr_staging_srcs  : 2;
+    unsigned nr_staging_dests : 2;
+diff --git a/src/panfrost/compiler/midgard/midgard.h b/src/panfrost/compiler/midgard/midgard.h
+index 79ce024..9ea7d22 100644
+--- a/src/panfrost/compiler/midgard/midgard.h
++++ b/src/panfrost/compiler/midgard/midgard.h
+@@ -375,7 +375,7 @@ enum midgard_call_mode {
+ typedef struct __attribute__((__packed__)) {
+    midgard_jmp_writeout_op op       : 3; /* == branch_uncond */
+    unsigned dest_tag                : 4; /* tag of branch destination */
+-   enum midgard_call_mode call_mode : 2;
++   unsigned call_mode : 2; /* enum midgard_call_mode */
+    int offset                       : 7;
+ } midgard_branch_uncond;
+ 
+@@ -389,7 +389,7 @@ typedef struct __attribute__((__packed__)) {
+ typedef struct __attribute__((__packed__)) {
+    midgard_jmp_writeout_op op       : 3; /* == branch_cond */
+    unsigned dest_tag                : 4; /* tag of branch destination */
+-   enum midgard_call_mode call_mode : 2;
++   unsigned call_mode : 2; /* enum midgard_call_mode */
+    signed offset                    : 23;
+ 
+    /* Extended branches permit inputting up to 4 conditions loaded into
+@@ -821,9 +821,9 @@ typedef struct __attribute__((__packed__)) {
+    unsigned type      : 4;
+    unsigned next_type : 4;
+ 
+-   enum mali_texture_op op             : 4;
++   unsigned op             : 4; /* enum mali_texture_op */
+    unsigned mode                       : 4;
+-   enum midgard_partial_execution exec : 2;
++   unsigned exec : 2; /* enum midgard_partial_execution */
+ 
+    unsigned format : 2;
+ 
+@@ -855,7 +855,7 @@ typedef struct __attribute__((__packed__)) {
+ 
+    unsigned out_full : 1;
+ 
+-   enum mali_sampler_type sampler_type : 2;
++   unsigned sampler_type : 2; /* enum mali_sampler_type */
+ 
+    unsigned out_reg_select : 1;
+    unsigned out_upper      : 1;
+diff --git a/src/panfrost/compiler/pan_compiler.h b/src/panfrost/compiler/pan_compiler.h
+index b71fac1..4c27bf0 100644
+--- a/src/panfrost/compiler/pan_compiler.h
++++ b/src/panfrost/compiler/pan_compiler.h
+@@ -242,14 +242,14 @@ enum pan_varying_section {
+ 
+ struct pan_varying_slot {
+    /* GLSL/SPIR-V location of the varying slot */
+-   gl_varying_slot location : 7;
++   unsigned location : 7; /* gl_varying_slot; unsigned for the MSVC ABI */
+ 
+    /* Format of the varying slot in memory
+     * (really nir_alu_type, but the compiler screams at you if you don't lie) */
+    unsigned alu_type : 8;
+    unsigned ncomps : 3;
+ 
+-   enum pan_varying_section section : 2;
++   unsigned section : 2; /* enum pan_varying_section */
+ 
+    /* Offset of the varying slot in the specified section of the varying
+     * buffer.  For special VS outputs (see PAN_ATTRIB_VARYING_BITS), this is
+@@ -295,7 +295,11 @@ enum ENUM_PACKED pan_varying_knowledge {
+  * ignored by finding functions.
+  */
+ PRAGMA_DIAGNOSTIC_PUSH
++/* Under the MSVC ABI ENUM_PACKED is empty, the enum below is 4 bytes and the
++ * struct gains padding; that is harmless there, so only enforce it elsewhere. */
++#ifndef _MSC_VER
+ PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
++#endif
+ struct pan_varying_layout {
+    uint8_t count;
+    enum pan_varying_knowledge known;
+diff --git a/src/panfrost/compiler/pan_nir.h b/src/panfrost/compiler/pan_nir.h
+index 7b53fc6..2416760 100644
+--- a/src/panfrost/compiler/pan_nir.h
++++ b/src/panfrost/compiler/pan_nir.h
+@@ -277,8 +277,8 @@ bool pan_nir_lower_divergent_scratch(nir_shader *shader, unsigned arch);
+ PRAGMA_DIAGNOSTIC_PUSH
+ PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
+ struct pan_bi_tex_flags {
+-   bool skip : 1;
+-   bool explicit_lod : 1;
++   unsigned skip : 1;
++   unsigned explicit_lod : 1;
+    unsigned _pad : 14;
+    unsigned sampler_idx : 8;
+    unsigned texture_idx : 8;
+@@ -298,16 +298,16 @@ nir_intrinsic_pan_bi_tex_flags(const nir_intrinsic_instr *instr)
+ PRAGMA_DIAGNOSTIC_PUSH
+ PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
+ struct pan_va_tex_flags {
+-   bool skip : 1;
+-   bool wide_indices : 1;
+-   bool array_enable : 1;
+-   bool texel_offset : 1;
+-   bool compare_enable : 1;
++   unsigned skip : 1;
++   unsigned wide_indices : 1;
++   unsigned array_enable : 1;
++   unsigned texel_offset : 1;
++   unsigned compare_enable : 1;
+    unsigned lod_mode : 3;
+-   bool derivative_enable : 1;
+-   bool force_delta_enable : 1;
+-   bool lod_bias_disable : 1;
+-   bool lod_clamp_disable : 1;
++   unsigned derivative_enable : 1;
++   unsigned force_delta_enable : 1;
++   unsigned lod_bias_disable : 1;
++   unsigned lod_clamp_disable : 1;
+    unsigned _pad : 20;
+ };
+ PRAGMA_DIAGNOSTIC_POP
+diff --git a/src/panfrost/compiler/pan_nir_lower_tex.c b/src/panfrost/compiler/pan_nir_lower_tex.c
+index b12828f..000a111 100644
+--- a/src/panfrost/compiler/pan_nir_lower_tex.c
++++ b/src/panfrost/compiler/pan_nir_lower_tex.c
+@@ -392,18 +392,18 @@ build_bi_texc(nir_builder *b, nir_alu_type dest_type,
+ 
+    if (sr_count == 0) {
+       return nir_texc0_pan(b, nir_alu_type_get_type_size(dest_type),
+-                           coord_x, coord_y, nir_imm_int(b, desc.packed),
++                           coord_x, coord_y, nir_imm_int(b, bifrost_texture_operation_pack(&desc)),
+                            .dest_type = dest_type,
+                            .flags = PAN_AS_U32(flags));
+    } else if (sr_count <= 4) {
+       return nir_texc1_pan(b, nir_alu_type_get_type_size(dest_type),
+-                           coord_x, coord_y, nir_imm_int(b, desc.packed),
++                           coord_x, coord_y, nir_imm_int(b, bifrost_texture_operation_pack(&desc)),
+                            nir_vec(b, sr, sr_count),
+                            .dest_type = dest_type,
+                            .flags = PAN_AS_U32(flags));
+    } else {
+       return nir_texc2_pan(b, nir_alu_type_get_type_size(dest_type),
+-                           coord_x, coord_y, nir_imm_int(b, desc.packed),
++                           coord_x, coord_y, nir_imm_int(b, bifrost_texture_operation_pack(&desc)),
+                            nir_vec(b, sr, 4),
+                            nir_vec(b, sr + 4, sr_count - 4),
+                            .dest_type = dest_type,
+diff --git a/src/panfrost/genxml/decode.h b/src/panfrost/genxml/decode.h
+index 412b2aa..b353c72 100644
+--- a/src/panfrost/genxml/decode.h
++++ b/src/panfrost/genxml/decode.h
+@@ -69,7 +69,7 @@ __pandecode_fetch_gpu_mem(struct pandecode_context *ctx, uint64_t gpu_va,
+ 
+    assert(size + (gpu_va - mem->gpu_va) <= mem->length);
+ 
+-   return mem->addr + gpu_va - mem->gpu_va;
++   return (uint8_t *)mem->addr + (gpu_va - mem->gpu_va);
+ }
+ 
+ #define pandecode_fetch_gpu_mem(ctx, gpu_va, size)                             \
+diff --git a/src/panfrost/lib/kmod/meson.build b/src/panfrost/lib/kmod/meson.build
+index a80de4e..954345a 100644
+--- a/src/panfrost/lib/kmod/meson.build
++++ b/src/panfrost/lib/kmod/meson.build
+@@ -7,6 +7,12 @@ libpankmod_lib_files = files(
+   'panthor_kmod.c',
+ )
+ 
++# Windows (exynos-woa): libdrm and mmap come from the malikm shim (include/win32-compat), which talks to
++# MaliG76Wddm through D3DKMT.
++if host_machine.system() == 'windows'
++  libpankmod_lib_files += files('../../../../include/win32-compat/malikm_drm.c')
++endif
++
+ if panfrost_kmds.contains('kbase')
+   libpankmod_lib_files += files('kbase_kmod.c')
+ endif
+diff --git a/src/panfrost/lib/pan_blend.h b/src/panfrost/lib/pan_blend.h
+index 0a84d4a..49ed35d 100644
+--- a/src/panfrost/lib/pan_blend.h
++++ b/src/panfrost/lib/pan_blend.h
+@@ -18,12 +18,12 @@ struct MALI_BLEND_EQUATION;
+ struct pan_blend_equation {
+    unsigned blend_enable                  : 1;
+    unsigned is_float                      : 1;
+-   enum pipe_blend_func rgb_func          : 3;
+-   enum pipe_blendfactor rgb_src_factor   : 5;
+-   enum pipe_blendfactor rgb_dst_factor   : 5;
+-   enum pipe_blend_func alpha_func        : 3;
+-   enum pipe_blendfactor alpha_src_factor : 5;
+-   enum pipe_blendfactor alpha_dst_factor : 5;
++   unsigned rgb_func          : 3; /* enum pipe_blend_func */
++   unsigned rgb_src_factor   : 5; /* enum pipe_blendfactor */
++   unsigned rgb_dst_factor   : 5; /* enum pipe_blendfactor */
++   unsigned alpha_func        : 3; /* enum pipe_blend_func */
++   unsigned alpha_src_factor : 5; /* enum pipe_blendfactor */
++   unsigned alpha_dst_factor : 5; /* enum pipe_blendfactor */
+    unsigned color_mask                    : 4;
+ };
+ 
+diff --git a/src/panfrost/lib/pan_samples.c b/src/panfrost/lib/pan_samples.c
+index 8c6b65a..e1a8688 100644
+--- a/src/panfrost/lib/pan_samples.c
++++ b/src/panfrost/lib/pan_samples.c
+@@ -6,6 +6,7 @@
+ #include <stdint.h>
+ 
+ #include "pan_samples.h"
++#include "util/macros.h"
+ 
+ /* Sample positions are specified partially in hardware, partially in software
+  * on Mali. On Midgard, sample positions are completely fixed but need to be
+@@ -24,13 +25,13 @@
+ 
+ struct mali_sample_position {
+    uint16_t x, y;
+-} __attribute__((packed));
++} PACKED;
+ 
+ struct mali_sample_positions {
+    struct mali_sample_position positions[32];
+    struct mali_sample_position origin;
+    struct mali_sample_position padding[64 - (32 + 1)];
+-} __attribute__((packed));
++} PACKED;
+ 
+ /* SAMPLE16 constructs a single sample in terms of 1/16's of the grid, centered
+  * at the origin. SAMPLE4/8 swap the units for legibility. */
+diff --git a/src/panfrost/lib/pan_trace.c b/src/panfrost/lib/pan_trace.c
+index bbaef51..ba4449a 100644
+--- a/src/panfrost/lib/pan_trace.c
++++ b/src/panfrost/lib/pan_trace.c
+@@ -5,6 +5,9 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#ifdef _WIN32
++#define strncasecmp _strnicmp
++#endif
+ #include "pan_trace.h"
+ 
+ #include "util/os_misc.h"
+diff --git a/src/panfrost/perf/pan_perf.h b/src/panfrost/perf/pan_perf.h
+index 854b849..7666ef5 100644
+--- a/src/panfrost/perf/pan_perf.h
++++ b/src/panfrost/perf/pan_perf.h
+@@ -45,6 +45,13 @@ int pan_perf_disable(struct pan_perf *perf);
+ 
+ int pan_perf_dump(struct pan_perf *perf);
+ 
++#ifdef _WIN32
++typedef int clockid_t;
++#ifndef CLOCK_MONOTONIC_RAW
++#define CLOCK_MONOTONIC_RAW 4
++#endif
++#endif
++
+ static inline clockid_t
+ pan_perf_gpu_clock_id(const struct pan_perf *perf)
+ {
+diff --git a/src/util/os_mman.h b/src/util/os_mman.h
+index 1567ee7..250f0f0 100644
+--- a/src/util/os_mman.h
++++ b/src/util/os_mman.h
+@@ -40,7 +40,8 @@
+ 
+ #include "util/detect_os.h"
+ 
+-#if DETECT_OS_POSIX
++#if DETECT_OS_POSIX || DETECT_OS_WINDOWS
++/* On Windows this is the mapping shim Panfrost's Windows build provides. */
+ #  include <sys/mman.h>
+ #else
+ #  error Unsupported OS
+@@ -64,6 +65,12 @@ extern "C" {
+ #  define os_mmap(addr, length, prot, flags, fd, offset) \
+              mmap(addr, length, prot, flags, fd, offset)
+ 
++#if DETECT_OS_WINDOWS
++static inline int os_munmap(void *addr, size_t length)
++{
++   return munmap(addr, length);
++}
++#else
+ static inline int os_munmap(void *addr, size_t length)
+ {
+    /* Copied from configure code generated by AC_SYS_LARGEFILE */
+@@ -76,6 +83,7 @@ static inline int os_munmap(void *addr, size_t length)
+    return munmap(addr, length);
+ }
+ #endif
++#endif
+ 
+ 
+ #ifdef __cplusplus
+diff --git a/src/util/u_atomic.h b/src/util/u_atomic.h
+index 9f79113..ef67bbe 100644
+--- a/src/util/u_atomic.h
++++ b/src/util/u_atomic.h
+@@ -22,6 +22,10 @@
+  */
+ #if defined(__sun)
+ #define PIPE_ATOMIC_OS_SOLARIS
++#elif defined(__clang__)
++/* clang-cl defines _MSC_VER but does not declare the MSVC ARM64 interlocked
++ * intrinsics this header would use; it has the GCC __atomic builtins. */
++#define PIPE_ATOMIC_GCC_INTRINSIC
+ #elif defined(_MSC_VER)
+ #define PIPE_ATOMIC_MSVC_INTRINSIC
+ #elif defined(__GNUC__)
+diff --git a/src/util/u_math.c b/src/util/u_math.c
+index 5683766..5c8e327 100644
+--- a/src/util/u_math.c
++++ b/src/util/u_math.c
+@@ -100,7 +100,7 @@ util_fpstate_get(void)
+    {
+ #ifdef HAVE___BUILTIN_AARCH64_GET_FPCR
+       fpstate = (unsigned)__builtin_aarch64_get_fpcr();
+-#elif DETECT_CC_MSVC
++#elif DETECT_CC_MSVC && !defined(__clang__) /* clang-cl: no ARM64_FPCR */
+       fpstate = (unsigned)_ReadStatusReg(ARM64_FPCR);
+ #else
+       uint64_t fpcr;
+@@ -169,7 +169,7 @@ util_fpstate_set(unsigned fpstate)
+    {
+ #ifdef HAVE___BUILTIN_AARCH64_SET_FPCR
+       __builtin_aarch64_set_fpcr(fpstate);
+-#elif DETECT_CC_MSVC
++#elif DETECT_CC_MSVC && !defined(__clang__) /* clang-cl: no ARM64_FPCR */
+       _WriteStatusReg(ARM64_FPCR, fpstate);
+ #else
+       uint64_t fpcr = fpstate;
+-- 
+2.43.0
+

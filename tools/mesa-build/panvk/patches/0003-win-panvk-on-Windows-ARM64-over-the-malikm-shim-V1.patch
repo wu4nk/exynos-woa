@@ -1,0 +1,783 @@
+From 1783545738dda5d3c86cda5b9b212807c76e5043 Mon Sep 17 00:00:00 2001
+From: exynos-woa build <build@localhost>
+Date: Wed, 11 Nov 2026 07:55:28 +0700
+Subject: [PATCH 3/3] win: panvk on Windows ARM64 over the malikm shim (V1)
+
+drmDevice enumeration in the shim, malikm_atoms.c (kbase job atoms over PANFROST_SUBMIT + binary syncobjs),
+the CPU atom sync type on _WIN32, ICD exports through vulkan_api.def, Windows build fixes.
+---
+ include/meson.build                           |   6 +
+ include/win32-compat/malikm_drm.c             |  90 ++++++++
+ include/win32-compat/xf86drm.h                |  44 ++++
+ src/compiler/libcl/libcl.h                    |   5 +
+ src/panfrost/lib/kmod/malikm_atoms.c          | 202 ++++++++++++++++++
+ src/panfrost/lib/kmod/meson.build             |   1 +
+ src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c   |  14 +-
+ src/panfrost/vulkan/meson.build               |   1 +
+ src/panfrost/vulkan/panvk_image.c             |  10 +
+ src/panfrost/vulkan/panvk_instance.c          |  11 +
+ src/panfrost/vulkan/panvk_physical_device.c   |  35 ++-
+ src/panfrost/vulkan/panvk_physical_device.h   |   2 +-
+ .../vulkan/panvk_vX_physical_device.c         |   5 +
+ src/panfrost/vulkan/panvk_vX_shader.c         |  10 +
+ src/vulkan/runtime/vk_image.c                 |   6 +-
+ src/vulkan/runtime/vk_image.h                 |   2 +-
+ 16 files changed, 433 insertions(+), 11 deletions(-)
+ create mode 100644 src/panfrost/lib/kmod/malikm_atoms.c
+
+diff --git a/include/meson.build b/include/meson.build
+index 397d4b4..00b6e43 100644
+--- a/include/meson.build
++++ b/include/meson.build
+@@ -2,6 +2,12 @@
+ # SPDX-License-Identifier: MIT
+ 
+ inc_include = [include_directories('.')]
++
++# Panfrost on Windows (wddm-mali-g52 0008; exynos-woa: also for panvk): the POSIX and libdrm headers it includes
++# unconditionally. Compilation only: meson's has_header() checks do not see target include directories.
++if host_machine.system() == 'windows' and (get_option('gallium-drivers').contains('panfrost') or get_option('vulkan-drivers').contains('panfrost'))
++  inc_include += [include_directories('win32-compat')]
++endif
+ inc_winddk = include_directories('winddk')
+ 
+ # Most things assume that Android headers are in the default include
+diff --git a/include/win32-compat/malikm_drm.c b/include/win32-compat/malikm_drm.c
+index e61df3b..abaf0d6 100644
+--- a/include/win32-compat/malikm_drm.c
++++ b/include/win32-compat/malikm_drm.c
+@@ -310,6 +310,96 @@ drmIoctl(int fd, unsigned long request, void *arg)
+    return ret;
+ }
+ 
++/* ---- exynos-woa V1 (panvk): device enumeration ----
++ * One platform device, "malikm", when the Mali answers: \\.\MaliG52 opens or the maliwddm adapter is found. */
++static int
++malikm_present(void)
++{
++   HANDLE h = CreateFileW(MALIKM_USER_PATH, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
++                          OPEN_EXISTING, 0, NULL);
++   if (h != INVALID_HANDLE_VALUE) {
++      CloseHandle(h);
++      return 1;
++   }
++   return wddm_init() == 0;
++}
++
++static drmDevicePtr
++malikm_new_device(void)
++{
++   static char render[] = "malikm", fullname[] = "malikm";
++   static char compat0[] = "arm,mali-bifrost";
++   drmDevicePtr d = calloc(1, sizeof(*d) + DRM_NODE_MAX * sizeof(char *) + sizeof(drmPlatformBusInfo) +
++                                 sizeof(drmPlatformDeviceInfo) + 2 * sizeof(char *));
++   if (!d)
++      return NULL;
++   d->nodes = (char **)(d + 1);
++   d->nodes[DRM_NODE_RENDER] = render;
++   d->available_nodes = 1 << DRM_NODE_RENDER;
++   d->bustype = DRM_BUS_PLATFORM;
++   d->businfo.platform = (drmPlatformBusInfoPtr)(d->nodes + DRM_NODE_MAX);
++   memcpy(d->businfo.platform->fullname, fullname, sizeof(fullname));
++   d->deviceinfo.platform = (drmPlatformDeviceInfoPtr)(d->businfo.platform + 1);
++   d->deviceinfo.platform->compatible = (char **)(d->deviceinfo.platform + 1);
++   d->deviceinfo.platform->compatible[0] = compat0;
++   d->deviceinfo.platform->compatible[1] = NULL;
++   return d;
++}
++
++int
++drmGetDevices2(uint32_t flags, drmDevicePtr devices[], int max_devices)
++{
++   (void)flags;
++   if (!malikm_present())
++      return 0;
++   if (!devices || max_devices < 1)
++      return 1;
++   devices[0] = malikm_new_device();
++   return devices[0] ? 1 : -ENOMEM;
++}
++
++void
++drmFreeDevices(drmDevicePtr devices[], int count)
++{
++   for (int i = 0; i < count; i++)
++      free(devices[i]);
++}
++
++int
++drmGetDevice2(int fd, uint32_t flags, drmDevicePtr *device)
++{
++   (void)fd; (void)flags;
++   *device = malikm_new_device();
++   return *device ? 0 : -ENOMEM;
++}
++
++void
++drmFreeDevice(drmDevicePtr *device)
++{
++   if (device && *device) {
++      free(*device);
++      *device = NULL;
++   }
++}
++
++/* Binary syncobjs only (no timelines, no syncobj fds): what the KMD implements. */
++int
++drmGetCap(int fd, uint64_t capability, uint64_t *value)
++{
++   (void)fd;
++   switch (capability) {
++   case DRM_CAP_SYNCOBJ:
++      *value = 1;
++      return 0;
++   case DRM_CAP_SYNCOBJ_TIMELINE:
++      *value = 0;
++      return 0;
++   default:
++      *value = 0;
++      return 0;
++   }
++}
++
+ drmVersionPtr
+ drmGetVersion(int fd)
+ {
+diff --git a/include/win32-compat/xf86drm.h b/include/win32-compat/xf86drm.h
+index 2c0d6fa..a14ed43 100644
+--- a/include/win32-compat/xf86drm.h
++++ b/include/win32-compat/xf86drm.h
+@@ -39,6 +39,50 @@ typedef struct _drmVersion {
+ /* Not libdrm: opens \\.\MaliG52 and returns the fd Panfrost should use. */
+ int malikm_open(void);
+ 
++/* exynos-woa V1 (panvk): libdrm's device enumeration, for the one Mali behind MaliG76Wddm. nodes[DRM_NODE_RENDER]
++ * is the name "malikm"; a driver that opens it calls malikm_open() instead of open(). */
++#define DRM_NODE_PRIMARY 0
++#define DRM_NODE_CONTROL 1
++#define DRM_NODE_RENDER  2
++#define DRM_NODE_MAX     3
++#define DRM_BUS_PCI      0
++#define DRM_BUS_USB      1
++#define DRM_BUS_PLATFORM 2
++#define DRM_BUS_HOST1X   3
++#define DRM_PLATFORM_DEVICE_NAME_LEN 512
++
++typedef struct _drmPlatformBusInfo {
++   char fullname[DRM_PLATFORM_DEVICE_NAME_LEN];
++} drmPlatformBusInfo, *drmPlatformBusInfoPtr;
++
++typedef struct _drmPlatformDeviceInfo {
++   char **compatible; /* NULL terminated list of compatible strings */
++} drmPlatformDeviceInfo, *drmPlatformDeviceInfoPtr;
++
++typedef struct _drmDevice {
++   char **nodes; /* DRM_NODE_MAX sized array */
++   int available_nodes; /* DRM_NODE_* bitmask */
++   int bustype;
++   union {
++      void *pci;
++      void *usb;
++      drmPlatformBusInfoPtr platform;
++      void *host1x;
++   } businfo;
++   union {
++      void *pci;
++      void *usb;
++      drmPlatformDeviceInfoPtr platform;
++      void *host1x;
++   } deviceinfo;
++} drmDevice, *drmDevicePtr;
++
++int drmGetDevices2(uint32_t flags, drmDevicePtr devices[], int max_devices);
++void drmFreeDevices(drmDevicePtr devices[], int count);
++int drmGetDevice2(int fd, uint32_t flags, drmDevicePtr *device);
++void drmFreeDevice(drmDevicePtr *device);
++int drmGetCap(int fd, uint64_t capability, uint64_t *value);
++
+ int drmIoctl(int fd, unsigned long request, void *arg);
+ drmVersionPtr drmGetVersion(int fd);
+ void drmFreeVersion(drmVersionPtr v);
+diff --git a/src/compiler/libcl/libcl.h b/src/compiler/libcl/libcl.h
+index 2c697b1..8dd0922 100644
+--- a/src/compiler/libcl/libcl.h
++++ b/src/compiler/libcl/libcl.h
+@@ -15,6 +15,11 @@
+ #include <stdint.h>
+ #include "util/macros.h"
+ 
++#if !defined(__OPENCL_VERSION__) && defined(_WIN32)
++/* exynos-woa: glibc's <sys/types.h> has uint, the Windows headers do not. */
++typedef unsigned int uint;
++#endif
++
+ #ifndef __OPENCL_VERSION__
+ 
+ /* Structures defined in common host/device headers that include device pointers
+diff --git a/src/panfrost/lib/kmod/malikm_atoms.c b/src/panfrost/lib/kmod/malikm_atoms.c
+new file mode 100644
+index 0000000..3409761
+--- /dev/null
++++ b/src/panfrost/lib/kmod/malikm_atoms.c
+@@ -0,0 +1,202 @@
++/*
++ * Copyright 2026 exynos-woa contributors
++ * SPDX-License-Identifier: MIT
++ *
++ * exynos-woa V1 (panvk on Windows): the kbase job-atom calls panvk's JM queue makes (kbase_kmod.h), on top of the
++ * Panfrost DRM submit and binary syncobjs that the malikm shim (include/win32-compat/malikm_drm.c) gives through
++ * MaliG76Wddm.
++ *
++ * An atom is a number, starting at 1, given to each submitted job chain. Its fence is the out_sync syncobj of the
++ * PANFROST_SUBMIT that ran it. Syncobjs live in a ring of ATOM_RING slots, one per atom number modulo the ring size;
++ * a slot is reused only after the atom it held has completed (waited for here before reuse), so an atom whose slot
++ * now holds a later number is known to be complete. Dependencies become the submit's in_syncs (the KMD also runs the
++ * jobs of one context in submission order).
++ */
++
++#include <errno.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "util/os_time.h"
++#include "util/simple_mtx.h"
++
++#include "drm-uapi/panfrost_drm.h"
++#include "xf86drm.h"
++
++#include "kbase_kmod.h"
++#include "pan_kmod.h"
++
++#define ATOM_RING 1024
++
++struct atom_slot {
++   uint64_t atom;    /* atom number held, 0 = never used */
++   uint32_t syncobj; /* 0 = not created yet */
++};
++
++static struct atom_slot ring[ATOM_RING];
++static uint64_t next_atom = 1;
++static simple_mtx_t ring_lock = SIMPLE_MTX_INITIALIZER;
++
++static int64_t
++abs_deadline(int64_t timeout_ns)
++{
++   if (timeout_ns < 0)
++      return INT64_MAX;
++   return os_time_get_nano() + timeout_ns;
++}
++
++/* The syncobj of a live atom, 0 when it has completed (or was never submitted). Called with ring_lock held. */
++static uint32_t
++atom_syncobj_locked(uint64_t atom)
++{
++   if (!atom)
++      return 0;
++   const struct atom_slot *s = &ring[atom % ATOM_RING];
++   return s->atom == atom ? s->syncobj : 0;
++}
++
++static uint64_t
++submit(struct pan_kmod_dev *dev, uint64_t jc, uint32_t core_req, struct pan_kmod_bo **bos, uint32_t nbo,
++       uint64_t dep0, uint64_t dep1)
++{
++   uint32_t *handles = nbo ? malloc(nbo * sizeof(uint32_t)) : NULL;
++   if (nbo && !handles)
++      return 0;
++   for (uint32_t i = 0; i < nbo; i++)
++      handles[i] = pan_kmod_bo_handle(bos[i]);
++
++   simple_mtx_lock(&ring_lock);
++   uint64_t atom = next_atom++;
++   struct atom_slot *s = &ring[atom % ATOM_RING];
++
++   /* The slot's previous atom must be complete before its fence is replaced. */
++   if (s->atom && s->syncobj)
++      drmSyncobjWait(dev->fd, &s->syncobj, 1, INT64_MAX, 0, NULL);
++   if (!s->syncobj && drmSyncobjCreate(dev->fd, 0, &s->syncobj)) {
++      simple_mtx_unlock(&ring_lock);
++      free(handles);
++      return 0;
++   }
++
++   uint32_t in[2];
++   unsigned nin = 0;
++   uint32_t d0 = atom_syncobj_locked(dep0), d1 = atom_syncobj_locked(dep1);
++   if (d0)
++      in[nin++] = d0;
++   if (d1 && d1 != d0)
++      in[nin++] = d1;
++
++   struct drm_panfrost_submit sub = {
++      .jc = jc,
++      .in_syncs = (uintptr_t)in,
++      .in_sync_count = nin,
++      .out_sync = s->syncobj,
++      .bo_handles = (uintptr_t)handles,
++      .bo_handle_count = nbo,
++      .requirements = (core_req & BASE_JD_REQ_FS) ? PANFROST_JD_REQ_FS : 0,
++   };
++   int ret = drmIoctl(dev->fd, DRM_IOCTL_PANFROST_SUBMIT, &sub);
++   if (ret) {
++      fprintf(stderr, "panvk/malikm: PANFROST_SUBMIT jc 0x%llx failed (errno %d)\n", (unsigned long long)jc, errno);
++      simple_mtx_unlock(&ring_lock);
++      free(handles);
++      return 0;
++   }
++   s->atom = atom;
++   simple_mtx_unlock(&ring_lock);
++   free(handles);
++   return atom;
++}
++
++uint64_t
++kbase_kmod_job_submit_dep(struct pan_kmod_dev *dev, uint64_t jc, uint32_t core_req, struct pan_kmod_bo **bos,
++                          uint32_t nbo, uint64_t dep0, uint8_t dep0_type, uint64_t dep1, uint8_t dep1_type,
++                          bool no_waiter)
++{
++   (void)dep0_type; (void)dep1_type; (void)no_waiter;
++   return submit(dev, jc, core_req, bos, nbo, dep0, dep1);
++}
++
++uint64_t
++kbase_kmod_job_submit(struct pan_kmod_dev *dev, uint64_t jc, uint32_t core_req, struct pan_kmod_bo **bos,
++                      uint32_t nbo, struct base_external_resource *ext_res, uint32_t next_res)
++{
++   (void)ext_res; (void)next_res;
++   return submit(dev, jc, core_req, bos, nbo, 0, 0);
++}
++
++bool
++kbase_kmod_wait_atom(struct pan_kmod_dev *dev, uint64_t atom_number, int64_t timeout_ns)
++{
++   simple_mtx_lock(&ring_lock);
++   uint32_t so = atom_syncobj_locked(atom_number);
++   simple_mtx_unlock(&ring_lock);
++   if (!so)
++      return true;
++   /* A slot is only refilled after its atom completed, so waiting on a syncobj whose slot moved on is still right. */
++   return drmSyncobjWait(dev->fd, &so, 1, abs_deadline(timeout_ns), 0, NULL) == 0;
++}
++
++bool
++kbase_kmod_job_submit_retry(struct pan_kmod_dev *dev, uint64_t jc, uint32_t core_req, struct pan_kmod_bo **bos,
++                            uint32_t nbo, struct base_external_resource *ext_res, uint32_t next_res, int max_attempts)
++{
++   (void)ext_res; (void)next_res; (void)max_attempts;
++   uint64_t atom = submit(dev, jc, core_req, bos, nbo, 0, 0);
++   return atom && kbase_kmod_wait_atom(dev, atom, -1);
++}
++
++void
++kbase_kmod_atom_release(struct pan_kmod_dev *dev, uint64_t atom_num)
++{
++   (void)dev; (void)atom_num;
++}
++
++void
++kbase_kmod_jm_clean_imports(struct pan_kmod_dev *dev)
++{
++   (void)dev;
++}
++
++void
++kbase_kmod_jm_busy_track(struct pan_kmod_dev *dev)
++{
++   (void)dev;
++}
++
++uint64_t
++kbase_kmod_jm_busy_ns(struct pan_kmod_dev *dev)
++{
++   (void)dev;
++   return 0;
++}
++
++uint32_t
++kbase_kmod_get_flush_id(const struct pan_kmod_dev *dev)
++{
++   (void)dev;
++   return 0;
++}
++
++uint64_t
++kbase_kmod_bo_committed_size(struct pan_kmod_dev *dev, struct pan_kmod_bo *bo)
++{
++   (void)dev;
++   return bo->size;
++}
++
++bool
++kbase_kmod_supports_dmabuf(const struct pan_kmod_dev *dev)
++{
++   (void)dev;
++   return false;
++}
++
++int
++kbase_kmod_bo_set_evictable(struct pan_kmod_bo *bo, bool evictable)
++{
++   (void)bo; (void)evictable;
++   return -ENOSYS;
++}
+diff --git a/src/panfrost/lib/kmod/meson.build b/src/panfrost/lib/kmod/meson.build
+index 954345a..27d2aed 100644
+--- a/src/panfrost/lib/kmod/meson.build
++++ b/src/panfrost/lib/kmod/meson.build
+@@ -11,6 +11,7 @@ libpankmod_lib_files = files(
+ # MaliG76Wddm through D3DKMT.
+ if host_machine.system() == 'windows'
+   libpankmod_lib_files += files('../../../../include/win32-compat/malikm_drm.c')
++  libpankmod_lib_files += files('malikm_atoms.c')   # exynos-woa V1: kbase job atoms for panvk's JM queue
+ endif
+ 
+ if panfrost_kmds.contains('kbase')
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+index 6b50d5c..fbab6d7 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+@@ -318,7 +318,7 @@ panvk_wait_event_ops(struct panvk_batch *batch)
+          continue;
+ 
+       while (!op->event->signaled && !op->event->signal_atom)
+-         usleep(100);
++         os_time_sleep(100);
+    }
+ }
+ 
+@@ -364,7 +364,9 @@ panvk_jm_kbase_wait_atoms(void *data, const uint64_t targets[PANVK_KBASE_SYNC_TA
+     * fixed on v9 first; jm-v7 093 uses CLOCK_MONOTONIC on v6/v7 as well.
+     * PANVK_V7_RAW_CLOCK=1 restores MONOTONIC_RAW there (A/B only).
+     */
+-#if PAN_ARCH == 9
++#if defined(_WIN32)
++   /* exynos-woa: vk_sync deadlines are os_time_get_nano() (QueryPerformanceCounter) here. */
++#elif PAN_ARCH == 9
+    const clockid_t clk = CLOCK_MONOTONIC;
+ #else
+    static int raw_clock = -1;
+@@ -381,18 +383,26 @@ panvk_jm_kbase_wait_atoms(void *data, const uint64_t targets[PANVK_KBASE_SYNC_TA
+ 
+       int64_t timeout_ns = -1;
+       if (abs_timeout_ns != UINT64_MAX) {
++#ifdef _WIN32
++         int64_t now_ns = os_time_get_nano();
++#else
+          struct timespec now;
+          clock_gettime(clk, &now);
+          int64_t now_ns = (int64_t)now.tv_sec * 1000000000ll + now.tv_nsec;
++#endif
+          timeout_ns = MAX2((int64_t)abs_timeout_ns - now_ns, 0);
+       }
+ 
+       if (!P4_WAIT(kmod_dev, targets[i], timeout_ns))
+          {
+          if (abs_timeout_ns != UINT64_MAX) {
++#ifdef _WIN32
++            int64_t now2_ns = os_time_get_nano();
++#else
+             struct timespec now2;
+             clock_gettime(clk, &now2);
+             int64_t now2_ns = (int64_t)now2.tv_sec * 1000000000ll + now2.tv_nsec;
++#endif
+             if (now2_ns >= (int64_t)abs_timeout_ns)
+                return VK_TIMEOUT;
+          }
+diff --git a/src/panfrost/vulkan/meson.build b/src/panfrost/vulkan/meson.build
+index 947ee79..576f525 100644
+--- a/src/panfrost/vulkan/meson.build
++++ b/src/panfrost/vulkan/meson.build
+@@ -213,6 +213,7 @@ endif
+ libvulkan_panfrost = shared_library(
+   'vulkan_panfrost',
+   [libpanvk_files, panvk_entrypoints, panvk_tracepoints, panvk_drirc],
++  vs_module_defs : vulkan_api_def,   # exynos-woa: the ICD entry points, exported on Windows
+   include_directories : [
+     inc_include,
+     inc_src,
+diff --git a/src/panfrost/vulkan/panvk_image.c b/src/panfrost/vulkan/panvk_image.c
+index 305a11b..dbdff81 100644
+--- a/src/panfrost/vulkan/panvk_image.c
++++ b/src/panfrost/vulkan/panvk_image.c
+@@ -2038,6 +2038,16 @@ bc_raw_app_cache(char *buf, size_t size)
+ 
+ /* Spill file: one unlinked file per device, opened at the first spill.
+  * Called with bc_raw_lock held. */
++#ifdef _WIN32
++/* exynos-woa: no spill file on Windows (bc_raw_file fails, the raw blocks stay resident); these keep the code
++ * that is never reached compiling. */
++static inline int mkostemp(char *t, int f) { (void)t; (void)f; errno = ENOSYS; return -1; }
++static inline ssize_t pwrite(int fd, const void *b, size_t n, int64_t o) { (void)fd; (void)b; (void)n; (void)o; errno = ENOSYS; return -1; }
++static inline ssize_t pread(int fd, void *b, size_t n, int64_t o) { (void)fd; (void)b; (void)n; (void)o; errno = ENOSYS; return -1; }
++#define POSIX_FADV_DONTNEED 4
++static inline int posix_fadvise(int fd, int64_t o, int64_t n, int a) { (void)fd; (void)o; (void)n; (void)a; return 0; }
++#endif
++
+ static int
+ bc_raw_file(struct panvk_device *dev)
+ {
+diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
+index 698d343..bb55f3b 100644
+--- a/src/panfrost/vulkan/panvk_instance.c
++++ b/src/panfrost/vulkan/panvk_instance.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include "util/build_id.h"
++#include "git_sha1.h"
+ #include "panvk_drirc.h"
+ #include "util/mesa-blake3.h"
+ #include "util/os_misc.h"
+@@ -355,6 +356,7 @@ panvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
+    panvk_debug_init();
+    pan_trace_init();
+ 
++#ifndef _WIN32
+    const struct build_id_note *note =
+       build_id_find_nhdr_for_addr(panvk_CreateInstance);
+    if (!note) {
+@@ -367,6 +369,7 @@ panvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
+       return panvk_errorf(NULL, VK_ERROR_INITIALIZATION_FAILED,
+                           "build-id too short.  It needs to be a SHA");
+    }
++#endif
+ 
+    pAllocator = pAllocator ?: vk_default_allocator();
+    instance = vk_zalloc(pAllocator, sizeof(*instance), 8,
+@@ -405,7 +408,15 @@ panvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
+    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
+ 
+    STATIC_ASSERT(sizeof(instance->driver_build_sha) == BLAKE3_KEY_LEN);
++#ifdef _WIN32
++   /* exynos-woa: no ELF build-id on Windows; the version and git sha stand in (cache keys only). */
++   {
++      static const char s10_id[] = PACKAGE_VERSION MESA_GIT_SHA1 "exynos-woa-panvk";
++      _mesa_blake3_compute(s10_id, sizeof(s10_id), instance->driver_build_sha);
++   }
++#else
+    copy_build_id_to_sha1(instance->driver_build_sha, note);
++#endif
+ 
+    *pInstance = panvk_instance_to_handle(instance);
+ 
+diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
+index 06c661e..3f260af 100644
+--- a/src/panfrost/vulkan/panvk_physical_device.c
++++ b/src/panfrost/vulkan/panvk_physical_device.c
+@@ -13,7 +13,7 @@
+ 
+ #include <sys/stat.h>
+ 
+-#if defined(HAVE_PAN_KMOD_KBASE)
++#if defined(HAVE_PAN_KMOD_KBASE) || defined(_WIN32)
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <poll.h>
+@@ -23,6 +23,7 @@
+ #include "util/timespec.h"
+ #endif
+ 
++#include "c11/threads.h"
+ #include "util/disk_cache.h"
+ #include "util/os_file.h"
+ #include "util/os_misc.h"
+@@ -93,7 +94,12 @@ create_kmod_dev(struct panvk_physical_device *device,
+    drmVersionPtr version;
+    int fd;
+ 
++#ifdef _WIN32
++   /* exynos-woa: the Mali behind MaliG76Wddm, through the malikm shim (D3DKMT) */
++   fd = malikm_open();
++#else
+    fd = open(path, O_RDWR | O_CLOEXEC);
++#endif
+    if (fd < 0) {
+       return panvk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
+                           "failed to open device %s", path);
+@@ -402,6 +408,11 @@ get_drm_device_ids(struct panvk_physical_device *device,
+                    const struct panvk_instance *instance,
+                    drmDevicePtr drm_device)
+ {
++#ifdef _WIN32
++   /* exynos-woa: no device nodes; only VK_EXT_physical_device_drm reads these. */
++   device->drm.render_rdev = 0;
++   return VK_SUCCESS;
++#endif
+    struct stat st;
+ 
+    if (stat(drm_device->nodes[DRM_NODE_RENDER], &st)) {
+@@ -651,7 +662,7 @@ get_device_sync_types(struct panvk_physical_device *device,
+    return VK_SUCCESS;
+ }
+ 
+-#if defined(HAVE_PAN_KMOD_KBASE)
++#if defined(HAVE_PAN_KMOD_KBASE) || defined(_WIN32)   /* exynos-woa: the CPU sync type serves the malikm atoms too */
+ 
+ enum kbase_cpu_sync_state {
+    KBASE_CPU_SYNC_RESET,
+@@ -940,7 +951,7 @@ kbase_cpu_sync_wait_many(struct vk_device *device,
+       }
+       if (abs_timeout_ns == 0 || os_time_get_nano() >= abs_timeout_ns)
+          return VK_TIMEOUT;
+-      sched_yield();
++      thrd_yield();
+    }
+ }
+ 
+@@ -985,6 +996,7 @@ kbase_cpu_sync_move(UNUSED struct vk_device *device, struct vk_sync *dst,
+    return VK_SUCCESS;
+ }
+ 
++#ifndef _WIN32
+ struct kbase_sync_file_waiter {
+    int fd;
+ };
+@@ -1138,6 +1150,14 @@ out:
+    return VK_SUCCESS;
+ }
+ 
++#else
++/* exynos-woa: no sync files on Windows. */
++static void
++kbase_sync_file_waiter_free(UNUSED struct kbase_cpu_sync *ks)
++{
++}
++#endif
++
+ static const struct vk_sync_type kbase_cpu_sync_type = {
+    .size      = sizeof(struct kbase_cpu_sync),
+    .features  = VK_SYNC_FEATURE_BINARY |
+@@ -1154,8 +1174,10 @@ static const struct vk_sync_type kbase_cpu_sync_type = {
+    .reset     = kbase_cpu_sync_reset,
+    .wait_many = kbase_cpu_sync_wait_many,
+    .move      = kbase_cpu_sync_move,
++#ifndef _WIN32
+    .import_sync_file = kbase_cpu_sync_import_sync_file,
+    .export_sync_file = kbase_cpu_sync_export_sync_file,
++#endif
+ };
+ 
+ /* Set up sync types for a kbase (non-DRM) physical device.
+@@ -1188,7 +1210,7 @@ get_device_sync_types_kbase(struct panvk_physical_device *device,
+    return VK_SUCCESS;
+ }
+ 
+-#endif /* HAVE_PAN_KMOD_KBASE */
++#endif /* HAVE_PAN_KMOD_KBASE || _WIN32 */
+ 
+ float
+ panvk_get_gpu_system_timestamp_period(const struct panvk_physical_device *device)
+@@ -1305,7 +1327,12 @@ panvk_physical_device_init(struct panvk_physical_device *device,
+    if (result != VK_SUCCESS)
+       goto fail;
+ 
++#ifdef _WIN32
++   /* exynos-woa: the JM queue tracks its work as atoms (malikm_atoms.c), waited on by the CPU sync type. */
++   result = get_device_sync_types_kbase(device, instance);
++#else
+    result = get_device_sync_types(device, instance);
++#endif
+    if (result != VK_SUCCESS)
+       goto fail;
+ 
+diff --git a/src/panfrost/vulkan/panvk_physical_device.h b/src/panfrost/vulkan/panvk_physical_device.h
+index fd102fa..e0cd3cc 100644
+--- a/src/panfrost/vulkan/panvk_physical_device.h
++++ b/src/panfrost/vulkan/panvk_physical_device.h
+@@ -110,7 +110,7 @@ VkResult panvk_physical_device_init(struct panvk_physical_device *device,
+                                     struct panvk_instance *instance,
+                                     drmDevicePtr drm_device);
+ 
+-#if defined(HAVE_PAN_KMOD_KBASE)
++#if defined(HAVE_PAN_KMOD_KBASE) || defined(_WIN32)   /* exynos-woa: the atom sync API below */
+ VkResult panvk_physical_device_init_kbase(struct panvk_physical_device *device,
+                                           struct panvk_instance *instance,
+                                           const char *path);
+diff --git a/src/panfrost/vulkan/panvk_vX_physical_device.c b/src/panfrost/vulkan/panvk_vX_physical_device.c
+index e4bebf3..798822c 100644
+--- a/src/panfrost/vulkan/panvk_vX_physical_device.c
++++ b/src/panfrost/vulkan/panvk_vX_physical_device.c
+@@ -9,7 +9,12 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#ifndef _WIN32
+ #include <sys/sysmacros.h>
++#else
++#define major(d) ((unsigned)((d) >> 8) & 0xfff)   /* exynos-woa: no device numbers on Windows */
++#define minor(d) ((unsigned)(d) & 0xff)
++#endif
+ 
+ #include "git_sha1.h"
+ #include "util/u_debug.h"
+diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
+index 55e2a6f..a1525d0 100644
+--- a/src/panfrost/vulkan/panvk_vX_shader.c
++++ b/src/panfrost/vulkan/panvk_vX_shader.c
+@@ -6149,7 +6149,17 @@ panvk_deserialize_shader_variant(struct vk_device *vk_dev,
+    }
+ 
+    if (asm_str_size > 0) {
++#ifdef _WIN32
++      /* exynos-woa: no strndup in the Windows CRT */
++      char *s10_asm = malloc(asm_str_size + 1);
++      if (s10_asm) {
++         memcpy(s10_asm, asm_str, asm_str_size);
++         s10_asm[asm_str_size] = 0;
++      }
++      shader->asm_str = s10_asm;
++#else
+       shader->asm_str = strndup(asm_str, asm_str_size);
++#endif
+       if (shader->asm_str == NULL)
+          return panvk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+    }
+diff --git a/src/vulkan/runtime/vk_image.c b/src/vulkan/runtime/vk_image.c
+index 08defe8..1c42925 100644
+--- a/src/vulkan/runtime/vk_image.c
++++ b/src/vulkan/runtime/vk_image.c
+@@ -23,7 +23,7 @@
+ 
+ #include "vk_image.h"
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_WINDOWS   /* exynos-woa: panvk reads drm_format_mod */
+ #include <drm-uapi/drm_fourcc.h>
+ #endif
+ 
+@@ -111,7 +111,7 @@ vk_image_init(struct vk_device *device,
+       vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA);
+    image->wsi_legacy_scanout = wsi_info && wsi_info->scanout;
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_WINDOWS   /* exynos-woa: panvk reads drm_format_mod */
+    image->drm_format_mod = ((1ULL << 56) - 1) /* DRM_FORMAT_MOD_INVALID */;
+ #endif
+ 
+@@ -191,7 +191,7 @@ vk_image_destroy(struct vk_device *device,
+    vk_object_free(device, alloc, image);
+ }
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_WINDOWS   /* exynos-woa: panvk reads drm_format_mod */
+ VKAPI_ATTR VkResult VKAPI_CALL
+ vk_common_GetImageDrmFormatModifierPropertiesEXT(UNUSED VkDevice device,
+                                                  VkImage _image,
+diff --git a/src/vulkan/runtime/vk_image.h b/src/vulkan/runtime/vk_image.h
+index f560519..36c931c 100644
+--- a/src/vulkan/runtime/vk_image.h
++++ b/src/vulkan/runtime/vk_image.h
+@@ -77,7 +77,7 @@ struct vk_image {
+    /* wsi_image_create_info::scanout */
+    bool wsi_legacy_scanout;
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_WINDOWS   /* exynos-woa: panvk reads drm_format_mod */
+    /* VK_EXT_drm_format_modifier
+     *
+     * Initialized by vk_image_create/init() to DRM_FORMAT_MOD_INVALID.  It's
+-- 
+2.43.0
+

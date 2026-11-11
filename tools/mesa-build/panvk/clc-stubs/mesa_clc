@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# exynos-woa V1 (panvk for Windows): stand-in for mesa_clc in the cross build. The SPIR-V (platform independent) is
+# made on Linux by linux-build-panvk.sh's libpan stage; this copies it: libpan_v<N>.spv by -DPAN_ARCH, any other
+# output (libpoly.spv) by its file name.
+#   mesa_clc -o OUT --depfile DEP <sources...> -- <args>
+import os, shutil, sys
+a = sys.argv[1:]
+out = a[a.index("-o") + 1]
+dep = a[a.index("--depfile") + 1] if "--depfile" in a else None
+arch = next((x.split("=", 1)[1] for x in a if x.startswith("-DPAN_ARCH=")), None)
+name = os.path.basename(out) if arch is None or not os.path.basename(out).startswith("libpan_v") else "libpan_v%s.spv" % arch
+src = os.path.join(os.environ["LIBPAN_PREBUILT"], name)
+shutil.copyfile(src, out)
+if dep:
+    with open(dep, "w") as f:
+        f.write("%s: %s\n" % (out.replace("\\", "/"), src.replace("\\", "/")))
