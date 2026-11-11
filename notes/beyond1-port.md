@@ -1505,3 +1505,20 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   CREATE + SUBMIT ("0 BOs named, 11-14 listed for residency") + SYNCOBJ_WAIT; no errors. malikm_atoms.c's ring works.
 - Logs: notes/logs/run42-vkprobe.log. Next: V3 = a window (WSI win32 GDI path), V4 = a Vulkan loader for the phone
   (vulkan-1.dll ARM64) + DXVK.
+
+### Upstream check (2026-11-11 12:21): ilyatbn/exynos-woa moved far ahead of our fork point
+- Our fork point: 52b14d0 (2026-10-13, G13 gfxperf, DWM on softpipe). Upstream main now b5696c1 (2026-10-23), tag
+  alpha9 (2026-10-20): 938 commits, 820 files, +97k lines. Ours: 152 commits since the fork point.
+- Same GPU base (Mesa 26.2 + d3d10umd + panfrost + the malikm shim), developed in parallel: their Mesa series runs to
+  0222 (ours 0041-0075 are a different line - same numbers, different patches). Their KMD MaliG76Wddm 1.0.72.1 is
+  WDDM 2.0 (tracked fences -> Windows Terminal / XAML), ours 1.0.36 WDDM 1.3.
+- Theirs and not ours: D3D11.1 / WDDM 2.0 DDI in d3d10umd, FL 11_0 (SM5, cs_5_0, CPU tessellation, GS emulated as
+  compute - GsEmu.cpp, a different design from our port of JimVulkan's), BC1-5 + ETC2 handling, x64/x86 apps,
+  threaded context (u_threaded_context in panfrost), per-program shader cache, a native OpenGL ICD (WGL), MFC H.264
+  decode (Media Foundation + browsers), 720p mode, brightness, thermal driver + clocks governor (GPU 702 MHz, CPU 1.95 /
+  2.4 GHz with a 83 C guard), RAM 5.9 GB, UFS ~500 MB/s, audio (speakers, jack, mics), WiFi 5 GHz, BT, rotation,
+  touch keyboard investigation (notes/touch-keyboard.md), dock/USB.
+- Ours and not theirs: Beyond1LtePkg (S10 firmware), S10Touch, Exynos9820Hsi2c, panvk Vulkan 1.3 on Windows (their
+  status: "DirectX 12 / Vulkan are not supported"), our GS port (gputest 95/0/5), KMD fb-alias present path.
+- Decision for the user: stay on our line, or move the S10 port onto upstream alpha9+ and carry only the S10-specific
+  pieces + panvk across.
