@@ -123,3 +123,11 @@ Windows reads temperatures and can throttle; lowering is fine.
   1794), its "speed" = an estimate; it does not see ACPM rates.
 - REVIEW 2250edd: governor lowered MIF before the CPUs on screen-off (MID could sit at 2400 with MIF 421 for a moment) -> fixed: MIF up before the CPUs (screen on), down after them (screen off). Deployed.
 - clocks.exe is now a small GUI window (user: 'Core #0-5 - x / y, keep it simple'): Core #n - measured / table max MHz + GPU line, 1 s refresh, DPI-aware, measurement on a worker thread; the console variant is clockscli.exe (S10eTmp, for ssh). Deployed to the desktop and running. Governor in normal use (screen on): fast cores measured 2395 / 2389 MHz = the 2.4 GHz step is used.
+
+## 2026-11-12 02:07 (S10 port): user asks for the GPU at 803 MHz ("someone forced it up")
+- S10 live DT (scratchpad b1.dts:6236-6243): gpu_dvfs_table 9 steps, top 0xAB630 = 702000, gpu_max_clock(_limit)
+  702000 - the same ladder as S10ePower gLadderG3d. ACPM sets G3D frequency AND voltage from its own table (fvmap,
+  built from ECT); a rate outside it is refused or needs direct PLL + PMIC writes (2026-10-17 entry above: not done).
+- Read that closes it (read-only, Android root): ECT + ACPM partitions, /sys/kernel/gpu/gpu_freq_table, dmesg fvmap
+  lines. If Samsung's G3D table has a step above 702000 (with its voltage), it is in-table -> add to the ladder; if
+  not, 803 MHz = beyond-table overvolt/PLL -> not without the user's explicit acceptance of the risk.
