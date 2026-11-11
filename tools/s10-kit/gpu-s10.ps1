@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.24) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.25) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,9 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.25: the package path only when the package's INF really carries maliumd.dll ([SourceDisksFiles], upstream 1.0.72)
+  - 2026-11-11 18:29: a legacy 1.0.36.1 package folder still held the 1.0.72 kit's maliumd.dll (out-gpu copied over,
+  not replaced), so the 1.0.36 KMD ran with upstream's UMD (black). A legacy package uses the loose UMD in out-gpu\umd\.
   v1.24: "full" / "gpu" refuse to run when the installed MaliG76Wddm is not the version in out-gpu\ (2026-11-11 18:10:
   a legacy kit was built but "gpu" ran on the still-installed 1.0.72.1) - run "display" first, it installs the kit's.
   v1.23: legacy stack (build-s10 v1.12 S10_GPU_LEGACY=1: KMD 1.0.36.1 + UMD 0075): "display" removes every installed
@@ -63,7 +66,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.24  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.25  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -362,7 +365,12 @@ function Set-FullMode([int]$Gpu) {
   # loose copy from gpu-s10 <= v1.18), replaced from the package: take ownership (TrustedInstaller owns what a
   # package installed), rename the in-use file aside (allowed for a loaded DLL), copy the package's.
   $pkgUmd = Join-Path $Out 'MaliG76Wddm\maliumd.dll'
-  if (Test-Path $pkgUmd) {
+  $pkgCarries = (Test-Path $kitInf) -and (Select-String -Path $kitInf -Pattern '^\s*maliumd\.dll\s*=' -Quiet)
+  if ((Test-Path $pkgUmd) -and -not $pkgCarries) { Warn "out-gpu\MaliG76Wddm\maliumd.dll is not part of this package (an older kit's file) - ignored, the loose UMD in out-gpu\umd\ is used" }
+  if (-not $pkgCarries -and -not (Test-Path (Join-Path $Out 'umd\maliumd.dll'))) {
+    Fail "this MaliG76Wddm package carries no UMD and out-gpu\umd\maliumd.dll is missing - rebuild with build-s10.cmd (S10_GPU_LEGACY=1 puts UMD 0075 there) and copy the WHOLE out-gpu folder (delete the old one first)"
+  }
+  if ($pkgCarries -and (Test-Path $pkgUmd)) {
     $wow = "$env:SystemRoot\SysWOW64"
     foreach ($pair in @(@('maliumd.dll', $UmdDst), @('maliumd32.dll', "$wow\maliumd32.dll"), @('maligl.dll', "$env:SystemRoot\System32\maligl.dll"))) {
       $pf = Join-Path $Out "MaliG76Wddm\$($pair[0])"; $dst = $pair[1]

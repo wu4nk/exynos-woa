@@ -1643,3 +1643,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   "display" in a rescue boot (GPU0 hidden) only wrote the mode, never installed the kit's package, and "gpu" did not
   check which KMD was installed. gpu-s10 v1.24: rescue "display" removes every MaliG76Wddm/Probe package and stages
   the kit's (GPU0 binds it next boot); "full"/"gpu" fail when the installed version != out-gpu's.
+- 2026-11-11 18:29 log 16391447: legacy KMD 1.0.36.1 now installed (display-only boot fine: FbMatchesGop 1, Presents
+  0x400). Then "gpu" (v1.24) took the PACKAGE path: out-gpu\MaliG76Wddm\ still held the 1.0.72 kit's maliumd.dll
+  (603a7885; out-gpu copied over, not replaced) -> KMD 1.0.36 + upstream UMD = black. gpu-s10 v1.25: package path only
+  when the package INF lists maliumd.dll in [SourceDisksFiles]; a legacy package needs out-gpu\umd\maliumd.dll (fails
+  clearly otherwise).
