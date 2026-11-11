@@ -1802,3 +1802,9 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   still logged, the staging path (s10-0005) carries the readback. No regression vs s10.2. UMD 0222-s10.3 VALIDATED
   (tests; desktop/DWM with it after a reboot still to see). Next: install it for good (-Keep now, kit umd\ +
   build-s10 package later), "final", then clocks (power-s10 test).
+- 2026-11-12 02:19 user: "full xong lại lag" (log 970baf77). gpu-report: "gpu-s10.ps1 v1.32 full" -> Parameters
+  GpuEnable 0 (GPU half OFF, Mesa on the CPU = the lag), and "full" reinstalled the package's maliumd 1c2871f3
+  (s10.1) over the -Keep'd s10.3 (now System32\maliumd.dll.old). "full" is the CPU mode, not "final".
+  gpu-s10 v1.33: Install-UmdFiles (the package loop as a function) + -UmdDir <folder> for full/gpu/final; "final"
+  works from any full-adapter state (sets GpuEnable 1, removes GALLIUM_DRIVER) and installs -UmdDir; an in-use
+  *.old gets a random suffix instead of failing the rename. Fix for the user: final -UmdDir umd-0222-s10.3 + reboot.

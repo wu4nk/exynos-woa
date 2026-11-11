@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.32) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.33) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,11 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.33: -UmdDir <folder> (full / gpu / final): maliumd.dll / maliumd32.dll / maligl.dll come from that folder
+  (e.g. umd-0222-s10.3) instead of the package - "full"/"gpu" put the package's copies back otherwise (2026-11-12
+  02:19: after -Keep of s10.3 the user ran "full" = GPU half OFF, Mesa on the CPU -> lag, and UMD back to s10.1).
+  "final" now works from any full-adapter state: it sets GpuEnable 1 and removes GALLIUM_DRIVER itself (it refused
+  before), and with -UmdDir installs those files. Reboot once after it.
   v1.32: "final" - the everyday setting once gpu-dwm works (UMD 0222-s10.1+): DWM stays on the Mali (WDDM 2.0) and
   every debug helper goes - the machine MALIKM_TGSI_DIR shim logging (a log line per present in every D3D process;
   upstream HANDOFF 50: "never leave it on"), MALIUMD_NO_TC, the 'S10 GPU watch' / 'S10 GPU fill' tasks, old logs.
@@ -90,11 +95,12 @@
 #>
 param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'final', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status',
       [string]$GpuDir = 'out-gpu',   # v1.26: e.g. -GpuDir out-gpu-legacy / out-gpu-upstream (two builds side by side)
-      [switch]$NoTc)                 # v1.31: gpu-dwm only, diagnosis: MALIUMD_NO_TC=1 machine-wide for the next boot
+      [switch]$NoTc,
+      [string]$UmdDir = '')          # v1.33: user-mode files from this folder instead of the package (full/gpu/final)                 # v1.31: gpu-dwm only, diagnosis: MALIUMD_NO_TC=1 machine-wide for the next boot
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.32  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.33  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -104,6 +110,17 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
       [Security.Principal.WindowsBuiltInRole]::Administrator)) { Fail 'run PowerShell as Administrator' }
 
 $Out = if ([IO.Path]::IsPathRooted($GpuDir)) { $GpuDir } else { Join-Path $PSScriptRoot $GpuDir }   # build-s10.cmd v1.7 (S10_GPU=1) puts the Mali packages in out-gpu
+$UmdSrc = ''
+if ($UmdDir) {   # v1.33
+  $UmdSrc = if ([IO.Path]::IsPathRooted($UmdDir)) { $UmdDir } else { Join-Path $PSScriptRoot $UmdDir }
+  if (-not (Test-Path (Join-Path $UmdSrc 'maliumd.dll'))) { Write-Host "[FAIL] -UmdDir: no maliumd.dll in $UmdSrc" -ForegroundColor Red; exit 1 }
+  $sums = Join-Path $UmdSrc 'SHA256SUMS'
+  if (Test-Path $sums) {
+    foreach ($f in Get-ChildItem $UmdSrc -Filter '*.dll') {
+      if (-not (Select-String -Path $sums -Pattern (Get-FileHash $f.FullName).Hash.ToLower() -SimpleMatch -Quiet)) { Write-Host "[FAIL] -UmdDir: $($f.Name) does not match SHA256SUMS (damaged copy?)" -ForegroundColor Red; exit 1 }
+    }
+  }
+}
 if (-not (Test-Path $Out)) { $Out = Join-Path $PSScriptRoot 'out' }
 $ProbeLog = "$env:SystemRoot\System32\LogFiles\MaliG76Probe-run.txt"
 $SvcParams = 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters'
@@ -290,6 +307,28 @@ function Clear-NoGpuFlag {
   else { Info "no nogpu.flg on any FAT volume ($((($roots | Select-Object -Unique) -join ', ')))" }
 }
 
+# v1.33: the three user-mode files from a folder (the package's, or -UmdDir) into System32 / SysWOW64, each only when
+# it differs; in-use files are renamed to *.old (TrustedInstaller-owned: take ownership first)
+function Install-UmdFiles($SrcDir, $What) {
+  $wow = "$env:SystemRoot\SysWOW64"
+  foreach ($pair in @(@('maliumd.dll', $UmdDst), @('maliumd32.dll', "$wow\maliumd32.dll"), @('maligl.dll', "$env:SystemRoot\System32\maligl.dll"))) {
+    $pf = Join-Path $SrcDir $pair[0]; $dst = $pair[1]
+    if (-not (Test-Path $pf)) { continue }
+    $hp = (Get-FileHash $pf -Algorithm SHA256).Hash.ToLower()
+    $hs = if (Test-Path $dst) { (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower() } else { '' }
+    if ($hs -eq $hp) { Ok "$($pair[0]) = $What (sha256 $($hp.Substring(0,8))...)"; continue }
+    if (Test-Path $dst) {
+      $old = "$dst.old"
+      if (Test-Path $old) { takeown /f $old /a | Out-Null; icacls $old /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $old -Force -ErrorAction SilentlyContinue }
+      if (Test-Path $old) { $old = "$dst.old$(Get-Random)" }   # the old .old is still loaded somewhere: another name
+      takeown /f $dst /a | Out-Null
+      icacls $dst /grant '*S-1-5-32-544:F' | Out-Null
+      Rename-Item $dst (Split-Path $old -Leaf) -Force
+    }
+    Copy-Item $pf $dst -Force
+    Ok ("{0} -> {1} from {4} (sha256 {2}..., was {3})" -f $pair[0], $dst, $hp.Substring(0,8), $(if ($hs) { $hs.Substring(0,8) + '...' } else { 'missing' }), $What)
+  }
+}
 function Get-Gpu0 { Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'ACPI\SAMS9828\*' } | Select-Object -First 1 }
 
 # Delete every driver-store package whose original INF name is $Inf (both GPU drivers bind ACPI\SAMS9828,
@@ -448,23 +487,7 @@ function Set-FullMode([int]$Gpu) {
     Fail "this MaliG76Wddm package carries no UMD and out-gpu\umd\maliumd.dll is missing - rebuild with build-s10.cmd (S10_GPU_LEGACY=1 puts UMD 0075 there) and copy the WHOLE out-gpu folder (delete the old one first)"
   }
   if ($pkgCarries -and (Test-Path $pkgUmd)) {
-    $wow = "$env:SystemRoot\SysWOW64"
-    foreach ($pair in @(@('maliumd.dll', $UmdDst), @('maliumd32.dll', "$wow\maliumd32.dll"), @('maligl.dll', "$env:SystemRoot\System32\maligl.dll"))) {
-      $pf = Join-Path $Out "MaliG76Wddm\$($pair[0])"; $dst = $pair[1]
-      if (-not (Test-Path $pf)) { continue }
-      $hp = (Get-FileHash $pf -Algorithm SHA256).Hash.ToLower()
-      $hs = if (Test-Path $dst) { (Get-FileHash $dst -Algorithm SHA256).Hash.ToLower() } else { '' }
-      if ($hs -eq $hp) { Ok "$($pair[0]) = the package's (sha256 $($hp.Substring(0,8))...)"; continue }
-      if (Test-Path $dst) {
-        $old = "$dst.old"
-        if (Test-Path $old) { takeown /f $old /a | Out-Null; icacls $old /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $old -Force -ErrorAction SilentlyContinue }
-        takeown /f $dst /a | Out-Null
-        icacls $dst /grant '*S-1-5-32-544:F' | Out-Null
-        Rename-Item $dst (Split-Path $old -Leaf) -Force
-      }
-      Copy-Item $pf $dst -Force
-      Ok ("{0} -> {1} from the package (sha256 {2}..., was {3})" -f $pair[0], $dst, $hp.Substring(0,8), $(if ($hs) { $hs.Substring(0,8) + '...' } else { 'missing' }))
-    }
+    if ($UmdSrc) { Install-UmdFiles $UmdSrc "-UmdDir $UmdSrc" } else { Install-UmdFiles (Join-Path $Out 'MaliG76Wddm') 'the package' }
   } else {
   # v1.4: every candidate is checked; images based below 4 GB (zig's default 0x10000000, the 46e5620f build)
   # are refused by Windows ARM64 with LoadLibrary 193 - skip them; of the rest the newest file wins.
@@ -639,8 +662,11 @@ switch ($Action) {
   }
   'final' {
     $m = Get-ItemProperty $SvcParams -ErrorAction SilentlyContinue
-    if ($m.GpuEnable -ne 1 -or $m.FullAdapter -ne 1) { Fail 'not in GPU mode - run display / gpu / gpu-dwm first (one reboot after each)' }
-    if ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).GALLIUM_DRIVER) { Fail 'GALLIUM_DRIVER is set (DWM on softpipe) - run .\gpu-s10.ps1 gpu-dwm, reboot, check the desktop, then final' }
+    Assert-Rebooted
+    if ($m.FullAdapter -ne 1) { Fail 'the full adapter is not set up - run display, reboot, gpu, reboot first' }
+    if ($UmdSrc) { Install-UmdFiles $UmdSrc "-UmdDir $UmdSrc" }
+    if ($m.GpuEnable -ne 1) { Set-ItemProperty $SvcParams GpuEnable 1 -Type DWord; Ok 'GpuEnable 1 (the GPU half on)' }
+    Set-GalliumDriver $null
     Set-Wddm2 (Test-UpstreamPkg)
     Set-FaultDump $null
     Set-ShimLog $false           # also clears the old shim logs and MALIUMD_NO_TC
