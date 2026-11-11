@@ -38,7 +38,11 @@
 #include <Platform/Exynos9820.h>
 
 #include "../../Library/PlatformMemoryMapLib/Beyond0LteCheckpoint.h"
+#if EXYNOS9820_BOARD_BEYOND1
+#include "BootSplashBeyond1.h"   // the S10 boot screen, 1440 x 3040 (firmware/tools/bootsplash/rescale_splash.py)
+#else
 #include "BootSplash.h"     // the boot screen (firmware/tools/bootsplash/make_splash.py)
+#endif
 
 #define FB_PIXEL_SIZE  ((UINTN)EXYNOS_FB_BYTES_PER_PIXEL)
 

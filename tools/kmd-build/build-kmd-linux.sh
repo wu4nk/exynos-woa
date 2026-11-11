@@ -37,7 +37,7 @@ FLAGS="--target=aarch64-pc-windows-msvc /c /nologo /kernel /GS /Gy /GF /Zp8 /O1 
 [ -d "$W/casefix" ] || python3 -I "$(dirname "$0")/casefix.py" "$W/casefix" "$I/km/crt" "$I/km" "$I/shared" "$SRC"
 INC="/imsvc $I/km/crt /imsvc $I/km /imsvc $I/shared /imsvc $W/casefix /I $SRC/include /I $SRC"
 rm -f "$O"/*.obj
-for f in adapter display memory command maligpu pram; do
+for f in $(grep -o 'ClCompile Include="[^"]*\.c"' "$SRC/MaliG76Wddm.vcxproj" | sed 's/.*="\(.*\)\.c"/\1/'); do
   $CL $FLAGS $DEFS $INC "/Fo$O/$f.obj" "$SRC/$f.c"
 done
 $LINK /nologo /machine:arm64 /driver /subsystem:native,10.00 /entry:GsDriverEntry /nodefaultlib /Brepro \

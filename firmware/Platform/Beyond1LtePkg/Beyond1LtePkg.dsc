@@ -356,10 +356,12 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdHiiOsRuntimeSupport|FALSE
 
 [PcdsFixedAtBuild.common]
+  # R2 (upstream, merged 2026-11-11): SMBIOS 3.x with the 64-bit (SMBIOS3) entry point only - what ARM64 Windows reads
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosEntryPointProvideMethod|0x2
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.1.11"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.2.0"
   #
   # v0.1.6 (notes/beyond1-port.md "UEFI exception in ArmCpuDxe"): no DXE image protection (default 0x2 = every
   # firmware-volume image gets RO code / XP data). The intermittent EC 0x00 exception sits in exactly that
@@ -531,7 +533,8 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable|TRUE
 
   # --- BDS: short timeout; show the boot menu only briefly. ---
-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
+  # upstream 2026-10-14 (clean boot screen): no BDS countdown
+  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
 
 ################################################################################
 #
@@ -610,7 +613,7 @@
   MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
   MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
   MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
-  MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+  # GraphicsConsoleDxe removed (upstream 2026-10-14, clean boot screen; the S10 splash is BootSplashBeyond1.h)
   MdeModulePkg/Universal/SerialDxe/SerialDxe.inf
 
   # --- ACPI (FADT/MADT/GTDT/PPTT + DSDT) and the installer that publishes them.
@@ -626,6 +629,12 @@
   Platform/Beyond0LtePkg/Drivers/Beyond0LteTouchPowerDxe/Beyond0LteTouchPowerDxe.inf
   # D8a: read the CS47L93 codec / CS35L40 amp IDs into UEFILOG, buses restored (notes/d8-audio-m1.md)
   Platform/Beyond0LtePkg/Drivers/Beyond0LteAudioProbeDxe/Beyond0LteAudioProbeDxe.inf
+  # upstream (merged 2026-11-11): BT UART probe (off unless BEYOND0LTE_BT_UART_PROBE), SMBIOS (S10 identity + 8 GB),
+  # MFC probe (off unless BEYOND0LTE_MFC_PROBE)
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteBtUartDxe/Beyond0LteBtUartDxe.inf
+  MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteSmbiosDxe/Beyond0LteSmbiosDxe.inf
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteMfcDxe/Beyond0LteMfcDxe.inf
   # M16 G3/G9: Mali-G76 probe + power-on into UEFILOG (notes/gpu-m16-g2g3.md, gpu-m16-g3don.md).
   # S10 GPU stage G1 (v0.1.3-v0.1.4, notes/beyond1-port.md "GPU"): built with BEYOND0LTE_GPU_POWER_ON 1, so the
   # G3D domain is left on (or powered by the S10e's G9 path if sboot left it off) and DSDT GPU0 is shown to

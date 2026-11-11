@@ -1522,3 +1522,28 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   status: "DirectX 12 / Vulkan are not supported"), our GS port (gputest 95/0/5), KMD fb-alias present path.
 - Decision for the user: stay on our line, or move the S10 port onto upstream alpha9+ and carry only the S10-specific
   pieces + panvk across.
+
+## Merge onto upstream (2026-11-11 13:17, user: "mang của họ sang")
+- Merge commit 8604bf2: upstream main b5696c1 (alpha9+) merged into beyond1lte-port; 11 conflicts resolved (see the
+  merge message). MaliG76Wddm = upstream 1.0.72 + the S10 board switch (MW_GOP_* 1440 x 3040, MW_FB_RESERVED 18 MiB,
+  panel commands / brightness OFF by default on the S10 build - upstream's DECON command-mode switch and AOR (B1)
+  brightness were only ever exercised on the S10e's s6e3fa7; the S10 panel is another IC, nothing read on it yet;
+  Parameters\PanelCmdMode / PanelBrightness = 1 enable them for a test). vcxproj: /p:ExynosBoardBeyond1, MwNoWx,
+  LatestTargetPlatformVersion (EWDK). Compile-checked on Linux with board=1 (tools/kmd-build now takes the source
+  list from the vcxproj): 0 errors. Our KMD 1.0.36 (fb alias, WDDM 1.3) is retired; its GPU-half fixes f91fbc8
+  (coherency NONE after reset, FLUSH_MEM before AS0 reprogram, JS_COMMAND_NEXT busy check) are NOT in upstream's
+  maligpu.c - to re-check against it later.
+- Exynos9820Audio = upstream's 1.0.3.7 (they fixed the same choppiness with an 8-slot ring, LEAD 3; defaults off,
+  the S10 kit's install script writes AmpInit/AmpEnable/AboxEnable = 1).
+- Firmware: FB reservation is a board value (Exynos9820Board.h EXYNOS_BOARD_FB_RESERVED_SIZE: S10e 10 MiB, S10 18 MiB);
+  the WT "Display Reserved" HOB now covers the whole reservation. Beyond1LtePkg dsc/fdf synced with upstream's
+  Beyond0 changes (SMBIOS 3 entry point, boot timeout 0, GraphicsConsoleDxe dropped, BtUart / SmbiosDxe / Smbios /
+  Mfc DXEs). Boot splash: BootSplashBeyond1.h, 1440 x 3040 = the S10e splash x 4/3 (rescale_splash.py, checked by
+  eye). SMBIOS: "Galaxy S10" / SM-G973F, 8192 MB, banks 3-5 mapped. TouchPower: S10 DVFS + touch bring-up kept,
+  upstream's SCI LLC / M4 soak blocks added (both off by default).
+- UEFI v0.2.0 built (Beyond1 DEBUG rc 0; the S10e build rc 0 too): beyond1lte-uefi-v0.2.0.img 7716864 B
+  sha256 0f2413de4e3e5b1cc73677dc58d02796bb4090a328e0eb0c16d92f6ba63de1f9. FVMAIN_COMPACT 99 % full (208 B free;
+  the S10e build: 1096 B) - the next module needs FV room.
+- Mesa: our 0040-0075 line archived in tools/mesa-build/patches-s10-g2 (README). Upstream builds its series with
+  clang-cl + MSVC libs on Windows (build-mesa-g76.ps1: ARM64, x86, ARM64EC/ARM64X, GL ICD); no prebuilt releases
+  exist. Next: build upstream 0001-0222 on Linux (zig/mingw like our tree, or clang-cl + downloaded MSVC libs).

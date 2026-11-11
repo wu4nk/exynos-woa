@@ -25,7 +25,13 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Platform/Exynos9820.h>
 
+#if EXYNOS9820_BOARD_BEYOND1
+// Galaxy S10 (SM-G973F): 8 GB - the S10e's banks plus bank5 0x980000000 + 2 GiB (live DTB memory@980000000,
+// notes/beyond1-port.md section 1.2), contiguous with banks 3-4.
+#define S10E_DRAM_INSTALLED_MB  8192u
+#else
 #define S10E_DRAM_INSTALLED_MB  6144u   // 6 GB LPDDR4X package (3 x 2 GiB), notes/cpu-ram-plan-20261012.md
+#endif
 
 STATIC EFI_SMBIOS_PROTOCOL  *mSmbios;
 
@@ -126,7 +132,11 @@ Beyond0LteSmbiosEntry (
     0x43936af7, 0x78d6, 0x4099, { 0xbc, 0x76, 0x16, 0xc5, 0xb7, 0xc2, 0xd8, 0x82 }
   };
   CONST CHAR8  *S0[] = { "exynos-woa", "Beyond0LtePkg R2", "10/18/2026" };
+#if EXYNOS9820_BOARD_BEYOND1
+  CONST CHAR8  *S1[] = { "Samsung", "Galaxy S10", "SM-G973F", "SM-G973F", "Galaxy S" };
+#else
   CONST CHAR8  *S1[] = { "Samsung", "Galaxy S10e", "SM-G970F", "SM-G970F", "Galaxy S" };
+#endif
   CONST CHAR8  *S3[] = { "Samsung" };
   CONST CHAR8  *S17[] = { "LPDDR4X", "Package 0" };
 
@@ -205,6 +215,7 @@ Beyond0LteSmbiosEntry (
   AddMappedRange (ArrayHandle, EXYNOS_DRAM_BASE, EXYNOS_DRAM_BANK0_SIZE);
   AddMappedRange (ArrayHandle, EXYNOS_DRAM_BANK1_BASE, EXYNOS_DRAM_BANK1_SIZE);
   AddMappedRange (ArrayHandle, EXYNOS_DRAM_BANK2_BASE, EXYNOS_DRAM_BANK2_SIZE);
-  AddMappedRange (ArrayHandle, EXYNOS_DRAM_BANK3_BASE, EXYNOS_DRAM_BANK3_SIZE + EXYNOS_DRAM_BANK4_SIZE);
+  AddMappedRange (ArrayHandle, EXYNOS_DRAM_BANK3_BASE,
+                  EXYNOS_DRAM_BANK3_SIZE + EXYNOS_DRAM_BANK4_SIZE + EXYNOS_DRAM_BANK5_SIZE);   // bank5: S10 only (0 on the S10e)
   return EFI_SUCCESS;
 }
