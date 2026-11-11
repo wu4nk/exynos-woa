@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.29) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.30) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,10 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.30: every mode switch starts the next boot's evidence clean: old malikm-*.txt shim logs, gpu-watch's DWM log
+  copies (C:\S10Prov\dwmlog) and the archived WER reports of dwm / LogonUI / explorer are deleted. The phone's clock
+  restarts at the same time every boot, so old and new files could not be told apart (2026-11-11 21:48: 16 DWM crash
+  reports of an older UMD looked like this boot's; DWM's own log was dropped by s10-log's "newest 60").
   v1.29: FIX - New-Item -Force on an EXISTING registry key recreates it empty: v1.27's Set-Wddm2 ran it right after
   FullAdapter / GpuEnable were written and wiped them (2026-11-11: "GpuEnable is not 1" after gpu, every time).
   Keys are now only created when missing (also in install-in-windows / power-s10).
@@ -80,7 +84,7 @@ param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full'
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.29  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.30  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -102,7 +106,22 @@ function Set-GalliumDriver($v) {
   }
 }
 # v1.22: upstream shim logging (malikm_drm.c tlog_file / crash evidence) - machine-wide so DWM and LogonUI write too.
+function Clear-OldEvidence {
+  $n = 0
+  foreach ($f in @(Get-ChildItem 'C:\ProgramData\S10e\umd' -Filter 'malikm-*' -File -ErrorAction SilentlyContinue)) {
+    Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue; if (-not (Test-Path $f.FullName)) { $n++ }
+  }
+  Remove-Item 'C:\S10Prov\dwmlog' -Recurse -Force -ErrorAction SilentlyContinue
+  $w = 0
+  foreach ($root in 'C:\ProgramData\Microsoft\Windows\WER\ReportArchive', 'C:\ProgramData\Microsoft\Windows\WER\ReportQueue') {
+    foreach ($r in @(Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^App(Crash|Hang)_(dwm|LogonUI|explorer)\.exe_' })) {
+      Remove-Item $r.FullName -Recurse -Force -ErrorAction SilentlyContinue; $w++
+    }
+  }
+  Info "old evidence cleared: $n shim log(s) (files in use stay), $w WER report(s) of dwm / LogonUI / explorer"
+}
 function Set-ShimLog([bool]$On) {
+  Clear-OldEvidence
   if ($On) { Set-ItemProperty $EnvKey MALIKM_TGSI_DIR 'C:\ProgramData\S10e\umd' -Type String; Ok 'machine MALIKM_TGSI_DIR = C:\ProgramData\S10e\umd (UMD logs malikm-<exe>-<pid>.txt from the next boot)' }
   elseif ((Get-ItemProperty $EnvKey -ErrorAction SilentlyContinue).MALIKM_TGSI_DIR) { Remove-ItemProperty $EnvKey MALIKM_TGSI_DIR; Ok 'machine MALIKM_TGSI_DIR removed' }
 }

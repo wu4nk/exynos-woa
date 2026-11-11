@@ -1690,3 +1690,23 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   provider that recreates the key empty, so only Wddm2/DirectFlip survived and the KMD booted display-only. v1.29
   creates keys only when missing (gpu-s10, install-in-windows v1.4 - its audio key lost MicGain etc. the same way -,
   power-s10).
+- 2026-11-11 21:48 log 58e5e1a4 (user: "nó bị đen màn rồi") - first S10 boot with Wddm2 5 + DirectFlip 1 + gpu-dwm
+  (gpuwatch boot "23:17:55", registry FullAdapter 1 / GpuEnable 1 / Wddm2 5 / DirectFlip 1, collected in a nogpu
+  rescue boot). Evidence:
+  - Apps are fine on the 2.0 adapter: this boot's LogonUI-376, SearchHost-1648/5524/7356/8280, StartMenu-5552,
+    TextInputHost-7372, msedge-3464 logs show "residency: runtime paging queue hr 0x00000000" (the 1.3 adapter's
+    CreatePagingQueue 0x80004005 is gone), Panfrost, presents hr 0, 0 CB FAIL.
+  - DWM stalls in the first minute: PRAM HB p (presents) frozen at 0x13e = 318, ST l (latches) frozen at 0x75 = 117
+    from pass 0 (73 s) on; submits/fences crawl (426 -> 441 in 80 s), queued 0 running 0 (GPU idle, nothing hung);
+    kmdstats 0.0 presents/s. Framebuffer 0xCA000000 all ff000000 at rows 100/1520/2940 while DPU G0 still scans
+    0xCA000000 1440x3040 and DECON runs (0x133) - the last latched DWM frames were black, then no more.
+  - DWM's own UMD log is NOT in the zip: s10-log took the "newest 60" malikm files by time, and the phone's clock
+    restarts at the same time every boot (every gpuwatch boot starts ~23:17), so a DWM log that stopped growing early
+    lost to the rescue boot's files. The 16 WER AppCrash_dwm (fault maliumd 0x18f468, 0x80000002 misalignment) are
+    from an OLDER UMD: fault module timestamp 6af3b1b2 = umd0073; System32 now holds 603a7885 (timestamp 6af40c7e).
+    Not this boot. WINPRAM.BIN has no MALIG76T trace (the TWRP/nogpu rescue path replaced it).
+  - Tooling: gpu-watch v1.5 logs the running DWM's log size + last 12 lines per pass and copies it to
+    C:\S10Prov\dwmlog; s10-log v1.12 always collects malikm-dwm*/LogonUI* + that folder; gpu-s10 v1.30 clears old
+    shim logs, dwmlog and dwm/LogonUI/explorer WER reports at every mode switch.
+  - Next run: "gpu" (DWM on softpipe on the 2.0 adapter: separates the KMD's 2.0 flip path from DWM-on-Panfrost),
+    reboot, look + s10-log; then "gpu-dwm", reboot, s10-log.

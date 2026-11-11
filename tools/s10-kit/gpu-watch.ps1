@@ -1,5 +1,5 @@
 <#
-  gpu-watch.ps1 (v1.4) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
+  gpu-watch.ps1 (v1.5) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
   "S10 GPU watch", SYSTEM, at startup). For boots where the phone is too slow to use (G2b-1 2026-11-03: no taskbar
   icons, no touch keyboard): nothing has to be typed, and nothing depends on the PRAM surviving (a TWRP boot destroys
   it). Every 15 s for 10 minutes it appends to C:\S10Prov\gpuwatch.txt (NTFS - readable from TWRP:
@@ -13,6 +13,10 @@
   (tools\kmdstats.exe: presents, latch CPU copies into the framebuffer, GPU-presented, skipped, renders, IRQs), a raw
   line of the PRAM peek when it gives no trace, and 4 pixels of the framebuffer itself (s10ediag peek 0xCA000000 at
   the top / centre / bottom of the S10's 1440x3040 panel) - black panel = what the scan-out reads is black or not.
+  v1.5 (2026-11-11, WDDM 2.0 black panel): DWM's own UMD log. Its presents stop within the first minute, so its
+  malikm-dwm.exe-<pid>.txt stops growing and s10-log's "newest 60" (by time - the phone's clock restarts at the same
+  time every boot) dropped it. Every pass now logs the running DWM's log size + last 12 lines, and copies the whole
+  file to C:\S10Prov\dwmlog\ (s10-log v1.12 collects that folder).
   Each pass is written with Add-Content (file closed = flushed) so a forced reset loses at most the current pass.
 #>
 $ErrorActionPreference = 'Continue'
@@ -39,7 +43,7 @@ function Mali-Pram {
 
 $up0 = [Environment]::TickCount
 W ''
-W "===== gpu-watch v1.4 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
+W "===== gpu-watch v1.5 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
 try {
   $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters' -ErrorAction Stop
   W ("mode registry: FullAdapter {0} GpuEnable {1}  machine GALLIUM_DRIVER '{2}'" -f $p.FullAdapter, $p.GpuEnable,
@@ -121,6 +125,26 @@ for ($i = 0; $i -lt 40; $i++) {
   $out.Add('  mem: ' + ((Get-Process dwm, explorer, SearchHost, StartMenuExperienceHost, TextInputHost -ErrorAction SilentlyContinue |
     ForEach-Object { '{0}#{1} priv {2:N0} MB ws {3:N0} MB up {4:N0} s' -f $_.Name, $_.Id, ($_.PrivateMemorySize64 / 1MB), ($_.WorkingSet64 / 1MB),
       ((Get-Date) - $_.StartTime).TotalSeconds }) -join ' | '))
+  # v1.5: the running DWM's UMD log (gpu-s10 sets MALIKM_TGSI_DIR): size, last 12 lines, a copy for s10-log
+  foreach ($dw in @(Get-Process dwm -ErrorAction SilentlyContinue)) {
+    $f = "C:\ProgramData\S10e\umd\malikm-dwm.exe-$($dw.Id).txt"
+    if (-not (Test-Path $f)) { $out.Add("  dwmlog: none for dwm#$($dw.Id) ($f)"); continue }
+    try {
+      $dst = 'C:\S10Prov\dwmlog'
+      if (-not (Test-Path $dst)) { New-Item -ItemType Directory $dst | Out-Null }
+      $fs = [IO.File]::Open($f, 'Open', 'Read', 'ReadWrite, Delete')
+      try { $ms = New-Object IO.MemoryStream; $fs.CopyTo($ms) } finally { $fs.Close() }
+      [IO.File]::WriteAllBytes((Join-Path $dst (Split-Path $f -Leaf)), $ms.ToArray())
+      $lines = [Text.Encoding]::ASCII.GetString($ms.ToArray()) -split "`r?`n" | Where-Object { $_ }
+      $out.Add("  dwmlog: dwm#$($dw.Id) $($ms.Length) B, $($lines.Count) lines")
+      $lines | Select-Object -Last 12 | ForEach-Object { $out.Add("  dwm> $_") }
+      $err = "C:\ProgramData\S10e\umd\malikm-dwm.exe-$($dw.Id)-stderr.txt"
+      if ((Test-Path $err) -and (Get-Item $err).Length -gt 0) {
+        Copy-Item $err $dst -Force -ErrorAction SilentlyContinue
+        Get-Content $err -Tail 6 -ErrorAction SilentlyContinue | ForEach-Object { $out.Add("  dwm stderr> $_") }
+      }
+    } catch { $out.Add("  dwmlog: $f - $_") }
+  }
   ($out -join "`r`n") | Add-Content $Log -Encoding ascii
 
   if (-not $m5done -and $up -ge 60) {

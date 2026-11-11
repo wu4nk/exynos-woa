@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem s10-log.cmd (v1.11) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
+rem s10-log.cmd (v1.12) - ONE click on the phone (Windows) after testing: collects everything about touch / I2C /
 rem the firmware into C:\log.zip. Then, in TWRP:   adb pull /data/log.zip
 rem (TWRP mounting Windows read-only is fine for a pull). Nothing has to be restarted: the touch driver's
 rem PRAM is read live with s10ediag.exe.
@@ -134,6 +134,10 @@ Copy-Item C:\S10Prov\gpuwatch.txt, C:\S10Prov\d3dfill-auto.txt, C:\S10Prov\m5tes
 Copy-Item C:\ProgramData\S10e\umd\frame-*.ppm $dir -ErrorAction SilentlyContinue
 # v1.11: upstream UMD (kit v2.x) per-process shim logs + crash evidence (gpu-s10 v1.22 sets MALIKM_TGSI_DIR): newest 60
 Get-ChildItem C:\ProgramData\S10e\umd -Filter 'malikm-*' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Copy-Item -Destination $dir -ErrorAction SilentlyContinue
+# v1.12: the phone's clock restarts at the same time every boot, so "newest" is not "this boot": DWM's and LogonUI's
+# logs are always copied (gpu-s10 v1.30 clears the folder at every mode switch), plus gpu-watch v1.5's DWM copies.
+Get-ChildItem C:\ProgramData\S10e\umd -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^malikm-(dwm|LogonUI)\.exe-' } | Copy-Item -Destination $dir -Force -ErrorAction SilentlyContinue
+if (Test-Path C:\S10Prov\dwmlog) { $dl = Join-Path $dir 'dwmlog'; New-Item -ItemType Directory -Force $dl | Out-Null; Copy-Item C:\S10Prov\dwmlog\* $dl -ErrorAction SilentlyContinue }
 Write-Host '[ OK ] devices, counters, events'
 
 # 3. firmware log + saved PRAM dumps from the ESP. v1.6: use an ESP that is already mounted (an earlier
