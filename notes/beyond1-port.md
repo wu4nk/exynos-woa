@@ -1658,3 +1658,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   ~20 s (pid changes each pass). Next: gpu-dwm (DWM on the Mali), as in the morning's working runs.
 - 2026-11-11 19:22 log e6d34eca: gpu-dwm on the legacy stack (KMD 1.0.36.1 + UMD 0075): DWM ON THE MALI again -
   dwm 19 presents/s, 0 failed submits, KMD 0 failed / 0 timed-out jobs, no fault lines; gputest run (umd-test.txt).
+- 2026-11-11 19:35 user: UFS (their kept driver), Bluetooth (kit v2.3: Exynos9820Bt + UEFI v0.2.1 role latch) and
+  audio (stereo, SpkAtten 0) WORK on the S10; audio still a bit quiet, louder later. Next: S10ePower (clocks/thermal).
+- 2026-11-11 19:38 user: focus on the GPU (S10ePower port paused: build.bat EWDK-aware + build-s10 v1.13 :power +
+  power-s10.ps1 v1.0 written, not run; DT check done - ACPM 0x15900000/0x2039000, DVFS ch 0, TMU ch 9, LITTLE/MID/G3D
+  cal-ids and ladders identical to the S10e).
+- Upstream 1.0.72 black-panel hunt, instrumentation: gpu-watch v1.4 logs per pass MaliG76Wddm's stats escape
+  (tools\kmdstats.exe, built with zig from the upstream source: presents / latch CPU copies / GPU-presented / skipped),
+  a raw PRAM peek line when the trace is missing, 3 framebuffer pixels (0xCA000000, rows 100/1520/2940, centre
+  column) and the DPU G0 (0x19071000) / DECON (0x19030000) registers - i.e. is the FB black, is the scan-out still on
+  the GOP base. gpu-s10 v1.26 -GpuDir (legacy and upstream builds side by side). Kit v2.5.

@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.12) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.13) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
@@ -73,6 +73,9 @@ rem reset pins and rails are the S10e's (live DT: cs47l93@0 on spi@10470000, cs3
 rem hsi2c@109A0000, resets gpg1-0 / gph1-1 / gph1-2, LDO17M 1.8 V + LDO18M 1.2 V).
 call :msb Exynos9820Audio "/p:SkipPackageVerification=true /p:ApiValidator_Enable=false /p:ACX_VERSION_MINOR=1" || exit /b 1
 call :diag || exit /b 1
+rem v1.13: S10ePower (ACPM clocks + temperatures, thermal guard) + S10eGovernor + clocks.exe - out\S10ePower\ (no INF:
+rem power-s10.ps1 installs it as services). Never fails the kit.
+call :power || echo [WARN] S10ePower not built - clocks stay at the boot rates
 rem v1.11: Bluetooth - Exynos9820Bt (BthxDDI transport over the BT UART, binds DSDT BTH0 = UEFI v0.2.1+ with the BT
 rem role latch). Its INF ships the phone's own patch file as bcm4375B1_semco.hcd; get-wifi-fw.cmd v1.1 puts the one
 rem that matches this phone's module in bcm4375\bt\. Without it Bluetooth is skipped (never fails the kit).
@@ -152,6 +155,20 @@ powershell -NoProfile -Command "$f='%DST%\%NAME%.inf'; (Get-Content $f) -replace
 findstr /b /c:"DriverVer=%UFSVER%" "%DST%\%NAME%.inf" >nul || (echo [FAIL] could not stamp DriverVer & exit /b 1)
 rem UfsDiag.exe stays in _ufs-build (a test tool, not part of the driver package).
 goto :catsign
+
+rem ---------------------------------------------------------------------------
+:power
+set "DST=%OUT%\S10ePower"
+echo.
+echo ==== S10ePower (clocks / temperatures / governor) ====
+set "S10E_SIGN_SKIP=1"
+call "%SRCROOT%S10ePower\build.bat" "%DST%"
+if errorlevel 1 (set "S10E_SIGN_SKIP=" & echo [FAIL] S10ePower build.bat & exit /b 1)
+set "S10E_SIGN_SKIP="
+del /q "%DST%\*.obj" >nul 2>&1
+for %%F in ("%DST%\*.sys" "%DST%\*.exe") do call :sign "%%~F" || exit /b 1
+echo [ OK ] S10ePower
+exit /b 0
 
 rem ---------------------------------------------------------------------------
 :diag

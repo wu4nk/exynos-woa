@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.25) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.26) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,8 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.26: -GpuDir <folder> picks the GPU build (keep out-gpu-legacy and out-gpu-upstream side by side and switch with
+  "display -GpuDir ..." - no more copying over out-gpu). Tools for gpu-watch v1.4 (kmdstats.exe) are looked for in tools\.
   v1.25: the package path only when the package's INF really carries maliumd.dll ([SourceDisksFiles], upstream 1.0.72)
   - 2026-11-11 18:29: a legacy 1.0.36.1 package folder still held the 1.0.72 kit's maliumd.dll (out-gpu copied over,
   not replaced), so the 1.0.36 KMD ran with upstream's UMD (black). A legacy package uses the loose UMD in out-gpu\umd\.
@@ -62,11 +64,12 @@
   Back from "full": .\gpu-s10.ps1 display (FullAdapter 0 again; maliumd.dll may stay, it is only loaded
   in full mode). If "full" hangs: nogpu.flg from TWRP, boot, run "display", delete nogpu.flg, reboot.
 #>
-param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status')
+param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status',
+      [string]$GpuDir = 'out-gpu')   # v1.26: e.g. -GpuDir out-gpu-legacy / out-gpu-upstream (two builds side by side)
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.25  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.26  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -75,7 +78,7 @@ function Fail($m) { Say 'FAIL' $m Red; exit 1 }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
       [Security.Principal.WindowsBuiltInRole]::Administrator)) { Fail 'run PowerShell as Administrator' }
 
-$Out = Join-Path $PSScriptRoot 'out-gpu'                     # build-s10.cmd v1.7 (S10_GPU=1) puts the Mali packages here
+$Out = if ([IO.Path]::IsPathRooted($GpuDir)) { $GpuDir } else { Join-Path $PSScriptRoot $GpuDir }   # build-s10.cmd v1.7 (S10_GPU=1) puts the Mali packages in out-gpu
 if (-not (Test-Path $Out)) { $Out = Join-Path $PSScriptRoot 'out' }
 $ProbeLog = "$env:SystemRoot\System32\LogFiles\MaliG76Probe-run.txt"
 $SvcParams = 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters'

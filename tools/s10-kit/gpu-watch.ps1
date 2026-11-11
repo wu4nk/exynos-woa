@@ -1,5 +1,5 @@
 <#
-  gpu-watch.ps1 (v1.3) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
+  gpu-watch.ps1 (v1.4) - runs by itself at every boot while gpu-s10.ps1 "gpu" / "gpu-dwm" mode is on (scheduled task
   "S10 GPU watch", SYSTEM, at startup). For boots where the phone is too slow to use (G2b-1 2026-11-03: no taskbar
   icons, no touch keyboard): nothing has to be typed, and nothing depends on the PRAM surviving (a TWRP boot destroys
   it). Every 15 s for 10 minutes it appends to C:\S10Prov\gpuwatch.txt (NTFS - readable from TWRP:
@@ -9,6 +9,10 @@
     - % interrupt / DPC / processor time, interrupts/s
     - the 6 processes that used the most CPU in the last interval
   At +60 s it runs tools\m5test.exe once (one WRITE_VALUE job through WDDM, 60 s limit) and logs its output.
+  v1.4 (upstream 1.0.72 black-panel hunt): every pass also logs MaliG76Wddm's own counters through its stats escape
+  (tools\kmdstats.exe: presents, latch CPU copies into the framebuffer, GPU-presented, skipped, renders, IRQs), a raw
+  line of the PRAM peek when it gives no trace, and 4 pixels of the framebuffer itself (s10ediag peek 0xCA000000 at
+  the top / centre / bottom of the S10's 1440x3040 panel) - black panel = what the scan-out reads is black or not.
   Each pass is written with Add-Content (file closed = flushed) so a forced reset loses at most the current pass.
 #>
 $ErrorActionPreference = 'Continue'
@@ -35,7 +39,7 @@ function Mali-Pram {
 
 $up0 = [Environment]::TickCount
 W ''
-W "===== gpu-watch v1.3 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
+W "===== gpu-watch v1.4 boot $(Get-Date -Format s) (uptime $([int]($up0 / 1000)) s)"
 try {
   $p = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\MaliG76Wddm\Parameters' -ErrorAction Stop
   W ("mode registry: FullAdapter {0} GpuEnable {1}  machine GALLIUM_DRIVER '{2}'" -f $p.FullAdapter, $p.GpuEnable,
@@ -80,6 +84,26 @@ for ($i = 0; $i -lt 40; $i++) {
   $out.Add("--- pass $i  uptime $up s  $(Get-Date -Format HH:mm:ss)")
   $pr = Mali-Pram
   $out.Add('  pram: ' + (($pr | Where-Object { $_ -match ' (HB|ST) ' }) -join ' | '))
+  if ($Diag -and -not ($pr | Where-Object { $_ -match ' (HB|ST) ' })) {
+    $raw = & s10ediag.exe peek 0x8FE04000 64 2>&1 | Select-Object -First 3
+    $out.Add('  pram raw: ' + (($raw | ForEach-Object { "$_" }) -join ' / '))
+  }
+  # v1.4: the framebuffer the panel scans (GOP 0xCA000000, pitch 5760): row 100, row 1520, row 2940, centre column
+  if ($Diag) {
+    $px = foreach ($row in 100, 1520, 2940) {
+      $a = 0xCA000000 + $row * 5760 + 720 * 4
+      $h = & s10ediag.exe peek ('0x{0:X}' -f $a) 16 2>&1 | Where-Object { "$_" -match '^[0-9a-fA-F]{10}:' } | Select-Object -First 1
+      "r$row " + $(if ($h) { ("$h" -split ':', 2)[1].Trim() } else { '?' })
+    }
+    $out.Add('  fb: ' + ($px -join ' | '))
+    # DPU channel G0 (MW_DPU_G0_PA): enable, source/image size, scan-out base; DECON: global control, run status, trigger
+    $g0 = & s10ediag.exe peek 0x19071000 0x50 2>&1 | Where-Object { "$_" -match '^[0-9a-fA-F]{10}:' }
+    $dc = & s10ediag.exe peek 0x19030000 0x80 2>&1 | Where-Object { "$_" -match '^[0-9a-fA-F]{10}:' }
+    $out.Add('  dpu g0: ' + (($g0 | ForEach-Object { "$_" }) -join ' / '))
+    $out.Add('  decon: ' + (($dc | ForEach-Object { "$_" }) -join ' / '))
+  }
+  $ks = @((Join-Path $Kit 'tools\kmdstats.exe'), (Join-Path $Kit 'out-gpu\tools\kmdstats.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($ks) { & $ks 2 2>&1 | Select-Object -First 8 | ForEach-Object { $out.Add("  kmd> $_") } }
   $pr | Where-Object { $_ -notmatch ' (HB|ST) ' } | Select-Object -Last 6 | ForEach-Object { $out.Add("  pram> $_") }
   try {
     $c = (Get-Counter -Counter '\Processor(_Total)\% Processor Time', '\Processor(_Total)\% Interrupt Time',
