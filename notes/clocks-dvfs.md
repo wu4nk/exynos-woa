@@ -161,3 +161,15 @@ Windows reads temperatures and can throttle; lowering is fine.
   tools/s10-kit/drag-probe.ps1 (idle 10 s vs drag/resize 15 s: dwmrate, kmdstats busy, ACPM clocks, per-core CPU,
   GPU 3D engine, top processes). Other suspects to separate with it: DWM single-threaded now (threaded context off,
   s10-0001), 1440x3040 swap-chain reallocation per resize step (bo alloc 10-16 ms per 17 MB surface in UMD logs).
+- 03:19 drag-probe (196ac9f1, governor + S10ePower running, MaxG3d 806000): idle: LITTLE/MID/G3D at 1456/507/260, GPU
+  busy 3.7 %, 2.5 presents/s. Drag/resize 15 s: cpu4-5 (A75) 60-85 % at MID 2314000, LITTLE 442..1950000, G3D mostly
+  325000 (806 twice), GPU job running 20.7 % of samples, 34 presents/s all GPU-presented, 115 renders/s, no CPU copy.
+  Top CPU during the drag: osk.exe 15.8 s over 15 s (~1 core - the legacy On-Screen Keyboard redrawing on every input
+  move), dwm 11.4 s (~0.76 core; single-threaded since s10-0001). DWM_TIMING_INFO counters useless on this KMD
+  (0.1 frames/s while 34 presents/s go through).
+  => CPU-bound on the two A75 cores (osk + DWM), GPU at a low clock for frame latency. No touch boost at all on the S10:
+  S10Touch never set \BaseNamedObjects\S10eTouchActivity (only the S10e S6SY761 driver did).
+- Fixes: S10Touch 1.1.1.0 sets the event from PushFrame (<= every 20 ms, IoCreateSynchronizationEvent at
+  prepare-hardware, ZwClose at release - the S6SY761TouchBeyond0 code); governor: touch boost is a floor over load
+  tracking (it replaced it, capping MID at BoostMid 2106000 during drags); power-s10 v1.3 enable: BoostMid 2314000,
+  BoostG3d 650000. User advice: close osk.exe when not typing (touch keyboard = TextInputHost). NOT validated.

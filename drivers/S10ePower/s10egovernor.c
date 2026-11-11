@@ -325,9 +325,9 @@ static void Run(void)
             for (i = 0; i < 3; i++) {
                 DOMAIN *d = &gDom[i];
                 unsigned target;
-                if (boost) {
-                    target = StepAtLeast(d, d->Boost);
-                } else if (i == 0) {
+                /* S10 2026-11-12 (drag lag): the touch boost is a FLOOR on top of load tracking - before, it replaced
+                 * it, so a drag that loaded the A75s past MidMaxBusyPct got BoostMid (2106000) instead of the ceiling */
+                if (i == 0) {
                     unsigned want = (unsigned)(busy[0] * 1.25 * d->Max);
                     if (busy[0] < 0.90 && want > gEffLittle)
                         want = gEffLittle;
@@ -343,6 +343,11 @@ static void Run(void)
                     /* no GPU counter: keep the ceiling; half-ceiling step after 5 s without touch + idle CPUs */
                     BOOL idle = (!lastTouch || t - lastTouch > 5000) && busy[0] < 0.10 && busy[1] < 0.10;
                     target = StepAtLeast(d, idle ? d->Max / 2 : d->Max);
+                }
+                if (boost) {
+                    unsigned bt = StepAtLeast(d, d->Boost);
+                    if (bt > target)
+                        target = bt;
                 }
                 if (target == d->Cur) {
                     d->Quiet = 0;

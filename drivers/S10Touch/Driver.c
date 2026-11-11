@@ -8,6 +8,52 @@
  * Small helpers
  * ====================================================================== */
 
+/* Governor touch boost (S10 port 2026-11-12, notes/clocks-dvfs.md "drag lag"): the named auto-reset event
+   S10eGovernor waits on - the same one the S10e's S6SY761 driver sets (drivers/S6SY761TouchBeyond0/Device.c). Without
+   it the governor never saw a touch on the S10 and window drags ran at load-tracking clocks (GPU 325 MHz). Set at most
+   every 20 ms from PushFrame (worker thread, PASSIVE_LEVEL); created at prepare-hardware, closed at release. */
+#define S10T_TOUCH_ACTIVITY_NAME L"\\BaseNamedObjects\\S10eTouchActivity"
+static HANDLE    gTouchActivityHandle;
+static PKEVENT   gTouchActivity;
+static ULONGLONG gTouchActivityLast;
+
+static VOID TouchActivityOpen(VOID)
+{
+    UNICODE_STRING name;
+    HANDLE h = NULL;
+    PKEVENT ev;
+
+    if (gTouchActivity != NULL)
+        return;
+    /* MS Learn IoCreateSynchronizationEvent: creates or opens a named synchronization (auto-reset) event; the pointer
+       stays valid while the handle is open (closed with ZwClose). */
+    RtlInitUnicodeString(&name, S10T_TOUCH_ACTIVITY_NAME);
+    ev = IoCreateSynchronizationEvent(&name, &h);
+    if (ev == NULL)
+        return;
+    KeClearEvent(ev);
+    gTouchActivity = ev;
+    gTouchActivityHandle = h;
+}
+
+static VOID TouchActivityClose(VOID)
+{
+    gTouchActivity = NULL;
+    if (gTouchActivityHandle != NULL) {
+        ZwClose(gTouchActivityHandle);
+        gTouchActivityHandle = NULL;
+    }
+}
+
+static VOID TouchActivityPulse(VOID)
+{
+    ULONGLONG now = KeQueryInterruptTime();
+    if (gTouchActivity != NULL && now - gTouchActivityLast >= 20ull * 10000) {   /* 100 ns units */
+        gTouchActivityLast = now;
+        KeSetEvent(gTouchActivity, IO_NO_INCREMENT, FALSE);
+    }
+}
+
 static ULONG AliveRead(_In_ PS10T_DEVICE Dev, _In_ ULONG Off)
 {
     return READ_REGISTER_ULONG((volatile ULONG *)(Dev->Alive + Off));
@@ -377,6 +423,7 @@ static VOID PushFrame(_In_ PS10T_DEVICE Dev, _In_ const S10T_FRAME *F)
 {
     ULONG tail;
 
+    TouchActivityPulse();   /* governor touch boost */
     if (Dev->FifoCount != 0) {
         tail = (Dev->FifoHead + Dev->FifoCount - 1) % S10T_FIFO_DEPTH;
         if (F->MoveOnly && Dev->Fifo[tail].MoveOnly) {
@@ -894,6 +941,7 @@ NTSTATUS S10tEvtPrepareHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Raw, _I
     if (Dev->RepeatMs > 100) {
         Dev->RepeatMs = 100;
     }
+    TouchActivityOpen();   /* governor touch boost (top of file) */
     return STATUS_SUCCESS;
 }
 
@@ -909,6 +957,7 @@ NTSTATUS S10tEvtReleaseHardware(_In_ WDFDEVICE Device, _In_ WDFCMRESLIST Transla
     }
     /* an interrupt created in PrepareHardware is deleted by the framework after this callback */
     Dev->Interrupt = WDF_NO_HANDLE;
+    TouchActivityClose();
     S10tPramFree();
     return STATUS_SUCCESS;
 }

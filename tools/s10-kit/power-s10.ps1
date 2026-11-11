@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.2) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.3) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -34,7 +34,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.2  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.3  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -133,7 +133,7 @@ switch ($Action) {
     Set-ItemProperty $PwrKey AllowSend 1 -Type DWord
     Set-ItemProperty $PwrKey AllowTmu 1 -Type DWord
     if (-not (Test-Path "$GovKey\Parameters")) { New-Item -Force "$GovKey\Parameters" | Out-Null }   # v-fix: -Force on an existing key wipes its values
-    $gp = @{ MaxLittle = 1950000; MaxMid = 2314000; MaxG3d = 702000; BoostLittle = 1742000; BoostMid = 2106000; BoostG3d = 433000;
+    $gp = @{ MaxLittle = 1950000; MaxMid = 2314000; MaxG3d = 702000; BoostLittle = 1742000; BoostMid = 2314000; BoostG3d = 650000;   # v1.3: drag lag - touch = MID ceiling, GPU 650
              EffLittle = 1456000; GpuFloor = 260000 }
     # v1.2: keep the GPU overclock's ceiling (enable after gpuoc set MaxG3d back to 702000 - 806 was never used)
     $oc = (Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue).GpuOc
