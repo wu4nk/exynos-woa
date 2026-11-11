@@ -21,7 +21,14 @@ for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exyno
 done
 # v2.0: the Linux-built user-mode driver (tools/mesa-build/linux-build-g76.sh collect) goes into umd\ when
 # UMD_DIR points at its out-umd folder; build-s10.cmd puts it into the MaliG76Wddm package.
-if [ -n "${UMD_DIR:-}" ]; then mkdir -p "$D/umd" && cp "$UMD_DIR/maliumd.dll" "$UMD_DIR/SHA256SUMS" "$D/umd/"; fi
+# v2.2: UMD_DIR may list several out folders (out-umd out-x86 out-gl, colon separated): every maliumd.dll /
+# maliumd32.dll / maligl.dll found goes in, with one SHA256SUMS for all.
+if [ -n "${UMD_DIR:-}" ]; then
+  mkdir -p "$D/umd"
+  IFS=: read -ra UDIRS <<< "$UMD_DIR"
+  for u in "${UDIRS[@]}"; do for f in maliumd.dll maliumd32.dll maligl.dll; do [ -f "$u/$f" ] && cp "$u/$f" "$D/umd/"; done; done
+  ( cd "$D/umd" && sha256sum *.dll > SHA256SUMS )
+fi
 echo "s10-woa-kit v$VER  repo $(git -C "$REPO" rev-parse --short HEAD)  uefi $(basename "$UEFI")" > "$D/VERSION.txt"
 (cd "$TMP" && zip -qr "$OUTDIR/s10-woa-kit-v$VER.zip" "s10-woa-kit-v$VER")
 echo "$OUTDIR/s10-woa-kit-v$VER.zip"

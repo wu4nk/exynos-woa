@@ -1559,3 +1559,23 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   so pnputil would not replace the old one: build-s10.cmd v1.9 stamps 11/11/2026,9.0.47.1. New
   tools/s10-kit/update-ufs.ps1 v1.0 (in-Windows swap: board record check, live-layout fence check, pnputil).
   Parsed with pwsh 7.4; fence/overlap logic checked on 4 synthetic layouts. NOT run on the phone.
+- 2026-11-11 — GPU builds on the upstream base (all Linux, zig 0.13, release):
+  - `linux-build-g76.sh gl` → out-gl/maligl.dll (upstream's -Stage gl: wgl target, D3D10 UMD off), ARM64, 19 Drv*
+    ICD exports, imports GDI32/KERNEL32/USER32/d3d11/dxgi; sha256 bc4c5214…3c57. First try failed linking host
+    SPIRV-Tools → `-Dspirv-tools=disabled` in the extra stages.
+  - `linux-build-g76.sh x86` → out-x86/maliumd32.dll (WOW64 D3D UMD), i386, image base 0x10000000, OpenAdapter10 /
+    _2 exported undecorated from `_OpenAdapter10@4` (disassembly: `ret $4`, stdcall), same export/import set as the
+    ARM64 UMD; sha256 d9f84864…3923. Uses the x86_64 host panfrost_compile: new layout-check.py compares the
+    serialized records (bifrost_precompiled_kernel_info + the 19 records nested in it, from the host's full layout
+    dump) between host pan_compile.c and the target's pan_precomp.c: all equal for x86 and ARM64; the 69 that
+    differ on x86 all hold pointers and are never serialized.
+  - panvk V2: pv tree branch win-up222 = p0175 + 0001..0005 + 0006 (include/win32-compat replaced by upstream's
+    Mesa-0222 shim, drmGetDevices2/drmGetCap/drmDevice re-added); builds and links clean, ICD exports present;
+    vulkan_panfrost.dll 712a87e4…1468. The shim's G32 submit queue is flushed by every locked entry incl. syncobj
+    waits, which is what malikm_atoms relies on. V1 builds stay tied to the old KMD.
+  - Kit: make-kit.sh v2.2 takes UMD_DIR=a:b:c, build-s10.cmd v1.10 copies maliumd/maliumd32/maligl.dll;
+    s10-wddm-inf.ps1 with those three present keeps their INF lines and drops only *_arm64 / *_ec (tested pwsh).
+  - NOT built: ARM64EC (zig has no arm64ec) → x64-emulated apps still have no Mali D3D/GL. KMD fixes of f91fbc8
+    (COHERENCY_NONE, FLUSH_MEM before AS0 reprogram, JS_COMMAND_NEXT check) are not in upstream's maligpu.c; left
+    out (upstream's KMD is validated on the S10e without them; revisit if the S10 shows faults/hangs).
+  None of this run on the phone yet.

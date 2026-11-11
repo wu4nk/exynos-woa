@@ -14,6 +14,8 @@
 # with the MSVC-built KMD) use fixed-width integers only. -mms-bitfields = MSVC bitfield layout for the DDI structs.
 #
 # Usage: linux-build-g76.sh <workdir> <ddi-headers.zip|dir> [stage...]   stages: source libpan host cross collect (default all)
+#        extra stages (on request, after cross): gl (maligl.dll, the ARM64 OpenGL ICD = upstream's -Stage gl)
+#                                                x86 (maliumd32.dll, D3D UMD for 32-bit x86 apps = upstream's -Stage x86)
 # Needs: git, python3, clang-18, a zig 0.13 tree (ZIG=/path/to/zig), network to github.com + conda.anaconda.org.
 set -euo pipefail
 W=$(readlink -f "${1:?workdir}"); DDI_IN=${2:?ddi-headers.zip or dir}; shift 2
@@ -150,4 +152,63 @@ if want collect; then
   llvm-readobj-18 --coff-imports $D | grep -E 'Name:' | sort -u > $O/imports.txt || true
   llvm-readobj-18 --coff-exports $D | grep -E 'Name:' > $O/exports.txt || true
   file $D; cat $O/SHA256SUMS; echo "imports:"; cat $O/imports.txt
+fi
+
+# The cross stage's options with OpenGL on and the D3D10 UMD off: upstream build-mesa-g76.ps1 -Stage gl
+# (src/gallium/targets/wgl/libgallium_wgl.dll -> maligl.dll). zlib is the static one of the cross stage.
+cross_opts() {
+  echo -Dplatforms=windows -Dgallium-drivers=softpipe,panfrost -Dmesa-clc=system -Dvulkan-drivers= -Dllvm=disabled \
+    -Dgles1=disabled -Dgles2=disabled -Degl=disabled -Dglx=disabled -Dgbm=disabled -Dvideo-codecs= \
+    -Dmicrosoft-clc=disabled -Dspirv-to-dxil=false -Dspirv-tools=disabled -Dzstd=disabled -Dshader-cache=disabled -Dbuild-tests=false
+}
+bt_opts() {
+  case "${MESA_BUILDTYPE:-debugoptimized}" in release) echo -Dbuildtype=release -Db_ndebug=true ;; *) echo -Dbuildtype=debugoptimized ;; esac
+}
+
+if want gl; then
+  TC=$W/tc; [ -f $TC/arm64-mingw-zig.cross ] || { echo "gl: run the cross stage once first"; exit 1; }
+  ( export PATH=$W/build-host/src/panfrost/clc:$W/ref-pin/ci/clc-stubs:$ENV/bin:$PATH LIBPAN_PREBUILT=$W/libpan-prebuilt
+    unset CC CXX PKG_CONFIG_PATH
+    rm -rf build-arm64-gl
+    meson setup build-arm64-gl mesa-26.2-g76 --backend=ninja --cross-file $TC/arm64-mingw-zig.cross $(bt_opts) \
+      -Dprecomp-compiler=system -Dopengl=true -Dgallium-d3d10umd=false $(cross_opts) > gl-setup.log
+    ninja -C build-arm64-gl -k 0 > gl-ninja.log 2>&1 || { grep -E 'error:|FAILED' gl-ninja.log | head -40; exit 1; } )
+  O=$W/out-gl; rm -rf $O; mkdir -p $O
+  cp build-arm64-gl/src/gallium/targets/wgl/libgallium_wgl.dll $O/maligl.dll
+  python3 -I "$HERE/pe-set-subsys.py" $O/maligl.dll
+  llvm-readobj-18 --coff-exports $O/maligl.dll | grep -cE 'Name: (Drv|wgl)' | sed 's/^/gl: ICD exports: /'
+  llvm-readobj-18 --coff-imports $O/maligl.dll | grep -E 'Name:' | sort -u > $O/imports.txt
+  ( cd $O; sha256sum maligl.dll > SHA256SUMS ); cat $O/SHA256SUMS
+fi
+
+if want x86; then
+  # i686 mingw (zig x86-windows-gnu), with the host stage's panfrost_compile (x86_64 Linux, -mms-bitfields): it
+  # memcpys struct bifrost_precompiled_kernel_info into the generated C, so its layout must match i686 mingw's.
+  # Checked after the build (layout-check.py: host pan_compile.c vs the x86 target's pan_precomp.c records).
+  TC=$W/tc; [ -f $TC/arm64-mingw-zig.cross ] || { echo "x86: run the cross stage once first"; exit 1; }
+  for t in cc c++; do printf '#!/bin/sh\nexec %s %s -target x86-windows-gnu "$@"\n' "$ZIG" $t > $TC/zig86-$t; done
+  chmod +x $TC/zig86-*
+  mkdir -p xlib86
+  $TC/zig-dlltool -m i386 -d "$(dirname "$ZIG")/lib/libc/mingw/lib-common/api-ms-win-core-synch-l1-2-0.def" -l xlib86/libsynchronization.a
+  Z=$W/zlib-x86; rm -rf $Z zobj86; mkdir -p $Z/lib/pkgconfig $Z/include zobj86
+  for f in adler32 compress crc32 deflate gzclose gzlib gzread gzwrite infback inffast inflate inftrees trees uncompr zutil; do
+    $TC/zig86-cc -O2 -mms-bitfields -c zlib-src/$f.c -o zobj86/$f.o; done
+  $TC/zig-ar rcs $Z/lib/libz.a zobj86/*.o; cp zlib-src/zlib.h zlib-src/zconf.h $Z/include/
+  printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\nName: zlib\nDescription: zlib\nVersion: 1.3.1\nLibs: -L${libdir} -lz\nCflags: -I${includedir}\n' $Z > $Z/lib/pkgconfig/zlib.pc
+  sed -e "s#zig-cc'#zig86-cc'#; s#zig-c++'#zig86-c++'#; s#zlib-arm64#zlib-x86#; s#$W/xlib'#$W/xlib86'#g; s#-L$W/xlib'#-L$W/xlib86'#g" \
+      -e "s#--image-base=0x180000000#--image-base=0x10000000#g" \
+      -e "s#cpu_family = 'aarch64'#cpu_family = 'x86'#; s#cpu = 'aarch64'#cpu = 'i686'#" \
+      $TC/arm64-mingw-zig.cross > $TC/x86-mingw-zig.cross
+  ( export PATH=$W/build-host/src/panfrost/clc:$W/ref-pin/ci/clc-stubs:$ENV/bin:$PATH LIBPAN_PREBUILT=$W/libpan-prebuilt
+    unset CC CXX PKG_CONFIG_PATH
+    rm -rf build-x86
+    meson setup build-x86 mesa-26.2-g76 --backend=ninja --cross-file $TC/x86-mingw-zig.cross $(bt_opts) \
+      -Dprecomp-compiler=system -Dopengl=false -Dgallium-d3d10umd=true $(cross_opts) > x86-setup.log
+    ninja -C build-x86 -k 0 > x86-ninja.log 2>&1 || { grep -E 'error:|FAILED' x86-ninja.log | head -40; exit 1; } )
+  python3 -I "$HERE/layout-check.py" build-host build-x86 "$ZIG" x86-windows-gnu
+  O=$W/out-x86; rm -rf $O; mkdir -p $O
+  cp build-x86/src/gallium/targets/d3d10umd/libgallium_d3d10.dll $O/maliumd32.dll
+  llvm-readobj-18 --coff-exports $O/maliumd32.dll | grep -E 'Name:' > $O/exports.txt; cat $O/exports.txt
+  llvm-readobj-18 --coff-imports $O/maliumd32.dll | grep -E 'Name:' | sort -u > $O/imports.txt
+  ( cd $O; sha256sum maliumd32.dll > SHA256SUMS ); cat $O/SHA256SUMS
 fi

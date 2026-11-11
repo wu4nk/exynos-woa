@@ -1,6 +1,8 @@
 S10 panvk kit (exynos-woa) - Mesa PanVK 26.3.0-devel (panvk-kbase-android p0175) as a Windows ARM64 Vulkan driver.
 
-Needs: MaliG76Wddm in GPU mode (the state DWM-on-Mali runs in). Nothing is installed; no Vulkan loader needed.
+Needs: MaliG76Wddm 1.0.72.1 (upstream base, kit v2.x) with its GPU half on. V2 (patch 0006): built against upstream's
+shim (Mesa 0222); the V1 builds (S10-panvk-V1.x) only talk to the old 1.0.3x KMD - do not mix them.
+Nothing is installed; no Vulkan loader needed.
 
 1. Unzip anywhere, e.g. C:\S10Prov\panvk
 2. cmd in that folder:  vkprobe.exe

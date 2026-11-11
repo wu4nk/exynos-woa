@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.9) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.10) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
@@ -112,7 +112,9 @@ if not defined INF (popd & echo [FAIL] %NAME%.inf not found & exit /b 1)
 copy /y "%INF%" "%DST%\" >nul
 rem v1.8 (S10 on upstream 1.0.72): the package carries the user-mode driver the kit has (umd\maliumd.dll, the
 rem Linux/mingw ARM64 build); s10-wddm-inf.ps1 drops the INF lines of the files it has not (ARM64EC, x86, OpenGL).
-if /i "%NAME%"=="MaliG76Wddm" if exist "%ROOT%umd\maliumd.dll" copy /y "%ROOT%umd\maliumd.dll" "%DST%\" >nul
+rem v1.10: every user-mode file the kit has - maliumd.dll (ARM64 D3D), maliumd32.dll (x86 D3D, WOW64), maligl.dll
+rem (ARM64 OpenGL ICD); s10-wddm-inf.ps1 then drops what is not there.
+if /i "%NAME%"=="MaliG76Wddm" for %%U in (maliumd.dll maliumd32.dll maligl.dll) do if exist "%ROOT%umd\%%U" copy /y "%ROOT%umd\%%U" "%DST%\" >nul
 if /i "%NAME%"=="MaliG76Wddm" powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%s10-wddm-inf.ps1" "%DST%\%NAME%.inf"
 if errorlevel 1 (popd & echo [FAIL] s10-wddm-inf.ps1 & exit /b 1)
 popd
