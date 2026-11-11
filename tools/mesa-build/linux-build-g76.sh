@@ -43,8 +43,8 @@ if want source; then
   cp ref-pin/include/malikm_ioctl.h ref-pin/include/maliwddm_abi.h $M/include/win32-compat/
   for p in ref-pin/mesa-patches/*.patch; do tr -d '\r' < "$p" > "$W/p.lf"; git -C $M apply --whitespace=nowarn "$W/p.lf"; echo "applied $(basename $p)"; done
   git -C $M add -A; git -C $M -c user.name=g12-build -c user.email=g12@local commit -qm 'wddm-mali-g52 0001-0019 + shim'
-  # upstream's series (0020-0222, CRLF in git) + the S10's mingw fixes for it (patches-s10-mingw)
-  for p in "$HERE"/patches/*.patch "$HERE"/patches-s10-mingw/*.patch; do
+  # upstream's series (0020-0222, CRLF in git) + the S10's mingw fixes for it (patches-s10-mingw), then the S10 behaviour changes (patches-s10)
+  for p in "$HERE"/patches/*.patch "$HERE"/patches-s10-mingw/*.patch "$HERE"/patches-s10/*.patch; do
     tr -d '\r' < "$p" > "$W/p.lf"
     git -C $M apply --whitespace=nowarn "$W/p.lf"; git -C $M add -A
     git -C $M -c user.name=exynos-woa -c user.email=build@local commit -qm "exynos-woa $(basename $p)"; echo "applied $(basename $p)"

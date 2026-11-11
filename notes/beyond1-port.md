@@ -1725,3 +1725,13 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
     T5c (Windows futex timeout); this one is new.
   - gpu-s10 v1.31: "gpu-dwm -NoTc" = machine MALIUMD_NO_TC=1 (Device.cpp switch) for one boot, DIAGNOSIS ONLY (AGENTS
     12): does DWM on Panfrost run without the threaded context? Every other mode removes it.
+- 2026-11-11 22:54 log d7538ee5 (user: "nó lên rồi"): gpu-dwm -NoTc (MALIUMD_NO_TC=1), Wddm2 5 - the desktop is up on
+  the Mali: kmdstats presents 1.5-2.0/s all "gpu" (no CPU copy), renders/submits 3-6/s, PRAM p 0x63a -> 0x972 and
+  latches 0x2cd -> 0x469 keep moving, fb holds desktop pixels, dwm#496 log grows (4538 -> 4787 lines). CONFIRMED: the
+  black panel was the threaded-context deadlock.
+- Fix (UMD 0222-s10.1): tools/mesa-build/patches-s10/s10-0001-tc-off-by-default.patch - Device.cpp creates the
+  threaded context only with MALIUMD_TC=1 (and no MALIUMD_NO_TC); linux-build-g76.sh applies patches-s10/ after
+  patches-s10-mingw/. Built incrementally (build-arm64 + build-x86 ninja, layout-check OK): maliumd.dll 1c2871f3,
+  maliumd32.dll 0a237e99, both contain the MALIUMD_TC string. maligl.dll unchanged (no d3d10umd). Open: the real cause
+  of the DDI thread not coming back (S10e runs DWM threaded) - T-series root cause, not needed for the S10 desktop.
+  NOT validated on the device yet.

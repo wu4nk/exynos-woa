@@ -1,0 +1,34 @@
+From c7d073e956723bc6f1bbf7e1343cf5b4d212c3a9 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Wed, 11 Nov 2026 22:55:31 +0700
+Subject: [PATCH] S10: threaded context off by default (DWM deadlock on the
+ WDDM 2.0 adapter); MALIUMD_TC=1 opts in
+
+---
+ src/gallium/frontends/d3d10umd/Device.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/gallium/frontends/d3d10umd/Device.cpp b/src/gallium/frontends/d3d10umd/Device.cpp
+index 2002730..4892e02 100644
+--- a/src/gallium/frontends/d3d10umd/Device.cpp
++++ b/src/gallium/frontends/d3d10umd/Device.cpp
+@@ -185,9 +185,14 @@ CreateDevice(D3D10DDI_HADAPTER hAdapter,                 // IN
+       return E_OUTOFMEMORY;
+    /* exynos-woa TC T4: Panfrost on a driver thread (Gallium threaded context). The runtime callbacks it needs
+     * there run on this DDI thread (MS Learn pfnSetAsyncCallbacksCb: D3D10+ runtimes allow none from a worker).
+-    * MALIUMD_NO_TC=1 turns it off - diagnosis only (AGENTS rule 12). */
++    * MALIUMD_NO_TC=1 turns it off - diagnosis only (AGENTS rule 12).
++    * Galaxy S10 port (exynos-woa-s10 notes/beyond1-port.md, 2026-11-11): OFF by default. DWM on the WDDM 2.0
++    * adapter deadlocked at the desktop: after a present the driver thread posted a Render callback (op 4) to DWM's
++    * DDI thread, which never entered the UMD again ("tc: driver thread waits > 2 s ... op 4"), black panel. With
++    * MALIUMD_NO_TC=1 the same boot composes the desktop on the Mali. Until the marshalling has no such wait,
++    * MALIUMD_TC=1 opts in (tests); MALIUMD_NO_TC=1 still wins. */
+    unsigned ctx_flags = 0;
+-   if (!debug_get_bool_option("MALIUMD_NO_TC", false)) {
++   if (debug_get_bool_option("MALIUMD_TC", false) && !debug_get_bool_option("MALIUMD_NO_TC", false)) {
+       tc_driver_thread_hook = malikm_mark_worker_thread;
+       tc_wait_hook = malikm_ddi_pump;
+       malikm_marshal_enable();
+-- 
+2.43.0
+
