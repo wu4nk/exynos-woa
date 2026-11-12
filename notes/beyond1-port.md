@@ -1817,3 +1817,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   three (s10.3's -Keep left them, by design of v1.3's never-overwrite rule). The run tested the installed s10.3
   (a6850349 / 621b3027 / 712ecdb2): 22 PASS, gputest 91, GLTEST 5/5 - s10.3 re-confirmed. gpu-validate v1.4:
   over a kept install the run backs the current files up to *.s10try (originals stay in *.s10prev).
+- 2026-11-12 13:04 gpu-validate v1.4 -TryUmd umd-0222-s10.4 (zip e38c14ea): swapped (572f69d7 / 45b21b15 / 0bd4de69)
+  and restored from .s10try - v1.4 works. 22 PASS, 1 known, gputest 91/100 (same 9 as before), GLTEST 5/5; test
+  times 5-25 % shorter than s10.3 (threaded context on). UMD 0222-s10.4 VALIDATED by tests; desktop after -Keep +
+  reboot next.
