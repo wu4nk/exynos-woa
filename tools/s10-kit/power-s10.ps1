@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.6) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.7) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -33,6 +33,9 @@
                               v1.6 (where do the ~2.2 W go?): 30 s settle (the fuel gauge's AvgCurrent lags) and these
                               rows: baseline (50 %), brightness 0 %, all clocks at minimum with the panel on, panel dark
                               (panelon 0 = the screen-off state: governor minimum + DCS 28), baseline again (drift).
+                              v1.7: the clocks-minimum row keeps the memory clock at 2093 MHz - 421 MHz with the panel on
+                              made the S10 lag hard and draw horizontal stripes (2026-11-12) - and everything is put back
+                              (governor, brightness, panel) even if the run is stopped with Ctrl+C.
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -49,7 +52,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.6  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.7  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -319,12 +322,15 @@ switch ($Action) {
     $pon = Join-Path $PSScriptRoot 'tools\validate\panelon.exe'
     function SetBr($l) { if ($brm) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$l } | Out-Null } }
     $govOn = (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -eq 'Running'
+    $h = $null
+    try {
     SetBr 50; Measure-Drain 'baseline (50 %, governor)'
     if ($brm) { SetBr 0; Measure-Drain 'brightness 0 %'; SetBr 50 } else { Warn 'no brightness control - row skipped' }
     if ($govOn -and (Test-Path $Ctl)) {
       Gov 'stop' | Out-Null
-      foreach ($p in @(@('little', 442000), @('mid', 507000), @('g3d', 156000), @('mif', 421000))) { Run $Ctl @('set', $p[0], "$($p[1])") | Out-Null }
-      Measure-Drain 'all clocks minimum, panel on'
+      # v1.7: MIF stays 2093 MHz - at 421 MHz with the panel on the S10 lagged and showed horizontal stripes
+      foreach ($p in @(@('little', 442000), @('mid', 507000), @('g3d', 156000), @('mif', 2093000))) { Run $Ctl @('set', $p[0], "$($p[1])") | Out-Null }
+      Measure-Drain 'CPU+GPU minimum, MIF 2093, panel on'
       Gov 'start' | Out-Null
     } else { Warn 'governor not running - clocks-minimum row skipped' }
     if (Test-Path $pon) {
@@ -333,9 +339,14 @@ switch ($Action) {
       [void]$h.WaitForExit(($Secs + 60) * 1000)
     } else { Warn "no $pon - panel-dark row skipped" }
     Measure-Drain 'baseline again (drift check)'
+    } finally {
+      # v1.7: also on Ctrl+C / an error - the governor back on, the panel lit, brightness and the display timeout back
+      if ($h -and -not $h.HasExited) { Stop-Process -Id $h.Id -Force -ErrorAction SilentlyContinue }   # the KMD relights the panel
+      if ($govOn -and (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -ne 'Running') { Gov 'start' | Out-Null; Info 'governor restarted' }
     if ($brm -and $null -ne $br0) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$br0 } | Out-Null }
     [void][S10.Es]::SetThreadExecutionState([uint32]2147483648)
-    Ok 'settings restored (brightness, IdleMifMs) - send power-report.txt'
+    }
+    Ok 'settings restored (governor, panel, brightness) - send power-report.txt'
   }
   'status' {
     foreach ($s in 'S10ePower', 'S10eGovernor') {

@@ -246,3 +246,20 @@ Windows reads temperatures and can throttle; lowering is fine.
   screen-off state: DCS 28 + governor minimum), baseline again (drift). panelon (MaliG76Wddm tools) built with zig into
   the validate folder (build-validate-tools.sh). Candidates by expected size once the split is known: CPU idle states
   (_LPI: cores only WFI today), GPU idle power-down in the KMD, then DVFS floors.
+- 2026-11-12 18:23 DEVICE drain v1.6 (power-report 9715e1d9) + user: "sao tự nhiên nó lag vl mà màn hình lại còn bị
+  nhiễu kẻ ngang" + log 5e013462. Rows done: baseline 50 % 2779 mW, brightness 0 % 2104 mW, all clocks minimum
+  (LITTLE 442 / MID 507 / G3D 156 / MIF 421, panel on) 2012 mW; the report stops there (no panel-dark / drift rows =
+  the run was stopped). At the governor stop the baseline state was LITTLE 442, MID 2314, G3D 806 (req 806000) -
+  the governor held the GPU at the top during the measurement (WMI polling / brightness changes redraw?).
+  Most likely cause of lag + stripes = row 3 itself (my test): CPU/GPU at minimum = lag, MIF 421 MHz with the panel
+  on = horizontal stripes (scan-out bandwidth / underrun) - to be CONFIRMED with the user (when it started, whether a
+  reboot cleared it). The log is from a later boot (RTC restarts each boot; uptime ~15 min): PanelStep 0, PanelCmdStatus
+  4, PanelPowerChanges 5, PanelDisplayPower 1, BrightnessLast level 50 AOR 0x093C ok; DECON GLOBAL read 0x113/0x133 in
+  gpuwatch passes; kmd 2 presents/s, cpu 1.7 % - not visibly broken at collection time.
+  Consequences: IdleMifMs (MIF 421 with the screen on) must stay 0 - same mechanism (58 % share in the earlier run,
+  nothing reported then); the screen-on MIF 2093 policy (upstream's judder fix) is probably also a scan-out need.
+  Numbers: clocks contribute ~90 mW (2104 -> 2012), the panel at 50 % vs 0 % ~0.67 W this run (drift-prone): ~2 W stays
+  with everything at minimum and the panel nearly dark -> static: CPU cores only in WFI (no _LPI), GPU / other blocks
+  never powered down - the next target.
+- power-s10 v1.7: the minimum row keeps MIF 2093; try/finally restarts the governor, kills panelon (KMD relights),
+  restores brightness and the display timeout even on Ctrl+C.
