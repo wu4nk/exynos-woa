@@ -1857,3 +1857,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   (tools/kmd-build, board 1) links. UEFI v0.2.2 (f18eb3e2): same range/top in SimpleFramebufferDxe so the boot level
   maps back (FVMAIN_COMPACT 3504 B free). Side effect: the power-button panel-off (MW_ESCAPE_PANEL_POWER, needs PanelOk)
   now works on the S10 too. NOT validated on the device.
+- Tools for the brightness round: gpu-s10 v1.34 "update" (out-gpu MaliG76Wddm over the installed one with pnputil
+  /add-driver /install - higher DriverVer; every Parameters value saved and written back; package UMD or -UmdDir;
+  reboot) and panel-s10.ps1 v1.0 (Panel* trace from Device Parameters, WMI brightness, "sweep" 100/50/10/0/100 with
+  BrightnessLast decode, -Top sets PanelAorTop). Kit v2.7.

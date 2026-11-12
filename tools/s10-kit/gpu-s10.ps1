@@ -1,5 +1,5 @@
 <#
-  gpu-s10.ps1 (v1.33) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
+  gpu-s10.ps1 (v1.34) - Galaxy S10 GPU stages G1/G2: run the Mali-G76 job test, switch the screen to the
   Mali display driver, then (G2) to the full WDDM adapter with the Mesa UMD (maliumd.dll). Run ON THE PHONE, PowerShell as Administrator, from the kit folder
   that holds out\ (built by build-s10.cmd v1.3+). Needs UEFI beyond1lte-uefi v0.1.3+ (it powers the
   G3D domain and shows the GPU0 device to Windows; v0.1.2 and older hide it).
@@ -42,6 +42,9 @@
   belongs to TrustedInstaller, so renaming it failed ("Access to the path is denied") - now takeown first. The
   loose-file path is kept for a package without a UMD (with the same takeown).
 
+  v1.34: "update" - a newer MaliG76Wddm package from out-gpu (e.g. KMD 1.0.72.2: S10 brightness) over the installed
+  one, the mode kept exactly (every Parameters value is saved before and written back after), the package's user-mode
+  files (or -UmdDir) installed. Reboot once. Rescue as always: nogpu.flg from TWRP.
   v1.33: -UmdDir <folder> (full / gpu / final): maliumd.dll / maliumd32.dll / maligl.dll come from that folder
   (e.g. umd-0222-s10.3) instead of the package - "full"/"gpu" put the package's copies back otherwise (2026-11-12
   02:19: after -Keep of s10.3 the user ran "full" = GPU half OFF, Mesa on the CPU -> lag, and UMD back to s10.1).
@@ -93,14 +96,14 @@
   Back from "full": .\gpu-s10.ps1 display (FullAdapter 0 again; maliumd.dll may stay, it is only loaded
   in full mode). If "full" hangs: nogpu.flg from TWRP, boot, run "display", delete nogpu.flg, reboot.
 #>
-param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'final', 'off', 'kmd', 'kmd-restore')][string]$Action = 'status',
+param([Parameter(Position = 0)][ValidateSet('status', 'probe', 'display', 'full', 'gpu', 'm5test', 'fill', 'gpu-dwm', 'final', 'off', 'kmd', 'kmd-restore', 'update')][string]$Action = 'status',
       [string]$GpuDir = 'out-gpu',   # v1.26: e.g. -GpuDir out-gpu-legacy / out-gpu-upstream (two builds side by side)
       [switch]$NoTc,
       [string]$UmdDir = '')          # v1.33: user-mode files from this folder instead of the package (full/gpu/final)                 # v1.31: gpu-dwm only, diagnosis: MALIUMD_NO_TC=1 machine-wide for the next boot
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\gpu-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-s10.ps1 v1.33  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"gpu-s10.ps1 v1.34  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -675,6 +678,22 @@ switch ($Action) {
     Set-TdrDelay $true
     Clear-NoGpuFlag
     Ok 'final: DWM on the Mali, debug logging and boot tasks off - reboot once (DWM reads the variables at start)'
+  }
+  'update' {
+    if (-not (Show-Status)) { Fail 'GPU0 is not present (nogpu.flg?) - boot without it first' }
+    $kitInf = Join-Path $Out 'MaliG76Wddm\MaliG76Wddm.inf'
+    if (-not (Test-Path $kitInf)) { Fail "no $kitInf - build with build-s10.cmd (set S10_GPU=1) and copy out-gpu next to this script" }
+    $saved = @{}
+    $p = Get-Item $SvcParams -ErrorAction SilentlyContinue
+    if ($p) { foreach ($n in $p.GetValueNames()) { $saved[$n] = @($p.GetValue($n), $p.GetValueKind($n)) } }
+    Info ("mode before: " + (($saved.Keys | Sort-Object | ForEach-Object { "$_=$($saved[$_][0])" }) -join ' '))
+    Add-Pkg 'MaliG76Wddm'          # a higher DriverVer replaces the installed package on GPU0
+    if (-not (Test-Path $SvcParams)) { New-Item -Force $SvcParams | Out-Null }
+    foreach ($n in $saved.Keys) { Set-ItemProperty $SvcParams $n $saved[$n][0] -Type $saved[$n][1] }
+    Ok "mode kept ($($saved.Count) values written back)"
+    if ($UmdSrc) { Install-UmdFiles $UmdSrc "-UmdDir $UmdSrc" } else { Install-UmdFiles (Join-Path $Out 'MaliG76Wddm') 'the package' }
+    Clear-NoGpuFlag
+    Ok 'reboot now: GPU0 starts the new MaliG76Wddm with the same mode'
   }
   'kmd' {
     Install-Kmd
