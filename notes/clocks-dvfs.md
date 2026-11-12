@@ -173,3 +173,22 @@ Windows reads temperatures and can throttle; lowering is fine.
   prepare-hardware, ZwClose at release - the S6SY761TouchBeyond0 code); governor: touch boost is a floor over load
   tracking (it replaced it, capping MID at BoostMid 2106000 during drags); power-s10 v1.3 enable: BoostMid 2314000,
   BoostG3d 650000. User advice: close osk.exe when not typing (touch keyboard = TextInputHost). NOT validated.
+
+## 2026-11-12 14:3x (S10 port) CPU "overclock" - user: "tiếp theo là ép xung cpu"
+- YuROM-Ultra-kernel (scratchpad yurom/k) drivers/soc/samsung/cal-if/fvmap.c fvmap_validate_oc_opp + exynos9820-oc.h
+  exynos9820_cluster_oc_opp_valid: the CPU OC there writes NOTHING to ACPM. It raises the kernel's vclk max_freq to a
+  level that ACPM's own fvmap already has ("Only select a complete, pre-existing firmware OPP; never invent a rail
+  value"): LITTLE 1950000 -> 2106000 (target voltage <= 1175000 uV), MID 2314000 -> 2400000 (<= 1050000 uV), M4
+  2730000 -> 2912000/3016000 (BIG, not running under Windows). Checks: target + stock in the table, ECT == firmware
+  rate per level, rates descending, stock voltage 500..1250 mV, target voltage >= stock and <= the ceiling.
+- S10ePower: CpuOcCheck (same checks; ECT is not readable from Windows -> instead every DT ladder step must be a level
+  of that fvmap header, which proves the domain index) records LittleLevels / MidLevels (REG_BINARY rate/uV pairs),
+  LittleOcCheck/Uv, MidOcCheck/Uv (MID 2400000 was already in use with the MIF interlock - recorded only).
+  CpuOc = 1 + AllowSend + DVFS + TMU -> gLittleOc: the LITTLE ladder gains 2106000 (guard level-0 cap LITTLE_TOP()),
+  CpuOcActive 2106000. Unload: LITTLE back to 1950000 when above it. Governor: kLadderLittle has a 14th slot used only
+  when S10ePower's CpuOcActive = 2106000. power-s10 v1.4 "cpuoc" (-Off): checks, s10epowerctl set little 2106000,
+  clockscli measure, cpustress 60 s A55 x2 + 30 s all cores; any error -> removed; else MaxLittle 2106000.
+  Also fixed: gpuoc read the governor state AFTER Copy-Files had stopped it, so it never restarted the governor
+  (report 01137b7c "governor NOT running") - both actions read it before.
+- Compile checks: S10ePower.c clang-cl (WDK 26100 km headers) /W4 clean; s10egovernor.c zig mingw -Wall clean.
+  NOT run on the device; whether this phone's LITTLE fvmap has 2106000 is unknown until LittleLevels is read.

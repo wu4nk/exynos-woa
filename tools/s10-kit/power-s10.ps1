@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.3) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.4) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -18,6 +18,12 @@
                               then this script measures the real GPU clock (gpuclock.exe), runs gputest twice and keeps the
                               overclock only if nothing got worse; the governor's GPU ceiling follows. EXPERIMENTAL: 806 MHz
                               at 702 MHz's voltage depends on the chip ("silicon lottery"). Unload / disable = stock again.
+    .\power-s10.ps1 cpuoc     (v1.4) the YuROM Ultra CPU "overclock" for the A55 cores: 2106 MHz is a level of the phone's
+                              OWN ACPM table (frequency + Samsung's voltage for it) above the 1950 MHz the kernel normally
+                              allows. Nothing is written to ACPM - S10ePower only allows that level after YuROM's checks
+                              (it must be in the table, voltage <= 1175 mV and >= the 1950 MHz one). Then cpustress runs on
+                              the A55s twice + all cores once; any error -> removed again. -Off = back to 1950 MHz.
+                              (A75: 2400 MHz is already in use. M4 big cores: not running under Windows.)
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -29,12 +35,12 @@
   Rescue if a boot goes wrong after "enable": TWRP is not needed - the services are plain services; boot, then
   .\power-s10.ps1 disable. If Windows does not come up at all: Safe Mode skips both (they are not boot-start).
 #>
-param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc')][string]$Action = 'status',
-      [int]$Khz = 806000)
+param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc', 'cpuoc')][string]$Action = 'status',
+      [int]$Khz = 806000, [switch]$Off)
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.3  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.4  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -91,10 +97,30 @@ function Show-Key {
   $k = Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue
   foreach ($n in 'AcpmStatus', 'AllowSendActive', 'DvfsChannelOk', 'TmuChannelOk', 'AcpmApMax', 'AcpmChannelsOffset',
                  'AcpmPlugins', 'FvmapPlugin', 'FvmapOff', 'G3dOcCheck', 'G3dTopRate', 'G3dTopVolt', 'G3dPllLevels',
-                 'G3dPms0', 'G3dPms1', 'GpuOc', 'GpuOcStatus', 'GpuOcActive') {
+                 'G3dPms0', 'G3dPms1', 'GpuOc', 'GpuOcStatus', 'GpuOcActive', 'CpuOc', 'CpuOcStatus', 'CpuOcActive',
+                 'LittleOcCheck', 'LittleOcUv', 'MidOcCheck', 'MidOcUv') {
     if ($null -ne $k.$n) { Info ("{0} = {1}" -f $n, $k.$n) }
   }
+  foreach ($n in 'LittleLevels', 'MidLevels') {   # v1.4: the ACPM fvmap's CPU levels (rate kHz, voltage uV pairs)
+    $b = $k.$n
+    if ($b -is [byte[]]) {
+      $l = for ($i = 0; $i + 7 -lt $b.Length; $i += 8) { '{0}/{1}' -f ([BitConverter]::ToUInt32($b, $i) / 1000), ([BitConverter]::ToUInt32($b, $i + 4) / 1000) }
+      Info ("{0} (MHz/mV): {1}" -f $n, ($l -join ' '))
+    }
+  }
   return $k
+}
+function Gov([string]$What) {
+  if (-not (Get-Service S10eGovernor -ErrorAction SilentlyContinue)) { return $false }
+  $was = (Get-Service S10eGovernor).Status -eq 'Running'
+  if ($What -eq 'stop' -and $was) { Invoke-Sc @('stop', 'S10eGovernor') | Out-Null; Start-Sleep -Seconds 2 }
+  if ($What -eq 'start' -and -not $was) { Invoke-Sc @('start', 'S10eGovernor') | Out-Null; Start-Sleep -Seconds 2 }
+  return $was
+}
+function GovParam([string]$Name, $Value) {
+  if (-not (Test-Path "$GovKey\Parameters")) { New-Item -Force "$GovKey\Parameters" | Out-Null }
+  if ($null -eq $Value) { Remove-ItemProperty "$GovKey\Parameters" $Name -ErrorAction SilentlyContinue }
+  else { Set-ItemProperty "$GovKey\Parameters" $Name $Value -Type DWord }
 }
 
 switch ($Action) {
@@ -138,6 +164,7 @@ switch ($Action) {
     # v1.2: keep the GPU overclock's ceiling (enable after gpuoc set MaxG3d back to 702000 - 806 was never used)
     $oc = (Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue).GpuOc
     if ($oc -eq 754000 -or $oc -eq 806000) { $gp.MaxG3d = $oc; Info "GPU ceiling = the overclock ($oc kHz)" }
+    if ((Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue).CpuOc -eq 1) { $gp.MaxLittle = 2106000; Info 'A55 ceiling = 2106 MHz (cpuoc)' }   # v1.4
     foreach ($n in $gp.Keys) { Set-ItemProperty "$GovKey\Parameters" $n $gp[$n] -Type DWord }
     Start-Power 1
     $o = Invoke-Sc @('start', 'S10eGovernor')
@@ -155,10 +182,10 @@ switch ($Action) {
   }
   'gpuoc' {
     if ($Khz -ne 0 -and $Khz -ne 754000 -and $Khz -ne 806000) { Fail '-Khz must be 806000, 754000 or 0' }
+    # v1.4: read BEFORE Copy-Files, which stops both services (v1.1-v1.3 never restarted the governor after gpuoc)
+    $govWasOn = (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -eq 'Running' -or (Get-Service S10eGovernor -ErrorAction SilentlyContinue).StartType -eq 'Automatic'
     Copy-Files
     if (-not (Get-Service S10ePower -ErrorAction SilentlyContinue)) { Ensure-Services 'demand' }
-    $govWasOn = (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -eq 'Running'
-    if ($govWasOn) { Invoke-Sc @('stop', 'S10eGovernor') | Out-Null; Start-Sleep -Seconds 2 }
     if ($Khz -eq 0) { Remove-ItemProperty $PwrKey GpuOc -ErrorAction SilentlyContinue } else { Set-ItemProperty $PwrKey GpuOc $Khz -Type DWord }
     Start-Power 1
     $k = Show-Key
@@ -201,6 +228,49 @@ switch ($Action) {
     if ($govWasOn) { $o = Invoke-Sc @('start', 'S10eGovernor'); Start-Sleep -Seconds 2; Info "governor restarted (GPU ceiling $top kHz)" }
     if (-not $bad -and $Khz -ne 0) { Ok "GPU overclock $Khz kHz kept (survives reboots while S10ePower starts with GpuOc set; .\power-s10.ps1 gpuoc -Khz 0 removes it)" }
     elseif ($Khz -eq 0) { Ok 'stock GPU table (702 MHz top)' }
+  }
+  'cpuoc' {
+    $govWasOn = (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -eq 'Running' -or (Get-Service S10eGovernor -ErrorAction SilentlyContinue).StartType -eq 'Automatic'
+    Copy-Files      # stops both services
+    if (-not (Get-Service S10ePower -ErrorAction SilentlyContinue)) { Ensure-Services 'demand' }
+    if ($Off) {
+      Remove-ItemProperty $PwrKey CpuOc -ErrorAction SilentlyContinue
+      Start-Power 1
+      GovParam MaxLittle 1950000
+      if ($govWasOn) { Gov 'start' | Out-Null }
+      Ok 'A55 back to the stock 1950 MHz ceiling'
+      break
+    }
+    Set-ItemProperty $PwrKey CpuOc 1 -Type DWord
+    Start-Power 1
+    $k = Show-Key
+    if ($k.CpuOcActive -ne 2106000) {
+      Remove-ItemProperty $PwrKey CpuOc -ErrorAction SilentlyContinue; Start-Power 1
+      if ($govWasOn) { Gov 'start' | Out-Null }
+      Fail ("2106 MHz NOT allowed (CpuOcStatus {0}, LittleOcCheck {1}): 6 = not a level of this phone's ACPM table, 9 = its voltage is outside YuROM's limits, 7 = the table does not match the A55 ladder, 2/3 = sends / temperatures off. Nothing changed. Send power-report.txt" -f $k.CpuOcStatus, $k.LittleOcCheck)
+    }
+    Ok ("A55 2106 MHz allowed: ACPM level with {0} mV (YuROM checks passed, nothing written to ACPM)" -f ($k.LittleOcUv / 1000))
+    Run $Ctl @('set', 'little', '2106000') | Out-Null
+    $cli = Join-Path $Dst 'clockscli.exe'
+    if (Test-Path $cli) { Info 'measured clocks:'; Run $cli @('1', '1') | Out-Null }
+    $stress = Join-Path $Dst 'cpustress.exe'
+    $bad = $false
+    foreach ($r in @(@('60', '0xf', 'A55 x4'), @('60', '0xf', 'A55 x4'), @('30', '0x3f', 'all 6 cores'))) {
+      Info "cpustress $($r[0]) s on $($r[2]) at 2106 MHz:"
+      $o = Run $stress @($r[0], $r[1])
+      if (-not ($o -match '^PASS')) { $bad = $true; Warn "cpustress on $($r[2]): $(($o | Select-Object -Last 1))" }
+      Run $Ctl @() | Out-Null
+    }
+    if ($bad) {
+      Remove-ItemProperty $PwrKey CpuOc -ErrorAction SilentlyContinue
+      Start-Power 1
+      GovParam MaxLittle 1950000
+      Warn 'computation errors at 2106 MHz -> removed, A55 back to 1950 MHz'
+    } else {
+      GovParam MaxLittle 2106000
+      Ok 'A55 2106 MHz kept (governor ceiling 2106 MHz; survives reboots; .\power-s10.ps1 cpuoc -Off removes it)'
+    }
+    if ($govWasOn) { Gov 'start' | Out-Null; Info 'governor restarted' }
   }
   'status' {
     foreach ($s in 'S10ePower', 'S10eGovernor') {

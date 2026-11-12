@@ -59,6 +59,13 @@
 /* ---- DT ladders (kHz, descending) ---- */
 static const ULONG gLadderLittle[] = { 1950000, 1846000, 1742000, 1586000, 1456000, 1300000, 1157000, 1053000,
                                        949000, 806000, 650000, 546000, 442000 };          /* notes/m15-perf.md */
+/* CPU "overclock" (S10 port 2026-11-12, notes/clocks-dvfs.md): YuROM-Ultra-kernel's cluster OC - 2106000 is a level of
+ * ACPM's own LITTLE fvmap table (rate + its ASV voltage) above the DT ceiling 1950000. Nothing is written to ACPM: the
+ * level is only ALLOWED (CpuOc = 1 and every CpuOcCheck below passing), exactly what the kernel's max_freq raise does. */
+static const ULONG gLadderLittleOc[] = { 2106000, 1950000, 1846000, 1742000, 1586000, 1456000, 1300000, 1157000,
+                                         1053000, 949000, 806000, 650000, 546000, 442000 };
+static BOOLEAN gLittleOc;              /* set once in DriverEntry, before the guard thread and the device exist */
+#define LITTLE_TOP() (gLittleOc ? gLadderLittleOc[0] : gLadderLittle[0])
 /* 2400000: the DT domain table's top MID step (notes/cpu-driver-9820.md:156), valid only with MIF >= 2093000 (mif-perf
  * constraint) - SetFreq grants it only while this driver has set MIF to 2093000 (user 2026-10-17: max the 6 cores) */
 static const ULONG gLadderMid[] = { 2400000, 2314000, 2210000, 2106000, 2002000, 1898000, 1794000, 1690000, 1586000,
@@ -278,7 +285,9 @@ static NTSTATUS ReadTemp(ULONG Tz, ULONG *TempC)
 static const ULONG *Ladder(ULONG Dom, ULONG *Count, ULONG *Slot)
 {
     switch (Dom) {
-    case S10EPOWER_DOM_LITTLE: *Count = ARRAYSIZE(gLadderLittle); *Slot = 0; return gLadderLittle;
+    case S10EPOWER_DOM_LITTLE:
+        if (gLittleOc) { *Count = ARRAYSIZE(gLadderLittleOc); *Slot = 0; return gLadderLittleOc; }
+        *Count = ARRAYSIZE(gLadderLittle); *Slot = 0; return gLadderLittle;
     case S10EPOWER_DOM_MID:    *Count = ARRAYSIZE(gLadderMid);    *Slot = 1; return gLadderMid;
     case S10EPOWER_DOM_G3D:    *Count = ARRAYSIZE(gLadderG3d);    *Slot = 2; return gLadderG3d;
     default: return NULL;
@@ -355,7 +364,7 @@ static VOID GuardApply(ULONG Cpu, ULONG Gpu)
     level = want;
     gState.GuardLevel = level;
     switch (level) {
-    case 0: gState.CapKhz[0] = gLadderLittle[0]; gState.CapKhz[1] = gLadderMid[0]; gState.CapKhz[2] = gLadderG3d[0]; break;
+    case 0: gState.CapKhz[0] = LITTLE_TOP(); gState.CapKhz[1] = gLadderMid[0]; gState.CapKhz[2] = gLadderG3d[0]; break;
     case 1: gState.CapKhz[0] = BOOT_LITTLE; gState.CapKhz[1] = BOOT_MID; gState.CapKhz[2] = 325000; break;
     case 2: gState.CapKhz[0] = 1053000; gState.CapKhz[1] = 1222000; gState.CapKhz[2] = 260000; break;
     default: gState.CapKhz[0] = 442000; gState.CapKhz[1] = 507000; gState.CapKhz[2] = 156000; break;
@@ -581,6 +590,79 @@ static VOID G3dOcRestore(VOID)
     WriteDword(L"GpuOcActive", 0);
 }
 
+/* ---- CPU levels from the fvmap (read-only) + the LITTLE 2106000 allowance. fvmap_validate_oc_opp +
+ * exynos9820_cluster_oc_opp_valid (YuROM exynos9820-oc.h): the stock top and the target are both firmware levels, rates
+ * strictly descending, stock voltage 500..1250 mV, target voltage >= stock and <= the ceiling (LITTLE 2106000: 1175 mV,
+ * MID 2400000: 1050 mV). YuROM also compares against ECT, which Windows cannot read; instead every DT ladder step must
+ * be a level of the same header (proves the domain index). Returns 0 = OK, else the failed check (registry). ---- */
+static ULONG CpuOcCheck(ULONG Dom, const ULONG *Dt, ULONG DtCount, ULONG Stock, ULONG Target, ULONG CeilUv,
+                        PCWSTR LevelsName, ULONG *TargetUv)
+{
+    ULONG h = gFvmap + Dom * FVH_SIZE, n, rvRel, rv, i, j, prev = 0xFFFFFFFFu, stockUv = 0, tgtUv = 0;
+    BOOLEAN stock = FALSE, tgt = FALSE;
+    ULONG pairs[64];
+
+    *TargetUv = 0;
+    if (gFvmap == 0) return 1;
+    n = R8(h + FVH_NUM_LV);
+    rvRel = R16(h + FVH_O_RATEVOLT);
+    if (n == 0 || n > 32) return 2;
+    if (rvRel + n * 8 > FVMAP_SIZE || ((gFvmap + rvRel) & 3) != 0) return 3;
+    rv = gFvmap + rvRel;
+    for (i = 0; i < n; i++) {
+        ULONG rate = R32(gSram + rv + i * 8), uv = R32(gSram + rv + i * 8 + 4);
+        pairs[i * 2] = rate; pairs[i * 2 + 1] = uv;
+        if (rate == 0 || rate >= prev) {
+            (VOID)RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE, gKey, LevelsName, REG_BINARY, pairs, (i + 1) * 8);
+            return 5;
+        }
+        prev = rate;
+        if (rate == Stock) { stock = TRUE; stockUv = uv; }
+        if (rate == Target) { tgt = TRUE; tgtUv = uv; }
+    }
+    (VOID)RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE, gKey, LevelsName, REG_BINARY, pairs, n * 8);
+    for (j = 0; j < DtCount; j++) {
+        BOOLEAN found = FALSE;
+        for (i = 0; i < n; i++)
+            if (R32(gSram + rv + i * 8) == Dt[j]) found = TRUE;
+        if (!found) return 7;
+    }
+    if (!tgt) return 6;
+    if (!stock || stockUv < 500000 || stockUv > 1250000) return 8;
+    *TargetUv = tgtUv;
+    if (tgtUv < stockUv || tgtUv > CeilUv) return 9;
+    return 0;
+}
+
+/* CpuOc = 1 in the service key (AllowSend and the TMU guard required, like GpuOc) */
+static VOID CpuOcApply(VOID)
+{
+    ULONG want = ReadDword(L"CpuOc", 0), uv = 0, check;
+
+    gLittleOc = FALSE;
+    WriteDword(L"CpuOcActive", 0);
+    check = CpuOcCheck(S10EPOWER_DOM_LITTLE, gLadderLittle, ARRAYSIZE(gLadderLittle), 1950000, 2106000, 1175000,
+                       L"LittleLevels", &uv);
+    WriteDword(L"LittleOcCheck", check);
+    WriteDword(L"LittleOcUv", uv);
+    /* MID 2400000 is already in the ladder (MIF interlock, notes 2026-10-17); its YuROM check is recorded only */
+    check = CpuOcCheck(S10EPOWER_DOM_MID, gLadderMid + 1, ARRAYSIZE(gLadderMid) - 1, 2314000, 2400000, 1050000,
+                       L"MidLevels", &uv);
+    WriteDword(L"MidOcCheck", check);
+    WriteDword(L"MidOcUv", uv);
+    if (want != 1)
+        return;
+    check = CpuOcCheck(S10EPOWER_DOM_LITTLE, gLadderLittle, ARRAYSIZE(gLadderLittle), 1950000, 2106000, 1175000,
+                       L"LittleLevels", &uv);
+    if (check != 0 || !gState.AllowSend || !gDvfs.Ok || !gTmu.Ok) {
+        WriteDword(L"CpuOcStatus", check != 0 ? 0x100 | check : !gTmu.Ok ? 3 : 2);   /* not allowed */
+        return;
+    }
+    gLittleOc = TRUE;
+    WriteDword(L"CpuOcActive", 2106000);
+    WriteDword(L"CpuOcStatus", 1);
+}
+
 /* ---- C0: the channel table dump ---- */
 static VOID DumpChannels(VOID)
 {
@@ -669,8 +751,11 @@ static VOID S10ePowerUnload(PDRIVER_OBJECT DriverObject)
         ObDereferenceObject(gGuardThread);
         gGuardThread = NULL;
     }
-    if (gMbox != NULL && gSram != NULL)
+    if (gMbox != NULL && gSram != NULL) {
         G3dOcRestore();
+        if (gLittleOc && gState.CurKhz[0] > 1950000)
+            (VOID)SetFreq(S10EPOWER_DOM_LITTLE, 1950000);   /* leave a stock rate for whoever comes next */
+    }
     RtlInitUnicodeString(&dos, S10EPOWER_DOS_NAME);
     (VOID)IoDeleteSymbolicLink(&dos);
     if (gDevice != NULL)
@@ -728,6 +813,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
         WriteDword(L"DvfsChannelOk", gDvfs.Ok);
         WriteDword(L"TmuChannelOk", gTmu.Ok);
         G3dOcApply();   /* before the guard thread: its caps come from gLadderG3d[0] */
+        CpuOcApply();   /* likewise LITTLE_TOP() */
         if (gState.AllowSend) {
             HANDLE h;
             st = PsCreateSystemThread(&h, THREAD_ALL_ACCESS, NULL, NULL, NULL, GuardThread, NULL);
