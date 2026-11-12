@@ -7,7 +7,7 @@
     <ProjectGuid>{6A2E8C51-0B7D-4C3E-8F14-982AC0DEC0DE}</ProjectGuid>
     <ProjectName>Exynos9820Mfc</ProjectName>
     <TargetName>Exynos9820Mfc</TargetName>
-    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
     <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
     <KMDF_VERSION_MINOR>15</KMDF_VERSION_MINOR>
@@ -27,7 +27,8 @@
     <ClCompile>
       <WppEnabled>false</WppEnabled>
       <WarningLevel>Level4</WarningLevel>
-      <TreatWarningAsError>true</TreatWarningAsError>
+      <!-- /p:MwNoWx=1 (S10 kit, EWDK SDK 10.0.28000) keeps /W4 but stops treating new SDK warnings as errors -->
+      <TreatWarningAsError Condition="'$(MwNoWx)'==''">true</TreatWarningAsError>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <Optimization>MinSpace</Optimization>

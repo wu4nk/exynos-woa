@@ -13,11 +13,11 @@ case "$(basename "$UEFI")" in beyond1lte-uefi-v*.img) ;; *) echo "UEFI must be n
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 D="$TMP/s10-woa-kit-v$VER"
 mkdir -p "$D"
-cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,power-s10.ps1,update-ufs.ps1,collect-logs.ps1,push-to-windows.cmd,get-logs-twrp.cmd,s10-log.cmd,kit-watch.ps1,auto-install.ps1,gpu-s10.ps1,umd-test.ps1,gpu-watch.ps1,gpu-fill.ps1,twrp-log.sh,s10-wddm-inf.ps1} "$D/"
+cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,power-s10.ps1,update-ufs.ps1,collect-logs.ps1,push-to-windows.cmd,get-logs-twrp.cmd,s10-log.cmd,kit-watch.ps1,auto-install.ps1,gpu-s10.ps1,umd-test.ps1,gpu-watch.ps1,gpu-fill.ps1,twrp-log.sh,s10-wddm-inf.ps1,gpu-validate.ps1,drag-probe.ps1,video-s10.ps1} "$D/"
 cp "$KIT/../S10eSpeakerTrim/S10eSpeakerTrim.cs" "$D/"
 mkdir -p "$D/setup" && cp "$KIT/setup/SetupComplete.cmd" "$KIT/setup/S10-install-once.cmd" "$D/setup/"
 cp "$UEFI" "$D/"
-for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag S10ePower MaliG76Wddm MaliG76Wddm-legacy MaliG76Probe include; do
+for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag S10ePower Exynos9820Mfc MaliG76Wddm MaliG76Wddm-legacy MaliG76Probe include; do
   (cd "$REPO/drivers" && git ls-files -z "$d" | xargs -0 -I{} cp --parents {} "$D/")
 done
 # v2.0: the Linux-built user-mode driver (tools/mesa-build/linux-build-g76.sh collect) goes into umd\ when
@@ -32,6 +32,15 @@ if [ -n "${UMD_DIR:-}" ]; then
 fi
 # v2.5: extra Windows tools (TOOLS_DIR: kmdstats.exe for gpu-watch v1.4) into tools\
 if [ -n "${TOOLS_DIR:-}" ]; then mkdir -p "$D/tools" && cp "$TOOLS_DIR"/*.exe "$D/tools/"; fi
+# v2.6: VALIDATE_DIR = tools/mesa-build/build-validate-tools.sh output (gpu-validate.ps1 tools -> tools\validate\,
+# its video\ subfolder -> tools\video\ for video-s10.ps1); MEDIA_DIR = tools/mfc/mkclips-s10.sh output -> video\
+# (test clips + libavcodec reference hashes + mfc_test.h264, which build-s10.cmd puts into the Exynos9820Mfc package).
+if [ -n "${VALIDATE_DIR:-}" ]; then
+  mkdir -p "$D/tools/validate" "$D/tools/video"
+  cp -r "$VALIDATE_DIR"/*.exe "$VALIDATE_DIR/x86" "$D/tools/validate/"
+  cp "$VALIDATE_DIR"/video/*.exe "$D/tools/video/"
+fi
+if [ -n "${MEDIA_DIR:-}" ]; then mkdir -p "$D/video" && cp "$MEDIA_DIR"/* "$D/video/"; fi
 # v2.4: the legacy GPU stack's UMD (0075) when UMD_LEGACY points at its folder (maliumd.dll + SHA256SUMS)
 if [ -n "${UMD_LEGACY:-}" ]; then mkdir -p "$D/umd-legacy" && cp "$UMD_LEGACY/maliumd.dll" "$UMD_LEGACY/SHA256SUMS" "$D/umd-legacy/"; fi
 echo "s10-woa-kit v$VER  repo $(git -C "$REPO" rev-parse --short HEAD)  uefi $(basename "$UEFI")" > "$D/VERSION.txt"

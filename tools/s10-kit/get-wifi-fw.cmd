@@ -1,10 +1,13 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem get-wifi-fw.cmd (v1.1) - copy the S10's own BCM4375 WiFi firmware off the phone into
+rem get-wifi-fw.cmd (v1.2) - copy the S10's own BCM4375 WiFi firmware off the phone into
 rem bcm4375\ next to this file. make-windows.ps1 puts it in Windows\System32\drivers\bcm4375\,
 rem where Exynos9820WlanCx loads it (bcmdhd_sta.bin_b1, bcmdhd_clm.blob, nvram.txt_*_b1; the
 rem nvram is picked by the module's OTP vendor id). The blobs are Broadcom/Samsung's and are
 rem never shipped in the kit: they come from THIS phone's vendor partition.
+rem
+rem v1.2: also the MFC video codec firmware (/vendor/firmware/mfc_fw.bin) -> mfc\mfc_fw.bin next to this file;
+rem build-s10.cmd v1.14 builds the Exynos9820Mfc (hardware video decode) package only when it is there.
 rem
 rem Phone in TWRP, or in Android with root (KernelSU), USB cable in. Read-only on the phone.
 rem ---------------------------------------------------------------------------
@@ -45,5 +48,11 @@ set "HCD=%D%\bcm4375B1_semco.hcd"
 if "%MOD%"=="murata" set "HCD=%D%\bcm4375B1_murata.hcd"
 if not defined MOD echo [WARN] module unknown ^(no cid.info: run this from Android with root, or TWRP with /data decrypted^) - using the semco patch file
 if exist "%HCD%" (mkdir "%D%\bt" & copy /y "%HCD%" "%D%\bt\bcm4375B1_semco.hcd" >nul & echo [ OK ] Bluetooth patch file: %HCD% ^(module %MOD%^) -^> bcm4375\bt\) else (echo [WARN] %HCD% not on the phone - Bluetooth will be skipped)
+rem v1.2: MFC firmware -> mfc\ (not a WiFi file: make-windows copies bcm4375\ to System32\drivers\bcm4375)
+if exist "%D%\mfc_fw.bin" (
+  if not exist "%~dp0mfc" mkdir "%~dp0mfc"
+  move /y "%D%\mfc_fw.bin" "%~dp0mfc\mfc_fw.bin" >nul
+  for %%S in ("%~dp0mfc\mfc_fw.bin") do echo [ OK ] MFC firmware: mfc\mfc_fw.bin ^(%%~zS bytes^)
+) else (echo [WARN] mfc_fw.bin not on the phone - hardware video decode will be skipped)
 dir /b "%D%"
 exit /b 0

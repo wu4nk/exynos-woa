@@ -1821,3 +1821,19 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   and restored from .s10try - v1.4 works. 22 PASS, 1 known, gputest 91/100 (same 9 as before), GLTEST 5/5; test
   times 5-25 % shorter than s10.3 (threaded context on). UMD 0222-s10.4 VALIDATED by tests; desktop after -Keep +
   reboot next.
+
+## Video (hardware H.264 decode on the MFC) - started 2026-11-12 13:10 (user: "video")
+- State found: the S10's log (d7538ee5) lists `ACPI\SAMS982A\0` with CM_PROB_FAILED_INSTALL (28) = DSDT VIDC is
+  present (Beyond0LteMfcDxe saw pd-mfc on and wrote 'VIDC' to progress word [13]) and simply has no driver: the kit
+  never built / installed drivers/Exynos9820Mfc. The UMD side is already in 0222-s10.4 (Video.cpp / VideoH264.c /
+  VideoProc.cpp from upstream G17 + G35: D3D11 H.264 VLD_NOFGT decoder bridged to the MFC IOCTLs, video processor,
+  NV12 plane views); it offers the profile only when the MFC device interface exists (Video.cpp:114).
+- Constants VERIFIED against the S10 live DT (scratchpad b1.dts): mfc@188D0000 reg 0x188D0000 +0x10000, interrupts
+  <0 0x152 0> = SPI 338 = GSIV 370, ip_ver 0x1300, pd-mfc@15862600 - identical to the shared DSDT VIDC block.
+- Firmware: Samsung's /vendor/firmware/mfc_fw.bin (never shipped). get-wifi-fw.sh v1.3 / .cmd v1.2 pull it into
+  mfc\ of the kit; build-s10.cmd v1.14 builds Exynos9820Mfc only when it is there (+ mfc_test.h264, the boot self-test
+  vector from mkh264pcm.py, shipped in the kit's video\). vcxproj: SDK = $(LatestTargetPlatformVersion) (was pinned
+  10.0.26100.0; the user's EWDK is 10.0.28000) and the MwNoWx switch like MaliG76Wddm.
+- Test: tools/s10-kit/video-s10.ps1 v1.0 (install / test / play). Media from tools/mfc/mkclips-s10.sh (ffmpeg
+  libx264 + C hasher: c720 Main, c1080 High 3 B 4 refs, reference FNV hashes = libavcodec's decode in mfcdec/mftest
+  line format). Tools mfcdec / mftest / d3dvdec / acrun built with zig in build-validate-tools.sh (video\). Kit v2.6.

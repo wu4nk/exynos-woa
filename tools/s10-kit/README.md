@@ -67,6 +67,19 @@ tắt hẳn (Fast Startup): vào Windows, Shut down, thử lại.
 GPU đang **tạm gỡ** (UEFI v0.1.5 ẩn `GPU0`, kit không build driver Mali; `set S10_GPU=1` trước
 `build-s10.cmd` nếu muốn build lại).
 
+## 2c. Giải mã video phần cứng (MFC, kit v2.6+)
+
+1. Máy ở TWRP, trên PC: `get-wifi-fw.cmd` (v1.2) — lấy thêm `mfc_fw.bin` của máy vào `mfc\`.
+2. EWDK: `build-s10.cmd` (v1.14) — có `mfc\mfc_fw.bin` thì build thêm `out\Exynos9820Mfc\`.
+3. Chép kit (cả `out\`, `tools\`, `video\`) sang máy, PowerShell Admin trong thư mục kit:
+
+```powershell
+.\video-s10.ps1 install     # cài + chạy driver MFC (không cần reboot)
+.\video-s10.ps1 all         # test giải mã (so từng khung với libavcodec) + phát thử Media Player / Edge
+```
+
+Gửi lại `C:\S10Prov\video-s10.txt`.
+
 ## 3. Ghi vào máy
 
 Vào TWRP, cắm cáp, chạy `C:\s10\windows\flash-windows.cmd`.

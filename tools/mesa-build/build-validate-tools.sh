@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# S10 GPU validation tools (tools/s10-kit/gpu-validate.ps1 -> kit tools\validate\): upstream's D3D11 / GL / timing test
+# S10 GPU validation tools (tools/s10-kit/gpu-validate.ps1 -> kit tools\validate\; video\ -> video-s10.ps1): upstream's D3D11 / GL / timing test
 # programs (drivers/MaliG76Wddm/tools) built on Linux with zig 0.13 like the UMD (linux-build-g76.sh cross stage).
 # d3dcompiler_47 import libs come from zig's mingw .def files. Not built: d3dtri (needs its overlay source),
 # gpucheck (GUI WinMain), d3dswap (MSVC-only goto over initialisation).
@@ -26,6 +26,18 @@ for d in d3dcaps d3dmsaa d3dcs d3dcbdyn d3dvbring; do
   f=$(src $d)
   $(cc_for "$f" "$W/tc/zig86") "${F[@]}" -Wl,--image-base=0x10000000 -L"$O/lib86" -o "$O/x86/${d}32.exe" "$f" "${L[@]}"
 done
+# video (tools/s10-kit/video-s10.ps1 -> kit tools\video\): MFC / DXVA test programs. mfcdec's include path uses
+# backslashes (MSVC), so it is compiled from a copy with the header next to it. mfplay is not built (mingw's
+# mfmediaengine.h names a parameter "protected").
+V="$O/video"; mkdir -p "$V/inc"; R=$(cd "$T/../.." && pwd)
+sed 's#"\.\.\\\.\.\\\.\.\\drivers\\Exynos9820Mfc\\MfcIoctl.h"#"MfcIoctl.h"#' "$R/tools/mfc/mfcdec/mfcdec.c" > "$V/inc/mfcdec.c"
+cp "$R/drivers/Exynos9820Mfc/MfcIoctl.h" "$V/inc/"
+"$W/tc/zig-cc" "${F[@]}" -I"$V/inc" -o "$V/mfcdec.exe" "$V/inc/mfcdec.c" -lcfgmgr32
+"$W/tc/zig-c++" "${F[@]}" -municode -o "$V/mftest.exe" "$R/tools/mfc/mftest/mftest.cpp" -lmfplat -lmfreadwrite -lmfuuid -lole32 -ld3d11 -ldxgi
+"$W/tc/zig-c++" "${F[@]}" -o "$V/d3dvdec.exe" "$T/tools/d3dvdec/d3dvdec.cpp" -ldxgi -ld3d11 -ld3d10 -lgdi32 -luser32 -ldxguid
+"$W/tc/zig-cc" "${F[@]}" -municode -o "$V/acrun.exe" "$R/tools/mfc/acrun/acrun.c" -luserenv -ladvapi32
+rm -rf "$V/inc" "$V"/*.pdb
+python3 -I "$(dirname "$0")/pe-set-subsys.py" "$V"/*.exe
 rm -rf "$O/lib" "$O/lib86" "$O"/*.pdb "$O"/x86/*.pdb
 python3 -I "$(dirname "$0")/pe-set-subsys.py" "$O"/*.exe
-(cd "$O" && sha256sum *.exe x86/*.exe > SHA256SUMS && cat SHA256SUMS)
+(cd "$O" && sha256sum *.exe x86/*.exe video/*.exe > SHA256SUMS && cat SHA256SUMS)
