@@ -1813,3 +1813,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   governor with G3D 806 MHz (YuROM fvmap slot), S10Touch 1.1.1.0 touch boost. Open GPU items: msaa4 edge diff
   (1.7 % px), threaded-context deadlock root cause (perf only), hardware video decode on the S10 (MFC), long-run
   stability at 806 MHz / 681 mV. Then: louder audio (user, earlier), mic / headphone, brightness.
+- 2026-11-12 13:00 gpu-validate v1.3 -TryUmd umd-0222-s10.4 (zip 433945dd): NOT swapped - "*.s10prev exists" for all
+  three (s10.3's -Keep left them, by design of v1.3's never-overwrite rule). The run tested the installed s10.3
+  (a6850349 / 621b3027 / 712ecdb2): 22 PASS, gputest 91, GLTEST 5/5 - s10.3 re-confirmed. gpu-validate v1.4:
+  over a kept install the run backs the current files up to *.s10try (originals stay in *.s10prev).

@@ -1,5 +1,5 @@
 <#
-  gpu-validate.ps1 (v1.3) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
+  gpu-validate.ps1 (v1.4) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
   (KMD 1.0.72.1 as WDDM 2.0 + UMD 0222-s10.x) is up with DWM on the Mali ("gpu-s10.ps1 gpu-dwm" + reboot).
   Run ON THE PHONE from the kit folder, PowerShell as Administrator, IN THE DESKTOP SESSION (gltest needs a window):
       Set-ExecutionPolicy -Scope Process Bypass
@@ -36,6 +36,10 @@
   The diag swap is gone (UMD 0222-s10.2's maligl logs the Lock / Lock2 results itself); the list is $TrySwapped.
   -Restore puts every *.s10prev back (System32 maliumd / maligl, SysWOW64 maliumd32) and exits.
   d3dsm5: when it fails, "d3dsm5 bits" runs 3 more times (2026-11-12: bits all zero once, everything else ok).
+  v1.4: -TryUmd after an earlier -Keep: the kept files' *.s10prev (the package's originals) stay untouched and the
+  current files go to *.s10try for this run instead (2026-11-12 13:00: s10.4 was not swapped in because s10.3's
+  -Keep left *.s10prev - the run tested s10.3). -Keep then leaves the replaced copy as *.s10try; -Restore still puts
+  the originals (*.s10prev) back.
   Not automatic (look yourself, write the result to the chat): Edge -> edge://gpu ("Hardware accelerated" lines),
   a WebGL page, a YouTube video, scrolling in Settings.
 #>
@@ -43,7 +47,7 @@ param([int]$Timeout = 60, [string]$TryUmd = '', [switch]$Keep, [switch]$Restore)
 $ErrorActionPreference = 'Continue'
 $Report = 'C:\S10Prov\gpu-validate.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-validate.ps1 v1.3  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
+"gpu-validate.ps1 v1.4  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
 function W($m) { Write-Host $m; $m | Add-Content $Report -Encoding ascii }
 $Vd = Join-Path $PSScriptRoot 'tools\validate'
 $pass = 0; $fail = 0; $nKnown = 0; $miss = 0
@@ -89,11 +93,15 @@ function Swap-In($src, $dst) {
   if (-not (Test-Path $src) -or -not (Test-Path $dst)) { return }
   takeown /f $dst /a | Out-Null; icacls $dst /grant '*S-1-5-32-544:F' | Out-Null
   $prev = "$dst.s10prev"
-  if (Test-Path $prev) { W "  TryUmd: $prev exists (an earlier run did not put it back) - run .\gpu-validate.ps1 -Restore first, $dst not swapped"; return }
+  if (Test-Path $prev) {          # v1.4: an earlier -Keep - its originals stay in .s10prev, this run backs up to .s10try
+    $prev = "$dst.s10try"
+    if (Test-Path $prev) { takeown /f $prev /a | Out-Null; icacls $prev /grant '*S-1-5-32-544:F' | Out-Null; Remove-Item $prev -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $prev) { W "  TryUmd: $prev cannot be removed (in use?) - $dst not swapped"; return }
+  }
   try {
     Rename-Item $dst (Split-Path $prev -Leaf) -ErrorAction Stop
     Copy-Item $src $dst -Force -ErrorAction Stop
-    $script:TrySwapped += $dst
+    $script:TrySwapped += ,@($dst, $prev)
     W ("  TryUmd: {0} <- {1} (sha256 {2})" -f $dst, $src, (Get-FileHash $dst).Hash.ToLower().Substring(0, 16))
   } catch {
     W "  TryUmd: $dst NOT swapped: $_"
@@ -101,15 +109,16 @@ function Swap-In($src, $dst) {
   }
 }
 function Swap-Back {
-  foreach ($dst in $script:TrySwapped) {
+  foreach ($pair in $script:TrySwapped) {
+    $dst = $pair[0]; $bak = $pair[1]
     # renamed away, not deleted: a process started during the run may still have the new DLL loaded
     try {
       $old = "$dst.s10new"; if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
       if (Test-Path $old) { $old = "$dst.s10new$(Get-Random)" }
       Rename-Item $dst (Split-Path $old -Leaf) -ErrorAction Stop
-      Rename-Item "$dst.s10prev" (Split-Path $dst -Leaf) -ErrorAction Stop; W "  TryUmd: $dst restored"
+      Rename-Item $bak (Split-Path $dst -Leaf) -ErrorAction Stop; W "  TryUmd: $dst restored (from $(Split-Path $bak -Leaf))"
     }
-    catch { W "  TryUmd: RESTORE FAILED for $dst - rename $dst.s10prev back by hand: $_" }
+    catch { W "  TryUmd: RESTORE FAILED for $dst - rename $bak back by hand: $_" }
   }
 }
 if ($Restore) {
@@ -117,7 +126,7 @@ if ($Restore) {
   foreach ($dst in 'C:\Windows\System32\maliumd.dll', 'C:\Windows\SysWOW64\maliumd32.dll', 'C:\Windows\System32\maligl.dll') {
     if (-not (Test-Path "$dst.s10prev")) { W "  $dst : no .s10prev, left as is"; continue }
     foreach ($f in $dst, "$dst.s10prev") { if (Test-Path $f) { takeown /f $f /a | Out-Null; icacls $f /grant '*S-1-5-32-544:F' | Out-Null } }
-    $script:TrySwapped = @($dst); Swap-Back
+    $script:TrySwapped = @(,@($dst, "$dst.s10prev")); Swap-Back
   }
   exit 0
 }
