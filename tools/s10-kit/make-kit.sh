@@ -43,6 +43,10 @@ fi
 if [ -n "${MEDIA_DIR:-}" ]; then mkdir -p "$D/video" && cp "$MEDIA_DIR"/* "$D/video/"; fi
 # v2.4: the legacy GPU stack's UMD (0075) when UMD_LEGACY points at its folder (maliumd.dll + SHA256SUMS)
 if [ -n "${UMD_LEGACY:-}" ]; then mkdir -p "$D/umd-legacy" && cp "$UMD_LEGACY/maliumd.dll" "$UMD_LEGACY/SHA256SUMS" "$D/umd-legacy/"; fi
+# v2.6.1: Windows scripts always CRLF in the kit. cmd.exe mis-finds labels in an LF batch file ("cannot find the batch
+# label specified - catsign", build-s10 v1.14 2026-11-12: an editor had left the working copy LF; git's eol=crlf only
+# applies at checkout, and the kit copies the working tree).
+find "$D" -type f \( -iname '*.cmd' -o -iname '*.bat' -o -iname '*.ps1' \) -exec sed -i 's/\r$//; s/$/\r/' {} +
 echo "s10-woa-kit v$VER  repo $(git -C "$REPO" rev-parse --short HEAD)  uefi $(basename "$UEFI")" > "$D/VERSION.txt"
 (cd "$TMP" && zip -qr "$OUTDIR/s10-woa-kit-v$VER.zip" "s10-woa-kit-v$VER")
 echo "$OUTDIR/s10-woa-kit-v$VER.zip"
