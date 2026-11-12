@@ -1841,3 +1841,19 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   from the gputest build, not build-validate-tools), tools\video\, video\ media. User steps: get-wifi-fw.cmd in TWRP
   -> build-s10.cmd -> video-s10.ps1 install / all. NOT validated on the device yet.
 - 14:11 user ran build-s10.cmd v1.14 from kit v2.6: "cannot find the batch label specified - catsign" after Hsi2c. Cause: my Python edits wrote build-s10.cmd / get-wifi-fw.cmd with LF (cmd.exe label search breaks on LF files); make-kit copies the working tree. Fix: working copies back to CRLF, make-kit.sh forces CRLF on *.cmd/*.bat/*.ps1 (kit v2.6.1, ffcb020); the two .cmd files sent alone.
+
+## Brightness / CPU OC / battery (user 2026-11-12 14:30: "tiếp theo là ép xung cpu, độ sáng màn hình, cải thiện hiệu năng pin")
+- Panel FACTS: S10 live DT panel-lookup = "s6e3ha9_beyond1_a3_s0_*" (S6E3HA9, not the S10e's S6E3FA7). Samsung's
+  s6e3ha9_beyond1_a3_s0_panel.h (YuROM kernel clone, = Lineage panel_drv) set_bl table: F0 5A 5A, CA gamma, B1 AOR,
+  B5 ELVSS ..., F7 03 latch, F0 A5 A5 - the same shape the KMD/UEFI AOR-only dimmer uses. AOR table
+  (s6e3ha9_beyond1_a3_s0_panel_dimming.h dimming_aor_table): row 0 (2 nit) 0x0BC9 ... top rows + HBM 0x0014; LPM AOR
+  0x0BC8 commented "AOR 98.4" (period ~3065 lines). decon_f psr_mode 2 (MIPI command mode) like the S10e.
+- DEVICE FACT (S10 UEFILOG, earlier boots): "FbPanel: DECON GLOBAL 00000113 -> command mode", "FbPanel: sboot AOR 0x0440,
+  boot level 50% (default) -> AOR 0x07D5: ok" - the DSIM command path (key, B1 read, B1 write, F7 03) already works on
+  the S10 panel every boot (with the S10e's 0x08D4 floor).
+- KMD 1.0.72.2: S10 build turns PanelCmdMode / PanelBrightness ON; S10 AOR range 0x0BC9 (0 %) .. PanelAorTop 0x0014
+  (100 %, new Parameters\PanelAorTop, 0 = sboot's AOR = old behaviour; never below 0x0014). sboot's 0x0440 is a mid
+  row, so 100 % = sboot's gamma with the frame's dark part shortened (~1.5x). Logs PanelAorTopUsed. Linux compile check
+  (tools/kmd-build, board 1) links. UEFI v0.2.2 (f18eb3e2): same range/top in SimpleFramebufferDxe so the boot level
+  maps back (FVMAIN_COMPACT 3504 B free). Side effect: the power-button panel-off (MW_ESCAPE_PANEL_POWER, needs PanelOk)
+  now works on the S10 too. NOT validated on the device.

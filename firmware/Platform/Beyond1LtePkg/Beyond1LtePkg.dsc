@@ -361,7 +361,7 @@
   # Firmware version, shown by ArmPkg's PlatformBootManagerLib on the boot screen and
   # embedded in the FD (this edk2's DxeMain no longer reads PcdFirmwareVendor/Revision,
   # so only the string is set). Bump it for every build that leaves this machine.
-  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.2.1"
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString|L"beyond1lte-uefi v0.2.2"
   #
   # v0.1.6 (notes/beyond1-port.md "UEFI exception in ArmCpuDxe"): no DXE image protection (default 0x2 = every
   # firmware-volume image gets RO code / XP data). The intermittent EC 0x00 exception sits in exactly that

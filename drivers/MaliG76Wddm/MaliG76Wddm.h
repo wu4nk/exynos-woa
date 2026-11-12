@@ -119,9 +119,21 @@
 #define MW_DSI_DCS_READ             0x06u
 #define MW_DSI_RESP_SHORT1          0x21u
 #define MW_DSI_RESP_SHORT2          0x22u
+#if EXYNOS9820_BOARD_BEYOND1
+/* S10 (S6E3HA9, s6e3ha9_beyond1_a3_s0, LineageOS/YuROM kernel panel driver): dimming_aor_table row 0 (2 nit) = 0x0BC9,
+ * LPM AOR 0x0BC8 "AOR 98.4" (= a ~3065-line period). Brightness 0 %. The UEFI log on the S10 (2026-11-11) shows the
+ * same key / B1 read / B1 write / F7 03 sequence working on this panel: sboot AOR 0x0440 read, 0x07D5 written, ok. */
+#define MW_PANEL_AOR_MIN_LUMA       0x0BC9u
+/* 100 %: the table's top rows (420 nit up to HBM) all use AOR 0x0014. sboot leaves 0x0440 (a mid-brightness row), so
+ * 100 % = sboot's gamma / ELVSS with the dark part of the frame shortened (~1.5x sboot's luminance, never above the
+ * panel's own 420-nit duty). Parameters\PanelAorTop overrides it (0 = sboot's AOR is 100 %, the S10e behaviour). */
+#define MW_PANEL_AOR_TOP_DEFAULT    0x0014u
+#else
 /* AOR (B1) 0x08D4 = Samsung's 2-nit row (s6e3fa7 dimming_aor_table row 0, UNVERIFIED on device as a luminance): the
  * value used for brightness 0 %. Never exceeded, and 100 % is sboot's own AOR read back at start (D10: 0x0014). */
 #define MW_PANEL_AOR_MIN_LUMA       0x08D4u
+#define MW_PANEL_AOR_TOP_DEFAULT    0u          /* 0 = sboot's own AOR is 100 % */
+#endif
 /* Firmware hand-off (UEFI SimpleFramebufferDxe): the WINPRAM progress page, a firmware choice (Beyond0LteBootLog.h
  * BEYOND0LTE_WINPRAM_BASE + 0xF000), reserved RAM that survives a warm reset; SEC clears only words [2]..[4]. */
 #define MW_PANEL_HANDOFF_PA         0x8FE0F000ULL
@@ -155,6 +167,7 @@ extern ULONG MwRgbaModes;
 /* Parameters\PanelCmdMode / PanelBrightness (default 1 / 1): panel.c. */
 extern ULONG MwPanelCmdMode;
 extern ULONG MwPanelBrightness;
+extern ULONG MwPanelAorTop;     /* Parameters\PanelAorTop: AOR of brightness 100 % (0 = sboot's own), panel.c */
 /* Parameters\CddDwmInterop (default 1): DXGK_PRESENTATIONCAPS.DriverSupportsCddDwmInterop (adapter.c). */
 extern ULONG MwCddDwmInterop;
 extern ULONG MwWddm2;

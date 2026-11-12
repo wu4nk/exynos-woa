@@ -937,8 +937,9 @@ static MW_MODE ReadMode(PUNICODE_STRING RegistryPath, ULONG *PramTrace)
     MwOfferRotation = ReadParameter(params, L"OfferRotation", 0);
     MwScaledModes = ReadParameter(params, L"ScaledModes", 1);
     MwRgbaModes = ReadParameter(params, L"RgbaModes", 1);
-    MwPanelCmdMode = ReadParameter(params, L"PanelCmdMode", MwPanelCmdMode);         /* S10 build: default 0 (panel.c) */
+    MwPanelCmdMode = ReadParameter(params, L"PanelCmdMode", MwPanelCmdMode);         /* S10 build: default 1 since 1.0.72.2 (panel.c) */
     MwPanelBrightness = ReadParameter(params, L"PanelBrightness", MwPanelBrightness);
+    MwPanelAorTop = ReadParameter(params, L"PanelAorTop", MwPanelAorTop);     /* S10 build: 0x0014 (MaliG76Wddm.h) */
     MwCddDwmInterop = ReadParameter(params, L"CddDwmInterop", 1) != 0;
     MwDirectFlip = ReadParameter(params, L"DirectFlip", 0) != 0;
     MwCpuOnDemand = ReadParameter(params, L"CpuVisibleOnDemand", 0);

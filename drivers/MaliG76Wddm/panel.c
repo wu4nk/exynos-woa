@@ -20,15 +20,18 @@ static const GUID MwGuidBrightness = { 0xFDE5BBA4, 0xB3F9, 0x46FB, { 0xBD, 0xAA,
 static const GUID MwGuidBrightness2 = { 0x148A3C98, 0x0ECD, 0x465A, { 0xB6, 0x34, 0xB0, 0x5F, 0x19, 0x5F, 0x77, 0x39 } };
 
 #if EXYNOS9820_BOARD_BEYOND1
-/* S10 port: the panel commands below were exercised on the S10e's s6e3fa7 only (D1-D10: DECON command-mode switch,
- * AOR in B1 behind F0 5A 5A). The S10's panel is a different IC; nothing here has been read on it, so both stay OFF
- * by default on the S10 build (Parameters\PanelCmdMode / PanelBrightness = 1 turns them on for a test). */
-ULONG MwPanelCmdMode = 0;
-ULONG MwPanelBrightness = 0;
+/* S10 port (1.0.72.2, 2026-11-12): ON. The S10's panel (S6E3HA9) takes the same level-2 key / AOR B1 / F7 03 latch as
+ * the S10e's s6e3fa7 (Samsung's s6e3ha9_beyond1_a3_s0 set_bl table), and the S10's UEFI already runs the DECON
+ * command-mode switch + B1 read/write on it every boot ("FbPanel: sboot AOR 0x0440 ... -> AOR 0x07D5: ok"). Only the
+ * AOR range differs (MaliG76Wddm.h). Parameters\PanelCmdMode / PanelBrightness = 0 turn them off again. */
+ULONG MwPanelCmdMode = 1;
+ULONG MwPanelBrightness = 1;
 #else
 ULONG MwPanelCmdMode = 1;   /* Parameters\PanelCmdMode: 1 = put DECON into command mode at start (D10) */
 ULONG MwPanelBrightness = 1;    /* Parameters\PanelBrightness: 1 = offer the brightness interface */
 #endif
+
+ULONG MwPanelAorTop = MW_PANEL_AOR_TOP_DEFAULT;
 
 /* Luminance fraction (x1000) of each 5 % brightness step: (p/100)^2.2, so the slider is roughly perceptual. */
 static const USHORT MwBrightnessCurve[21] = {
@@ -166,15 +169,25 @@ static BOOLEAN PanelSetAor(MW_ADAPTER *A, USHORT Aor)
     return TRUE;
 }
 
+/* The AOR of 100 %: sboot's own, or PanelAorTop when that is brighter (smaller) - never brighter than 0x0014, the
+ * top row of both panels' tables. Same rule in the UEFI (SimpleFramebufferDxe), so the boot level maps back. */
+static USHORT TopAor(MW_ADAPTER *A)
+{
+    ULONG top = MwPanelAorTop;
+    if (top != 0 && top < 0x0014u)
+        top = 0x0014u;
+    return (top != 0 && top < A->PanelAor0) ? (USHORT)top : A->PanelAor0;
+}
+
 static USHORT LevelToAor(MW_ADAPTER *A, UCHAR Level)
 {
-    ULONG idx, frac, f;
+    ULONG idx, frac, f, top = TopAor(A);
     if (Level >= 100)
-        return A->PanelAor0;
+        return (USHORT)top;
     idx = Level / 5;
     frac = Level % 5;
     f = (MwBrightnessCurve[idx] * (5 - frac) + MwBrightnessCurve[idx + 1] * frac) / 5;    /* x1000 */
-    return (USHORT)(MW_PANEL_AOR_MIN_LUMA - ((ULONG)(MW_PANEL_AOR_MIN_LUMA - A->PanelAor0) * f) / 1000);
+    return (USHORT)(MW_PANEL_AOR_MIN_LUMA - ((ULONG)(MW_PANEL_AOR_MIN_LUMA - top) * f) / 1000);
 }
 
 /* The fade (user request 2026-10-14: no light-switch jumps): SetBrightness only records the target; this thread walks
@@ -473,6 +486,7 @@ void MwPanelStart(MW_ADAPTER *A)
     if (step == 5)
         PanelFail(A, 5);
     MwLog(A, L"PanelAor0", A->PanelAor0);
+    MwLog(A, L"PanelAorTopUsed", A->BrightnessOk ? TopAor(A) : 0u);
     MwLog(A, L"PanelRxUnexpected", A->PanelRxUnexpected);
     MwLog(A, L"PanelStep", step);
     if (A->BrightnessOk)

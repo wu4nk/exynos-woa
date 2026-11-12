@@ -223,7 +223,15 @@ STATIC UINTN  mFbPresentCount;
 #define DSI_SET_MAX_RETURN        0x37u
 #define DSI_DCS_READ              0x06u
 #define DSI_RESP_SHORT2           0x22u
+#if EXYNOS9820_BOARD_BEYOND1
+// S10 (S6E3HA9 beyond1_a3_s0): AOR table row 0 (2 nit) 0x0BC9 = Windows 0 %; 100 % = the table's top-row AOR 0x0014
+// (brighter than sboot's 0x0440 - same gamma, shorter dark part of the frame). = MaliG76Wddm 1.0.72.2 (MaliG76Wddm.h).
+#define PANEL_AOR_MIN_LUMA        0x0BC9u
+#define PANEL_AOR_TOP             0x0014u
+#else
 #define PANEL_AOR_MIN_LUMA        0x08D4u               // Samsung's 2-nit AOR row (= Windows 0 %), UNVERIFIED as luminance
+#define PANEL_AOR_TOP             0u                    // 0 = sboot's own AOR is 100 %
+#endif
 #define PANEL_BOOT_LEVEL_DEFAULT  50u
 #define PANEL_HANDOFF_LEVEL       ((volatile UINT32 *)(UINTN)0x8FE0F018ULL)
 #define PANEL_HANDOFF_AOR0        ((volatile UINT32 *)(UINTN)0x8FE0F01CULL)
@@ -355,6 +363,7 @@ FbPanelBootBrightness (
   UINT32              F;
   UINT16              Aor0 = 0;
   UINT16              Aor;
+  UINT16              Top;
   UINT8               B1[3];
   BOOLEAN             Ok;
 
@@ -382,13 +391,14 @@ FbPanelBootBrightness (
     return;
   }
   *PANEL_HANDOFF_AOR0 = ((UINT32)PANEL_TAG_AOR0 << 16) | Aor0;
+  Top = ((PANEL_AOR_TOP != 0) && (PANEL_AOR_TOP < Aor0)) ? (UINT16)PANEL_AOR_TOP : Aor0;   // = MaliG76Wddm TopAor
   if (Level >= 100) {
-    Aor = Aor0;
+    Aor = Top;
   } else {
     Index = Level / 5;
     Frac = Level % 5;
     F = (mBrightnessCurve[Index] * (5 - Frac) + mBrightnessCurve[Index + 1] * Frac) / 5;
-    Aor = (UINT16)(PANEL_AOR_MIN_LUMA - ((UINT32)(PANEL_AOR_MIN_LUMA - Aor0) * F) / 1000);
+    Aor = (UINT16)(PANEL_AOR_MIN_LUMA - ((UINT32)(PANEL_AOR_MIN_LUMA - Top) * F) / 1000);
   }
   B1[0] = 0xB1;
   B1[1] = (UINT8)(Aor >> 8);
