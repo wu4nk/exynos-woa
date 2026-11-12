@@ -206,3 +206,4 @@ Windows reads temperatures and can throttle; lowering is fine.
 - Measurement: power-s10 v1.4 "drain": BatteryStatus.DischargeRate (S10eBattery reports mW, Miniclass.c:94-98) averaged
   over -Secs per setting with the display held on (SetThreadExecutionState): brightness 100/50/20 %, IdleMifMs 0 vs
   3000. Decides whether IdleMifMs becomes a default. NOT run yet.
+- Review of 026e4ea: IdleMif could drop MIF to 421 while MID still sat at 2400000 (down-steps wait DownSamples loops) = the DT mif-perf violation the interlock exists for. Fix: mifIdle also needs MID cur <= 2314000 (own commit).

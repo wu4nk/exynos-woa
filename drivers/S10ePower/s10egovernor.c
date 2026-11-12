@@ -376,8 +376,10 @@ static void Run(void)
                     d->LastChange = t;
                 }
             }
+            /* review of 026e4ea: MID may still sit at 2400000 (down-steps wait DownSamples loops) - MIF never drops
+             * under it (DT mif-perf: 2400 MHz needs MIF >= 2093 MHz) */
             mifIdle = gIdleMifMs != 0 && (!lastTouch || t - lastTouch > gIdleMifMs) && busy[0] < 0.30 &&
-                      busy[1] < 0.30 && gpuBusy >= 0 && gpuBusy < 0.10;
+                      busy[1] < 0.30 && gpuBusy >= 0 && gpuBusy < 0.10 && gDom[1].Cur <= 2314000;
             mifLoops++;
             if (mifIdle)
                 mifIdleMs += 50;
