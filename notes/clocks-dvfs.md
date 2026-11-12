@@ -207,3 +207,20 @@ Windows reads temperatures and can throttle; lowering is fine.
   over -Secs per setting with the display held on (SetThreadExecutionState): brightness 100/50/20 %, IdleMifMs 0 vs
   3000. Decides whether IdleMifMs becomes a default. NOT run yet.
 - Review of 026e4ea: IdleMif could drop MIF to 421 while MID still sat at 2400000 (down-steps wait DownSamples loops) = the DT mif-perf violation the interlock exists for. Fix: mifIdle also needs MID cur <= 2314000 (own commit).
+- 2026-11-12 15:21 DEVICE (power-report cc78f939, power-s10 v1.4 cpuoc): fvmap read OK. LittleLevels (MHz/mV):
+  2106/1206.25 2002/1137.5 1950/1093.75 1846/1050 1742/1000 1586/918.75 1456/868.75 1300/818.75 1157/775 1053/743.75
+  949/712.5 806/675 650/631.25 546/612.5 442/581.25 351/556.25 247/537.5 182/537.5 130/537.5 (19 levels).
+  MidLevels: 2400/1112.5 2314/1056.25 2210/1006.25 2106/956.25 2002/918.75 1898/893.75 1794/850 1690/818.75
+  1586/793.75 1508/781.25 1404/756.25 1222/725 1066/681.25 962/662.5 845/650 754/631.25 650/606.25 507/587.5 377/581.25.
+  LittleOcCheck 9 (2106 at 1206.25 mV > YuROM's 1175 mV ceiling), MidOcCheck 9 (2400 at 1112.5 mV > 1050 mV): this
+  chip's ASV voltages are higher than the ones YuROM's limits were written for - YuROM itself would refuse both here.
+  Nothing allowed, nothing changed (correct behaviour). The governor's MID ceiling on the S10 is 2314000 (power-s10
+  enable) so 2400 is not in use. There IS a level between: LITTLE 2002000 at 1137.5 mV (inside 1175).
+- Plan: CpuOc 1 = the highest LITTLE level above 1950000 whose voltage is inside YuROM's 1175 mV (here 2002000);
+  CpuOc 2 (user opt-in, "-Force") = up to 2106000 with Samsung's table voltage up to 1250 mV (YuROM's own bound for
+  any stock voltage) + MID 2400 likewise (governor MaxMid 2400000). Nothing written to ACPM in either mode.
+- Implemented: S10ePower CpuOc 1/2 picks 2106000 else 2002000 (gLittleOcSkip; ladder 2106/2002/1950...), CpuOcActive
+  = the level, CpuOcUv, CpuOcMidOk (MID 2400 within the mode's limit: 1050 mV / 1250 mV). Governor kLadderLittle
+  1950/2002/2106 tail, count by CpuOcActive. power-s10 v1.5 cpuoc [-Force]: sets the found level, with -Force and
+  CpuOcMidOk also MIF 2093 + MID 2400, cpustress A55 x2, A75 at 2400 (Force), all cores; MaxLittle/MaxMid kept on
+  pass, back to 1950/2314 on any error; enable keeps them. Compile checks clean. NOT run on the device.

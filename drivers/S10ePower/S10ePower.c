@@ -62,10 +62,14 @@ static const ULONG gLadderLittle[] = { 1950000, 1846000, 1742000, 1586000, 14560
 /* CPU "overclock" (S10 port 2026-11-12, notes/clocks-dvfs.md): YuROM-Ultra-kernel's cluster OC - 2106000 is a level of
  * ACPM's own LITTLE fvmap table (rate + its ASV voltage) above the DT ceiling 1950000. Nothing is written to ACPM: the
  * level is only ALLOWED (CpuOc = 1 and every CpuOcCheck below passing), exactly what the kernel's max_freq raise does. */
-static const ULONG gLadderLittleOc[] = { 2106000, 1950000, 1846000, 1742000, 1586000, 1456000, 1300000, 1157000,
-                                         1053000, 949000, 806000, 650000, 546000, 442000 };
+/* 2026-11-12 device read: this S10's table also has 2002000 between them (2106 at 1206.25 mV, 2002 at 1137.5 mV), and
+ * 2106000 is above YuROM's 1175 mV - so the allowance is the highest level that passes: gLittleOcSkip 0 = from 2106000,
+ * 1 = from 2002000. */
+static const ULONG gLadderLittleOc[] = { 2106000, 2002000, 1950000, 1846000, 1742000, 1586000, 1456000, 1300000,
+                                         1157000, 1053000, 949000, 806000, 650000, 546000, 442000 };
 static BOOLEAN gLittleOc;              /* set once in DriverEntry, before the guard thread and the device exist */
-#define LITTLE_TOP() (gLittleOc ? gLadderLittleOc[0] : gLadderLittle[0])
+static ULONG gLittleOcSkip;
+#define LITTLE_TOP() (gLittleOc ? gLadderLittleOc[gLittleOcSkip] : gLadderLittle[0])
 /* 2400000: the DT domain table's top MID step (notes/cpu-driver-9820.md:156), valid only with MIF >= 2093000 (mif-perf
  * constraint) - SetFreq grants it only while this driver has set MIF to 2093000 (user 2026-10-17: max the 6 cores) */
 static const ULONG gLadderMid[] = { 2400000, 2314000, 2210000, 2106000, 2002000, 1898000, 1794000, 1690000, 1586000,
@@ -286,7 +290,7 @@ static const ULONG *Ladder(ULONG Dom, ULONG *Count, ULONG *Slot)
 {
     switch (Dom) {
     case S10EPOWER_DOM_LITTLE:
-        if (gLittleOc) { *Count = ARRAYSIZE(gLadderLittleOc); *Slot = 0; return gLadderLittleOc; }
+        if (gLittleOc) { *Count = ARRAYSIZE(gLadderLittleOc) - gLittleOcSkip; *Slot = 0; return gLadderLittleOc + gLittleOcSkip; }
         *Count = ARRAYSIZE(gLadderLittle); *Slot = 0; return gLadderLittle;
     case S10EPOWER_DOM_MID:    *Count = ARRAYSIZE(gLadderMid);    *Slot = 1; return gLadderMid;
     case S10EPOWER_DOM_G3D:    *Count = ARRAYSIZE(gLadderG3d);    *Slot = 2; return gLadderG3d;
@@ -634,13 +638,20 @@ static ULONG CpuOcCheck(ULONG Dom, const ULONG *Dt, ULONG DtCount, ULONG Stock, 
     return 0;
 }
 
-/* CpuOc = 1 in the service key (AllowSend and the TMU guard required, like GpuOc) */
+/* CpuOc in the service key (AllowSend and the TMU guard required, like GpuOc):
+ *   1 = YuROM's limit: the highest LITTLE level above 1950000 whose voltage is <= 1175 mV (2106000, else 2002000);
+ *   2 = user opt-in ("power-s10 cpuoc -Force"): the same with Samsung's table voltage up to 1250 mV - YuROM's own
+ *       bound for any stock voltage. CpuOcMidOk (record only) says whether MID 2400000 passes the same mode's limit;
+ *       the governor's MaxMid decides whether it is used. */
 static VOID CpuOcApply(VOID)
 {
-    ULONG want = ReadDword(L"CpuOc", 0), uv = 0, check;
+    ULONG want = ReadDword(L"CpuOc", 0), uv = 0, check, ceil, midCeil, i;
+    static const ULONG cand[2] = { 2106000, 2002000 };
 
     gLittleOc = FALSE;
+    gLittleOcSkip = 0;
     WriteDword(L"CpuOcActive", 0);
+    WriteDword(L"CpuOcMidOk", 0);
     check = CpuOcCheck(S10EPOWER_DOM_LITTLE, gLadderLittle, ARRAYSIZE(gLadderLittle), 1950000, 2106000, 1175000,
                        L"LittleLevels", &uv);
     WriteDword(L"LittleOcCheck", check);
@@ -650,17 +661,28 @@ static VOID CpuOcApply(VOID)
                        L"MidLevels", &uv);
     WriteDword(L"MidOcCheck", check);
     WriteDword(L"MidOcUv", uv);
-    if (want != 1)
+    if (want != 1 && want != 2)
         return;
-    check = CpuOcCheck(S10EPOWER_DOM_LITTLE, gLadderLittle, ARRAYSIZE(gLadderLittle), 1950000, 2106000, 1175000,
-                       L"LittleLevels", &uv);
+    ceil = want == 2 ? 1250000 : 1175000;
+    midCeil = want == 2 ? 1250000 : 1050000;
+    for (i = 0; i < 2; i++) {
+        check = CpuOcCheck(S10EPOWER_DOM_LITTLE, gLadderLittle, ARRAYSIZE(gLadderLittle), 1950000, cand[i], ceil,
+                           L"LittleLevels", &uv);
+        if (check == 0)
+            break;
+    }
     if (check != 0 || !gState.AllowSend || !gDvfs.Ok || !gTmu.Ok) {
         WriteDword(L"CpuOcStatus", check != 0 ? 0x100 | check : !gTmu.Ok ? 3 : 2);   /* not allowed */
         return;
     }
+    gLittleOcSkip = i;
     gLittleOc = TRUE;
-    WriteDword(L"CpuOcActive", 2106000);
+    WriteDword(L"CpuOcActive", cand[i]);
+    WriteDword(L"CpuOcUv", uv);
     WriteDword(L"CpuOcStatus", 1);
+    if (CpuOcCheck(S10EPOWER_DOM_MID, gLadderMid + 1, ARRAYSIZE(gLadderMid) - 1, 2314000, 2400000, midCeil,
+                   L"MidLevels", &uv) == 0)
+        WriteDword(L"CpuOcMidOk", 1);
 }
 
 /* ---- C0: the channel table dump ---- */
@@ -753,7 +775,7 @@ static VOID S10ePowerUnload(PDRIVER_OBJECT DriverObject)
     }
     if (gMbox != NULL && gSram != NULL) {
         G3dOcRestore();
-        if (gLittleOc && gState.CurKhz[0] > 1950000)
+        if (gLittleOc && gState.CurKhz[0] > 1950000)   /* 2002000 / 2106000 */
             (VOID)SetFreq(S10EPOWER_DOM_LITTLE, 1950000);   /* leave a stock rate for whoever comes next */
     }
     RtlInitUnicodeString(&dos, S10EPOWER_DOS_NAME);

@@ -64,10 +64,11 @@ static double GpuBusy(void)
 static const GUID kConsoleDisplayState = { 0x6fe69556, 0x704a, 0x47a0, { 0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47 } };
                                          /* GUID_CONSOLE_DISPLAY_STATE (winnt.h) */
 
-/* the last slot is the LITTLE 2106000 level, used only while S10ePower reports CpuOcActive (YuROM cluster OC: an ACPM
- * fvmap level above the DT ceiling, notes/clocks-dvfs.md 2026-11-12); the count below excludes it otherwise */
+/* the last two slots are the LITTLE 2002000 / 2106000 levels, used only while S10ePower reports CpuOcActive (YuROM
+ * cluster OC: ACPM fvmap levels above the DT ceiling, notes/clocks-dvfs.md 2026-11-12); the count excludes them
+ * otherwise (2002000: both off the top, 2106000: none) */
 static const unsigned kLadderLittle[] = { 442000, 546000, 650000, 806000, 949000, 1053000, 1157000, 1300000, 1456000,
-                                          1586000, 1742000, 1846000, 1950000, 2106000 };
+                                          1586000, 1742000, 1846000, 1950000, 2002000, 2106000 };
 static const unsigned kLadderMid[] = { 507000, 650000, 754000, 845000, 962000, 1066000, 1222000, 1404000, 1508000,
                                        1586000, 1690000, 1794000, 1898000, 2002000, 2106000, 2210000, 2314000, 2400000 };
 static unsigned kLadderG3d[] = { 156000, 200000, 260000, 325000, 377000, 433000, 572000, 650000, 702000 };
@@ -83,7 +84,7 @@ typedef struct {
 } DOMAIN;
 
 static DOMAIN gDom[3] = {
-    { "LITTLE", S10EPOWER_DOM_LITTLE, 1456000, 1456000, 0, 0, 0, kLadderLittle, ARRAYSIZE(kLadderLittle) - 1 },
+    { "LITTLE", S10EPOWER_DOM_LITTLE, 1456000, 1456000, 0, 0, 0, kLadderLittle, ARRAYSIZE(kLadderLittle) - 2 },
     { "MID", S10EPOWER_DOM_MID, 1794000, 1794000, 0, 0, 0, kLadderMid, ARRAYSIZE(kLadderMid) },
     { "G3D", S10EPOWER_DOM_G3D, 260000, 260000, 0, 0, 0, kLadderG3d, ARRAYSIZE(kLadderG3d) },
 };
@@ -151,7 +152,10 @@ static void LoadConfig(void)
     {
         unsigned oc = Reg(k, "GpuOcActive", 0);
         kLadderG3d[ARRAYSIZE(kLadderG3d) - 1] = (oc == 754000 || oc == 806000) ? oc : 702000;
-        gDom[0].Count = Reg(k, "CpuOcActive", 0) == 2106000 ? ARRAYSIZE(kLadderLittle) : ARRAYSIZE(kLadderLittle) - 1;
+        {
+            unsigned lo = Reg(k, "CpuOcActive", 0);
+            gDom[0].Count = ARRAYSIZE(kLadderLittle) - (lo == 2106000 ? 0 : lo == 2002000 ? 1 : 2);
+        }
     }
     if (k)
         RegCloseKey(k);

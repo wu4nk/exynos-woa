@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.4) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.5) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -23,7 +23,10 @@
                               allows. Nothing is written to ACPM - S10ePower only allows that level after YuROM's checks
                               (it must be in the table, voltage <= 1175 mV and >= the 1950 MHz one). Then cpustress runs on
                               the A55s twice + all cores once; any error -> removed again. -Off = back to 1950 MHz.
-                              (A75: 2400 MHz is already in use. M4 big cores: not running under Windows.)
+                              v1.5: the highest level inside YuROM's voltage limit (this S10: 2002 MHz at 1137.5 mV -
+                              2106 MHz needs 1206 mV, over YuROM's 1175). -Force = Samsung's table voltage up to 1250 mV:
+                              A55 2106 MHz and A75 2400 MHz (1112.5 mV, MIF held at 2093 MHz) - more heat, your call.
+                              (M4 big cores: not running under Windows.)
     .\power-s10.ps1 drain     (v1.4) battery: measures the discharge rate (mW, the battery driver's own reading) for
                               -Secs (default 60) per setting, screen on, hands off, charger UNPLUGGED: brightness 100 / 50 /
                               20 %, then the governor's idle memory clock (IdleMifMs) off vs on. Puts everything back.
@@ -39,11 +42,11 @@
   .\power-s10.ps1 disable. If Windows does not come up at all: Safe Mode skips both (they are not boot-start).
 #>
 param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc', 'cpuoc', 'drain')][string]$Action = 'status',
-      [int]$Khz = 806000, [switch]$Off, [int]$Secs = 60)
+      [int]$Khz = 806000, [switch]$Off, [int]$Secs = 60, [switch]$Force)
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.4  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.5  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -101,7 +104,7 @@ function Show-Key {
   foreach ($n in 'AcpmStatus', 'AllowSendActive', 'DvfsChannelOk', 'TmuChannelOk', 'AcpmApMax', 'AcpmChannelsOffset',
                  'AcpmPlugins', 'FvmapPlugin', 'FvmapOff', 'G3dOcCheck', 'G3dTopRate', 'G3dTopVolt', 'G3dPllLevels',
                  'G3dPms0', 'G3dPms1', 'GpuOc', 'GpuOcStatus', 'GpuOcActive', 'CpuOc', 'CpuOcStatus', 'CpuOcActive',
-                 'LittleOcCheck', 'LittleOcUv', 'MidOcCheck', 'MidOcUv') {
+                 'LittleOcCheck', 'LittleOcUv', 'MidOcCheck', 'MidOcUv', 'CpuOcUv', 'CpuOcMidOk') {
     if ($null -ne $k.$n) { Info ("{0} = {1}" -f $n, $k.$n) }
   }
   foreach ($n in 'LittleLevels', 'MidLevels') {   # v1.4: the ACPM fvmap's CPU levels (rate kHz, voltage uV pairs)
@@ -167,7 +170,9 @@ switch ($Action) {
     # v1.2: keep the GPU overclock's ceiling (enable after gpuoc set MaxG3d back to 702000 - 806 was never used)
     $oc = (Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue).GpuOc
     if ($oc -eq 754000 -or $oc -eq 806000) { $gp.MaxG3d = $oc; Info "GPU ceiling = the overclock ($oc kHz)" }
-    if ((Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue).CpuOc -eq 1) { $gp.MaxLittle = 2106000; Info 'A55 ceiling = 2106 MHz (cpuoc)' }   # v1.4
+    $co = Get-ItemProperty $PwrKey -ErrorAction SilentlyContinue   # v1.5: keep cpuoc's ceilings
+    if ($co.CpuOcActive -eq 2106000 -or $co.CpuOcActive -eq 2002000) { $gp.MaxLittle = $co.CpuOcActive; Info "A55 ceiling = $($co.CpuOcActive) kHz (cpuoc)" }
+    if ($co.CpuOc -eq 2 -and $co.CpuOcMidOk -eq 1) { $gp.MaxMid = 2400000; Info 'A75 ceiling = 2400000 kHz (cpuoc -Force)' }
     foreach ($n in $gp.Keys) { Set-ItemProperty "$GovKey\Parameters" $n $gp[$n] -Type DWord }
     Start-Power 1
     $o = Invoke-Sc @('start', 'S10eGovernor')
@@ -240,26 +245,33 @@ switch ($Action) {
       Remove-ItemProperty $PwrKey CpuOc -ErrorAction SilentlyContinue
       Start-Power 1
       GovParam MaxLittle 1950000
+      GovParam MaxMid 2314000
       if ($govWasOn) { Gov 'start' | Out-Null }
-      Ok 'A55 back to the stock 1950 MHz ceiling'
+      Ok 'A55 back to the stock 1950 MHz ceiling, A75 2314 MHz'
       break
     }
-    Set-ItemProperty $PwrKey CpuOc 1 -Type DWord
+    Set-ItemProperty $PwrKey CpuOc $(if ($Force) { 2 } else { 1 }) -Type DWord
     Start-Power 1
     $k = Show-Key
-    if ($k.CpuOcActive -ne 2106000) {
+    $top = [int]$k.CpuOcActive
+    if ($top -ne 2106000 -and $top -ne 2002000) {
       Remove-ItemProperty $PwrKey CpuOc -ErrorAction SilentlyContinue; Start-Power 1
       if ($govWasOn) { Gov 'start' | Out-Null }
-      Fail ("2106 MHz NOT allowed (CpuOcStatus {0}, LittleOcCheck {1}): 6 = not a level of this phone's ACPM table, 9 = its voltage is outside YuROM's limits, 7 = the table does not match the A55 ladder, 2/3 = sends / temperatures off. Nothing changed. Send power-report.txt" -f $k.CpuOcStatus, $k.LittleOcCheck)
+      Fail ("no A55 level above 1950 MHz allowed (CpuOcStatus {0}): 0x106 = not in this phone's ACPM table, 0x109 = voltage over the limit (-Force allows Samsung's own up to 1250 mV), 0x107 = the table does not match the A55 ladder, 2/3 = sends / temperatures off. Nothing changed. Send power-report.txt" -f $k.CpuOcStatus)
     }
-    Ok ("A55 2106 MHz allowed: ACPM level with {0} mV (YuROM checks passed, nothing written to ACPM)" -f ($k.LittleOcUv / 1000))
-    Run $Ctl @('set', 'little', '2106000') | Out-Null
+    Ok ("A55 {0} MHz allowed: ACPM level with {1} mV (nothing written to ACPM)" -f ($top / 1000), ($k.CpuOcUv / 1000))
+    Run $Ctl @('set', 'little', "$top") | Out-Null
+    $mid2400 = $Force -and $k.CpuOcMidOk -eq 1
+    if ($mid2400) { Run $Ctl @('set', 'mif', '2093000') | Out-Null; Run $Ctl @('set', 'mid', '2400000') | Out-Null; Info 'A75 at 2400 MHz too (-Force)' }
     $cli = Join-Path $Dst 'clockscli.exe'
     if (Test-Path $cli) { Info 'measured clocks:'; Run $cli @('1', '1') | Out-Null }
     $stress = Join-Path $Dst 'cpustress.exe'
     $bad = $false
-    foreach ($r in @(@('60', '0xf', 'A55 x4'), @('60', '0xf', 'A55 x4'), @('30', '0x3f', 'all 6 cores'))) {
-      Info "cpustress $($r[0]) s on $($r[2]) at 2106 MHz:"
+    $runs = @(@('60', '0xf', 'A55 x4'), @('60', '0xf', 'A55 x4'))
+    if ($mid2400) { $runs += ,@('60', '0x30', 'A75 x2 at 2400') }
+    $runs += ,@('30', '0x3f', 'all 6 cores')
+    foreach ($r in $runs) {
+      Info "cpustress $($r[0]) s on $($r[2]) (A55 $($top / 1000) MHz):"
       $o = Run $stress @($r[0], $r[1])
       if (-not ($o -match '^PASS')) { $bad = $true; Warn "cpustress on $($r[2]): $(($o | Select-Object -Last 1))" }
       Run $Ctl @() | Out-Null
@@ -268,10 +280,13 @@ switch ($Action) {
       Remove-ItemProperty $PwrKey CpuOc -ErrorAction SilentlyContinue
       Start-Power 1
       GovParam MaxLittle 1950000
-      Warn 'computation errors at 2106 MHz -> removed, A55 back to 1950 MHz'
+      GovParam MaxMid 2314000
+      Run $Ctl @('set', 'mid', '2314000') | Out-Null
+      Warn 'computation errors -> removed, A55 back to 1950 MHz, A75 2314 MHz'
     } else {
-      GovParam MaxLittle 2106000
-      Ok 'A55 2106 MHz kept (governor ceiling 2106 MHz; survives reboots; .\power-s10.ps1 cpuoc -Off removes it)'
+      GovParam MaxLittle $top
+      if ($mid2400) { GovParam MaxMid 2400000 }
+      Ok ("kept: A55 ceiling {0} MHz{1} (survives reboots; .\power-s10.ps1 cpuoc -Off removes it)" -f ($top / 1000), $(if ($mid2400) { ', A75 2400 MHz' } else { '' }))
     }
     if ($govWasOn) { Gov 'start' | Out-Null; Info 'governor restarted' }
   }

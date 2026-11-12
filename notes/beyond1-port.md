@@ -1862,3 +1862,8 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   reboot) and panel-s10.ps1 v1.0 (Panel* trace from Device Parameters, WMI brightness, "sweep" 100/50/10/0/100 with
   BrightnessLast decode, -Top sets PanelAorTop). Kit v2.7.
 - 14:44 sent: beyond1lte-uefi-v0.2.2.img (f18eb3e2) + kit v2.7 (repo eecdb7e: KMD 1.0.72.2 source, S10ePower CpuOc/IdleMif, power-s10 v1.4, gpu-s10 v1.34, panel-s10 v1.0, video tools). NOT validated.
+- 15:21 DEVICE (panel-s10 5dd5b932, KMD 1.0.72.2 + UEFI v0.2.2): PanelStep 0, PanelHandoff 1 (UEFI's A0 used),
+  PanelAor0 0x0440 (sboot), PanelAorNow 0x093C = the UEFI's 50 % boot level on the new curve -> PanelStartLevel 50 (the
+  hand-off maps back), PanelAorTopUsed 0x0014, idle 778/2000, RxUnexpected 0. Windows offers brightness (75 %).
+  Sweep: 100 % -> 0x0014, 50 -> 0x093C, 10 -> 0x0BB8, 0 -> 0x0BC9, 100 -> 0x0014, every write ok. BRIGHTNESS WORKS
+  on the S10 (the panel's look at each level still to hear from the user).
