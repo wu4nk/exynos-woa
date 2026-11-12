@@ -263,3 +263,19 @@ Windows reads temperatures and can throttle; lowering is fine.
   never powered down - the next target.
 - power-s10 v1.7: the minimum row keeps MIF 2093; try/finally restarts the governor, kills panelon (KMD relights),
   restores brightness and the display timeout even on Ctrl+C.
+- 2026-11-12 18:42 DEVICE drain v1.7 (power-report d90911d6, complete): baseline 50 % governor 3971 mW; brightness 0 %
+  3484; CPU+GPU minimum, MIF 2093, panel 50 % 2670; panel dark (screen-off state: governor minimum, MIF 421) 2253;
+  baseline again 3385 (drift ~-0.6 W; this run's level is ~1.2 W above the 16:00 one = background activity varies).
+  No stripes/lag reported this time (MIF stayed 2093 with the panel on) - consistent with the MIF-421 explanation.
+  At the governor stop: MID cur/req 2314000, G3D cur/req 806000 although nothing ran but the test's WMI polls.
+  Split (approx.): governor's choice of clocks at "idle" 0.7-1.3 W (baseline vs CPU+GPU minimum); panel at 50 % ~0.4 W
+  (2670 vs 2253); static floor ~2.25 W with the panel dark and everything at minimum.
+- Cause of the first item: s10egovernor's race-to-ceiling thresholds (MidMaxBusyPct 50 on the busiest A75,
+  GpuMaxBusyPct 30 - the G17 frame-pacing / drag-lag tuning) trip on short background bursts, and the down-steps
+  wait DownSamples loops. Fix (governor Eco, default on, EcoMs 3000): no touch for 3 s -> MID / G3D follow
+  1.25 x busy x ceiling capped at EcoMid 1794000 / EcoG3d 572000, unless that domain's load stays >= 50 % for 1.5 s
+  (video / game / benchmark), then the normal policy for 3 s more; a touch restores the normal policy at once. Stat
+  EcoPct. Caveat: mouse / keyboard use is not seen (only S10eTouchActivity) - such interaction gets Eco unless
+  sustained. EcoMs 0 = old behaviour. NOT validated: drain (governor rows) + video / drag check by the user.
+- Static floor ~2.25 W (next): candidates CPU idle states (_LPI absent: cores WFI only), GPU never powered down,
+  WiFi power save, other blocks; Microsoft docs for ARM64 idle states first.

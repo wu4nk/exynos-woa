@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.7) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.8) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -36,6 +36,8 @@
                               v1.7: the clocks-minimum row keeps the memory clock at 2093 MHz - 421 MHz with the panel on
                               made the S10 lag hard and draw horizontal stripes (2026-11-12) - and everything is put back
                               (governor, brightness, panel) even if the run is stopped with Ctrl+C.
+                              v1.8: rows show the governor's Eco share (S10eGovernor EcoMs: no race to the ceiling
+                              without touch); status shows the guard's peak temperatures / trips (S10ePower).
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -52,7 +54,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.7  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.8  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -110,7 +112,8 @@ function Show-Key {
   foreach ($n in 'AcpmStatus', 'AllowSendActive', 'DvfsChannelOk', 'TmuChannelOk', 'AcpmApMax', 'AcpmChannelsOffset',
                  'AcpmPlugins', 'FvmapPlugin', 'FvmapOff', 'G3dOcCheck', 'G3dTopRate', 'G3dTopVolt', 'G3dPllLevels',
                  'G3dPms0', 'G3dPms1', 'GpuOc', 'GpuOcStatus', 'GpuOcActive', 'CpuOc', 'CpuOcStatus', 'CpuOcActive',
-                 'LittleOcCheck', 'LittleOcUv', 'MidOcCheck', 'MidOcUv', 'CpuOcUv', 'CpuOcMidOk') {
+                 'LittleOcCheck', 'LittleOcUv', 'MidOcCheck', 'MidOcUv', 'CpuOcUv', 'CpuOcMidOk',
+                 'TempPeakCpu', 'TempPeakG3d', 'GuardTrips', 'GuardPeak') {
     if ($null -ne $k.$n) { Info ("{0} = {1}" -f $n, $k.$n) }
   }
   foreach ($n in 'LittleLevels', 'MidLevels') {   # v1.4: the ACPM fvmap's CPU levels (rate kHz, voltage uV pairs)
@@ -315,7 +318,7 @@ switch ($Action) {
         Start-Sleep -Seconds 5
       }
       $gp = Get-ItemProperty "$GovKey\Parameters" -ErrorAction SilentlyContinue
-      if ($v.Count) { Ok ("{0,-26} {1,5:N0} mW avg ({2} samples, min {3} max {4}) | MIF {5} kHz, idle-MIF share {6} %" -f $Name, ($v | Measure-Object -Average).Average, $v.Count, ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum, $gp.CurMif, $gp.IdleMifPct) }
+      if ($v.Count) { Ok ("{0,-26} {1,5:N0} mW avg ({2} samples, min {3} max {4}) | MID {5} G3D {6} MIF {7} kHz, Eco {8} %" -f $Name, ($v | Measure-Object -Average).Average, $v.Count, ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum, $gp.CurMid, $gp.CurG3d, $gp.CurMif, $gp.EcoPct) }
       else { Warn "${Name}: no discharge-rate reading" }
     }
     Info "HANDS OFF for ~$([int](($Secs + 30) * 5 / 60) + 1) min: do not touch the phone (the screen goes dark for one row)."

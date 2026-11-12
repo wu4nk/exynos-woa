@@ -105,6 +105,13 @@ static unsigned gMidMaxBusyPct = 50;
  * load brings 2093 MHz back within one 50 ms loop. 0 = off: MIF stays 2093 MHz while the screen is on (the G17 video
  * judder fix). MID 2400000 meanwhile is clamped to 2314000 by S10ePower's MIF interlock. */
 static unsigned gIdleMifMs = 0;
+/* Eco (S10 2026-11-12, drain power-report d90911d6): with the screen on and nothing touched, the governor sat at MID
+ * 2314 MHz / G3D 806 MHz (the race-to-ceiling thresholds above, tripped by short background bursts: WMI, Defender),
+ * ~1.3 W over CPU+GPU at minimum. EcoMs > 0: when the last touch is older than EcoMs, MID and G3D follow load
+ * proportionally (1.25 x busy x ceiling) capped at EcoMid / EcoG3d - unless that domain's load has stayed >= EcoSustainPct
+ * for EcoSustainMs (video, a game, a benchmark: sustained, not a burst); then the normal policy for 3 s more. Touch
+ * = the normal (drag-lag) policy at once. 0 = off. */
+static unsigned gEcoMs = 3000, gEcoMid = 1794000, gEcoG3d = 572000, gEcoSustainPct = 50, gEcoSustainMs = 1500;
 static volatile LONG gDisplayOn = 1;
 /* MIF (S10ePower v2): only the two device-verified devfreq_mif rates (notes/m15-perf.md:98). Screen on = 2093000 (the
  * rate Linux runs here; G3D 702 MHz needs it, notes/g17-dxva-mfc.md 17:2x), screen off = 421000. Matching Samsung's
@@ -145,6 +152,11 @@ static void LoadConfig(void)
     gGpuMaxBusyPct = Reg(k, "GpuMaxBusyPct", 30);
     gMidMaxBusyPct = Reg(k, "MidMaxBusyPct", 50);
     gIdleMifMs = Reg(k, "IdleMifMs", 0);
+    gEcoMs = Reg(k, "EcoMs", 3000);
+    gEcoMid = Reg(k, "EcoMid", 1794000);
+    gEcoG3d = Reg(k, "EcoG3d", 572000);
+    gEcoSustainPct = Reg(k, "EcoSustainPct", 50);
+    gEcoSustainMs = Reg(k, "EcoSustainMs", 1500);
     if (k)
         RegCloseKey(k);
     k = NULL;
@@ -269,6 +281,8 @@ static void Run(void)
     unsigned ncpu, i, loops = 0;
     BOOL wasOff = FALSE;   /* review fix (4): own screen-off state for the counter */
     BOOL mifIdle = FALSE;  /* IdleMifMs: decided at the end of the previous loop */
+    ULONGLONG sustSince[3] = { 0, 0, 0 }, hotUntil[3] = { 0, 0, 0 };   /* Eco: sustained load per domain */
+    unsigned ecoLoops = 0;
     unsigned mifIdleMs = 0, mifLoops = 0;
     double gpuBusy = -1;
 
@@ -294,7 +308,7 @@ static void Run(void)
     Stat("GpuCounter", gGpuQuery != NULL);
     for (;;) {
         DWORD w;
-        BOOL screen, boost;
+        BOOL screen, boost, eco = FALSE;
         ULONGLONG t;
         if (touch == NULL)
             touch = OpenEventW(SYNCHRONIZE, FALSE, L"Global\\S10eTouchActivity");
@@ -337,9 +351,24 @@ static void Run(void)
                     busy[c] = b;
             }
             memcpy(prev, now, sizeof(now[0]) * ncpu);
+            eco = gEcoMs != 0 && !(lastTouch && t - lastTouch < gEcoMs);
+            for (i = 1; i < 3; i++) {   /* Eco: has this domain's load been sustained (not a burst)? */
+                double b = i == 1 ? busy[1] : gpuBusy;
+                if (b * 100 >= gEcoSustainPct) {
+                    if (!sustSince[i])
+                        sustSince[i] = t;
+                    if (t - sustSince[i] >= gEcoSustainMs)
+                        hotUntil[i] = t + 3000;
+                } else {
+                    sustSince[i] = 0;
+                }
+            }
+            if (eco)
+                ecoLoops++;
             for (i = 0; i < 3; i++) {
                 DOMAIN *d = &gDom[i];
                 unsigned target;
+                BOOL ecoHere = eco && t >= hotUntil[i];
                 /* S10 2026-11-12 (drag lag): the touch boost is a FLOOR on top of load tracking - before, it replaced
                  * it, so a drag that loaded the A75s past MidMaxBusyPct got BoostMid (2106000) instead of the ceiling */
                 if (i == 0) {
@@ -347,8 +376,16 @@ static void Run(void)
                     if (busy[0] < 0.90 && want > gEffLittle)
                         want = gEffLittle;
                     target = StepAtLeast(d, want);
+                } else if (i == 1 && ecoHere) {
+                    unsigned want = (unsigned)(busy[1] * 1.25 * d->Max);
+                    target = StepAtLeast(d, want < gEcoMid ? want : gEcoMid);
                 } else if (i == 1) {
                     target = StepAtLeast(d, busy[1] * 100 >= gMidMaxBusyPct ? d->Max : (unsigned)(busy[1] * 1.25 * d->Max));
+                } else if (gpuBusy >= 0 && ecoHere) {
+                    unsigned want = (unsigned)(gpuBusy * 1.25 * d->Max);
+                    if (want > gEcoG3d)
+                        want = gEcoG3d;
+                    target = StepAtLeast(d, want > gGpuFloor ? want : gGpuFloor);
                 } else if (gpuBusy >= 0) {
                     /* GPU: load tracking on the busiest 3D engine (1.25 x busy x ceiling), floor = half the ceiling
                      * while the screen is on so composition never starts from the minimum */
@@ -396,7 +433,8 @@ static void Run(void)
             Stat("GpuBusyPct", gpuBusy < 0 ? 0xFFFFFFFF : (unsigned)(gpuBusy * 100));
             Stat("CurMif", gMifCur);
             Stat("IdleMifPct", mifLoops ? mifIdleMs / 50 * 100 / mifLoops : 0);   /* share of screen-on loops at 421 */
-            mifIdleMs = 0; mifLoops = 0;
+            Stat("EcoPct", mifLoops ? ecoLoops * 100 / mifLoops : 0);   /* share of screen-on loops in Eco */
+            mifIdleMs = 0; mifLoops = 0; ecoLoops = 0;
         }
     }
     /* leaving: back to the boot rates so nothing stays at a minimum without a governor */
