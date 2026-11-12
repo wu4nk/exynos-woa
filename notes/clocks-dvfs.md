@@ -192,3 +192,17 @@ Windows reads temperatures and can throttle; lowering is fine.
   (report 01137b7c "governor NOT running") - both actions read it before.
 - Compile checks: S10ePower.c clang-cl (WDK 26100 km headers) /W4 clean; s10egovernor.c zig mingw -Wall clean.
   NOT run on the device; whether this phone's LITTLE fvmap has 2106000 is unknown until LittleLevels is read.
+
+## 2026-11-12 14:4x (S10 port) battery - user: "cải thiện hiệu năng pin"
+- Levers found (by size, AMOLED): (1) brightness - none existed on the S10 (KMD panel commands off); KMD 1.0.72.2 /
+  UEFI v0.2.2 add it (notes/beyond1-port.md); it also enables the power-button panel-off (DCS 28) on the S10.
+  (2) MIF: the governor holds 2093 MHz (max) the whole time the screen is on (G17 judder fix); new governor knob
+  IdleMifMs (default 0 = unchanged): screen on + no touch for that long + CPUs < 30 % + GPU < 10 % (PDH counter
+  required) -> MIF 421 MHz; touch/load -> 2093 within one 50 ms loop; Stat IdleMifPct (share of screen-on loops at 421).
+  MID 2400 stays safe through S10ePower's MIF interlock. (3) CPU idle states: the DSDT has no _LPI (rg over AcpiTables,
+  notes/thermal-research.md:114) -> Windows idles cores in WFI only; Linux uses PSCI CPU_SUSPEND 0x10000 per class
+  (notes/cpu-driver-9820.md F4). Boot-hazard firmware work + Microsoft docs on ARM64 _LPI / PEP first (rule 13) -
+  next round, not started.
+- Measurement: power-s10 v1.4 "drain": BatteryStatus.DischargeRate (S10eBattery reports mW, Miniclass.c:94-98) averaged
+  over -Secs per setting with the display held on (SetThreadExecutionState): brightness 100/50/20 %, IdleMifMs 0 vs
+  3000. Decides whether IdleMifMs becomes a default. NOT run yet.

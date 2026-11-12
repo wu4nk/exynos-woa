@@ -24,6 +24,9 @@
                               (it must be in the table, voltage <= 1175 mV and >= the 1950 MHz one). Then cpustress runs on
                               the A55s twice + all cores once; any error -> removed again. -Off = back to 1950 MHz.
                               (A75: 2400 MHz is already in use. M4 big cores: not running under Windows.)
+    .\power-s10.ps1 drain     (v1.4) battery: measures the discharge rate (mW, the battery driver's own reading) for
+                              -Secs (default 60) per setting, screen on, hands off, charger UNPLUGGED: brightness 100 / 50 /
+                              20 %, then the governor's idle memory clock (IdleMifMs) off vs on. Puts everything back.
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -35,8 +38,8 @@
   Rescue if a boot goes wrong after "enable": TWRP is not needed - the services are plain services; boot, then
   .\power-s10.ps1 disable. If Windows does not come up at all: Safe Mode skips both (they are not boot-start).
 #>
-param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc', 'cpuoc')][string]$Action = 'status',
-      [int]$Khz = 806000, [switch]$Off)
+param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc', 'cpuoc', 'drain')][string]$Action = 'status',
+      [int]$Khz = 806000, [switch]$Off, [int]$Secs = 60)
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
@@ -271,6 +274,42 @@ switch ($Action) {
       Ok 'A55 2106 MHz kept (governor ceiling 2106 MHz; survives reboots; .\power-s10.ps1 cpuoc -Off removes it)'
     }
     if ($govWasOn) { Gov 'start' | Out-Null; Info 'governor restarted' }
+  }
+  'drain' {
+    $bs = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $bs) { Fail 'no BatteryStatus (root\wmi) - battery driver not reporting' }
+    if ($bs.PowerOnline) { Fail 'the charger is plugged in - unplug it (the discharge rate is only measured on battery)' }
+    $br = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -First 1
+    $brm = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue | Select-Object -First 1
+    $br0 = if ($br) { $br.CurrentBrightness } else { $null }
+    $mif0 = (Get-ItemProperty "$GovKey\Parameters" -ErrorAction SilentlyContinue).IdleMifMs
+    Add-Type -Namespace S10 -Name Es -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+    [void][S10.Es]::SetThreadExecutionState(0x80000003)   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+    function Measure-Drain([string]$Name) {
+      Start-Sleep -Seconds 10   # settle
+      $v = @(); $t0 = Get-Date
+      while (((Get-Date) - $t0).TotalSeconds -lt $Secs) {
+        $b = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($b -and $b.DischargeRate -gt 0) { $v += $b.DischargeRate }
+        Start-Sleep -Seconds 5
+      }
+      $gp = Get-ItemProperty "$GovKey\Parameters" -ErrorAction SilentlyContinue
+      if ($v.Count) { Ok ("{0,-26} {1,5:N0} mW avg ({2} samples, min {3} max {4}) | MIF {5} kHz, idle-MIF share {6} %" -f $Name, ($v | Measure-Object -Average).Average, $v.Count, ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum, $gp.CurMif, $gp.IdleMifPct) }
+      else { Warn "${Name}: no discharge-rate reading" }
+    }
+    Info "HANDS OFF for ~$([int](($Secs + 10) * 5 / 60) + 1) min: screen stays on, do not touch it."
+    if ($brm) {
+      foreach ($l in 100, 50, 20) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$l } | Out-Null; Measure-Drain "brightness $l %" }
+      Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]50 } | Out-Null
+    } else { Warn 'no brightness control (KMD < 1.0.72.2 or panel commands off) - brightness rows skipped'; Measure-Drain 'as is' }
+    if (Get-Service S10eGovernor -ErrorAction SilentlyContinue) {
+      GovParam IdleMifMs 0; Gov 'stop' | Out-Null; Gov 'start' | Out-Null; Measure-Drain 'IdleMifMs 0 (MIF 2093)'
+      GovParam IdleMifMs 3000; Gov 'stop' | Out-Null; Gov 'start' | Out-Null; Measure-Drain 'IdleMifMs 3000 (idle 421)'
+      GovParam IdleMifMs $mif0; Gov 'stop' | Out-Null; Gov 'start' | Out-Null
+    }
+    if ($brm -and $null -ne $br0) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$br0 } | Out-Null }
+    [void][S10.Es]::SetThreadExecutionState(0x80000000)
+    Ok 'settings restored (brightness, IdleMifMs) - send power-report.txt'
   }
   'status' {
     foreach ($s in 'S10ePower', 'S10eGovernor') {

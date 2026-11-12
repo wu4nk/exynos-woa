@@ -99,6 +99,11 @@ static unsigned gGpuMaxBusyPct = 30;
  * cores, GPU ~40 %) runs at 17.6 presents/s with 1.25 x busy targets (MID 2002, G3D 433 MHz) and ~23 at the ceilings.
  * Above MidMaxBusyPct on the busiest MID core the MID cluster goes to its ceiling; GpuMaxBusyPct 50 -> 30. */
 static unsigned gMidMaxBusyPct = 50;
+/* battery (S10 2026-11-12, user: "cải thiện hiệu năng pin"): IdleMifMs > 0 = with the screen on, MIF drops to 421 MHz
+ * after that long without touch while the CPUs (< 30 %) and the GPU (< 10 %, counter required) are idle; any touch or
+ * load brings 2093 MHz back within one 50 ms loop. 0 = off: MIF stays 2093 MHz while the screen is on (the G17 video
+ * judder fix). MID 2400000 meanwhile is clamped to 2314000 by S10ePower's MIF interlock. */
+static unsigned gIdleMifMs = 0;
 static volatile LONG gDisplayOn = 1;
 /* MIF (S10ePower v2): only the two device-verified devfreq_mif rates (notes/m15-perf.md:98). Screen on = 2093000 (the
  * rate Linux runs here; G3D 702 MHz needs it, notes/g17-dxva-mfc.md 17:2x), screen off = 421000. Matching Samsung's
@@ -138,6 +143,7 @@ static void LoadConfig(void)
     gGpuFloor = Reg(k, "GpuFloor", 260000);
     gGpuMaxBusyPct = Reg(k, "GpuMaxBusyPct", 30);
     gMidMaxBusyPct = Reg(k, "MidMaxBusyPct", 50);
+    gIdleMifMs = Reg(k, "IdleMifMs", 0);
     if (k)
         RegCloseKey(k);
     k = NULL;
@@ -258,6 +264,8 @@ static void Run(void)
     ULONGLONG lastTouch = 0, lastStat = 0;
     unsigned ncpu, i, loops = 0;
     BOOL wasOff = FALSE;   /* review fix (4): own screen-off state for the counter */
+    BOOL mifIdle = FALSE;  /* IdleMifMs: decided at the end of the previous loop */
+    unsigned mifIdleMs = 0, mifLoops = 0;
     double gpuBusy = -1;
 
     GetSystemInfo(&si);
@@ -303,7 +311,7 @@ static void Run(void)
         boost = screen && lastTouch && t - lastTouch < gBoostMs;
         /* MID 2400000 needs MIF 2093000 (DT mif-perf): MIF goes up before the CPUs and down after them */
         if (screen)
-            SetMif(MIF_ON);
+            SetMif(mifIdle && !boost ? MIF_OFF : MIF_ON);
         if (!screen) {
             for (i = 0; i < 3; i++)
                 Set(&gDom[i], gDom[i].Ladder[0]);
@@ -368,6 +376,11 @@ static void Run(void)
                     d->LastChange = t;
                 }
             }
+            mifIdle = gIdleMifMs != 0 && (!lastTouch || t - lastTouch > gIdleMifMs) && busy[0] < 0.30 &&
+                      busy[1] < 0.30 && gpuBusy >= 0 && gpuBusy < 0.10;
+            mifLoops++;
+            if (mifIdle)
+                mifIdleMs += 50;
         }
         if (t - lastStat > 10000) {
             lastStat = t;
@@ -376,6 +389,8 @@ static void Run(void)
             Stat("TouchEvent", touch != NULL);
             Stat("GpuBusyPct", gpuBusy < 0 ? 0xFFFFFFFF : (unsigned)(gpuBusy * 100));
             Stat("CurMif", gMifCur);
+            Stat("IdleMifPct", mifLoops ? mifIdleMs / 50 * 100 / mifLoops : 0);   /* share of screen-on loops at 421 */
+            mifIdleMs = 0; mifLoops = 0;
         }
     }
     /* leaving: back to the boot rates so nothing stays at a minimum without a governor */
