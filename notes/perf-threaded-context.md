@@ -295,3 +295,11 @@ thread is still emulated x86 in 32-bit games); also helps every D3D app (DWM, br
 - s10-0009: _Thread_local (C) / thread_local (C++ extern "C") - 0 'thread' warnings in arm64 / x86 / gl builds,
   x86 layout-check OK. s10-0008: snapshot fp chain + first snapshot at 600 ms. Test UMD maliumd 3111b7c2 (PDB
   tcdsym3/) with MALIUMD_TC=1 via tc-diag.ps1. NOT validated.
+- 2026-11-12 12:51 DEVICE (tc-diag zip d5ce1413, maliumd 3111b7c2 = s10-0009 real TLS, MALIUMD_TC=1): two boots,
+  desktop up both times; dwm 632 / 636 "threaded 1", 1467 / 3173 primary presents, ZERO "driver thread waits" and
+  no RESCUE in any of 21 process logs (Explorer, SearchHost, StartMenu, TextInputHost, Taskmgr, LogonUI all
+  threaded). The dwm.exe / gputest WER lines in app-errors.txt are older UMDs (fault module time stamps 6af3b1b2 /
+  6af3c4f7; this build is 6af4e283 - the phone clock restarts every boot). "CB FAIL Lock 0x80070057 a 0x0 b 0x9" in
+  DWM existed before (18x in the NoTc boot, logs68). DEADLOCK FIXED: root cause = s10-0009.
+- s10-0010: threaded context ON by default again (MALIUMD_NO_TC=1 = off). UMD 0222-s10.4 = s10-0001..0010:
+  maliumd 572f69d7, maliumd32 45b21b15, maligl 0bd4de69; x86 layout-check OK; PDB scratchpad sym-s10.4/.

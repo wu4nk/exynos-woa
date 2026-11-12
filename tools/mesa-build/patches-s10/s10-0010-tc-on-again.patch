@@ -1,0 +1,29 @@
+From 0b915d4a3ae5847fc0a4c50e9629d0111ff61fe0 Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Thu, 12 Nov 2026 12:53:37 +0700
+Subject: [PATCH] S10: threaded context on by default again (deadlock was the
+ TLS bug)
+
+---
+ src/gallium/frontends/d3d10umd/Device.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/frontends/d3d10umd/Device.cpp b/src/gallium/frontends/d3d10umd/Device.cpp
+index 4892e02..6d8641e 100644
+--- a/src/gallium/frontends/d3d10umd/Device.cpp
++++ b/src/gallium/frontends/d3d10umd/Device.cpp
+@@ -192,7 +192,10 @@ CreateDevice(D3D10DDI_HADAPTER hAdapter,                 // IN
+     * MALIUMD_NO_TC=1 the same boot composes the desktop on the Mali. Until the marshalling has no such wait,
+     * MALIUMD_TC=1 opts in (tests); MALIUMD_NO_TC=1 still wins. */
+    unsigned ctx_flags = 0;
+-   if (debug_get_bool_option("MALIUMD_TC", false) && !debug_get_bool_option("MALIUMD_NO_TC", false)) {
++   /* S10 s10-0010 (2026-11-12): ON by default again - the deadlock above was s10-0009's TLS bug (mk_worker shared by
++    * every thread in the mingw build); with real TLS DWM ran threaded through two boots (tc-diag zip d5ce1413: dwm
++    * 1467 / 3173 presents, no driver-thread wait). MALIUMD_NO_TC=1 still turns it off (diagnosis). */
++   if (!debug_get_bool_option("MALIUMD_NO_TC", false)) {
+       tc_driver_thread_hook = malikm_mark_worker_thread;
+       tc_wait_hook = malikm_ddi_pump;
+       malikm_marshal_enable();
+-- 
+2.43.0
+
