@@ -224,3 +224,14 @@ Windows reads temperatures and can throttle; lowering is fine.
   1950/2002/2106 tail, count by CpuOcActive. power-s10 v1.5 cpuoc [-Force]: sets the found level, with -Force and
   CpuOcMidOk also MIF 2093 + MID 2400, cpustress A55 x2, A75 at 2400 (Force), all cores; MaxLittle/MaxMid kept on
   pass, back to 1950/2314 on any error; enable keeps them. Compile checks clean. NOT run on the device.
+- 2026-11-12 15:41 DEVICE (power-report 2327b661, power-s10 v1.5 cpuoc, no -Force): CpuOcStatus 1, CpuOcActive
+  2002000, CpuOcUv 1137500, CpuOcMidOk 0. ACPM granted 2002000, clockscli measured cpu0-3 1960/1991/1989/1994 MHz.
+  cpustress A55 x4 60 s PASS (temps -> MID 74 / LITTLE 73 / G3D 65), again PASS (76/75/67), all 6 cores 30 s PASS.
+  During the all-core run the A55 iteration rate fell from ~245/s to ~130-160/s per core and afterwards LITTLE cur
+  1053000 / MID cur 1222000 = the guard's level-2 caps (>= 95 C read on some zone; caps back to 2002000/2400000 by the
+  print = cooled below again). The governor was stopped during the test, so nothing raised the clocks again until it
+  restarted. => A55 2002 MHz computes correctly; sustained all-core load is thermally limited (S10e: same, 82 C in
+  47 s at 1950/2400) and the guard works. Kept: MaxLittle 2002000. Gain ~+2.7 % single-cluster burst. -Force (2106 at
+  1206 mV) would run hotter - not recommended on this evidence.
+- Follow-up (diagnosis, next S10ePower change): record TempPeak / GuardPeak since load - the report shows only the
+  temperature after each run, the level-2 trip above was inferred from the caps.
