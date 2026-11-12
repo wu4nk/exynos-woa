@@ -279,3 +279,17 @@ Windows reads temperatures and can throttle; lowering is fine.
   sustained. EcoMs 0 = old behaviour. NOT validated: drain (governor rows) + video / drag check by the user.
 - Static floor ~2.25 W (next): candidates CPU idle states (_LPI absent: cores WFI only), GPU never powered down,
   WiFi power save, other blocks; Microsoft docs for ARM64 idle states first.
+- 2026-11-12 22:12 user: "chúng ta đã ổn định hơn nhiều rồi đúng không ?, fix tiếp đi" (no drain / Eco feedback yet).
+  Re-read of log 5e013462 gpuwatch: the 'S10 GPU watch' task is STILL ACTIVE on the S10 (gpu-s10 "final" never ran
+  after the s10.4 -Keep install): every pass ~20-30 s = a new PowerShell with 5-6 s CPU, MsMpEng 3-16 s per pass
+  (Defender scanning each start), WmiPrvSE; processor time ~19-25 % with 2300-5800 interrupts/s during passes vs
+  0.8-1.7 % / 490-680 between. That is a large part of the "idle" draw in every drain run so far. power-s10 v1.9
+  drain lists diagnostic tasks / logging variables first (Warn) and the top CPU-time processes.
+- MS docs (rule 13) for CPU idle states: learn.microsoft.com/windows-hardware/drivers/kernel/ppm-notifications -
+  processor idle states on Windows are listed by the PEP (PEP_NOTIFY_PPM_QUERY_IDLE_STATES_V2 "query the list of idle
+  states that it supports") and executed by it (PEP_NOTIFY_PPM_IDLE_EXECUTE: "the PEP ... must execute the halt
+  instruction to transition the processor to the idle state", called with interrupts disabled). The page never
+  mentions _LPI; nothing says Windows reads _LPI without a PEP. => CPU deep idle on ARM64 Windows = writing a processor
+  PEP (PoFx plug-in, boot-start, PSCI CPU_SUSPEND from IDLE_EXECUTE) - a large, boot-hazard project. Estimate of its
+  worth first: 6 cores in WFI at minimum clocks are ~0.1-0.3 W, not the ~2 W floor - so measure the floor again
+  without the diagnostic background before deciding.

@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.8) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.9) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -38,6 +38,9 @@
                               (governor, brightness, panel) even if the run is stopped with Ctrl+C.
                               v1.8: rows show the governor's Eco share (S10eGovernor EcoMs: no race to the ceiling
                               without touch); status shows the guard's peak temperatures / trips (S10ePower).
+                              v1.9: drain first lists the DIAGNOSTIC background still on (gpu-watch / gpu-fill tasks,
+                              UMD/shim logging variables) - the 18:23 log showed gpu-watch spawning PowerShell every
+                              ~20 s (5-6 s CPU each) with Defender scanning each start: "gpu-s10.ps1 final" turns it off.
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -54,7 +57,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.8  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.9  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -321,6 +324,13 @@ switch ($Action) {
       if ($v.Count) { Ok ("{0,-26} {1,5:N0} mW avg ({2} samples, min {3} max {4}) | MID {5} G3D {6} MIF {7} kHz, Eco {8} %" -f $Name, ($v | Measure-Object -Average).Average, $v.Count, ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum, $gp.CurMid, $gp.CurG3d, $gp.CurMif, $gp.EcoPct) }
       else { Warn "${Name}: no discharge-rate reading" }
     }
+        # v1.9: diagnostic background that costs power (gpu-s10.ps1 final turns all of it off)
+    $bg = @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '^S10 GPU (watch|fill)$' -and $_.State -ne 'Disabled' } | ForEach-Object { "task '$($_.TaskName)'" })
+    $ev = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -ErrorAction SilentlyContinue
+    foreach ($n in 'MALIKM_TGSI_DIR', 'MALIUMD_TC_RESCUE', 'MALIUMD_NO_TC', 'GALLIUM_DRIVER', 'S10_THUMBS') { if ($ev.$n) { $bg += "machine $n" } }
+    if ($bg.Count) { Warn ("diagnostic background ON: {0} -> .\gpu-s10.ps1 final, reboot, then measure" -f ($bg -join ', ')) } else { Ok 'no diagnostic background tasks / logging variables' }
+    $top = Get-Process | Where-Object { $_.CPU } | Sort-Object CPU -Descending | Select-Object -First 6 | ForEach-Object { '{0} {1:N0}s' -f $_.Name, $_.CPU }
+    Info "CPU time since start (top 6): $($top -join ', ')"
     Info "HANDS OFF for ~$([int](($Secs + 30) * 5 / 60) + 1) min: do not touch the phone (the screen goes dark for one row)."
     $pon = Join-Path $PSScriptRoot 'tools\validate\panelon.exe'
     function SetBr($l) { if ($brm) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$l } | Out-Null } }
