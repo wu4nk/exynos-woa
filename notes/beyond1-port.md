@@ -1837,3 +1837,6 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - Test: tools/s10-kit/video-s10.ps1 v1.0 (install / test / play). Media from tools/mfc/mkclips-s10.sh (ffmpeg
   libx264 + C hasher: c720 Main, c1080 High 3 B 4 refs, reference FNV hashes = libavcodec's decode in mfcdec/mftest
   line format). Tools mfcdec / mftest / d3dvdec / acrun built with zig in build-validate-tools.sh (video\). Kit v2.6.
+- 13:22 kit v2.6 sent (s10-woa-kit-v2.6.zip 096bd02a, repo df6b09f): umd\ = 0222-s10.4, tools\validate\ (+ gputest.exe
+  from the gputest build, not build-validate-tools), tools\video\, video\ media. User steps: get-wifi-fw.cmd in TWRP
+  -> build-s10.cmd -> video-s10.ps1 install / all. NOT validated on the device yet.
