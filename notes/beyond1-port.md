@@ -1861,3 +1861,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   /add-driver /install - higher DriverVer; every Parameters value saved and written back; package UMD or -UmdDir;
   reboot) and panel-s10.ps1 v1.0 (Panel* trace from Device Parameters, WMI brightness, "sweep" 100/50/10/0/100 with
   BrightnessLast decode, -Top sets PanelAorTop). Kit v2.7.
+- 14:44 sent: beyond1lte-uefi-v0.2.2.img (f18eb3e2) + kit v2.7 (repo eecdb7e: KMD 1.0.72.2 source, S10ePower CpuOc/IdleMif, power-s10 v1.4, gpu-s10 v1.34, panel-s10 v1.0, video tools). NOT validated.
