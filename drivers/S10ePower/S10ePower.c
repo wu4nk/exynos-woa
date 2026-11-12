@@ -397,8 +397,15 @@ static VOID GuardThread(PVOID Context)
             }
         }
         if (okCount == (gTmu.Ok ? 3u : 0u) && okCount != 0) {
+            static ULONG peakCpu, peakGpu, peakLevel, trips;
+            ULONG before = gState.GuardLevel;
             InterlockedIncrement((volatile LONG *)&gState.TempReads);
             GuardApply(cpu, gpu);
+            /* S10 2026-11-12: the peaks since load - the cpuoc report could only infer a level-2 trip from the caps */
+            if (cpu > peakCpu) { peakCpu = cpu; WriteDword(L"TempPeakCpu", peakCpu); }
+            if (gpu > peakGpu) { peakGpu = gpu; WriteDword(L"TempPeakG3d", peakGpu); }
+            if (gState.GuardLevel > before && before != 0xFF) { trips++; WriteDword(L"GuardTrips", trips); }
+            if (gState.GuardLevel > peakLevel) { peakLevel = gState.GuardLevel; WriteDword(L"GuardPeak", peakLevel); }
         } else {
             /* no trustworthy temperature: never above the UEFI boot rates */
             gState.CapKhz[0] = BOOT_LITTLE; gState.CapKhz[1] = BOOT_MID; gState.CapKhz[2] = BOOT_G3D;
