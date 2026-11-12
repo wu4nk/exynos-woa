@@ -36,6 +36,8 @@ cp "$R/drivers/Exynos9820Mfc/MfcIoctl.h" "$V/inc/"
 "$W/tc/zig-c++" "${F[@]}" -municode -o "$V/mftest.exe" "$R/tools/mfc/mftest/mftest.cpp" -lmfplat -lmfreadwrite -lmfuuid -lole32 -ld3d11 -ldxgi
 "$W/tc/zig-c++" "${F[@]}" -o "$V/d3dvdec.exe" "$T/tools/d3dvdec/d3dvdec.cpp" -ldxgi -ld3d11 -ld3d10 -lgdi32 -luser32 -ldxguid
 "$W/tc/zig-cc" "${F[@]}" -municode -o "$V/acrun.exe" "$R/tools/mfc/acrun/acrun.c" -luserenv -ladvapi32
+# panelon (power-s10 drain: panel dark through MaliG76Wddm's MW_ESCAPE_PANEL_POWER) -> the validate folder
+"$W/tc/zig-cc" "${F[@]}" -o "$O/panelon.exe" "$T/tools/panelon/panelon.c" -lgdi32
 rm -rf "$V/inc" "$V"/*.pdb
 python3 -I "$(dirname "$0")/pe-set-subsys.py" "$V"/*.exe
 rm -rf "$O/lib" "$O/lib86" "$O"/*.pdb "$O"/x86/*.pdb

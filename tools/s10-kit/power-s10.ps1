@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.5.1) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.6) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -30,6 +30,9 @@
     .\power-s10.ps1 drain     (v1.4) battery: measures the discharge rate (mW, the battery driver's own reading) for
                               -Secs (default 60) per setting, screen on, hands off, charger UNPLUGGED: brightness 100 / 50 /
                               20 %, then the governor's idle memory clock (IdleMifMs) off vs on. Puts everything back.
+                              v1.6 (where do the ~2.2 W go?): 30 s settle (the fuel gauge's AvgCurrent lags) and these
+                              rows: baseline (50 %), brightness 0 %, all clocks at minimum with the panel on, panel dark
+                              (panelon 0 = the screen-off state: governor minimum + DCS 28), baseline again (drift).
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -46,7 +49,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.5.1  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.6  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -301,7 +304,7 @@ switch ($Action) {
     Add-Type -Namespace S10 -Name Es -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
     [void][S10.Es]::SetThreadExecutionState([uint32]2147483651)   # 0x80000003 = ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED (v1.5.1: a PowerShell 0x8... literal is a negative Int32)
     function Measure-Drain([string]$Name) {
-      Start-Sleep -Seconds 10   # settle
+      Start-Sleep -Seconds 30   # settle: MAX77705 AvgCurrent is a filtered average (v1.6)
       $v = @(); $t0 = Get-Date
       while (((Get-Date) - $t0).TotalSeconds -lt $Secs) {
         $b = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -312,16 +315,24 @@ switch ($Action) {
       if ($v.Count) { Ok ("{0,-26} {1,5:N0} mW avg ({2} samples, min {3} max {4}) | MIF {5} kHz, idle-MIF share {6} %" -f $Name, ($v | Measure-Object -Average).Average, $v.Count, ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum, $gp.CurMif, $gp.IdleMifPct) }
       else { Warn "${Name}: no discharge-rate reading" }
     }
-    Info "HANDS OFF for ~$([int](($Secs + 10) * 5 / 60) + 1) min: screen stays on, do not touch it."
-    if ($brm) {
-      foreach ($l in 100, 50, 20) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$l } | Out-Null; Measure-Drain "brightness $l %" }
-      Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]50 } | Out-Null
-    } else { Warn 'no brightness control (KMD < 1.0.72.2 or panel commands off) - brightness rows skipped'; Measure-Drain 'as is' }
-    if (Get-Service S10eGovernor -ErrorAction SilentlyContinue) {
-      GovParam IdleMifMs 0; Gov 'stop' | Out-Null; Gov 'start' | Out-Null; Measure-Drain 'IdleMifMs 0 (MIF 2093)'
-      GovParam IdleMifMs 3000; Gov 'stop' | Out-Null; Gov 'start' | Out-Null; Measure-Drain 'IdleMifMs 3000 (idle 421)'
-      GovParam IdleMifMs $mif0; Gov 'stop' | Out-Null; Gov 'start' | Out-Null
-    }
+    Info "HANDS OFF for ~$([int](($Secs + 30) * 5 / 60) + 1) min: do not touch the phone (the screen goes dark for one row)."
+    $pon = Join-Path $PSScriptRoot 'tools\validate\panelon.exe'
+    function SetBr($l) { if ($brm) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$l } | Out-Null } }
+    $govOn = (Get-Service S10eGovernor -ErrorAction SilentlyContinue).Status -eq 'Running'
+    SetBr 50; Measure-Drain 'baseline (50 %, governor)'
+    if ($brm) { SetBr 0; Measure-Drain 'brightness 0 %'; SetBr 50 } else { Warn 'no brightness control - row skipped' }
+    if ($govOn -and (Test-Path $Ctl)) {
+      Gov 'stop' | Out-Null
+      foreach ($p in @(@('little', 442000), @('mid', 507000), @('g3d', 156000), @('mif', 421000))) { Run $Ctl @('set', $p[0], "$($p[1])") | Out-Null }
+      Measure-Drain 'all clocks minimum, panel on'
+      Gov 'start' | Out-Null
+    } else { Warn 'governor not running - clocks-minimum row skipped' }
+    if (Test-Path $pon) {
+      $h = Start-Process $pon -ArgumentList '0', "$($Secs + 40)" -NoNewWindow -PassThru
+      Measure-Drain 'panel dark (screen-off state)'
+      [void]$h.WaitForExit(($Secs + 60) * 1000)
+    } else { Warn "no $pon - panel-dark row skipped" }
+    Measure-Drain 'baseline again (drift check)'
     if ($brm -and $null -ne $br0) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$br0 } | Out-Null }
     [void][S10.Es]::SetThreadExecutionState([uint32]2147483648)
     Ok 'settings restored (brightness, IdleMifMs) - send power-report.txt'

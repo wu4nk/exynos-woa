@@ -235,3 +235,14 @@ Windows reads temperatures and can throttle; lowering is fine.
   1206 mV) would run hotter - not recommended on this evidence.
 - Follow-up (diagnosis, next S10ePower change): record TempPeak / GuardPeak since load - the report shows only the
   temperature after each run, the level-2 trip above was inferred from the caps.
+- 2026-11-12 16:00 DEVICE drain (power-report dd4ea65e, v1.5.1, 60 s rows, 10 s settle, run right after the cpuoc
+  stress): brightness 100 % 2406 mW (min 1679), 50 % 2401, 20 % 2198, IdleMifMs 0 (50 %) 2234, IdleMifMs 3000 2188
+  (58 % of loops at 421 MHz). Readings: (1) ~2.2 W with the screen on and nothing running is very high for a phone ->
+  the static load dominates, not the panel; (2) brightness 100 -> 20 only ~200 mW (dark desktop on AMOLED; plus the
+  drift: 50 % read 2401 first and 2234 later = the phone cooling after the stress / AvgCurrent filter lag);
+  (3) idle MIF ~46 mW (~2 %), inside the noise - IdleMifMs stays default 0.
+- power-s10 v1.6 drain = a breakdown instead: 30 s settle, rows baseline (50 %), brightness 0 %, all clocks minimum
+  with the panel on (governor stopped; LITTLE 442 / MID 507 / G3D 156 / MIF 421), panel dark via panelon.exe 0 (the
+  screen-off state: DCS 28 + governor minimum), baseline again (drift). panelon (MaliG76Wddm tools) built with zig into
+  the validate folder (build-validate-tools.sh). Candidates by expected size once the split is known: CPU idle states
+  (_LPI: cores only WFI today), GPU idle power-down in the KMD, then DVFS floors.
