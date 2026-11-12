@@ -1867,3 +1867,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   hand-off maps back), PanelAorTopUsed 0x0014, idle 778/2000, RxUnexpected 0. Windows offers brightness (75 %).
   Sweep: 100 % -> 0x0014, 50 -> 0x093C, 10 -> 0x0BB8, 0 -> 0x0BC9, 100 -> 0x0014, every write ok. BRIGHTNESS WORKS
   on the S10 (the panel's look at each level still to hear from the user).
+- 15:47 user: brightness OK by eye ("độ sáng ôk r") -> S10 brightness VALIDATED. power-s10 v1.5 drain failed at once: PowerShell reads 0x80000003 as a negative Int32, SetThreadExecutionState(uint) refused it -> v1.5.1 passes [uint32]2147483651 / 2147483648.

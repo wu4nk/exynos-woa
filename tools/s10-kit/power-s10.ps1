@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.5) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v1.5.1) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -46,7 +46,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.5  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v1.5.1  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -299,7 +299,7 @@ switch ($Action) {
     $br0 = if ($br) { $br.CurrentBrightness } else { $null }
     $mif0 = (Get-ItemProperty "$GovKey\Parameters" -ErrorAction SilentlyContinue).IdleMifMs
     Add-Type -Namespace S10 -Name Es -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
-    [void][S10.Es]::SetThreadExecutionState(0x80000003)   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+    [void][S10.Es]::SetThreadExecutionState([uint32]2147483651)   # 0x80000003 = ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED (v1.5.1: a PowerShell 0x8... literal is a negative Int32)
     function Measure-Drain([string]$Name) {
       Start-Sleep -Seconds 10   # settle
       $v = @(); $t0 = Get-Date
@@ -323,7 +323,7 @@ switch ($Action) {
       GovParam IdleMifMs $mif0; Gov 'stop' | Out-Null; Gov 'start' | Out-Null
     }
     if ($brm -and $null -ne $br0) { Invoke-CimMethod -InputObject $brm -MethodName WmiSetBrightness -Arguments @{ Timeout = 0; Brightness = [byte]$br0 } | Out-Null }
-    [void][S10.Es]::SetThreadExecutionState(0x80000000)
+    [void][S10.Es]::SetThreadExecutionState([uint32]2147483648)
     Ok 'settings restored (brightness, IdleMifMs) - send power-report.txt'
   }
   'status' {
