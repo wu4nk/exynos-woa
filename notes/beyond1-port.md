@@ -1840,3 +1840,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - 13:22 kit v2.6 sent (s10-woa-kit-v2.6.zip 096bd02a, repo df6b09f): umd\ = 0222-s10.4, tools\validate\ (+ gputest.exe
   from the gputest build, not build-validate-tools), tools\video\, video\ media. User steps: get-wifi-fw.cmd in TWRP
   -> build-s10.cmd -> video-s10.ps1 install / all. NOT validated on the device yet.
+- 14:11 user ran build-s10.cmd v1.14 from kit v2.6: "cannot find the batch label specified - catsign" after Hsi2c. Cause: my Python edits wrote build-s10.cmd / get-wifi-fw.cmd with LF (cmd.exe label search breaks on LF files); make-kit copies the working tree. Fix: working copies back to CRLF, make-kit.sh forces CRLF on *.cmd/*.bat/*.ps1 (kit v2.6.1, ffcb020); the two .cmd files sent alone.
