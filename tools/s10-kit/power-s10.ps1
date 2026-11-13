@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v2.0.2) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v2.0.3) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -61,7 +61,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v2.0.2  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v2.0.3  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -398,14 +398,28 @@ switch ($Action) {
     Info "HANDS OFF for ~$([int](($devs.Count + 3) * ($Secs + 35) / 60) + 1) min (touch is switched off for one row)."
     # v2.0.2: Disable-PnpDevice said "Not supported" for the Wi-Fi (WMI 0x8004100c) - fall back to pnputil, and a
     # device that cannot be switched off is skipped instead of ending the run
+    # v2.0.3: Wi-Fi / audio / xHCI / touch are "critical system devices" (pnputil refuses to disable them; same on
+    # 2026-11-05, notes/thermal-clocks.md 08:25) -> pnputil /remove-device (driver stopped, D0 exit) and
+    # pnputil /scan-devices brings them back.
+    $script:removed = @{}
     function DevOff($id) {
       try { Disable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop; return $true } catch {}
-      $o = pnputil /disable-device "$id" 2>&1 | Out-String
+      pnputil /disable-device "$id" 2>&1 | Out-Null
       Start-Sleep -Seconds 2
-      if ((Get-PnpDevice -InstanceId $id -ErrorAction SilentlyContinue).Status -ne 'OK') { return $true }
+      if ((Get-PnpDevice -InstanceId $id -ErrorAction SilentlyContinue).Status -eq 'Error') { return $true }
+      $o = pnputil /remove-device "$id" 2>&1 | Out-String
+      Start-Sleep -Seconds 3
+      $st = (Get-PnpDevice -InstanceId $id -ErrorAction SilentlyContinue).Status
+      if ($st -ne 'OK') { $script:removed[$id] = $true; Info "  ($id removed - comes back with a device scan)"; return $true }
       Warn ("cannot switch off {0}: {1}" -f $id, ($o -replace '\s+', ' ').Trim()); return $false
     }
     function DevOn($id) {
+      if ($script:removed[$id]) {
+        pnputil /scan-devices 2>&1 | Out-Null
+        for ($i = 0; $i -lt 15 -and (Get-PnpDevice -InstanceId $id -ErrorAction SilentlyContinue).Status -ne 'OK'; $i++) { Start-Sleep -Seconds 1 }
+        $script:removed.Remove($id)
+        return
+      }
       try { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop } catch { pnputil /enable-device "$id" 2>&1 | Out-Null }
     }
     $downIds = @()   # v2.0.1: not $off - PowerShell names are case-insensitive, that is the -Off switch
