@@ -309,3 +309,13 @@ Windows reads temperatures and can throttle; lowering is fine.
 - 14:45 v2.0.1 devices: baseline 2571 mW (brave running in the background this time), then Disable-PnpDevice on ACPI\SAMS9825\0 (Wi-Fi) -> 'Not supported' (WMI 0x8004100c) and the run ended (everything re-enabled by finally). v2.0.2: pnputil /disable-device fallback, a device that cannot be switched off is skipped.
 - 14:55 v2.0.2 devices (power-report e2c91198, brave in the background again): baseline 2479 mW; Wi-Fi, audio, xHCI, touch = 'Cannot disable critical system device' (pnputil; same as notes/thermal-clocks.md 08:25); Bluetooth off 2474 (-6 mW = nothing); all-off (= only BT) 2530; baseline again 3116 (3 samples). v2.0.3: pnputil /remove-device fallback + /scan-devices to bring them back (the method used for Wi-Fi on 2026-11-05).
 - 15:27 USER: during the v2.0.3 devices run the phone POWERED OFF, and after it came back touch is gone. Cause unknown (which remove-device: Wi-Fi / audio / xHCI / touch; a bugcheck in a remove path?). v2.0.4: touch and xHCI taken out of the candidate list. Asked for: cold restart, then pnputil enable/scan of ACPI\SCSY0761\0 + s10-log (or TWRP log if no input).
+- 15:35 user: no OTG (no keyboard / mouse) -> touch has to come back without any input. Mechanisms found: Windows
+  logs on by itself (unattend AutoLogon, blank password; desktop ~68 s after boot in gpuwatch); the elevated logon
+  task "S10 kit watcher" runs C:\S10Prov\kit-watch.ps1 (RunLevel Highest, -ExecutionPolicy Bypass); S10eAgent's
+  "run:" button action is NOT elevated (KeysRunInSession(..., FALSE)), only taskmgr is; TWRP can write the Windows
+  volume when NTFS is not dirty/hibernated (push-to-windows make_rw: remount / ntfsfix -d / ntfs-3g remove_hiberfile).
+  New tools/s10-kit/touch-rescue.cmd v1.0 (PC, adb, TWRP): backs up kit-watch.ps1 (.s10orig) and replaces it with a
+  one-shot script: pnputil /enable-device + /scan-devices for touch / Wi-Fi / audio / xHCI / BT, /restart-device for
+  touch if still not OK, logs states + System errors / bugcheck / Kernel-PnP events + dump files to
+  C:\S10Prov\touch-rescue.log, restores kit-watch.ps1 in finally. "touch-rescue.cmd log" pulls the log from TWRP.
+  sh -n OK, the generated PowerShell parses (pwsh). NOT run.
