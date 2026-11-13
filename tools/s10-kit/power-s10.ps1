@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v1.9) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v2.0) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -41,6 +41,10 @@
                               v1.9: drain first lists the DIAGNOSTIC background still on (gpu-watch / gpu-fill tasks,
                               UMD/shim logging variables) - the 18:23 log showed gpu-watch spawning PowerShell every
                               ~20 s (5-6 s CPU each) with Defender scanning each start: "gpu-s10.ps1 final" turns it off.
+    .\power-s10.ps1 devices   (v2.0) where the ~2 W idle floor goes: the same discharge-rate rows with ONE device switched
+                              off at a time (Wi-Fi, Bluetooth, audio + amplifier, video decoder, USB host, touch), then
+                              all of them together, baseline before and after. Charger unplugged, hands off ~13 min.
+                              Every device is switched back on at the end, also on Ctrl+C or an error.
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -52,12 +56,12 @@
   Rescue if a boot goes wrong after "enable": TWRP is not needed - the services are plain services; boot, then
   .\power-s10.ps1 disable. If Windows does not come up at all: Safe Mode skips both (they are not boot-start).
 #>
-param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc', 'cpuoc', 'drain')][string]$Action = 'status',
+param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status', 'gpuoc', 'cpuoc', 'drain', 'devices')][string]$Action = 'status',
       [int]$Khz = 806000, [switch]$Off, [int]$Secs = 60, [switch]$Force)
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v1.9  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v2.0  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -360,6 +364,57 @@ switch ($Action) {
     [void][S10.Es]::SetThreadExecutionState([uint32]2147483648)
     }
     Ok 'settings restored (governor, panel, brightness) - send power-report.txt'
+  }
+  'devices' {
+    $bs = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $bs) { Fail 'no BatteryStatus (root\wmi) - battery driver not reporting' }
+    if ($bs.PowerOnline) { Fail 'the charger is plugged in - unplug it (the discharge rate is only measured on battery)' }
+    Add-Type -Namespace S10 -Name Es2 -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+    [void][S10.Es2]::SetThreadExecutionState([uint32]2147483651)
+    function Rate([string]$Name) {
+      Start-Sleep -Seconds 30
+      $v = @(); $t0 = Get-Date
+      while (((Get-Date) - $t0).TotalSeconds -lt $Secs) {
+        $b = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($b -and $b.DischargeRate -gt 0) { $v += $b.DischargeRate }
+        Start-Sleep -Seconds 5
+      }
+      if (-not $v.Count) { Warn "${Name}: no reading"; return $null }
+      $a = ($v | Measure-Object -Average).Average
+      Ok ("{0,-34} {1,5:N0} mW avg ({2} samples, min {3} max {4})" -f $Name, $a, $v.Count, ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum)
+      return $a
+    }
+    # project HIDs (firmware DSDT): WLAN SAMS9825, BTH0 SAMS9829, AUD0 SAMS9827 (ABOX + CS35L40), VIDC SAMS982A,
+    # XHC0 PNP0D10, TSP0 SCSY0761. Storage, display / GPU, I2C, battery are never touched.
+    $cand = @(@('Wi-Fi', 'ACPI\SAMS9825\*'), @('Bluetooth', 'ACPI\SAMS9829\*'), @('audio + amplifier', 'ACPI\SAMS9827\*'),
+              @('video decoder (MFC)', 'ACPI\SAMS982A\*'), @('USB host (xHCI)', 'ACPI\PNP0D10\*'), @('touch', 'ACPI\SCSY0761\*'))
+    $devs = @()
+    foreach ($c in $cand) {
+      $d = Get-PnpDevice -InstanceId $c[1] -ErrorAction SilentlyContinue | Where-Object Status -eq 'OK' | Select-Object -First 1
+      if ($d) { $devs += [pscustomobject]@{ Name = $c[0]; Id = $d.InstanceId } } else { Info "$($c[0]): not running - skipped" }
+    }
+    $top = Get-Process | Where-Object { $_.CPU } | Sort-Object CPU -Descending | Select-Object -First 6 | ForEach-Object { '{0} {1:N0}s' -f $_.Name, $_.CPU }
+    Info "CPU time since start (top 6): $($top -join ', ')"
+    Info "HANDS OFF for ~$([int](($devs.Count + 3) * ($Secs + 35) / 60) + 1) min (touch is switched off for one row)."
+    $off = @()
+    try {
+      $base = Rate 'baseline'
+      foreach ($d in $devs) {
+        Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction Stop; $off += $d.Id
+        $r = Rate "$($d.Name) OFF"
+        if ($null -ne $r -and $null -ne $base) { Info ("  -> {0}: {1:N0} mW" -f $d.Name, ($base - $r)) }
+        Enable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $off = @($off | Where-Object { $_ -ne $d.Id })
+      }
+      foreach ($d in $devs) { Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $off += $d.Id }
+      $all = Rate 'all of them OFF'
+      if ($null -ne $all -and $null -ne $base) { Info ("  -> together: {0:N0} mW" -f ($base - $all)) }
+    } finally {
+      foreach ($id in $off) { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction SilentlyContinue }
+      if ($off.Count) { Info "switched back on: $($off.Count) device(s)" }
+    }
+    try { $end = Rate 'baseline again (drift check)' } finally { [void][S10.Es2]::SetThreadExecutionState([uint32]2147483648) }
+    foreach ($d in $devs) { $s2 = (Get-PnpDevice -InstanceId $d.Id -ErrorAction SilentlyContinue).Status; if ($s2 -ne 'OK') { Warn "$($d.Name) is '$s2' - reboot" } }
+    Ok 'done - send power-report.txt'
   }
   'status' {
     foreach ($s in 'S10ePower', 'S10eGovernor') {

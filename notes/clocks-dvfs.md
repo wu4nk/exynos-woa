@@ -293,3 +293,15 @@ Windows reads temperatures and can throttle; lowering is fine.
   PEP (PoFx plug-in, boot-start, PSCI CPU_SUSPEND from IDLE_EXECUTE) - a large, boot-hazard project. Estimate of its
   worth first: 6 cores in WFI at minimum clocks are ~0.1-0.3 W, not the ~2 W floor - so measure the floor again
   without the diagnostic background before deciding.
+- 2026-11-13 14:37 DEVICE drain (power-report b1b2de27; the user ran v1.7, governor before Eco - still MID 2314 / G3D
+  806 at the stop; background presumably cleaned by gpu-s10 final + reboot): baseline 50 % 1957 mW, brightness 0 %
+  2058, CPU+GPU minimum (MIF 2093, panel on) 2081, panel dark (screen-off state, MIF 421) 1999, baseline again 2091.
+  => FLAT ~2.0 W: panel on/off, brightness, CPU/GPU clocks and MIF make no measurable difference at idle (cores and
+  the GPU are clock-gated when idle; the earlier 0.7-1.3 W "governor" difference was the gpu-watch background running
+  at high clocks). The earlier 3-4 W baselines were the diagnostic background. Eco therefore matters for background
+  bursts only, not for true idle.
+  The ~2 W floor is constant and independent of everything tried: a device / block that is always on. A phone SoC
+  idles at a few hundred mW, so it is not WFI-vs-deep-idle of 6 cores (~0.1-0.3 W). power-s10 v2.0 "devices": A/B with
+  one device disabled at a time (Wi-Fi SAMS9825, BT SAMS9829, audio+CS35L40 SAMS9827, MFC SAMS982A, xHCI PNP0D10,
+  touch SCSY0761), then all, baseline before/after, re-enabled in finally. Not covered by it: the M4 cluster (never
+  started - is its power domain on?), USB VBUS boost (xHCI host mode), DSIM/DECON, UFS link power.
