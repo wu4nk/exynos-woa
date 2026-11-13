@@ -327,3 +327,16 @@ Windows reads temperatures and can throttle; lowering is fine.
   A clean Windows restart clears it, but needs input (power menu is a GUI; buttons.ini lives on C:). Next: read-only
   diagnosis - get-logs-twrp.cmd (SYSTEM hive + System.evtx, read-only) to see why touch does not start; ask whether
   touch works in TWRP and whether a Vol Down + Power cold restart was tried.
+- 15:42 get-logs-twrp zip (73c5e736): only the ESP part - /data was "fuseblk ro" but nothing under it was found
+  (the touch-rescue make_rw had unmounted /data and re-mounted it; the windows\ folders came back empty) -> no
+  SYSTEM hive / evtx this time. ESP: UEFILOG of the last Windows boot: TouchPowerDxe identical to a good boot
+  (L19 tsp_io and L27 tsp_avdd enabled 0x2C->0xEC / 0x30->0xF0, settled 70 ms, done) = the touch rails are powered
+  by the UEFI as always. WINPRAM.BIN (the Windows session before it, bit-rotted by the forced restart): S10eDiag ring
+  full of "keys: power.short -> screen / power.long -> powermenu / voldown.long" (the user trying to get out without
+  touch) and the touch PRAM page (+0xE000) all ZERO = S10Touch's PrepareHardware (S10tPramInit is its first call)
+  never ran in that session: the touch device was not started at all (not present / disabled / driver not loading),
+  not a controller problem. Need the SYSTEM hive (Enum\ACPI\SCSY0761\0 ConfigFlags / problem) - TWRP must be
+  restarted (Reboot > Recovery) for a clean read-only mount, then get-logs-twrp again.
+- Review note (S10Touch 1.1.1.0, own follow-up): TouchActivityClose (ReleaseHardware) NULLs gTouchActivity and closes
+  the handle while TouchActivityPulse may still run from the input path - check that the worker / interrupt are
+  stopped before ReleaseHardware (D0Exit ordering), else a remove can KeSetEvent a freed event.
