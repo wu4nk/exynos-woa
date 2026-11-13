@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v2.0.3) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v2.0.4) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -61,7 +61,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v2.0.3  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v2.0.4  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -386,8 +386,10 @@ switch ($Action) {
     }
     # project HIDs (firmware DSDT): WLAN SAMS9825, BTH0 SAMS9829, AUD0 SAMS9827 (ABOX + CS35L40), VIDC SAMS982A,
     # XHC0 PNP0D10, TSP0 SCSY0761. Storage, display / GPU, I2C, battery are never touched.
+    # v2.0.4: touch and the USB host are NOT taken out any more - 2026-11-13 15:27 the phone powered off during a
+    # v2.0.3 run and came back without touch; they are the input devices needed to recover.
     $cand = @(@('Wi-Fi', 'ACPI\SAMS9825\*'), @('Bluetooth', 'ACPI\SAMS9829\*'), @('audio + amplifier', 'ACPI\SAMS9827\*'),
-              @('video decoder (MFC)', 'ACPI\SAMS982A\*'), @('USB host (xHCI)', 'ACPI\PNP0D10\*'), @('touch', 'ACPI\SCSY0761\*'))
+              @('video decoder (MFC)', 'ACPI\SAMS982A\*'))
     $devs = @()
     foreach ($c in $cand) {
       $d = Get-PnpDevice -InstanceId $c[1] -ErrorAction SilentlyContinue | Where-Object Status -eq 'OK' | Select-Object -First 1
