@@ -319,3 +319,11 @@ Windows reads temperatures and can throttle; lowering is fine.
   touch if still not OK, logs states + System errors / bugcheck / Kernel-PnP events + dump files to
   C:\S10Prov\touch-rescue.log, restores kit-watch.ps1 in finally. "touch-rescue.cmd log" pulls the log from TWRP.
   sh -n OK, the generated PowerShell parses (pwsh). NOT run.
+- 15:38 touch-rescue.cmd v1.0 on the user's PC: /data read-only; mount.ntfs: "The disk contains an unclean file
+  system (0, 0). Metadata kept in Windows cache, refused to mount ... NTFS partition is in an unsafe state" (the
+  power-off / forced restart left NTFS dirty); no ntfsfix in this TWRP, ntfs3 force mount failed too -> nothing
+  written (script failed safe). Building a static ntfsfix to clear the dirty flag was refused by the session's
+  permission check (external code) - and forcing a dirty NTFS from Linux risks the volume anyway, so not pursued.
+  A clean Windows restart clears it, but needs input (power menu is a GUI; buttons.ini lives on C:). Next: read-only
+  diagnosis - get-logs-twrp.cmd (SYSTEM hive + System.evtx, read-only) to see why touch does not start; ask whether
+  touch works in TWRP and whether a Vol Down + Power cold restart was tried.
