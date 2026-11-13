@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v2.0) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v2.0.1) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -61,7 +61,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v2.0  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v2.0.1  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -396,21 +396,21 @@ switch ($Action) {
     $top = Get-Process | Where-Object { $_.CPU } | Sort-Object CPU -Descending | Select-Object -First 6 | ForEach-Object { '{0} {1:N0}s' -f $_.Name, $_.CPU }
     Info "CPU time since start (top 6): $($top -join ', ')"
     Info "HANDS OFF for ~$([int](($devs.Count + 3) * ($Secs + 35) / 60) + 1) min (touch is switched off for one row)."
-    $off = @()
+    $downIds = @()   # v2.0.1: not $off - PowerShell names are case-insensitive, that is the -Off switch
     try {
       $base = Rate 'baseline'
       foreach ($d in $devs) {
-        Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction Stop; $off += $d.Id
+        Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction Stop; $downIds += $d.Id
         $r = Rate "$($d.Name) OFF"
         if ($null -ne $r -and $null -ne $base) { Info ("  -> {0}: {1:N0} mW" -f $d.Name, ($base - $r)) }
-        Enable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $off = @($off | Where-Object { $_ -ne $d.Id })
+        Enable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $downIds = @($downIds | Where-Object { $_ -ne $d.Id })
       }
-      foreach ($d in $devs) { Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $off += $d.Id }
+      foreach ($d in $devs) { Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $downIds += $d.Id }
       $all = Rate 'all of them OFF'
       if ($null -ne $all -and $null -ne $base) { Info ("  -> together: {0:N0} mW" -f ($base - $all)) }
     } finally {
-      foreach ($id in $off) { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction SilentlyContinue }
-      if ($off.Count) { Info "switched back on: $($off.Count) device(s)" }
+      foreach ($id in $downIds) { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction SilentlyContinue }
+      if ($downIds.Count) { Info "switched back on: $($downIds.Count) device(s)" }
     }
     try { $end = Rate 'baseline again (drift check)' } finally { [void][S10.Es2]::SetThreadExecutionState([uint32]2147483648) }
     foreach ($d in $devs) { $s2 = (Get-PnpDevice -InstanceId $d.Id -ErrorAction SilentlyContinue).Status; if ($s2 -ne 'OK') { Warn "$($d.Name) is '$s2' - reboot" } }

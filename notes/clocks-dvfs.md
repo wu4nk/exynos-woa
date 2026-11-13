@@ -305,3 +305,4 @@ Windows reads temperatures and can throttle; lowering is fine.
   one device disabled at a time (Wi-Fi SAMS9825, BT SAMS9829, audio+CS35L40 SAMS9827, MFC SAMS982A, xHCI PNP0D10,
   touch SCSY0761), then all, baseline before/after, re-enabled in finally. Not covered by it: the M4 cluster (never
   started - is its power domain on?), USB VBUS boost (xHCI host mode), DSIM/DECON, UFS link power.
+- 14:43 power-s10 v2.0 devices failed at once: $off = @() hit the script's [switch]$Off (case-insensitive names) -> v2.0.1 $downIds. MFC row skipped (VIDC not started: Exynos9820Mfc not installed on the phone yet).
