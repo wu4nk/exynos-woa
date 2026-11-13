@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v2.0.1) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v2.0.2) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -61,7 +61,7 @@ param([Parameter(Position = 0)][ValidateSet('test', 'enable', 'disable', 'status
 $ErrorActionPreference = 'Stop'
 $Report = 'C:\S10Prov\power-report.txt'
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"power-s10.ps1 v2.0.1  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
+"power-s10.ps1 v2.0.2  $Action  $(Get-Date -Format s)" | Set-Content $Report -Encoding ascii
 function Say($tag, $m, $c) { Write-Host "[$tag] $m" -ForegroundColor $c; "[$tag] $m" | Add-Content $Report }
 function Ok($m)   { Say ' OK ' $m Green }
 function Info($m) { Say 'INFO' $m Gray }
@@ -396,20 +396,33 @@ switch ($Action) {
     $top = Get-Process | Where-Object { $_.CPU } | Sort-Object CPU -Descending | Select-Object -First 6 | ForEach-Object { '{0} {1:N0}s' -f $_.Name, $_.CPU }
     Info "CPU time since start (top 6): $($top -join ', ')"
     Info "HANDS OFF for ~$([int](($devs.Count + 3) * ($Secs + 35) / 60) + 1) min (touch is switched off for one row)."
+    # v2.0.2: Disable-PnpDevice said "Not supported" for the Wi-Fi (WMI 0x8004100c) - fall back to pnputil, and a
+    # device that cannot be switched off is skipped instead of ending the run
+    function DevOff($id) {
+      try { Disable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop; return $true } catch {}
+      $o = pnputil /disable-device "$id" 2>&1 | Out-String
+      Start-Sleep -Seconds 2
+      if ((Get-PnpDevice -InstanceId $id -ErrorAction SilentlyContinue).Status -ne 'OK') { return $true }
+      Warn ("cannot switch off {0}: {1}" -f $id, ($o -replace '\s+', ' ').Trim()); return $false
+    }
+    function DevOn($id) {
+      try { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction Stop } catch { pnputil /enable-device "$id" 2>&1 | Out-Null }
+    }
     $downIds = @()   # v2.0.1: not $off - PowerShell names are case-insensitive, that is the -Off switch
     try {
       $base = Rate 'baseline'
       foreach ($d in $devs) {
-        Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction Stop; $downIds += $d.Id
+        if (-not (DevOff $d.Id)) { continue }
+        $downIds += $d.Id
         $r = Rate "$($d.Name) OFF"
         if ($null -ne $r -and $null -ne $base) { Info ("  -> {0}: {1:N0} mW" -f $d.Name, ($base - $r)) }
-        Enable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $downIds = @($downIds | Where-Object { $_ -ne $d.Id })
+        DevOn $d.Id; $downIds = @($downIds | Where-Object { $_ -ne $d.Id })
       }
-      foreach ($d in $devs) { Disable-PnpDevice -InstanceId $d.Id -Confirm:$false -ErrorAction SilentlyContinue; $downIds += $d.Id }
+      foreach ($d in $devs) { if (DevOff $d.Id) { $downIds += $d.Id } }
       $all = Rate 'all of them OFF'
       if ($null -ne $all -and $null -ne $base) { Info ("  -> together: {0:N0} mW" -f ($base - $all)) }
     } finally {
-      foreach ($id in $downIds) { Enable-PnpDevice -InstanceId $id -Confirm:$false -ErrorAction SilentlyContinue }
+      foreach ($id in $downIds) { DevOn $id }
       if ($downIds.Count) { Info "switched back on: $($downIds.Count) device(s)" }
     }
     try { $end = Rate 'baseline again (drift check)' } finally { [void][S10.Es2]::SetThreadExecutionState([uint32]2147483648) }

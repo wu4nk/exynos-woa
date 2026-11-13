@@ -306,3 +306,4 @@ Windows reads temperatures and can throttle; lowering is fine.
   touch SCSY0761), then all, baseline before/after, re-enabled in finally. Not covered by it: the M4 cluster (never
   started - is its power domain on?), USB VBUS boost (xHCI host mode), DSIM/DECON, UFS link power.
 - 14:43 power-s10 v2.0 devices failed at once: $off = @() hit the script's [switch]$Off (case-insensitive names) -> v2.0.1 $downIds. MFC row skipped (VIDC not started: Exynos9820Mfc not installed on the phone yet).
+- 14:45 v2.0.1 devices: baseline 2571 mW (brave running in the background this time), then Disable-PnpDevice on ACPI\SAMS9825\0 (Wi-Fi) -> 'Not supported' (WMI 0x8004100c) and the run ended (everything re-enabled by finally). v2.0.2: pnputil /disable-device fallback, a device that cannot be switched off is skipped.
