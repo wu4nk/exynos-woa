@@ -18,6 +18,19 @@ flash-windows.cmd**. Chỉ khác layout máy, bộ driver và UEFI.
 | `new-cert.ps1` | Chứng chỉ test "z3s WoA Test" — **dùng chung với kit z3s**, có rồi thì khỏi chạy |
 | `beyond1lte-uefi-v*.img` | UEFI cho S10 (make-windows tự lấy bản mới nhất) |
 
+## 0. Cài lại Windows hoàn chỉnh (kit v2.8, make-windows v2.4-s10)
+
+Bản dựng ra đã ở **trạng thái cuối**: GPU Mali (KMD 1.0.72.2 + UMD s10.4, độ sáng), S10ePower + governor
+(GPU 806 MHz, A55 2002 MHz), giải mã video (nếu có `mfc\mfc_fw.bin`), không còn task/biến chẩn đoán nào.
+
+1. Máy ở TWRP: `get-wifi-fw.cmd` (lấy firmware WiFi + `mfc_fw.bin`).
+2. Mở **cửa sổ EWDK mới** (không `set S10_KEEP_UFS` / `S10_GPU` gì cả), `build-s10.cmd` → `out\` + `out-gpu\`.
+3. PowerShell Admin: `.\make-windows.ps1 -Source <iso> -UserName Anh` → `C:\s10\windows\`.
+4. TWRP: chạy `C:\s10\windows\flash-windows.cmd` trên PC.
+5. Lần đầu vào desktop máy **tự khởi động lại 1 lần** (sau 20 s) để chuyển màn hình sang GPU Mali.
+
+`-NoOc` = xung gốc, `-NoGpu` = không GPU, `-NoPower` = không S10ePower.
+
 ## 1. Build driver (cửa sổ EWDK)
 
 ```bat

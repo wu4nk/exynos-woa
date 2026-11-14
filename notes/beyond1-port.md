@@ -1868,3 +1868,21 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   Sweep: 100 % -> 0x0014, 50 -> 0x093C, 10 -> 0x0BB8, 0 -> 0x0BC9, 100 -> 0x0014, every write ok. BRIGHTNESS WORKS
   on the S10 (the panel's look at each level still to hear from the user).
 - 15:47 user: brightness OK by eye ("độ sáng ôk r") -> S10 brightness VALIDATED. power-s10 v1.5 drain failed at once: PowerShell reads 0x80000003 as a negative Int32, SetThreadExecutionState(uint) refused it -> v1.5.1 passes [uint32]2147483651 / 2147483648.
+
+## 2026-11-15 02:35 user: reinstall Windows - "build 1 bản win hoàn thiện, chạy gpu final sẵn luôn"
+- (Context: touch lost after the power-s10 devices run 11-13; NTFS dirty, no input -> the user chose a reinstall.)
+- make-windows v2.4-s10: out-gpu\MaliG76Wddm (KMD 1.0.72.2 + UMD 0222-s10.4, checked: .sys, maliumd.dll, catalog,
+  DriverVer, maliumd hash printed) dism /Add-Driver'ed into the image after out\; offline GraphicsDrivers TdrDelay 10,
+  TdrDdiDelay 20, Scheduler EnablePreemption 0 (= gpu-s10 Set-TdrDelay $true); S10ePower files -> C:\S10Prov\power;
+  flags C:\S10Prov\final-gpu.flg / final-power.flg / final-oc.flg; kit copy gains gpu-s10 / power-s10 / panel-s10 /
+  video-s10 / gpu-validate / drag-probe + out-gpu\ + tools\ + video\. Switches -NoGpu -NoPower -NoOc -GpuDir.
+- Why the full mode is NOT preset offline: the service key MaliG76Wddm only exists after the PnP install in Setup,
+  and a full-adapter start during specialize (live device start straight into WDDM2 + GPU) was never exercised -
+  every full-mode start so far came from a reboot. So Setup/OOBE run display-only (INF NOCLOBBER defaults 0/0, the
+  path every install took), SetupComplete.cmd v1.2 writes FullAdapter 1 / GpuEnable 1 / Wddm2 5 / DirectFlip 1 and an
+  HKLM RunOnce "shutdown /r /t 20" (no restart inside SetupComplete itself) -> first logon restarts once into the GPU.
+  Power: sc create S10ePower (kernel, auto) + S10eGovernor (own, auto, depends S10ePower) from C:\S10Prov\power,
+  AllowSend/AllowTmu 1, GpuOc 806000 + CpuOc 1 (validated 11-12), governor Parameters = power-s10 enable values with
+  MaxLittle 2002000 / MaxG3d 806000. FOR-list pairs quoted ("=" is a FOR separator).
+- build-s10 v1.15: GPU built by default (S10_GPU=0 skips). README section 0.
+- pwsh parse of make-windows OK; NOT run (needs the user's PC: ISO, DISM).

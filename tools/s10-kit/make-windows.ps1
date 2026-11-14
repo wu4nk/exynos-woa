@@ -1,5 +1,5 @@
 <#
-  make-windows.ps1 (v2.1-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
+  make-windows.ps1 (v2.4-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
   SM-G973F), built on the PC. The z3s (S20 Ultra) make-windows v2.1 with the S10's
   layout, drivers and UEFI; everything else - VHDX, lite, registry, unattend, BCD,
   pieces + flash-windows.cmd - is the same pipeline.
@@ -16,6 +16,19 @@
       its UFSBRD01 identity, Exynos9820Hsi2c, S10Touch, S10eBattery, Exynos9820WlanCx, Exynos9820Audio).
     - UEFI: newest beyond1lte-uefi-v*.img; flash-windows.cmd refuses a phone whose
       bootloader is not G973*.
+
+  v2.4-s10 (2026-11-15, "a finished Windows, GPU final already"): the image comes up in the kit's FINISHED state, no
+  gpu-s10.ps1 / power-s10.ps1 steps on the phone:
+    - GPU: out-gpu\MaliG76Wddm (build-s10.cmd with S10_GPU=1: KMD 1.0.72.2 + UMD 0222-s10.4 in the package) is added
+      to the image; TDR 10 / 20 s and GPU preemption off are written offline (what "gpu-s10.ps1 final" sets). The
+      first boot (Setup / OOBE) runs it display-only - the proven path; SetupComplete.cmd then writes the final mode
+      (FullAdapter 1, GpuEnable 1, Wddm2 5, DirectFlip 1) and the first logon restarts ONCE (20 s notice): from then
+      the desktop is on the Mali, brightness works. No diagnostic task / variable is ever set. -NoGpu leaves it out.
+    - power: S10ePower + S10eGovernor installed and started at boot (= "power-s10.ps1 enable") with the clocks this
+      S10 passed its tests at: GPU 806 MHz (gpuoc), A55 2002 MHz (cpuoc) - -NoOc for stock clocks, -NoPower for none.
+    - video: Exynos9820Mfc is in out\ (and so in the image) when build-s10.cmd found mfc\mfc_fw.bin.
+    - the in-Windows scripts (gpu-s10, power-s10, panel-s10, video-s10, gpu-validate) + tools\ + video\ in C:\S10Prov\kit.
+  Rescue as always: TWRP -> \S10EDIAG\nogpu.flg on the ESP hides the GPU for one boot.
 
   Same idea as the S9+ port: no repartitioning. Windows (NTFS) goes into
   `userdata`, `cache` becomes the FAT32 boot partition (ESP). The GPT stays as is.
@@ -71,12 +84,16 @@ param(
   [string] $Uefi      = '',         # UEFI .img (beyond1lte-uefi-vX.Y.Z.img); default: newest one found
   [switch] $NoUefi,                 # do not put a UEFI into the flash kit
   [switch] $NoWifi,                 # v2.3: build without WiFi (otherwise Exynos9820WlanCx + bcm4375\ firmware are required)
+  [string] $GpuDir    = (Join-Path $PSScriptRoot 'out-gpu'),   # v2.4: build-s10.cmd S10_GPU=1 output
+  [switch] $NoGpu,                  # v2.4: no MaliG76Wddm in the image (Microsoft Basic Display)
+  [switch] $NoPower,                # v2.4: no S10ePower / S10eGovernor
+  [switch] $NoOc,                   # v2.4: stock clocks (no GPU 806 / A55 2002 MHz)
   # GPT unique GUIDs of THIS phone's cache (sda31) and userdata (sda34). The BCD points
   # at them. Another S10: read its GPT (entries 31 / 34, +16) and pass its values.
   [string] $EspGuidText = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251',
   [string] $WinGuidText = '712bcd12-3071-4f1c-8951-9c75a5ecca08'
 )
-$ScriptVersion = 'make-windows v2.3-s10'
+$ScriptVersion = 'make-windows v2.4-s10'
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
@@ -180,6 +197,26 @@ try {
   if (-not $NoWifi -and -not ($infs | Where-Object Name -eq 'Exynos9820WlanCx.inf')) {
     Fail "Exynos9820WlanCx.inf not in $DriverDir - run build-s10.cmd (or -NoWifi to build an image without WiFi)"
   }
+  # v2.4: the GPU package (out-gpu\, NOT out\: build-s10 keeps it apart) and the power service files
+  $GpuInf = $null
+  if (-not $NoGpu) {
+    $GpuInf = Join-Path $GpuDir 'MaliG76Wddm\MaliG76Wddm.inf'
+    if (-not (Test-Path $GpuInf)) { Fail "no $GpuInf - build with build-s10.cmd after 'set S10_GPU=1' (or -NoGpu)" }
+    foreach ($f in 'MaliG76Wddm.sys', 'maliumd.dll') {
+      if (-not (Test-Path (Join-Path (Split-Path $GpuInf) $f))) { Fail "$f missing in $(Split-Path $GpuInf) - rebuild with S10_GPU=1 (umd\ must hold the UMD)" }
+    }
+    if (-not (Get-ChildItem (Split-Path $GpuInf) -Filter *.cat)) { Fail "no catalog in $(Split-Path $GpuInf) - the build did not sign it" }
+    $gv = (Select-String -Path $GpuInf -Pattern '^\s*DriverVer\s*=\s*[^,]+,\s*([\d.]+)' | Select-Object -First 1).Matches.Groups[1].Value
+    if ([version]$gv -lt [version]'1.0.72.2') { Warn "MaliG76Wddm $gv - 1.0.72.2+ is the one with the S10 brightness" }
+    $uh = (Get-FileHash (Join-Path (Split-Path $GpuInf) 'maliumd.dll') -Algorithm SHA256).Hash.ToLower().Substring(0, 8)
+    Ok "GPU: MaliG76Wddm $gv, maliumd.dll $uh (0222-s10.4 = 572f69d7)"
+  }
+  $PowerDir = Join-Path $DriverDir 'S10ePower'
+  if ($NoPower) { $PowerDir = $null }
+  elseif (-not (Test-Path (Join-Path $PowerDir 'S10ePower.sys')) -or -not (Test-Path (Join-Path $PowerDir 's10egovernor.exe'))) {
+    Warn "no $PowerDir\S10ePower.sys / s10egovernor.exe - clocks stay at the UEFI's boot rates"; $PowerDir = $null
+  } else { Ok "power: S10ePower + S10eGovernor$(if ($NoOc) { ', stock clocks' } else { ', GPU 806 / A55 2002 MHz' })" }
+  if (-not ($infs | Where-Object Name -eq 'Exynos9820Mfc.inf')) { Warn 'Exynos9820Mfc.inf not in out\ - no hardware video decode (get-wifi-fw.cmd v1.2 + build-s10.cmd v1.14)' }
   $DiagDir = Join-Path $DriverDir 'S10eDiag'
   if (-not (Test-Path (Join-Path $DiagDir 'S10eAgent.exe'))) { Warn "no $DiagDir\S10eAgent.exe - hardware keys (power / Bixby / volume) will not work" ; $DiagDir = $null }
   # v2.3: the WiFi firmware (get-wifi-fw.cmd output) is looked for in every usual place, and required unless -NoWifi
@@ -397,6 +434,12 @@ try {
   }
   if ($missing.Count) { Fail "not in the image after Add-Driver: $($missing -join ', ')" }
   Ok "all $($infs.Count) driver packages of $DriverDir are in the image"
+  if ($GpuInf) {
+    & dism.exe "/Image:${W}:\" /Add-Driver "/Driver:$GpuInf" /ForceUnsigned
+    if ($LASTEXITCODE) { Fail "dism /Add-Driver MaliG76Wddm ($LASTEXITCODE)" }
+    if (-not (Get-WindowsDriver -Path "${W}:\" | Where-Object { (Split-Path $_.OriginalFileName -Leaf) -eq 'MaliG76Wddm.inf' })) { Fail 'MaliG76Wddm.inf not in the image after Add-Driver' }
+    Ok 'MaliG76Wddm (GPU + its user-mode driver) is in the image'
+  }
 
   # S10 kit v1.1: WiFi blobs where Exynos9820WlanCx looks for them, and the key agent installed
   # by SetupComplete.cmd at the end of Setup (as the S10e's s10e-setupcomplete.cmd does).
@@ -415,8 +458,20 @@ try {
   Copy-Item $DriverDir "$kit\out" -Recurse -Force
   if ($WifiFw) { Copy-Item $WifiFw "$kit\bcm4375" -Recurse -Force }
   Copy-Item (Join-Path $PSScriptRoot 'setup') "$kit\setup" -Recurse -Force
-  foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1', 'kit-watch.ps1') {
+  foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1', 'kit-watch.ps1',
+               'gpu-s10.ps1', 'power-s10.ps1', 'panel-s10.ps1', 'video-s10.ps1', 'gpu-validate.ps1', 'drag-probe.ps1') {
     if (Test-Path (Join-Path $PSScriptRoot $f)) { Copy-Item (Join-Path $PSScriptRoot $f) $kit -Force }
+  }
+  # v2.4: the GPU package and the test tools / media next to the scripts that use them
+  if ($GpuInf) { Copy-Item $GpuDir "$kit\out-gpu" -Recurse -Force }
+  foreach ($d in 'tools', 'video') { if (Test-Path (Join-Path $PSScriptRoot $d)) { Copy-Item (Join-Path $PSScriptRoot $d) "$kit\$d" -Recurse -Force } }
+  # v2.4: what SetupComplete.cmd finishes on the phone (flags) + the power service files where power-s10 keeps them
+  if ($GpuInf) { '' | Set-Content "$prov\final-gpu.flg" }
+  if ($PowerDir) {
+    New-Item -ItemType Directory -Force "$prov\power" | Out-Null
+    Copy-Item (Join-Path $PowerDir '*') "$prov\power" -Force
+    '' | Set-Content "$prov\final-power.flg"
+    if (-not $NoOc) { '' | Set-Content "$prov\final-oc.flg" }
   }
   # one-click log collector on everyone's desktop (C:\log.zip -> TWRP: adb pull /data/log.zip)
   if (Test-Path (Join-Path $PSScriptRoot 's10-log.cmd')) {
@@ -445,6 +500,11 @@ try {
   $CS = 'z3s_SYSTEM\ControlSet{0:D3}' -f $cur
 
   RegSet "$CS\Services\mountmgr" 'NoAutoMount' REG_DWORD 1                   # no letters for 30 Android partitions
+  if ($GpuInf) {   # v2.4: = gpu-s10.ps1 Set-TdrDelay $true (part of "final")
+    RegSet "$CS\Control\GraphicsDrivers" 'TdrDelay' REG_DWORD 10
+    RegSet "$CS\Control\GraphicsDrivers" 'TdrDdiDelay' REG_DWORD 20
+    RegSet "$CS\Control\GraphicsDrivers\Scheduler" 'EnablePreemption' REG_DWORD 0
+  }
   RegSet "$CS\Control\Session Manager\Power" 'HiberbootEnabled' REG_DWORD 0  # no fast startup: every boot is cold
   RegSet "$CS\Control\Power" 'HibernateEnabled' REG_DWORD 0
   RegSet "$CS\Control\Power" 'HibernateEnabledDefault' REG_DWORD 0
