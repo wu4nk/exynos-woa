@@ -1886,3 +1886,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   MaxLittle 2002000 / MaxG3d 806000. FOR-list pairs quoted ("=" is a FOR separator).
 - build-s10 v1.15: GPU built by default (S10_GPU=0 skips). README section 0.
 - pwsh parse of make-windows OK; NOT run (needs the user's PC: ISO, DISM).
+- 02:39 sent kit v2.8 (s10-woa-kit-v2.8.zip 23e9ca51, repo b3bf99b, UEFI v0.2.2 inside). NOT run.
