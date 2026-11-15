@@ -139,11 +139,13 @@ VOID S10eVibUnmap(_Inout_ PS10E_BATT_FDO Fdo)
     Fdo->VibTinHz = 0;
 }
 
-/* The PWM's bus clock must be on before any PWM access: automatic gating (wakes on access), or manual + enabled. */
+/* The PWM's bus clock must not be gated off. [K] cal-if ra.c ra_get_gate: "MANUAL 1 : CG_VALUE control, 0 :
+   ENABLE_AUTOMATIC_CLKGATING control" - with MANUAL 0 the clock passes unless automatic gating is on, and automatic
+   gating (HWACG) wakes it on access. Only MANUAL 1 + CG_VAL 0 is off. (1.0.0.8 also refused MANUAL 0 + AUTO 0 -
+   the phone's state, gate 0x00200000, 2026-11-16 - which ra_get_gate reports as passing.) */
 static BOOLEAN VibClockOn(_In_ ULONG Gate)
 {
-    return ((Gate & S10E_CMU_GATE_AUTO) != 0) ||
-           (((Gate & S10E_CMU_GATE_MANUAL) != 0) && ((Gate & S10E_CMU_GATE_CG_VAL) != 0));
+    return !(((Gate & S10E_CMU_GATE_MANUAL) != 0) && ((Gate & S10E_CMU_GATE_CG_VAL) == 0));
 }
 
 /* Channel 1 counts down from 0xFFFF once (no autoreload) while the pin is still on its old function; the counts

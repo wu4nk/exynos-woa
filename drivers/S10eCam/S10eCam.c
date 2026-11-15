@@ -207,7 +207,9 @@ static VOID SleepUs(ULONG Us)
     (VOID)KeDelayExecutionThread(KernelMode, FALSE, &t);
 }
 
-static BOOLEAN ClkOn(ULONG Gate) { return (Gate & CG_AUTO) != 0 || ((Gate & CG_MAN) != 0 && (Gate & CG_VAL) != 0); }
+/* K cal-if ra.c ra_get_gate: MANUAL 1 -> CG_VAL decides; MANUAL 0 -> the clock passes unless automatic gating is on,
+   which (HWACG) wakes it on access. Only MANUAL 1 + CG_VAL 0 is off (the PWM gate read 0x00200000 on 2026-11-16). */
+static BOOLEAN ClkOn(ULONG Gate) { return !((Gate & CG_MAN) != 0 && (Gate & CG_VAL) == 0); }
 
 static volatile UCHAR *Map(ULONGLONG Pa, ULONG Size)
 {

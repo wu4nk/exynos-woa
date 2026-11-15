@@ -1,7 +1,7 @@
 <#
-  vibra-s10.ps1 (v1.0) - Galaxy S10: vibration motor test (S10eBattery 1.0.0.8+, IOCTL_S10E_VIBRATE; notes/s10-vibration.md).
+  vibra-s10.ps1 (v1.1) - Galaxy S10: vibration motor test (S10eBattery 1.0.0.9+, IOCTL_S10E_VIBRATE; notes/s10-vibration.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder:
-      .\vibra-s10.ps1 install          put out\S10eBattery (1.0.0.8, with Vibra.c) in place of the running battery
+      .\vibra-s10.ps1 install          put out\S10eBattery (1.0.0.9, with Vibra.c) in place of the running battery
                                        driver (pnputil; no reboot, the battery reading restarts by itself)
       .\vibra-s10.ps1                  test: 3 short pulses, then 1 s at half strength - FEEL the phone
       .\vibra-s10.ps1 -Ms 500 -Strength 100     one run: duration 1..10000 ms, strength 1..100 %
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Continue'
 $Out = 'C:\S10Prov\vibra-s10.txt'
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 if ($Ms -gt 0) { $Action = 'run' }
-"vibra-s10.ps1 v1.0  $Action  $(Get-Date -Format s)" | Set-Content $Out -Encoding ascii
+"vibra-s10.ps1 v1.1  $Action  $(Get-Date -Format s)" | Set-Content $Out -Encoding ascii
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
 
 if ($Action -eq 'install') {
@@ -27,7 +27,7 @@ if ($Action -eq 'install') {
   pnputil /add-driver $inf /install 2>&1 | ForEach-Object { W "  $_" }
   Start-Sleep -Seconds 5
   $d = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | Where-Object { $_.DeviceName -match 'S10e|Battery' -and $_.InfName -and $_.DriverVersion -like '1.0.0.*' } | Select-Object -First 1
-  W "running: $($d.DeviceName) $($d.DriverVersion)  (needs 1.0.0.8)"
+  W "running: $($d.DeviceName) $($d.DriverVersion)  (needs 1.0.0.9)"
   $b = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
   W "battery: $($b.EstimatedChargeRemaining) %"
   W 'next: .\vibra-s10.ps1'
@@ -74,7 +74,7 @@ public static class S10Vib {
 }
 
 function Show($b, $label) {
-  if (-not $b) { W "$label : no S10eBattery 1.0.0.8 answered ($([S10Vib]::Error)) - run '.\vibra-s10.ps1 install' first"; return $false }
+  if (-not $b) { W "$label : no S10eBattery 1.0.0.9 answered ($([S10Vib]::Error)) - run '.\vibra-s10.ps1 install' first"; return $false }
   $u = { param($o) [BitConverter]::ToUInt32($b, $o) }
   $st = [BitConverter]::ToInt32($b, 8)
   $steps = @('', 'map', 'clock check', 'calibrate', 'pins', 'pwm', 'pmic', 'running')

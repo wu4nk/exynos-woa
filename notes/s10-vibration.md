@@ -69,3 +69,11 @@ sim, vân tay, gps". Vibration first (feasibility below).
 - Revised estimate: a raw front-camera frame on the S10 is a staged, realistic project (precedent exists); getting it
   into Windows' Camera app additionally needs an AVStream / camera driver + software ISP (demosaic, AE, AWB) on our
   side - the larger part.
+
+## 2026-11-16 02:37 first run (1.0.0.8): no vibration, refused at step 2
+- CMU PWM gate 0x00200000 (CG_VAL 1, MANUAL 0, AUTO 0), QCH 0x003F0002 (ENABLE 0, CLOCK_REQ 1). 1.0.0.8 required
+  AUTO or MANUAL+CG_VAL and refused. [K] cal-if ra.c ra_get_gate: MANUAL 1 -> CG_VAL decides, MANUAL 0 -> pass =
+  !ENABLE_AUTOMATIC_CLKGATING -> this gate PASSES (clock on). Nothing was written (stopped before calibration).
+- 1.0.0.9: VibClockOn = !(MANUAL && !CG_VAL). Same fix in S10eCam's ClkOn (not run yet).
+- Also: cam-s10.ps1 refused by the execution policy ("not digitally signed" = Mark-of-the-Web on a downloaded file):
+  Unblock-File / Set-ExecutionPolicy -Scope Process Bypass, as README section 2 says.
