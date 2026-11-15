@@ -128,6 +128,9 @@ NTSTATUS S10eBattDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     if (NT_SUCCESS(Status)) {
         Status = CreateLock(Device, &Fdo->BusLock);
     }
+    if (NT_SUCCESS(Status)) {
+        Status = S10eVibCreate(Fdo);            /* vibration: lock, one-shot stop timer, work item (Vibra.c) */
+    }
     if (!NT_SUCCESS(Status)) {
         return Status;
     }
@@ -232,6 +235,7 @@ NTSTATUS S10eBattReleaseHardware(WDFDEVICE Device, WDFCMRESLIST ResourcesTransla
     if (Fdo->UsiPage != NULL)  { MmUnmapIoSpace((PVOID)Fdo->UsiPage, S10E_CMGP_USI_PAGE_SIZE); }
     if (Fdo->GpioPage != NULL) { MmUnmapIoSpace((PVOID)Fdo->GpioPage, S10E_CMGP_GPIO_SIZE); }
     Fdo->I2c = Fdo->UsiPage = Fdo->GpioPage = NULL;
+    S10eVibUnmap(Fdo);
     return STATUS_SUCCESS;
 }
 
@@ -263,6 +267,7 @@ NTSTATUS S10eBattD0Exit(WDFDEVICE Device, WDF_POWER_DEVICE_STATE TargetState)
 
     WdfTimerStop(Fdo->PollTimer, TRUE);
     WdfWorkItemFlush(Fdo->PollWork);
+    S10eVibShutdown(Fdo);                       /* motor off while the bus is still ours */
 
     WdfWaitLockAcquire(Fdo->BusLock, NULL);
     S10eHsi2cBusRelease(Fdo);
@@ -551,6 +556,7 @@ NTSTATUS S10eBattIrpDeviceControl(WDFDEVICE Device, PIRP Irp)
     case IOCTL_S10E_USBC_READ:      Status = S10eUsbcReadIoctl(Fdo, Irp);     break;
     case IOCTL_S10E_USBC_OPCODE:    Status = S10eUsbcOpcodeIoctl(Fdo, Irp);   break;
     case IOCTL_S10E_USBC_WRITE_REG: Status = S10eUsbcWriteRegIoctl(Fdo, Irp); break;
+    case IOCTL_S10E_VIBRATE:        Status = S10eVibIoctl(Fdo, Irp);          break;
     default:                        Status = STATUS_PENDING;                  break;
     }
     if (Status != STATUS_PENDING) {

@@ -169,6 +169,88 @@ typedef struct _S10E_USBC_WRITE_IN { UCHAR Reg; UCHAR Value; } S10E_USBC_WRITE_I
 #define S10E_BATT_POLL_MS         20000   /* poll period; class queries are answered from the cache */
 #define S10E_BATT_TAG             'tBeS'
 
+/* ---------------------------------------------------------------------------------------------------------------
+ * VIBRATION (Vibra.c, notes/s10-vibration.md). The S10's LRA motor is driven by the MAX77705's haptic block (same
+ * chip, same HSI2C45 bus as the battery -> one owner, BusLock) from SoC PWM channel 1. Every value below is from the
+ * phone's own live DT (dump/s10-dump/dt/live.dts) or the LineageOS exynos9820 kernel (lineage-23.0) [K]:
+ *   max77705@66 on hsi2c@15D60000, pinctrl-0 = max77705-irq, vib-pwm (gpp3-1 func 2, pud 1), motor-boost-en
+ *   (gpg1-7 output 1); haptic { pwm_id 1, multi_frequency 7, frequency[0] 0x63B (159.5 Hz), period[0] 0xBEBC ns,
+ *   duty[0] 0x8F0D ns, max_timeout 0x2710 ms } (live.dts:9696-9699, 2073-2090, 14612-14631);
+ *   pwm@10510000 "samsung,s3c6400-pwm" (16-bit counters, live.dts:11386);
+ *   [K] drivers/motor/max77705_haptic.c: MAINCTRL1 (0x02) |= BIASEN b7; MCONFIG (0x10): init EN b6 off, LRA b7 on,
+ *   DIVIDER_128 b1 on; run = LRA|EN on, stop = LRA|EN off; PMIC client 0xCC >> 1 (drivers/mfd/max77705.c:57).
+ *   [K] drivers/motor/sec_haptic.c: duty = period/2 + (max_duty - period/2) * intensity / 10000; period/2 = stop.
+ *   [K] drivers/pwm/pwm-samsung.c: TCNTB(n) 0x0C+n*0xC, TCMPB(n) 0x10+n*0xC, TCON bits of channel 1 at 8..11
+ *   (start, manual update, invert, autoreload), NORMAL polarity = invert bit SET, tcmp = tcnt - duty ticks, both -1.
+ *   [K] drivers/pinctrl/samsung/pinctrl-exynos-arm64.c exynos9820_pin_banks5 (PERIC0 @0x10430000, live.dts:1342):
+ *   gpp3 0x060, gpg1 0x0A0; exynos9810_bank_type_off: CON +0 (4 bit/pin), DAT +4, PUD +8 (4 bit/pin).
+ *   [K] drivers/soc/samsung/cal-if/exynos9820/cmucal-sfr.c: CMU_PERIC0 0x10400000, PWM PCLK gate 0x2020
+ *   (CG_VAL b21, MANUAL b20, ENABLE_AUTOMATIC_CLKGATING b28), PWM QCH 0x3014. Read only - the driver never writes
+ *   the CMU and refuses to touch the PWM when its clock is not provably running.
+ * The PWM input clock is NOT taken from a table: Vibra.c measures it against KeQueryPerformanceCounter with the
+ * output pin still unmuxed (no motor drive) and refuses rates outside 1..250 MHz.
+ * ------------------------------------------------------------------------------------------------------------- */
+#define S10E_CMU_PERIC0_PAGE         0x10402000ULL   /* CMU_PERIC0 + 0x2000, two pages: gate 0x2020, QCH 0x3014 */
+#define S10E_CMU_PERIC0_PAGE_SIZE    0x2000u
+#define   S10E_CMU_PWM_GATE_OFF               0x020u    /* 0x10402020 */
+#define   S10E_CMU_PWM_QCH_OFF                0x1014u   /* 0x10403014 */
+#define   S10E_CMU_GATE_CG_VAL                (1u << 21)
+#define   S10E_CMU_GATE_MANUAL                (1u << 20)
+#define   S10E_CMU_GATE_AUTO                  (1u << 28)
+#define S10E_PWM_BASE                0x10510000ULL
+#define S10E_PWM_SIZE                0x1000u
+#define   PWM_TCFG0                           0x00
+#define   PWM_TCFG1                           0x04
+#define   PWM_TCON                            0x08
+#define   PWM_TCNTB1                          0x18
+#define   PWM_TCMPB1                          0x1C
+#define   PWM_TCNTO1                          0x20
+#define   PWM_TCON0_START                     (1u << 0)
+#define   PWM_TCON1_START                     (1u << 8)
+#define   PWM_TCON1_MANUAL                    (1u << 9)
+#define   PWM_TCON1_INVERT                    (1u << 10)
+#define   PWM_TCON1_AUTORELOAD                (1u << 11)
+#define   PWM_TCON1_ALL                       (0xFu << 8)
+#define   PWM_COUNTER_MAX                     0xFFFFu   /* s3c6400 variant: 16-bit */
+#define S10E_PERIC0_GPIO_BASE        0x10430000ULL
+#define S10E_PERIC0_GPIO_SIZE        0x1000u
+#define   GPP3_CON                            0x060u
+#define   GPP3_PUD                            0x068u
+#define   GPG1_CON                            0x0A0u
+#define   GPG1_DAT                            0x0A4u
+#define   VIB_PWM_PIN                         1         /* gpp3-1 */
+#define   VIB_PWM_FUNC                        0x2u      /* TOUT1 */
+#define   VIB_PWM_PUD                         0x1u      /* pin-pud <1> */
+#define   VIB_BOOST_PIN                       7         /* gpg1-7 */
+#define MAX77705_PMIC_ADDR           0x66    /* [K] I2C_ADDR_PMIC 0xCC >> 1; live DT max77705@66 */
+#define   MAX77705_PMIC_MAINCTRL1             0x02
+#define     MAX77705_BIASEN                   0x80
+#define   MAX77705_PMIC_MCONFIG               0x10
+#define     MAX77705_MOTOR_LRA                0x80
+#define     MAX77705_MOTOR_EN                 0x40
+#define     MAX77705_DIVIDER_128              0x02
+#define S10E_VIB_PERIOD_NS           48828u  /* haptic,period[0] 0xBEBC */
+#define S10E_VIB_MAX_DUTY_NS         36621u  /* haptic,duty[0]   0x8F0D (75 %) */
+#define S10E_VIB_MAX_MS              10000u  /* haptic,max_timeout */
+#define S10E_VIB_MAX_INTENSITY       10000
+
+/* IOCTL_S10E_VIBRATE (tools/s10-kit/vibra-s10.ps1): run the motor DurationMs (1..10000, 0 = stop now) at Intensity
+   (1..10000, Samsung's scale), auto-stop by timer. Output: what the driver saw and did (always filled). */
+#define IOCTL_S10E_VIBRATE        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x8A3, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+typedef struct _S10E_VIBRATE_IN { ULONG DurationMs; LONG Intensity; } S10E_VIBRATE_IN;
+typedef struct _S10E_VIBRATE_OUT {
+    ULONG Version;        /* 1 */
+    ULONG Step;           /* last step reached: 1 map, 2 clock check, 3 calibrate, 4 pins, 5 pwm, 6 pmic, 7 running */
+    LONG  Status;
+    ULONG CmuGate, CmuQch;
+    ULONG Tcfg0, Tcfg1, TconBefore, TconAfter;
+    ULONG TinHz;          /* measured PWM input clock */
+    ULONG CalCounts, CalTicks, QpcHz;
+    ULONG Tcnt, Tcmp;
+    ULONG Gpp3Con, Gpp3Pud, Gpg1Con, Gpg1Dat;   /* after */
+    UCHAR MainCtrl1, Mconfig, MainCtrl1Before, MconfigBefore;
+} S10E_VIBRATE_OUT;
+
 /* ------------------------------------------------------------------------------------------------------------- */
 
 typedef struct _S10E_BATT_READING {
@@ -240,6 +322,18 @@ typedef struct _S10E_BATT_FDO {
     ULONG               NotifyCount;         /* BatteryClassStatusNotify calls */
     ULONG               QueryStatusCount;    /* QueryStatus calls from the class driver */
     ULONG               QueriedPowerState;   /* PowerState returned by the last QueryStatus */
+
+    /* vibration (Vibra.c, VibLock; I2C under BusLock taken inside VibLock) */
+    WDFWAITLOCK         VibLock;
+    WDFTIMER            VibTimer;
+    WDFWORKITEM         VibWork;
+    volatile UCHAR     *VibCmu;
+    volatile UCHAR     *VibPwm;
+    volatile UCHAR     *VibGpio;
+    ULONG               VibTinHz;            /* 0 = not calibrated */
+    ULONGLONG           VibDeadline;         /* KeQueryInterruptTime of the current run's end (stale timer guard) */
+    BOOLEAN             VibOn;
+    BOOLEAN             VibPmicInit;
 } S10E_BATT_FDO, *PS10E_BATT_FDO;
 
 #define S10E_BATT_HIST_SLOTS  16             /* Device Parameters Hist00..Hist15, written on every notify */
@@ -260,6 +354,12 @@ NTSTATUS S10eMax77705ReadN(_Inout_ PS10E_BATT_FDO Fdo, _In_ UCHAR ClientAddr, _I
 
 /* Max77705.c - one complete reading. Caller holds BusLock. */
 NTSTATUS S10eMax77705Read(_Inout_ PS10E_BATT_FDO Fdo, _Out_ PS10E_BATT_READING Reading);
+
+/* Vibra.c */
+NTSTATUS S10eVibCreate(_Inout_ PS10E_BATT_FDO Fdo);                 /* AddDevice: lock, timer, work item */
+NTSTATUS S10eVibIoctl(_Inout_ PS10E_BATT_FDO Fdo, _Inout_ PIRP Irp);
+VOID     S10eVibShutdown(_Inout_ PS10E_BATT_FDO Fdo);               /* D0Exit: motor off */
+VOID     S10eVibUnmap(_Inout_ PS10E_BATT_FDO Fdo);                  /* ReleaseHardware */
 
 /* Miniclass.c */
 VOID     S10eBattPoll(_In_ WDFDEVICE Device);

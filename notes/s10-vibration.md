@@ -1,0 +1,52 @@
+# S10 vibration motor (2026-11-15) - S10eBattery 1.0.0.8 Vibra.c
+
+User 2026-11-15 20:13 (after the dual-boot reinstall came up): "phát triển nhiều chức năng hơn nữa, camera, rung,
+sim, vân tay, gps". Vibration first (feasibility below).
+
+## Hardware (all from the phone's live DT dump/s10-dump/dt/live.dts + LineageOS android_kernel_samsung_exynos9820
+## lineage-23.0, sparse clone in /home/claude/ref/k9820-full)
+- Motor: LRA ("LINEAR_1040") driven by the MAX77705 IF-PMIC haptic block. max77705@66 on hsi2c@15D60000 (=HSI2C45,
+  already owned by S10eBattery) - live.dts:9677/9696. pinctrl-0 of that node = max77705-irq, vib-pwm (gpp3-1
+  function 2, pud 1), motor-boost-en (gpg1-7 output 1) - live.dts:2073-2090, 9699.
+- haptic node (live.dts:14612): pwm_id 1, multi_frequency 7, frequency[0] 0x63B (159.5 Hz), period[0] 0xBEBC ns
+  (48828 = 20.48 kHz = 128 x 160 Hz), duty[0] 0x8F0D ns (75 %), normal_ratio 75, overdrive 95, max_timeout 10000 ms.
+  regulator_name VDD_MOTOR_3P3 exists only as a string (max77705_haptic.c never enables a regulator).
+- Android log (dump/s10-dump/sys/dmesg-full.txt:657-678): "max77705_vib: ratio set to 75", "[haptic engine] motor
+  run", "freq:2050, intensity:10000, time:20" - the HAL's packet mode at 205 Hz.
+- [K] drivers/motor/max77705_haptic.c: init MAINCTRL1 0x02 |= BIASEN b7; MCONFIG 0x10: EN b6 off, LRA b7 on,
+  DIVIDER_128 b1 on; run: set PWM duty then MCONFIG |= LRA|EN; stop: MCONFIG &= ~(LRA|EN), duty = period/2 +
+  pwm_disable. PMIC client = 0xCC >> 1 = 0x66 (drivers/mfd/max77705.c:57). Nothing else in the kernel writes 0x02/0x10.
+- [K] sec_haptic.c: duty = period/2 + (max_duty - period/2) * intensity / 10000 (period/2 = no drive);
+  MULTI_FREQ_DIVIDER 78125000 (period_ns = 78125000 / freq_0.1Hz).
+- PWM pwm@10510000 "samsung,s3c6400-pwm" -> s3c64xx variant: 16-bit counters. [K] pwm-samsung.c: TCNTB(n)
+  0x0C+12n, TCMPB(n) 0x10+12n, TCNTO(n) 0x14+12n (samsung_pwm_timer.c:354), TCON channel 1 at bits 8..11 (start,
+  manual update, invert, autoreload), NORMAL polarity = invert SET, tcmp = tcnt - duty_ticks, both -1.
+- Pins: [K] pinctrl-exynos-arm64.c exynos9820_pin_banks5 = PERIC0 @0x10430000: gpp3 at 0x060, gpg1 at 0x0A0;
+  exynos9810_bank_type_off: CON +0 (4 bits/pin), DAT +4, PUD +8 (4 bits/pin).
+- Clock: [K] cal-if/exynos9820/cmucal-sfr.c: CMU_PERIC0 0x10400000; PWM PCLK gate 0x2020 (CG_VAL b21, MANUAL b20,
+  ENABLE_AUTOMATIC_CLKGATING b28); PWM QCH 0x3014. The PWM's input rate is not in our sources -> measured.
+
+## Driver (drivers/S10eBattery/Vibra.c, IOCTL_S10E_VIBRATE 0x8A3 on the battery device)
+- In S10eBattery because the PMIC is on the battery's polled bus (BusLock); VibLock -> BusLock order.
+- PWM / PERIC0 GPIO / CMU mapped by physical address (no DSDT change).
+- Order: map -> CMU gate READ (refuse unless auto-gating or manual+on: a gated SFR access can hang the bus) ->
+  calibrate the PWM input clock (channel 1 one-shot from 0xFFFF, 100 us at HIGH_LEVEL vs KeQueryPerformanceCounter,
+  median of 3, accepted 1..250 MHz; the motor cannot move: MCONFIG EN is off) -> pins -> PWM run -> PMIC init once +
+  LRA|EN -> one-shot timer (deadline guard) -> work item stops (MCONFIG off, autoreload off). D0Exit stops the motor.
+- Syntax-checked with clang against the real WDK 10.0.26100 + KMDF 1.33 headers (scratchpad kcheck.sh); struct
+  layout C_ASSERTed (80 bytes). NOT built with EWDK, NOT run.
+- Test: tools/s10-kit/vibra-s10.ps1 (install = pnputil 1.0.0.8; test = 3 pulses + 1 s at 50 %) -> vibra-s10.txt.
+- Not yet: a Windows-facing interface (HID haptics / hardware notifications) - only the IOCTL for now.
+
+## Feasibility of the rest of the request (research 2026-11-15, nothing built)
+- GPS: the S10's GNSS is a Broadcom BCM4773 that is ALSO the sensor hub (spi@10970000, compatible "ssp,BCM4773",
+  live.dts:10232; drivers/sensorhub/brcm). Position fixes come from Broadcom's closed host engine (glgps on Android);
+  the hub only passes raw data. No Windows engine exists -> GPS: not feasible without reimplementing a GNSS engine.
+  The same hub carries accelerometer / gyro / light / proximity over Samsung's SSP protocol (GPL kernel code
+  available) -> auto-rotate / auto-brightness are a realistic later target instead.
+- Fingerprint: Qualcomm QBT2000 ultrasonic (qbtspi@0 live.dts:9803, qbt2000 15468); capture + matching run in the
+  Trustonic TEE with Samsung's trusted app -> not feasible from Windows.
+- SIM / cellular: integrated Shannon modem (modem_if live.dts:3677, mcu_ipc_cp): CP firmware boot through the secure
+  monitor, Samsung's proprietary IPC, then a Windows WWAN/MBIM driver on top -> research project of months, low odds.
+- Camera: Exynos ISP (Pablo/FIMC-IS) needs Samsung's closed ISP library + firmware; a raw-sensor path (CSIS + sensor
+  I2C init from the GPL sensor drivers + software debayer + a Windows AVStream camera driver) is months of work.
