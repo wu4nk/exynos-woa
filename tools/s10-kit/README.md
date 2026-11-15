@@ -18,22 +18,32 @@ flash-windows.cmd**. Chỉ khác layout máy, bộ driver và UEFI.
 | `new-cert.ps1` | Chứng chỉ test "z3s WoA Test" — **dùng chung với kit z3s**, có rồi thì khỏi chạy |
 | `beyond1lte-uefi-v*.img` | UEFI cho S10 (make-windows tự lấy bản mới nhất) |
 
-## 0. Cài lại Windows hoàn chỉnh (kit v2.9, make-windows v2.4.1-s10)
+## 0. Cài lại Windows hoàn chỉnh (kit v3.0, make-windows v2.5-s10, máy DUAL BOOT)
+
+Máy đang dual boot (Samsung Dualboot của David42069, dual cache). Kit dựng Windows cho **slot Windows**:
+ESP = `cache` = sda39, ổ C: = `userdata` = sda45 (28,1 GB) — đọc từ GPT thật 15/11/2026 khi slot Windows đang bật.
+Android (`userdata_b` sda34, `system_b` sda25 …) **không bị ghi**:
+- driver UFS build cho board 3 (`Beyond1Dual`): Windows chỉ ghi được sda39 + sda45, mọi phân vùng Android bị chặn;
+- `flash-windows.cmd` kiểm tra `userdata` = sda45 và `cache` = sda39 (tức slot Windows đang bật) rồi mới ghi;
+- UEFI **không** flash lại (phân vùng boot là việc của Slot Switcher, máy giữ UEFI đang chạy).
 
 Bản dựng ra đã ở **trạng thái cuối**: GPU Mali (KMD 1.0.72.2 + UMD s10.6: MSAA đã sửa, độ sáng), S10ePower +
 governor (GPU 806 MHz, A55 2002 MHz), **loa bật sẵn** (stereo, to hơn +3 dB, app `S10eSpeakerTrim.exe` trên desktop
 chỉnh tiếp tới mức gốc 17), bớt việc nền cho pin (app Store không chạy nền, Defender quét nhẹ, tiết kiệm pin từ
 30 %), giải mã video (nếu có `mfc\mfc_fw.bin`), không còn task/biến chẩn đoán nào.
 
-1. Máy ở TWRP: `get-wifi-fw.cmd` (lấy firmware WiFi + `mfc_fw.bin`).
-2. Mở **cửa sổ EWDK mới** (không `set S10_KEEP_UFS` / `S10_GPU` gì cả), `build-s10.cmd` → `out\` + `out-gpu\`.
+1. Slot Switcher: chuyển sang **slot Windows**, vào TWRP. `get-wifi-fw.cmd` (lấy firmware WiFi + `mfc_fw.bin`).
+2. Mở **cửa sổ EWDK mới** (không `set S10_KEEP_UFS` / `S10_SINGLEBOOT` / `S10_GPU` gì cả), `build-s10.cmd` → `out\` + `out-gpu\`
+   (dòng UFS phải ghi `board Beyond1Dual`).
 3. PowerShell Admin: `.\make-windows.ps1 -Source <iso> -UserName Anh` → `C:\s10\windows\`.
-4. TWRP: chạy `C:\s10\windows\flash-windows.cmd` trên PC.
+4. TWRP (vẫn slot Windows): chạy `C:\s10\windows\flash-windows.cmd` trên PC.
 5. Lần đầu vào desktop máy **tự khởi động lại 1 lần** (sau 20 s) để chuyển màn hình sang GPU Mali.
 6. Kiểm tra (PowerShell Admin, `cd C:\S10Prov\kit`): `.\gpu-validate.ps1` (≈3 phút) rồi `.\gpu-validate.ps1 -Soak 10`
    (10 phút chạy nặng liên tục) → gửi `C:\S10Prov\gpu-validate.zip` + `C:\S10Prov\gpu-soak.txt`.
 
-`-NoOc` = xung gốc, `-NoGpu` = không GPU, `-NoPower` = không S10ePower.
+`-NoOc` = xung gốc, `-NoGpu` = không GPU, `-NoPower` = không S10ePower. Bố cục cũ một hệ điều hành (Windows ở sda34):
+`set S10_SINGLEBOOT=1` trước `build-s10.cmd` và `make-windows.ps1 -Layout Single`. `update-ufs.ps1` chỉ nhận driver
+bố cục cũ (board 2) — với dual boot thì cài lại bằng make-windows.
 
 ## 1. Build driver (cửa sổ EWDK)
 

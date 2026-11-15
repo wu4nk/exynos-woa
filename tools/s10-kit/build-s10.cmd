@@ -1,10 +1,13 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.15) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.16) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
+rem v1.16: the UFS driver is built for the DUAL-BOOT S10 by default (-Board Beyond1Dual, board id 3: write fence =
+rem the Windows slot's ESP sda39 + Windows sda45 only, Android's partitions refused - live GPT 2026-11-15). The old
+rem single-boot layout (Windows in sda34 userdata, ESP sda31): set S10_SINGLEBOOT=1. make-windows checks the match.
 rem v1.15: the GPU (out-gpu\, KMD + UMD) is built BY DEFAULT now - make-windows v2.4 puts it into the image in its
 rem final mode. set S10_GPU=0 skips it.
 rem v1.14: Exynos9820Mfc (hardware H.264 decode, MFC v13: DSDT VIDC / ACPI\SAMS982A) when mfc\mfc_fw.bin is there
@@ -32,7 +35,9 @@ setlocal EnableExtensions
 set "ROOT=%~dp0"
 set "OUT=%ROOT%out"
 set "CERTNAME=z3s WoA Test"
-set "UFSVER=11/11/2026,9.0.47.1"
+set "UFSVER=11/15/2026,9.0.47.2"
+set "UFSBOARD=Beyond1Dual"
+if "%S10_SINGLEBOOT%"=="1" set "UFSBOARD=Beyond1"
 set "CATOS=10_CO_ARM64,10_NI_ARM64,10_GE_ARM64"
 
 set "SRCROOT=%ROOT%"
@@ -168,8 +173,8 @@ set "SRC=%SRCROOT%%NAME%"
 set "DST=%OUT%\%NAME%"
 set "UFSBUILD=%OUT%\_ufs-build"
 echo.
-echo ==== %NAME% (board Beyond1 = Galaxy S10) ====
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SRC%\build-ufs.ps1" -SourceDir "%SRC%" -OutDir "%UFSBUILD%" -WideUncached -DmaWindow -Board Beyond1
+echo ==== %NAME% (board %UFSBOARD% = Galaxy S10, Beyond1Dual = dual boot) ====
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SRC%\build-ufs.ps1" -SourceDir "%SRC%" -OutDir "%UFSBUILD%" -WideUncached -DmaWindow -Board %UFSBOARD%
 if errorlevel 1 (echo [FAIL] build-ufs.ps1 & exit /b 1)
 if not exist "%UFSBUILD%\%NAME%.sys" (echo [FAIL] %NAME%.sys was not produced & exit /b 1)
 mkdir "%DST%"

@@ -1619,10 +1619,16 @@ RunWriteProbe(
  * refuse rather than write, and it is a device-validation step, not a constant
  * to fix here.
  */
-#ifndef EXYNOS9820_BOARD_BEYOND1
-#define EXYNOS9820_BOARD_BEYOND1  0
+#ifndef EXYNOS9820_BOARD_BEYOND1_DUAL
+#define EXYNOS9820_BOARD_BEYOND1_DUAL  0
 #endif
-#if EXYNOS9820_BOARD_BEYOND1
+#ifndef EXYNOS9820_BOARD_BEYOND1
+#define EXYNOS9820_BOARD_BEYOND1  EXYNOS9820_BOARD_BEYOND1_DUAL
+#endif
+#if EXYNOS9820_BOARD_BEYOND1_DUAL
+/* S10 dual boot (-Board Beyond1Dual): the first 256 LBAs of sda40 recovery_b, refused by the driver's range A. */
+#define UFS_SCRATCH_LBA           24325951UL   // S10 dual sda40 recovery_b start - refused by the driver
+#elif EXYNOS9820_BOARD_BEYOND1
 /*
  * Galaxy S10 (beyond1lte, build-ufs.ps1 -Board Beyond1): USERDATA (sda34) runs to the
  * disk's LastUsableLBA 31236090 and the backup GPT follows at 31236091, so there is
@@ -1670,7 +1676,10 @@ C_ASSERT(UFS_WRITE_LIVE_MAX_BLOCKS <= UFS_SCRATCH_BLOCKS);
  * driver's fence, so an incorrectly edited fence cannot quietly move it onto
  * USERDATA.
  */
-#if EXYNOS9820_BOARD_BEYOND1
+#if EXYNOS9820_BOARD_BEYOND1_DUAL
+C_ASSERT(UFS_SCRATCH_LBA >= 24325951UL);                              // S10 dual recovery_b (sda40) starts here
+C_ASSERT((UFS_SCRATCH_LBA + UFS_SCRATCH_BLOCKS - 1UL) <= 24342463UL); // ... and ends here
+#elif EXYNOS9820_BOARD_BEYOND1
 C_ASSERT(UFS_SCRATCH_LBA >= 3284992UL);                              // S10 cp_debug (sda33) starts here
 C_ASSERT((UFS_SCRATCH_LBA + UFS_SCRATCH_BLOCKS - 1UL) <= 3286271UL); // ... and ends here, below USERDATA
 #else

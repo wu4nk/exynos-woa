@@ -1,5 +1,5 @@
 <#
-  make-windows.ps1 (v2.4.1-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
+  make-windows.ps1 (v2.5-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
   SM-G973F), built on the PC. The z3s (S20 Ultra) make-windows v2.1 with the S10's
   layout, drivers and UEFI; everything else - VHDX, lite, registry, unattend, BCD,
   pieces + flash-windows.cmd - is the same pipeline.
@@ -30,6 +30,14 @@
     - the in-Windows scripts (gpu-s10, power-s10, panel-s10, video-s10, gpu-validate) + tools\ + video\ in C:\S10Prov\kit.
   v2.4.1-s10 (2026-11-15): S10eSpeakerTrim.cs in C:\S10Prov\kit (SetupComplete.cmd v1.3 turns the speakers on - the
   v2.8 image left them silent - a little louder, builds the speaker app, and cuts Windows' background work).
+  v2.5-s10 (2026-11-15, the phone is DUAL BOOT now - David42069's Samsung Dualboot, dual cache): -Layout Dual
+  (default) builds for the Windows slot read from the live GPT 2026-11-15 with that slot active: ESP = by-name
+  cache = sda39 (LBA 24172350, 629 149 696 B, GUID 3b87cd3e...), Windows = by-name userdata = sda45 (LBA 24365764,
+  28 140 859 392 B, GUID 23ac57fc...). Android (userdata_b sda34, system_b sda25 ...) is never written: the UFS
+  driver must be board 3 (build-s10 v1.16 -Board Beyond1Dual, fence from sda39), flash-windows.cmd checks that
+  by-name userdata / cache ARE sda45 / sda39 (= the Windows slot is active) before anything is written, and the
+  UEFI is NOT flashed (boot belongs to the slot switcher; the phone keeps the UEFI it boots) unless -Uefi <img> is
+  given. -Layout Single = the old whole-disk layout (sda31 / sda34).
   Rescue as always: TWRP -> \S10EDIAG\nogpu.flg on the ESP hides the GPU for one boot.
 
   Same idea as the S9+ port: no repartitioning. Windows (NTFS) goes into
@@ -92,10 +100,13 @@ param(
   [switch] $NoOc,                   # v2.4: stock clocks (no GPU 806 / A55 2002 MHz)
   # GPT unique GUIDs of THIS phone's cache (sda31) and userdata (sda34). The BCD points
   # at them. Another S10: read its GPT (entries 31 / 34, +16) and pass its values.
-  [string] $EspGuidText = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251',
-  [string] $WinGuidText = '712bcd12-3071-4f1c-8951-9c75a5ecca08'
+  # (empty = the -Layout's values: Single 21ca1362... / 712bcd12..., Dual 3b87cd3e... / 23ac57fc...)
+  [string] $EspGuidText = '',
+  [string] $WinGuidText = '',
+  # v2.5: Dual = dual boot, Windows slot (ESP sda39, Windows sda45); Single = Windows in sda34 userdata, ESP sda31
+  [ValidateSet('Dual', 'Single')] [string] $Layout = 'Dual'
 )
-$ScriptVersion = 'make-windows v2.4.1-s10'
+$ScriptVersion = 'make-windows v2.5-s10'
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
@@ -109,11 +120,28 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 # ------------------------------------- phone layout (S10 live GPT, 2026-11-02)
 $SS           = 4096
-$EspBytes     = 629145600L          # cache (sda31),    LBA 3118592 - 3272191
-$WinPartBytes = 114482458624L       # userdata (sda34), LBA 3286272 - 31236090 (whole partition)
-$WinBytes     = [long][math]::Floor($WinPartBytes / 1MB) * 1MB   # NTFS volume: 109178 MiB (export works in MiB)
-$EspLba       = 3118592
-$WinLba       = 3286272
+$EspBytes     = 629145600L          # the FAT32 ESP inside the image: 600 MiB
+if ($Layout -eq 'Single') {
+  $EspPartBytes = 629145600L        # cache (sda31),    LBA 3118592 - 3272191
+  $WinPartBytes = 114482458624L     # userdata (sda34), LBA 3286272 - 31236090 (whole partition)
+  $EspLba       = 3118592
+  $WinLba       = 3286272
+  $EspIndex     = 31; $WinIndex = 34; $UfsBoard = 2
+  if (-not $EspGuidText) { $EspGuidText = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251' }
+  if (-not $WinGuidText) { $WinGuidText = '712bcd12-3071-4f1c-8951-9c75a5ecca08' }
+} else {
+  # dual boot, Windows slot active (live GPT 2026-11-15): by-name cache = sda39 (typed ESP by the installer),
+  # userdata = sda45. The ESP partition is one LBA over 600 MiB; the image's FAT stays 600 MiB.
+  $EspPartBytes = 629149696L        # cache (sda39),    LBA 24172350 - 24325950
+  $WinPartBytes = 28140859392L      # userdata (sda45), LBA 24365764 - 31236090 (whole partition)
+  $EspLba       = 24172350
+  $WinLba       = 24365764
+  $EspIndex     = 39; $WinIndex = 45; $UfsBoard = 3
+  if (-not $EspGuidText) { $EspGuidText = '3b87cd3e-6af4-499e-9011-5d269e217e32' }
+  if (-not $WinGuidText) { $WinGuidText = '23ac57fc-fcd5-4dbd-92fe-ed826523f610' }
+}
+if ($EspPartBytes -lt $EspBytes) { Write-Host '[FAIL] layout: ESP partition smaller than the image ESP' -ForegroundColor Red; exit 1 }
+$WinBytes     = [long][math]::Floor($WinPartBytes / 1MB) * 1MB   # NTFS volume (export works in MiB)
 $DiskGuid     = [guid]'52444e41-494f-2044-4d4d-43204449534b'   # "ANDROID MMC DISK" (same as S10e / S9+)
 $EspGuid      = [guid]$EspGuidText                             # cache    - random GUID on this phone
 $WinGuid      = [guid]$WinGuidText                             # userdata - random GUID on this phone
@@ -251,13 +279,18 @@ try {
     Fail "$($ufsSys.FullName) has no (or two) UFSBRD01 board record - build it with build-s10.cmd (build-ufs.ps1 -Board Beyond1), not from the .vcxproj"
   }
   $uBoard = [BitConverter]::ToUInt32($ub, $at + 8); $uFence = [BitConverter]::ToUInt32($ub, $at + 12)
-  if ($uBoard -ne 2 -or $uFence -ne $EspLba) {
-    Fail "Exynos9820Ufs.sys is built for board $uBoard (fence LBA $uFence), not the Galaxy S10 (board 2, fence $EspLba). Rebuild with build-s10.cmd."
+  if ($uBoard -ne $UfsBoard -or $uFence -ne $EspLba) {
+    Fail ("Exynos9820Ufs.sys is built for board $uBoard (fence LBA $uFence), not this -Layout $Layout (board $UfsBoard, fence $EspLba). " +
+          $(if ($Layout -eq 'Dual') { 'Rebuild with build-s10.cmd v1.16+ WITHOUT S10_SINGLEBOOT.' } else { 'Rebuild with set S10_SINGLEBOOT=1 build-s10.cmd.' }))
   }
   Ok "UFS driver $UfsVer built for the Galaxy S10 (fence starts at cache LBA $uFence)"
 
   # UEFI for the flash kit
   $UefiFile = $null; $UefiVer = $null
+  if ($Layout -eq 'Dual' -and -not $Uefi -and -not $NoUefi) {
+    $NoUefi = $true
+    Ok 'dual boot: the UEFI is not flashed (the phone keeps the one it boots; -Uefi <img> to flash one anyway)'
+  }
   if (-not $NoUefi) {
     if ($Uefi) {
       if (-not (Test-Path $Uefi)) { Fail "-Uefi: not found: $Uefi" }
@@ -395,7 +428,7 @@ try {
   Format-Volume -Partition $pWin -FileSystem NTFS  -AllocationUnitSize 4096 -NewFileSystemLabel 'Windows' -Confirm:$false -Force | Out-Null
   $S = Letter $pEsp
   $W = Letter $pWin
-  Ok ("ESP ${S}: (FAT32 600 MiB), Windows ${W}: (NTFS {0} MiB of the {1:N0} B userdata), 4K sectors" -f ($WinBytes / 1MB), $WinPartBytes)
+  Ok ("ESP ${S}: (FAT32 600 MiB), Windows ${W}: (NTFS {0} MiB of the {1:N0} B userdata sda$WinIndex), 4K sectors, layout $Layout" -f ($WinBytes / 1MB), $WinPartBytes)
 
   # ------------------------------------------------------------- 3. apply
   Step "3. dism /Apply-Image (10-20 min)"
@@ -750,7 +783,7 @@ foreach (`$x in @(@(`$mgr, 0x11000001), @(`$ldr, 0x11000001), @(`$ldr, 0x2100000
   $what = "$($info.ImageName) build $($info.Version)  $Lang  user=$UserName  lite=$(-not $NoLite)  ufs=$UfsVer(beyond1)  uefi=$(if ($UefiFile) { $UefiFile.Name } else { 'none' })"
   # cacheSize / userdataSize here are what flash-windows.cmd compares with blockdev on the
   # phone, so the WHOLE userdata partition goes in, not the (MiB-rounded) NTFS volume.
-  [Z3s.FlashCmd]::Write($Dest, $pieces, $EspBytes, $WinPartBytes, $uefiDst, $(if ($UefiFile) { $UefiFile.Name } else { '' }), $what, $ScriptVersion)
+  [Z3s.FlashCmd]::Write($Dest, $pieces, $EspPartBytes, $WinPartBytes, $uefiDst, $(if ($UefiFile) { $UefiFile.Name } else { '' }), $what, $ScriptVersion)
   # S10 guard: refuse any phone that is not a Galaxy S10, before the size check and before
   # set-esp-type touches the GPT (the S20 Ultra's layout differs anyway, but say it plainly).
   $fc = Join-Path $Dest 'flash-windows.cmd'
@@ -761,7 +794,19 @@ foreach (`$x in @(@(`$mgr, 0x11000001), @(`$ldr, 0x11000001), @(`$ldr, 0x2100000
     'set "BL="',
     'for /f %%B in (''adb shell "getprop ro.boot.bootloader"'') do set "BL=%%B"',
     'echo %BL%| findstr /b /c:"G973" >nul || (echo [FAIL] this phone''s bootloader is "%BL%" - this kit is for the Galaxy S10 ^(G973*^) only, nothing written & goto :end)',
-    'echo [ OK ] Galaxy S10, bootloader %BL%'))
+    'echo [ OK ] Galaxy S10, bootloader %BL%',
+    # v2.5: by-name userdata / cache must be the partitions this image was built for (dual boot: the WINDOWS slot
+    # must be active, otherwise by-name userdata is Android's data) - before the size check and before any write
+    'set "UN=" & set "CN="',
+    'for /f %%N in (''adb shell "readlink -f /dev/block/by-name/userdata"'') do set "UN=%%N"',
+    'for /f %%N in (''adb shell "readlink -f /dev/block/by-name/cache"'') do set "CN=%%N"',
+    ('if not "%UN%"=="/dev/block/sda' + $WinIndex + '" (echo [FAIL] userdata is %UN%, this image is for /dev/block/sda' + $WinIndex + ' - ' + $(if ($Layout -eq 'Dual') { 'switch the phone to the WINDOWS slot first' } else { 'different layout' }) + ', nothing written & goto :end)'),
+    ('if not "%CN%"=="/dev/block/sda' + $EspIndex + '" (echo [FAIL] cache is %CN%, this image is for /dev/block/sda' + $EspIndex + ' - ' + $(if ($Layout -eq 'Dual') { 'switch the phone to the WINDOWS slot first' } else { 'different layout' }) + ', nothing written & goto :end)'),
+    ('echo [ OK ] layout ' + $Layout + ': userdata = %UN%, cache = %CN%')))
+  # set-esp-type.ps1 gets this image's GUIDs / partition numbers (its own defaults are the single-boot layout)
+  $si = $lines.FindIndex([Predicate[string]]{ param($l) $l -like '*set-esp-type.ps1*-FromFlash*' })
+  if ($si -lt 0) { Fail 'flash-windows.cmd: set-esp-type line not found - z3s-disk.cs changed?' }
+  $lines[$si] = $lines[$si].Replace('-FromFlash', "-FromFlash -EspGuid $EspGuidText -WinGuid $WinGuidText -EspIndex $EspIndex -WinIndex $WinIndex")
   Set-Content $fc $lines -Encoding ASCII
   "$ScriptVersion  $what" | Set-Content (Join-Path $Dest 'manifest.txt') -Encoding ASCII
 

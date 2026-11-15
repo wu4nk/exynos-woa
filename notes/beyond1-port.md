@@ -1920,3 +1920,30 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   peaks) -> C:\S10Prov\gpu-soak.txt.
 - 17:0x kit v2.9 (s10-woa-kit-v2.9.zip 6ce73a70, repo c6710dc): umd\ = 0222-s10.6, make-windows v2.4.1-s10,
   SetupComplete v1.3, UEFI v0.2.2. NOT run.
+
+## 2026-11-15 17:12 Dual-boot layout - kit v2.9 flash refused ("userdata is 28140859392 bytes, expected 114482458624")
+- The phone runs David42069's Samsung Dualboot (dual cache) since 11-09; make-windows still built for the 11-02
+  single-boot GPT. flash-windows' size check stopped it before any write (as designed).
+- Live GPT (user's dump, notes/data/beyond1-gpt-dualboot-20261115.bin, CRCs valid, 45 entries, LastUsable 31236090,
+  backup header at 31236095), Windows slot active (user confirmed; TWRP mounted /data = sda45, /cache = sda39).
+  The switcher hides the inactive slot's entries by writing the name as "X\0b" (by-name sees "X") and the other
+  slot's as "X_b":
+    sda25 system_b 83968..1875967 (7 GB, Android)    sda31 cache_b 2806272..2959871 (Android cache)
+    sda32 omr 2959872..2972671   sda33 cp_debug 2972672..2973951
+    sda34 userdata_b 2973952..24170556 (86.8 GB, ANDROID DATA)
+    sda35..38 "system\0b" vendor product odm (1 MiB stubs)   sda39 "cache\0b" 24172350..24325950 (ESP type,
+    GUID 3b87cd3e-6af4-499e-9011-5d269e217e32)   sda40 recovery_b 24325951..24342463   sda41 boot_b ..24356544
+    sda42 dtb_b ..24358593   sda43 dtbo_b ..24360642   sda44 "efs\0b" 24360643..24365763
+    sda45 "userdata\0b" 24365764..31236090 (28 140 859 392 B, WINDOWS, GUID 23ac57fc-fcd5-4dbd-92fe-ed826523f610)
+- FINDING: the single-boot UFS fence (3118592..31236090 minus 3272192..3286271) covers most of Android's
+  userdata_b in this layout - every Windows install on the dual-boot phone so far could write into Android's data.
+  INFERENCE (not proven): a possible cause of "Android bootloops after a Windows boot until format data".
+- UFS board 3 (EXYNOS9820_BOARD_BEYOND1_DUAL, build-ufs -Board Beyond1Dual, build-s10 v1.16 default): fence
+  24172350..31236090, range A 24325951..24360642 (recovery_b..dtbo_b), range B 24360643..24365763 (efs), readout /
+  scratch inside range A (fail closed); C_ASSERTs: ESP writable, Windows writable, fence above userdata_b's end.
+  Preprocessed every board config with clang (asserts hold, single-boot values unchanged). UFSVER 9.0.47.2.
+- make-windows v2.5 -Layout Dual (default): ESP LBA 24172350 (partition 629 149 696 B, image FAT 600 MiB), Windows
+  LBA 24365764 / 28 140 859 392 B (NTFS 26837 MiB), GUIDs above, UFS board 3 required; flash-windows.cmd checks
+  readlink by-name userdata = sda45 and cache = sda39 before the size check; set-esp-type gets the GUIDs + indexes;
+  UEFI not flashed in Dual unless -Uefi. set-esp-type v1.4: names cut at the first NUL (tested on the dump: cache =
+  sda39, userdata = sda45, GptType.Set = already ESP, no write). update-ufs.ps1 still board 2 only (fails closed).

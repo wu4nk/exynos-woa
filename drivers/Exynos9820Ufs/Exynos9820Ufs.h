@@ -1015,11 +1015,38 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * Its headers declare HeaderSize = 92, so the in-flight translation below is a
  * no-op on the S10 (UfsTranslateGptHeaderBlock ignores a 92-byte header).
  */
+/*
+ * DUAL-BOOT S10 (build-ufs.ps1 -Board Beyond1Dual: /D EXYNOS9820_BOARD_BEYOND1_DUAL=1, which implies
+ * BEYOND1). The S10 after David42069's Samsung Dualboot installer (dual cache): a 45-partition table, read from
+ * the user's live GPT 2026-11-15 with the WINDOWS slot active (by-name userdata = sda45, cache = sda39 typed
+ * ESP; notes/beyond1-port.md "Dual-boot layout"). The Android slot (system_b sda25, userdata_b sda34, cache_b
+ * sda31 ...) sits BELOW the fence; the six Android slot-B partitions between the ESP and the Windows volume
+ * (recovery_b, boot_b, dtb_b, dtbo_b, efs b) are the two protected ranges:
+ *   sda39  cache       LBA 24172350 .. 24325950   WRITABLE  <- the ESP
+ *   sda40..43 recovery_b, boot_b, dtb_b, dtbo_b
+ *                      LBA 24325951 .. 24360642   refused   (range A; also the fail-closed scratch)
+ *   sda44  efs (b)     LBA 24360643 .. 24365763   refused   (range B)
+ *   sda45  userdata    LBA 24365764 .. 31236090   WRITABLE  <- Windows (to LastUsableLBA)
+ * The single-boot S10 build (fence from 3118592) would let Windows write into this layout's Android
+ * userdata_b (2973952 .. 24170556).
+ */
+#ifndef EXYNOS9820_BOARD_BEYOND1_DUAL
+#define EXYNOS9820_BOARD_BEYOND1_DUAL        0
+#endif
+#if EXYNOS9820_BOARD_BEYOND1_DUAL && !defined(EXYNOS9820_BOARD_BEYOND1)
+#define EXYNOS9820_BOARD_BEYOND1             1
+#endif
 #ifndef EXYNOS9820_BOARD_BEYOND1
 #define EXYNOS9820_BOARD_BEYOND1             0
 #endif
+#if EXYNOS9820_BOARD_BEYOND1_DUAL && !EXYNOS9820_BOARD_BEYOND1
+#error "EXYNOS9820_BOARD_BEYOND1_DUAL is a Galaxy S10 layout: EXYNOS9820_BOARD_BEYOND1 must not be 0"
+#endif
 
-#if EXYNOS9820_BOARD_BEYOND1
+#if EXYNOS9820_BOARD_BEYOND1_DUAL
+#define UFS_WRITE_FENCE_FIRST_LBA            24172350ULL  // VERIFIED S10 dual boot (sda39 cache/ESP start, live GPT 2026-11-15)
+#define UFS_WRITE_FENCE_LAST_LBA             31236090ULL  // VERIFIED S10 dual boot (LastUsableLBA, header +0x30)
+#elif EXYNOS9820_BOARD_BEYOND1
 #define UFS_WRITE_FENCE_FIRST_LBA            3118592ULL   // VERIFIED S10 (sda31 cache/ESP start, live GPT)
 #define UFS_WRITE_FENCE_LAST_LBA             31236090ULL  // VERIFIED S10 (LastUsableLBA, header +0x30)
 #else
@@ -1160,8 +1187,13 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
 #if UFS_READOUT_BOOT
 #error "UFS_READOUT_BOOT has no writable scratch region on beyond1lte (no unclaimed tail)"
 #endif
+#if EXYNOS9820_BOARD_BEYOND1_DUAL
+#define UFS_READOUT_WINDOW_FIRST_LBA         24325951UL   // S10 dual sda40 recovery_b start - REFUSED by range A
+#define UFS_READOUT_WINDOW_LAST_LBA          24326206UL   // 256 LBAs, all inside recovery_b
+#else
 #define UFS_READOUT_WINDOW_FIRST_LBA         3284992UL    // S10 sda33 CP_DEBUG start - REFUSED by range B
 #define UFS_READOUT_WINDOW_LAST_LBA          3285247UL    // 256 LBAs, all inside CP_DEBUG
+#endif
 #else
 #define UFS_READOUT_WINDOW_FIRST_LBA         31234816UL   // S10e tail start, one LBA past USERDATA
 #define UFS_READOUT_WINDOW_LAST_LBA          31235071UL   // 256 LBAs, verified zero (notes §9)
@@ -1177,7 +1209,10 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * yet, so that check fails on the S10e until the scratch pass runs - a
  * device-validation gap, not a wrong constant.
  */
-#if EXYNOS9820_BOARD_BEYOND1
+#if EXYNOS9820_BOARD_BEYOND1_DUAL
+#define UFS_READOUT_SCRATCH_FIRST_LBA        24325951UL   // S10 dual: mirrors UfsDiag.c, inside recovery_b (refused)
+#define UFS_READOUT_SCRATCH_LAST_LBA         24326206UL
+#elif EXYNOS9820_BOARD_BEYOND1
 #define UFS_READOUT_SCRATCH_FIRST_LBA        3284992UL    // S10: mirrors UfsDiag.c, inside CP_DEBUG (refused)
 #define UFS_READOUT_SCRATCH_LAST_LBA         3285247UL
 #else
@@ -1209,7 +1244,28 @@ C_ASSERT(UFS_DMA_WINDOW_FIRST < UFS_DMA_WINDOW_LAST);
  * cover both; they are kept split so a half-edited pair still fails the C_ASSERTs
  * below rather than silently admitting one of them.
  */
-#if UFS_FULL_WINDOWS_MODE && EXYNOS9820_BOARD_BEYOND1
+#if UFS_FULL_WINDOWS_MODE && EXYNOS9820_BOARD_BEYOND1_DUAL
+/* S10 dual boot (see the BOARD SWITCH block): range A = sda40..43, range B = sda44 */
+#define UFS_PROTECTED_PARTITION_FIRST_LBA    24325951ULL  // VERIFIED S10 dual (sda40 recovery_b start)
+#define UFS_PROTECTED_PARTITION_LAST_LBA     24360642ULL  // VERIFIED S10 dual (sda43 dtbo_b end)
+#define UFS_PROTECTED_PARTITION2_FIRST_LBA   24360643ULL  // VERIFIED S10 dual (sda44 efs start)
+#define UFS_PROTECTED_PARTITION2_LAST_LBA    24365763ULL  // VERIFIED S10 dual (sda44 efs end)
+C_ASSERT(UFS_PROTECTED_PARTITION2_FIRST_LBA == UFS_PROTECTED_PARTITION_LAST_LBA + 1ULL);
+C_ASSERT(UFS_PROTECTED_PARTITION2_FIRST_LBA < UFS_PROTECTED_PARTITION2_LAST_LBA);
+C_ASSERT(UFS_PROTECTED_PARTITION2_LAST_LBA < UFS_WRITE_FENCE_LAST_LBA);
+/* The ESP must stay writable: range A begins right after cache (sda39) ends. */
+C_ASSERT(UFS_PROTECTED_PARTITION_FIRST_LBA == 24325950ULL + 1ULL);
+C_ASSERT(UFS_WRITE_FENCE_FIRST_LBA + 153601ULL - 1ULL == 24325950ULL);   /* cache = 153 601 LBAs */
+/* USERDATA (Windows, sda45) must stay writable: range B ends one LBA before it starts. */
+C_ASSERT(UFS_PROTECTED_PARTITION2_LAST_LBA + 1ULL == 24365764ULL);
+C_ASSERT(UFS_WRITE_FENCE_LAST_LBA == 31236090ULL);
+/* Android's own userdata_b (sda34, ends 24170556) and cache_b stay below the fence. */
+C_ASSERT(UFS_WRITE_FENCE_FIRST_LBA > 24170556ULL);
+C_ASSERT(UFS_READOUT_SCRATCH_FIRST_LBA >= UFS_PROTECTED_PARTITION_FIRST_LBA);
+C_ASSERT(UFS_READOUT_SCRATCH_LAST_LBA <= UFS_PROTECTED_PARTITION_LAST_LBA);
+C_ASSERT(UFS_READOUT_WINDOW_FIRST_LBA >= UFS_PROTECTED_PARTITION_FIRST_LBA);
+C_ASSERT(UFS_READOUT_WINDOW_LAST_LBA <= UFS_PROTECTED_PARTITION_LAST_LBA);
+#elif UFS_FULL_WINDOWS_MODE && EXYNOS9820_BOARD_BEYOND1
 /*
  * Galaxy S10 layout (live GPT 2026-11-02, notes/beyond1-port.md §2):
  *
@@ -1272,7 +1328,10 @@ C_ASSERT(UFS_PROTECTED_PARTITION2_LAST_LBA < 31234816ULL);
  * A build that refuses writes does not need the split: the whole Android run,
  * VENDOR through CP_DEBUG inclusive, is refused as one range.
  */
-#if EXYNOS9820_BOARD_BEYOND1
+#if EXYNOS9820_BOARD_BEYOND1_DUAL
+#define UFS_PROTECTED_PARTITION_FIRST_LBA    24325951ULL // VERIFIED S10 dual (sda40 recovery_b start)
+#define UFS_PROTECTED_PARTITION_LAST_LBA     24365763ULL // VERIFIED S10 dual (sda44 efs end)
+#elif EXYNOS9820_BOARD_BEYOND1
 #define UFS_PROTECTED_PARTITION_FIRST_LBA    2131968ULL  // VERIFIED S10 (sda26 vendor start)
 #define UFS_PROTECTED_PARTITION_LAST_LBA     3286271ULL  // VERIFIED S10 (sda33 cp_debug end)
 #else

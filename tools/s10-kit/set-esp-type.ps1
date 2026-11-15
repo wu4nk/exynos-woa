@@ -1,5 +1,5 @@
 <#
-  set-esp-type.ps1 (v1.3-s10) - phone in TWRP, USB cable in. Galaxy S10 (beyond1lte) edition
+  set-esp-type.ps1 (v1.4-s10) - phone in TWRP, USB cable in. Galaxy S10 (beyond1lte) edition
   of the z3s script: refuses any phone whose bootloader is not G973*, and checks that
   cache / userdata still carry the GPT GUIDs the BCD was built for, before writing.
 
@@ -16,6 +16,11 @@
     - Before touching the GPT it tries to copy C:\Windows\Panther\setuperr.log /
       setupact.log off userdata (only if this TWRP can mount NTFS).
 
+  v1.4 (2026-11-15, dual boot): -EspIndex / -WinIndex = the partition numbers by-name cache / userdata must be
+  (flash-windows.cmd from make-windows v2.5 passes them with the image's GUIDs). GPT names are cut at the first
+  NUL like the kernel does: the dualboot slot switcher hides the other slot's entries as "cache\0b",
+  "userdata\0b" - which by-name shows as cache / userdata.
+
   PowerShell (no admin needed), z3s-disk.cs next to this file, adb in PATH:
     .\set-esp-type.ps1
   Then run flash-windows.cmd again (Setup has to start from a clean image).
@@ -27,6 +32,8 @@ param(
   [string] $EspGuid = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251',
   [string] $WinGuid = '712bcd12-3071-4f1c-8951-9c75a5ecca08',
   [long]   $UserdataLastLba = 31236090,
+  [int]    $EspIndex = 0,     # v1.4: 0 = not checked
+  [int]    $WinIndex = 0,
   [switch] $Restore,
   [switch] $FromFlash    # called by flash-windows.cmd: no "run flash-windows.cmd" hint
 )
@@ -34,7 +41,7 @@ $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
-Write-Host 'set-esp-type v1.3-s10'
+Write-Host 'set-esp-type v1.4-s10'
 
 $cs = Join-Path $PSScriptRoot 'z3s-disk.cs'
 if (-not (Test-Path $cs)) { Fail 'z3s-disk.cs missing next to this script' }
@@ -100,17 +107,23 @@ $ents = Read-Lba 2 $entSec
 $seen = @{}
 for ($i = 0; $i -lt $n; $i++) {
   $o = $i * $esz
-  $nm = [Text.Encoding]::Unicode.GetString($ents, $o + 56, 72).TrimEnd([char]0)
+  $nm = [Text.Encoding]::Unicode.GetString($ents, $o + 56, 72).Split([char]0)[0]   # v1.4: up to the first NUL
   if ($nm -eq 'cache' -or $nm -eq 'userdata') {
+    if ($seen.ContainsKey($nm)) { Fail "two GPT entries named $nm (sda$($seen["$nm#"]) and sda$($i + 1)) - nothing written" }
     $g = New-Object byte[] 16; [Array]::Copy($ents, $o + 16, $g, 0, 16)
     $seen[$nm] = ([guid]::new([byte[]]$g)).ToString()
+    $seen["$nm#"] = $i + 1
   }
+}
+if (($EspIndex -and $seen['cache#'] -ne $EspIndex) -or ($WinIndex -and $seen['userdata#'] -ne $WinIndex)) {
+  Fail ("cache is sda$($seen['cache#']) and userdata sda$($seen['userdata#']) in the GPT, the image is for sda$EspIndex / sda$WinIndex " +
+        "(dual boot: switch to the Windows slot). Nothing written.")
 }
 if ($seen['cache'] -ne $EspGuid -or $seen['userdata'] -ne $WinGuid) {
   Fail ("GPT GUIDs differ from the ones the Windows image was built for: cache $($seen['cache']) (want $EspGuid), userdata $($seen['userdata']) (want $WinGuid). " +
         "Rebuild with make-windows.ps1 -EspGuidText/-WinGuidText set to this phone's values. Nothing written.")
 }
-Ok "cache / userdata GUIDs match the image ($EspGuid / $WinGuid)"
+Ok "cache sda$($seen['cache#']) / userdata sda$($seen['userdata#']) GUIDs match the image ($EspGuid / $WinGuid)"
 $hb = Read-Lba $last 1
 $bk = Join-Path $OutDir 'gpt-backup'
 New-Item -ItemType Directory -Force $bk | Out-Null

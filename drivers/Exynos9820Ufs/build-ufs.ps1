@@ -17,7 +17,9 @@ param(
   # Beyond1 = Galaxy S10 (/D EXYNOS9820_BOARD_BEYOND1=1, notes/beyond1-port.md).
   # A driver built for one board must NEVER be installed on the other: the ESP,
   # USERDATA and protected ranges are different LBAs.
-  [ValidateSet("Beyond0", "Beyond1")][string]$Board = "Beyond0",
+  # Beyond1Dual = Galaxy S10 after the Samsung Dualboot installer (dual cache, Windows slot: ESP sda39,
+  # Windows sda45; /D EXYNOS9820_BOARD_BEYOND1_DUAL=1, board id 3).
+  [ValidateSet("Beyond0", "Beyond1", "Beyond1Dual")][string]$Board = "Beyond0",
   [string]$WdkRoot = "",
   # SDK/WDK version folder under <kit>\Include and <kit>\Lib. Default: the EWDK's
   # Version_Number, else the newest installed one that has km\ntddk.h.
@@ -85,6 +87,7 @@ if ($WideUncached)      { $ProfileFlags += ' /D UFS_WIDE_UNCACHED_ACCESS=1' }
 if ($DmaWindow)         { $ProfileFlags += ' /D UFS_DMA_WINDOW_ENFORCE=1' }
 if ($PortableKernelContract) { $ProfileFlags += ' /D UFS_PORTABLE_KERNEL_CONTRACT=1' }
 if ($Board -eq "Beyond1")    { $ProfileFlags += ' /D EXYNOS9820_BOARD_BEYOND1=1' }
+if ($Board -eq "Beyond1Dual") { $ProfileFlags += ' /D EXYNOS9820_BOARD_BEYOND1=1 /D EXYNOS9820_BOARD_BEYOND1_DUAL=1' }
 Write-Host "==> board: $Board" -ForegroundColor Cyan
 $ClFlags += $ProfileFlags
 
