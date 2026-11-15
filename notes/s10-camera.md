@@ -325,3 +325,13 @@ Log: notes/data/cam-s10-shot-3-scene-20261116.txt. Read back coarse 0x0578, agai
 - cam-s10.ps1 v1.3.2: preview subtracts black 64 and keeps the white point >= 96 (a dark frame now looks dark).
   Next: a lit scene; read 0x0084/0x0086 (analog gain code min/max, the kernel's get_min/max_analog_gain) for the gain
   range; longer exposure = FLL 0x0340 up (lower fps); then AE + white balance.
+
+## 2026-11-16 05:10 SECOND SCENE - a recognisable picture (laptop keyboard + screen), same settings
+Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on the phone: old preview).
+- Mean 73 / 1023 (9 above black), white point 207. Black-subtracted channel means R 6.0, G 9.6, B 5.4 (gray world:
+  R x1.60, B x1.78). Rendered offline with black 64 + gray-world WB + p99.7 white + gamma 1/2.2:
+  notes/data/cam-scene-2-20261116-wb.png - backlit Dell keyboard (key legends readable), a laptop screen showing a
+  web page; sharp enough, colours plausible. Orientation as the sensor reads out (rotated vs the phone).
+- The raw path (sensor -> D-PHY -> CSIS2 -> DMA) is proven on real content. Remaining for a usable camera: AE (coarse/
+  gain from the frame mean, a few shots), white balance (gray world is fine to start), demosaic beyond 2x2 binning,
+  orientation, then the Windows-facing driver (AVStream/frame server; MS docs first) - a big separate milestone.
