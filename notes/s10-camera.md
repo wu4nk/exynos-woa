@@ -157,3 +157,10 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
   has the v1.0 type. '3deep' removed. Checks: clang WDK clean; pwsh parse 0; the loop run on Linux with a fake
   S10Cam type (steps 2..5, stop at an incomplete 5) - output as intended. NOT built with EWDK, NOT run.
 - Review of the 0.4 commit: rg 'lhm' -> no leftover; every step's gate re-read uses a step-2 register; old v1.1 3deep (Flags 1) -> step 0 -> refused before any ISPPRE map; the '3' VERDICT names 3step; ps1 report filter keeps the first step's PMU lines only. Nothing found.
+
+### 2026-11-16 04:09 3step -> blue screen -> phone came up in TWRP (user)
+- TWRP regardless of stay.flg: S10eDiag's bugcheck callback (notes/m11-s10ediag.md run 5) records BC + P1..P4 in the
+  PRAM mark ring (WINPRAM +0xA000) and resets with INFORM3 = recovery -> sboot boots TWRP directly. The ring stays in
+  RAM; a firmware bounce (reboot with \WINRUN.FLG still on the ESP) dumps it to \WINPRAM.BIN.
+- Asked for: /data/S10Prov/cam-s10-3step.txt (write-through log: last "step N ... calling" line = the step), ESP
+  listing, then `adb reboot` (bounce) and \WINPRAM.BIN (bugcheck code).
