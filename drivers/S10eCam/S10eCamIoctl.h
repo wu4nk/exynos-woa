@@ -16,7 +16,7 @@
  *          frame count read, and powered down again (always, also after an error).
  * Stage 3: read-only survey of the CSI receive path (power domains pd-dpu / pd-isppre in the PMU, CMU_TOP's ISPPRE bus
  *          clock); with S10ECAM_FLAG_DEEP ONE step inside ISPPRE (1 CMU mux/div, 2 gates, 3-4 Q-channels, 5 CSIS2,
- *          6 CSIS DMA, 7 sysreg, 8 SysMMU; S10eCam.c). Writes nothing; does not run stage 1/2. */
+ *          6 CSIS DMA, 7 sysreg; the SysMMU is never read; S10eCam.c). Writes nothing; does not run stage 1/2. */
 #define IOCTL_S10ECAM_STAGE  CTL_CODE(S10ECAM_TYPE, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 typedef struct _S10ECAM_STAGE_IN {
@@ -26,6 +26,6 @@ typedef struct _S10ECAM_STAGE_IN {
 
 #define S10ECAM_FLAG_DEEP   0x1u   /* stage 3: read inside ISPPRE - one step per call, the step in bits 15:8 */
 #define S10ECAM_STEP(f)     (((f) >> 8) & 0xFFu)
-#define S10ECAM_STEP_MAX    8u
+#define S10ECAM_STEP_MAX    7u   /* 8 (SysMMU) removed: it aborts (2026-11-16) */
 
 #define S10ECAM_REPORT_MAX  16384u

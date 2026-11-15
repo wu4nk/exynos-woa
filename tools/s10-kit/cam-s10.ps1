@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.2) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.2.1) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -9,7 +9,7 @@
                                 its ID, and power it down again (always - also after an error). ~0.1 s.
       .\cam-s10.ps1 3           stage 3: READ the camera's receive path power state (PMU power domains, CMU_TOP). Writes
                                 nothing, does not touch the camera or its rails. No risk.
-      .\cam-s10.ps1 3step       the reads INSIDE the ISPPRE domain, ONE small step per driver call (8 steps, safest
+      .\cam-s10.ps1 3step       the reads INSIDE the ISPPRE domain, ONE small step per driver call (7 steps, safest
                                 first). Before each step the log line "step N ... calling" goes to disk write-through,
                                 so if the phone blue-screens, the log names the step that did it. Writes nothing.
                                 Only after '3' said the domain is ON. (v1.1's '3deep' read it all at once and
@@ -20,7 +20,7 @@
   display / storage. Run the stages in order and send each log before the next.
 #>
 param([Parameter(Position = 0)][ValidateSet('install', 'remove', '1', '2', '3', '3step')][string]$Action = '1',
-      [Parameter(Position = 1)][ValidateRange(1, 8)][int]$From = 1)
+      [Parameter(Position = 1)][ValidateRange(1, 7)][int]$From = 1)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\cam-s10-$Action.txt"
 $Dir = 'C:\S10Prov\cam'
@@ -34,7 +34,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.2  $Action$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.2.1  $Action$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {
@@ -95,8 +95,8 @@ if ($Action -ne '3step') {
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
 } else {
   $names = @('', 'CMU_ISPPRE mux/divider', 'CMU_ISPPRE clock gates', 'Q-channels CSIS2/DMA', 'Q-channels LHM/SYSREG/SYSMMU',
-             'CSIS2 registers', 'CSIS DMA registers', 'SYSREG_ISPPRE', 'SysMMU')
-  foreach ($n in $From..8) {
+             'CSIS2 registers', 'CSIS DMA registers', 'SYSREG_ISPPRE')   # v1.2.1: step 8 (SysMMU) aborts - removed
+  foreach ($n in $From..7) {
     W "step $n ($($names[$n])): calling the driver ..."
     $rep = [S10Cam]::Run(3, 1 -bor ($n -shl 8))   # S10ECAM_FLAG_DEEP | step << 8
     $lines = @($rep -split "`r?`n" | Where-Object { $_ })

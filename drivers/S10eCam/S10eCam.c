@@ -223,12 +223,8 @@
 #define   DMAC_INT_SRC        0x008u
 #define   DMAC_CMN_CTRL       0x014u
 #define   DMAC_ERR_CODE       0x018u
-#define SYSMMU_ISPPRE       0x17210000ULL   /* the non-secure frame only (secure_base 0x17200000 is never touched) */
-#define   MMU_CTRL            0x000u
-#define   MMU_CFG             0x004u
-#define   MMU_STATUS          0x008u
-#define   MMU_CAPA            0x030u
-#define   MMU_VERSION         0x034u
+/* SysMMU ISPPRE 0x17210000: NEVER read - its non-secure frame answers a load with an external abort (bugcheck 0x124
+   P1 0x11, 2026-11-16 03:44 and 04:09). The CSIS DMA is to run with it untouched (reset state = bypass, as the S9's). */
 
 /* ---------------------------------------------------------------------------------------------- state */
 typedef struct _MAPS {
@@ -700,13 +696,16 @@ static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
      1 CMU_ISPPRE BUS_USER 0x100 / BUSP 0x1804 (pmucal's isppre_save list reads exactly these)
      2 CMU_ISPPRE CLK_CON_GAT gates (7)        3 Q-channels CSIS2 / CSIS DMA / PDP DMA (the S9 wrote its CSIS QCHs)
      4 Q-channels LHM_AXI_P / SYSREG / SYSMMU  5 CSIS2 (aclk on)   6 CSIS DMA0 + common (both DMA aclks on)
-     7 SYSREG_ISPPRE +0x500 (pclk on)          8 SysMMU, non-secure frame (aclk on) - last: the S9 kept it off
-   Steps 5-8 re-read their gate (step 2's registers) first.
+     7 SYSREG_ISPPRE +0x500 (pclk on)
+   Steps 5-7 re-read their gate (step 2's registers) first.
+   2026-11-16 04:09 run: steps 1-7 read fine; step 8 (the SysMMU's non-secure frame 0x17210000, aclk gate on, QCH
+   0x003F0002) took a synchronous external abort -> bugcheck 0x124 P1 0x11 - the 3deep crash too. Step 8 is GONE:
+   the SysMMU is never read (the S9 precedent also took it as off/pass-through and its DMA worked).
    The D-PHY (0x19162300) is not read at all: it sits in the DPU block next to the running panel's DSIM PHY, and
    3b programs it from scratch anyway. Its PMU isolation bit is read (PMU = always on). */
 static NTSTATUS Stage3(REPORT *r, ULONG Flags)
 {
-    volatile UCHAR *pmu = NULL, *top = NULL, *cmu = NULL, *sys = NULL, *csis = NULL, *dma = NULL, *mmu = NULL;
+    volatile UCHAR *pmu = NULL, *top = NULL, *cmu = NULL, *sys = NULL, *csis = NULL, *dma = NULL;
     ULONG    dpuSt, ispSt, iso, tg, g, i, step;
     NTSTATUS s = STATUS_SUCCESS;
     static const struct { PCSTR Name; ULONG Reg; } gates[] = {
@@ -836,23 +835,10 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
         Log(r, "  SYSREG_ISPPRE +0x500 (D-PHY resets) %08X -> CSIS2 D-PHY %s\r\n", g,
             (g & (1u << 1)) ? "out of reset" : "IN reset");
         break;
-    case 8:
-        if (!ClkOn(R32(cmu, IP_SYSMMU_ACLK)) || !ClkOn(R32(cmu, IP_LHM_AXI_P))) {
-            Log(r, "  SysMMU not read: aclk or LHM_AXI_P gated\r\n");
-            break;
-        }
-        mmu = Map(SYSMMU_ISPPRE, PAGE_4K);
-        if (!mmu) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
-        g = R32(mmu, MMU_CTRL);
-        Log(r, "  SysMMU CTRL %08X (%s) CFG %08X STATUS %08X CAPA %08X VERSION %08X\r\n", g,
-            (g & 0x7u) == 0x5u ? "translating" : (g & 0x7u) == 0 ? "disabled = bypass?" : "other",
-            R32(mmu, MMU_CFG), R32(mmu, MMU_STATUS), R32(mmu, MMU_CAPA), R32(mmu, MMU_VERSION));
-        break;
     }
     Log(r, "step %u done\r\n", step);
 
 out:
-    if (mmu)  MmUnmapIoSpace((PVOID)mmu, PAGE_4K);
     if (dma)  MmUnmapIoSpace((PVOID)dma, PAGE_4K);
     if (csis) MmUnmapIoSpace((PVOID)csis, PAGE_4K);
     if (sys)  MmUnmapIoSpace((PVOID)sys, PAGE_4K);
@@ -895,7 +881,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.4 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.4.1 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

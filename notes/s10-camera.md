@@ -182,3 +182,23 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
 - 04:17 WINPRAM-3step.BIN (notes/data/winpram-cam3step-20261116.bin): fresh ring (S10eDiag loaded once, uptime
   1308 s = boot ~03:47, right after the 3deep crash) -> BUGCHECK BC 0x124, P1 0x11 (SEA), "reset to recovery".
   Same signature as 3deep. The step is in C:\S10Prov\cam-s10-3step.txt (asked again).
+
+## 2026-11-16 04:20 STAGE 3 (3step) RESULT - the faulting read is the SysMMU
+cam-s10-3step.txt (write-through log survived; Windows clock said 2026-11-01T23:38 - the RTC/time is wrong, separate):
+- step 1 CMU_ISPPRE BUS_USER 0x10 (CMU_TOP clock), BUSP div 0x1 (/2)
+- step 2 gates 0x2004/20B4/20D8/202C/2038/2040/2060 all 0x00200000 (MANUAL 0 = HWACG, on)
+- step 3/4 QCH CSIS2 / CSIS DMA / PDP DMA / LHM_AXI_P / SYSREG / SYSMMU all 0x003F0002 (ENABLE 0, CLOCK_REQ 1)
+- step 5 CSIS2: VERSION 0x05020000 (= v5.2, matches CONFIG_CSIS_V5_2), CMN_CTRL 0x4000, CLK_CTRL 0x10, INT masks/srcs
+  0, ISP_CONFIG_CH0 0xFC, ISP_RESOL_CH0 0x80008000, FRM_CNT_CH0 0, PHY_STATUS 0xF1, PHY_CMN_CTRL 0 (= reset state)
+- step 6 CSIS DMA0: CTRL 0 FMT 0 ADDR1 0 ACT_CTRL 0x1007C RESOL 0 FCNTSEQ 0xFFFFFFFF STAT 0; common all 0
+- step 7 SYSREG_ISPPRE +0x500 = 0 -> every D-PHY of ISPPRE in reset
+- step 8 SysMMU 0x17210000 MMU_CTRL read -> "calling the driver ..." was the last line -> bugcheck 0x124 P1 0x11 (SEA)
+  (WINPRAM-3step ring). The 3deep crash had the same signature and also read the SysMMU last.
+Conclusions:
+- NO D_TZPC problem for CMU_ISPPRE / CSIS2 / CSIS DMA / SYSREG: Windows reads them with the domain as sboot left it
+  - no UEFI SMC needed for 3b (matches the S9: found-on ISPPRE used as is, no SMC).
+- The SysMMU's NS frame aborts even with its aclk gate and QCH on (secure-only until Linux's restore? not proven).
+  Never read it; 3b runs the DMA with the SysMMU untouched (reset = bypass, the S9's assumption, its DMA worked).
+- ISPPRE bus clock is CMU_TOP mux 3 / div 16 - slow, as the S9 found ("about 50 MHz, too slow: CSIS overflows") ->
+  3b must raise CLKCMU_ISPPRE_BUS (source of mux 3 and the target rate: to be read from cmucal-vclklut / DT).
+- 0.4.1: step 8 removed (S10ECAM_STEP_MAX 7, cam-s10 v1.2.1 runs 1..7), SysMMU defines dropped.
