@@ -608,18 +608,18 @@ static VOID PowerDown(MAPS *m, FOUND *f, REPORT *r)
     LogBank(r, "gpg4", m->GpioP0 + GPG4);
 }
 
-static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
+/* Power the front camera up exactly as the module file does (rails, subcam_sel, I2C pins, reset, MCLK). On a rail
+   that does not take it powers down again itself. */
+static NTSTATUS SensorPowerUp(MAPS *m, FOUND *f, REPORT *r)
 {
     NTSTATUS s = STATUS_SUCCESS;
-    UCHAR    d[2];
-    ULONG    st, model = 0, rev = 0, fc = 0, try_;
 
     if (!f->PmicOk || !f->CamBusOk) {
-        Log(r, "stage 2 refused: S2MPB02 bus %s, sensor bus %s\r\n", f->PmicOk ? "ok" : "NOT ok", f->CamBusOk ? "ok" : "NOT ok");
+        Log(r, "power-up refused: S2MPB02 bus %s, sensor bus %s\r\n", f->PmicOk ? "ok" : "NOT ok", f->CamBusOk ? "ok" : "NOT ok");
         return STATUS_DEVICE_NOT_READY;
     }
     if ((f->L5 | f->L6 | f->L13 | f->L16) & PB_LDO_EN) {
-        Log(r, "stage 2 refused: a camera rail is already on (someone else is using the camera?)\r\n");
+        Log(r, "power-up refused: a camera rail is already on (someone else is using the camera?)\r\n");
         return STATUS_DEVICE_BUSY;
     }
 
@@ -655,6 +655,15 @@ static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
     LogBank(r, "gpc1", m->GpioP1 + GPC1);
     LogBank(r, "gpg2", m->GpioP0 + GPG2);
     LogBank(r, "gpg4", m->GpioP0 + GPG4);
+    return STATUS_SUCCESS;
+}
+
+/* model ID 0x0000, revision 0x0002 (must be the DT's 0xA101), frame count 0x0005 */
+static NTSTATUS SensorCheckId(MAPS *m, REPORT *r)
+{
+    NTSTATUS s = STATUS_SUCCESS;
+    UCHAR    d[2];
+    ULONG    st, model = 0, rev = 0, fc = 0, try_;
 
     Log(r, "== sensor 0x%02X on I2C_CAM2\r\n", SENSOR_ADDR);
     I2cReset(m->I2cCam);
@@ -667,16 +676,26 @@ static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
             try_ == 0 ? " - 20 ms more, again" : "");
         SleepUs(20000);
     }
-    if (NT_SUCCESS(s)) {
-        model = ((ULONG)d[0] << 8) | d[1];
-        if (NT_SUCCESS(RegRead(m->I2cCam, SENSOR_ADDR, 0x0002, 2, d, &st)))
-            rev = ((ULONG)d[0] << 8) | d[1];
-        if (NT_SUCCESS(RegRead(m->I2cCam, SENSOR_ADDR, 0x0005, 2, d, &st)))
-            fc = d[0];
-        Log(r, "  MODEL ID 0x%04X  REVISION 0x%04X (%s)  FRAME COUNT 0x%02X (%s)\r\n", model, rev,
-            rev == SENSOR_REV ? "= DT rev_reg 0xA101: the S5K3J1" : "not the DT's 0xA101",
-            fc, fc == 0xFF ? "not streaming, as expected" : "?");
-    }
+    if (!NT_SUCCESS(s))
+        return s;
+    model = ((ULONG)d[0] << 8) | d[1];
+    if (NT_SUCCESS(RegRead(m->I2cCam, SENSOR_ADDR, 0x0002, 2, d, &st)))
+        rev = ((ULONG)d[0] << 8) | d[1];
+    if (NT_SUCCESS(RegRead(m->I2cCam, SENSOR_ADDR, 0x0005, 2, d, &st)))
+        fc = d[0];
+    Log(r, "  MODEL ID 0x%04X  REVISION 0x%04X (%s)  FRAME COUNT 0x%02X (%s)\r\n", model, rev,
+        rev == SENSOR_REV ? "= DT rev_reg 0xA101: the S5K3J1" : "not the DT's 0xA101",
+        fc, fc == 0xFF ? "not streaming, as expected" : "?");
+    return rev == SENSOR_REV ? STATUS_SUCCESS : STATUS_DEVICE_DATA_ERROR;
+}
+
+static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
+{
+    NTSTATUS s = SensorPowerUp(m, f, r);
+
+    if (!NT_SUCCESS(s))
+        return s;
+    s = SensorCheckId(m, r);
     PowerDown(m, f, r);
     return s;
 }
