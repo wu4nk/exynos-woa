@@ -1958,3 +1958,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   endpoint list, run-log mic/codec lines, 3 s wascap recording -> RMS/peak dBFS. wascap.exe (tools/phone/audio/wascap.c)
   cross-built with zig 0.13 aarch64-windows-gnu into the kit's tools\.
 - SetupComplete v1.4 + install-in-windows v1.6 set CodecEnable 1 (MicGain 24) for new installs.
+- 2026-11-16 03:14 user: "mic ok r" - the microphones work on the S10 after mic-s10.ps1 (CodecEnable 1).

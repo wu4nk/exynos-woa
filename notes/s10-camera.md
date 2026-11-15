@@ -47,3 +47,13 @@ AE -> stage 5 a Windows camera driver. Front camera first (S5K3J1), like the S9 
   (i2c-exynos5.c:775), S10eBattery sets DONE|ERRORS, 0.1 left INT_EN 0. 0.2: INT_EN = DONE | ERRORS around the
   transfer, timeouts log TRANS_STATUS / FIFO / ERR, and CMU_TOP PERIC1_IP mux/div/gate (0x10C4/0x18B0/0x20C8, the
   ipclk source with user mux 1) is logged.
+
+## 2026-11-16 03:14 stage 1 PASS (S10eCam 0.2)
+- INT_EN fix confirmed: S2MPB02 answers on USI10 (mode 4, gpp6 f2, FS3 div 0x7D).
+- CMU_TOP PERIC1_IP mux 1 (PLL_SHARED2_DIV2) div /2 gate on -> both I2C ipclks come from it (user mux 0x10, div 0);
+  the real ipclk is not 200 MHz necessarily (PLL rate not read) - the bus works, any rate up to 2x only means
+  <= ~200 kHz SCL with the standard-mode timings.
+- S2MPB02: ID 0x00, B2CTRL1 0x18 (off), B2CTRL2 0x90 (1.30 V), LDO5 0x24 (1.05 V), LDO6 0x30 (1.80 V), LDO13 0x5E
+  (2.95 V), LDO16 0x58 (2.80 V) - all off, every vsel EXACTLY the value computed from the DT and the regulator
+  driver's min/step (= the register map and encodings are right). LDO17 0xDE (on, 2.95 V: VDD_GRIP_3P3 2.8-3.0 V).
+- Ready for stage 2 (all camera rails off, sensor bus clocks on).
