@@ -164,3 +164,18 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
   RAM; a firmware bounce (reboot with \WINRUN.FLG still on the ESP) dumps it to \WINPRAM.BIN.
 - Asked for: /data/S10Prov/cam-s10-3step.txt (write-through log: last "step N ... calling" line = the step), ESP
   listing, then `adb reboot` (bounce) and \WINPRAM.BIN (bugcheck code).
+
+### 2026-11-16 04:13 evidence from TWRP
+- ESP (/cache = sda39): S10EDIAG/stay.flg 34 B (= stay-s10.ps1 v1.0's one line: the user ran it), WINRUN.FLG,
+  WINPRAM.BIN, UEFILOG.TXT (FAT dates all 2026-11-01 17:16 = the firmware's fixed timestamp, useless).
+- /data/S10Prov/cam-s10-3step.txt NOT visible in TWRP: /data = sda45 NTFS via fuseblk (ntfs-3g) read-only, which
+  does not replay $LogFile; after a blue screen the new file's MFT update can sit only in the log. Read it from
+  Windows (it replays the log) instead.
+- WINPRAM.BIN (notes/data/winpram-cam3deep-20261116.bin): S10eDiag mark ring, last session uptime 5459 s, then
+  "BUGCHECK callback", BC 0x124 (WHEA_UNCORRECTABLE_ERROR), P1 0x11 (WHEA source = SEA, synchronous external abort),
+  P2 = WHEA record ptr, "reset to recovery". A 91-min session cannot end at 04:09 (the 03:44 3deep crash is inside
+  it), and the firmware zeroes the ring after each dump -> this dump is the 3deep crash (03:44). The 3step crash's
+  ring should still be in RAM: asked for a bounce (adb reboot; stay.flg -> dump + continue into Windows).
+- Meaning: a synchronous external abort = the slave (or the interconnect / TZPC filter) answered the load with an
+  ERROR response - not a hang of a clock-stopped block. Fits a D_TZPC deny (DECERR) best; a Q-channel-gated slave
+  may also answer with an error on this bus. The 3step log will say which read.
