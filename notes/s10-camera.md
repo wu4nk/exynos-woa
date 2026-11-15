@@ -65,3 +65,34 @@ AE -> stage 5 a Windows camera driver. Front camera first (S5K3J1), like the S9 
 - Sensor 0x10 on I2C_CAM2: MODEL ID 0x30A1, REVISION 0xA101 (= DT rev_reg), FRAME COUNT 0xFF (not streaming).
 - Power-down: every rail back to its vsel with enable off, BUCK2 0x18, CIS_CLK1 gate restored 0x00200000; gpc1-5
   left f1 output low (sensor-mclk1-out), gpg2-5 output low, gpg4-3 output 0.
+
+## Stage 3 facts (2026-11-16, before any code) - the CSI receive path for the front camera
+- DT: the 3J1 is sensor id 1 = node fimc_is_sensor2@17050000 (alias fimc_is_sensor1): csi "reg" 0x17050000 (CSIS2,
+  csi_ch 2) + "phy" 0x19160000/0x10000; dma_ch 2 (mode0) -> sensor1-ch-mode0 VC0 regs 0x170C0000 (DMA0) + 0x170C0400
+  (DMA common); mode1 VC1-3 at 0x17120100.. (PDP_TOP_DMA). iommus = sysmmu@17210000 (port "3AA0, 3AA1, CSIS,
+  PDP_STAT", secure_base 0x17200000, samsung,power-domain = pd-isppre). phys = dphy_m0s4s4s4_csis2: regs
+  0x19162300/0x500, PMU isolation 0x730, reset = ISPPRE sysreg 0x17020500 bit 1 ("samsung,exynos9810-isppre"
+  syscon). (fimc_is_sensor@17050000 = id 2 shares the same CSIS2.)
+- Power: pd-isppre@15862500 cal_id 0xB1380008, need_smc 0x17010204, parent = phandle 0x3 = pd-dpu@15861E00
+  (need_smc 0x191B0204). K flexpmu_cal_local_exynos9820.h isppre_on: PMU 0x15860000 + 0x2500 bit0 <- 1, wait +0x2504
+  bit0 == 1 (DPU: +0x1E00 / +0x1E04). After a need_smc domain powers on, Linux issues SMC_CMD_PREAPRE_PD_ONOFF
+  0x82000410 (include/linux/smc.h) so EL3 re-programs that block's TZPC. PMU = system-controller@15860000.
+- The MIPI PHY block 0x19160000 is shared with DSIM0 (dphy_m4s4_dsim0@0x19160000; dsim reg includes 0x19160000) =
+  inside the DPU block -> readable only with pd-dpu on (the panel runs, so it should be).
+- CMU_ISPPRE 0x17000000 (K cmucal-sfr.c): BUS_USER mux 0x100, DIV BUSP 0x1804, gates (21 CG_VAL, 20 MANUAL):
+  CMU pclk 0x2004, ACLK_CSIS2 0x202C, ACLK_CSISX4_PDP_DMA 0x2038, ACLK_PDP_TOP_DMA 0x2040, ACLK_SYSMMU 0x2060,
+  LHM_AXI_P 0x20B4, SYSREG pclk 0x20D8; QCH CSIS2 0x3054, CSISX4_PDP_DMA 0x305C, PDP_TOP_DMA 0x3064, SYSMMU 0x3088,
+  LHM_AXI_P 0x30A4, SYSREG 0x30BC. CMU_TOP feeding it: MUX_CLKCMU_ISPPRE_BUS 0x1094, DIV 0x1884, GATE 0x20A0.
+- CSIS v5.2 (fimc-is-hw-csi-v5_2.h): VERSION 0x0, CMN_CTRL 0x4, CLK_CTRL 0x8, INT_MSK0/SRC0 0x10/0x14, MSK1/SRC1
+  0x18/0x1C, ISP_CONFIG_CH0 0x40, ISP_RESOL_CH0 0x44, FRM_CNT_CH0 0x100, PHY_STATUS 0x700, PHY_CMN_CTRL 0x704.
+  DMA: DMA0_CTRL 0x0, FMT 0x4, ADDR1 0x10, ACT_CTRL 0x90, RESOL 0xA4, FCNTSEQ 0xB0, FCNTSEQ_STAT 0xB4; DMA common:
+  DATA_CTRL 0x0, INT_MASK 0x4, INT_SRC 0x8, CMN_CTRL 0x14, ERR_CODE 0x18.
+- SysMMU (K exynos-iommu.h): MMU_CTRL 0x0 (5 enable, 7 block, 0 disable), MMU_CFG 0x4, MMU_STATUS 0x8, CAPA 0x30,
+  VERSION 0x34. Only the non-secure 0x17210000 frame is read (never secure_base).
+- D-PHY (phy-exynos-mipi.c): isolation = PMU bit0 (1 bypass = PHY usable); reset = sysreg bit, 1 = released;
+  0502_x config: SC_GNR_CON0 0x0, SC_GNR_CON1 0x4, ANA_CON0..2 0x8..0x10, SD_TIME_CON0 0x30 (settle), per lane +0x100.
+
+### Stage 3a plan (read-only, S10eCam 0.3)
+Read PMU DPU/ISPPRE CONFIGURATION+STATUS and MIPI PHY isolation. Domain off -> report, touch nothing inside it (an
+access to a powered-off block = SError/hang). Domain on -> CMU_ISPPRE (incl. CMU_TOP ISPPRE_BUS), then each block
+only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysreg; D-PHY only if pd-dpu is on.
