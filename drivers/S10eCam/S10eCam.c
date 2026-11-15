@@ -49,6 +49,10 @@
 
 #include <ntddk.h>
 #include <wdmsec.h>
+/* NTSTRSAFE_LIB: the RtlString* functions come from km ntstrsafe.lib (linked by build.bat). Inline, they would call
+   _vsnprintf through the ucrt stdio.h that build.bat's INCLUDE also carries -> __stdio_common_vsprintf, which a
+   kernel driver cannot link (EWDK build 2026-11-16: LNK2019). */
+#define NTSTRSAFE_LIB
 #include <ntstrsafe.h>
 #include "S10eCamIoctl.h"
 
