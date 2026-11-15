@@ -1,5 +1,5 @@
 @echo off
-rem SetupComplete.cmd (Galaxy S10 kit v1.4) - Windows Setup runs this as SYSTEM at the end of the
+rem SetupComplete.cmd (Galaxy S10 kit v1.5) - Windows Setup runs this as SYSTEM at the end of the
 rem installation (C:\Windows\Setup\Scripts\). Installs the key agent the way the S10e's
 rem s10e-setupcomplete.cmd does: S10eDiag (kernel service, ALIVE GPIO reads) + S10eAgent
 rem (polls power / Bixby / volume every 25 ms, actions in C:\ProgramData\S10e\buttons.ini).
@@ -106,6 +106,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-MpPreference -ScanAv
 powercfg /setdcvalueindex SCHEME_CURRENT SUB_ENERGYSAVER ESBATTTHRESHOLD 30 >> "%LOG%" 2>&1
 powercfg /setactive SCHEME_CURRENT >> "%LOG%" 2>&1
 echo battery settings written >> "%LOG%"
+rem ---- v1.5 (2026-11-16): \S10EDIAG\stay.flg on the ESP (stay-s10.ps1 on). Without it the UEFI's boot pair sends
+rem the boot after every shutdown / crash / forced reset to TWRP once (the S10e developer loop). 2 deaths in a row
+rem still go to TWRP.
+if exist "%P%\kit\stay-s10.ps1" powershell -NoProfile -ExecutionPolicy Bypass -File "%P%\kit\stay-s10.ps1" on >> "%LOG%" 2>&1
 rem kit watcher (S10 kit v1.5): every logon offers a new ESP:\S10KIT (push-to-windows.cmd) for install
 if exist "%P%\kit\kit-watch.ps1" (
   copy /y "%P%\kit\kit-watch.ps1" "%P%\kit-watch.ps1" >> "%LOG%" 2>&1

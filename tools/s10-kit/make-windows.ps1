@@ -1,5 +1,5 @@
 <#
-  make-windows.ps1 (v2.5-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
+  make-windows.ps1 (v2.5.1-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
   SM-G973F), built on the PC. The z3s (S20 Ultra) make-windows v2.1 with the S10's
   layout, drivers and UEFI; everything else - VHDX, lite, registry, unattend, BCD,
   pieces + flash-windows.cmd - is the same pipeline.
@@ -30,6 +30,8 @@
     - the in-Windows scripts (gpu-s10, power-s10, panel-s10, video-s10, gpu-validate) + tools\ + video\ in C:\S10Prov\kit.
   v2.4.1-s10 (2026-11-15): S10eSpeakerTrim.cs in C:\S10Prov\kit (SetupComplete.cmd v1.3 turns the speakers on - the
   v2.8 image left them silent - a little louder, builds the speaker app, and cuts Windows' background work).
+  v2.5.1-s10 (2026-11-16): stay-s10.ps1 into C:\S10Prov\kit; SetupComplete v1.5 runs it, so a shutdown / crash
+    no longer sends the next boot to TWRP once (\S10EDIAG\stay.flg on the ESP, notes/beyond1-port.md).
   v2.5-s10 (2026-11-15, the phone is DUAL BOOT now - David42069's Samsung Dualboot, dual cache): -Layout Dual
   (default) builds for the Windows slot read from the live GPT 2026-11-15 with that slot active: ESP = by-name
   cache = sda39 (LBA 24172350, 629 149 696 B, GUID 3b87cd3e...), Windows = by-name userdata = sda45 (LBA 24365764,
@@ -106,7 +108,7 @@ param(
   # v2.5: Dual = dual boot, Windows slot (ESP sda39, Windows sda45); Single = Windows in sda34 userdata, ESP sda31
   [ValidateSet('Dual', 'Single')] [string] $Layout = 'Dual'
 )
-$ScriptVersion = 'make-windows v2.5-s10'
+$ScriptVersion = 'make-windows v2.5.1-s10'
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
@@ -495,7 +497,7 @@ try {
   Copy-Item (Join-Path $PSScriptRoot 'setup') "$kit\setup" -Recurse -Force
   foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1', 'kit-watch.ps1',
                'gpu-s10.ps1', 'power-s10.ps1', 'panel-s10.ps1', 'video-s10.ps1', 'gpu-validate.ps1', 'drag-probe.ps1',
-               'S10eSpeakerTrim.cs') {   # v2.4.1: SetupComplete v1.3 compiles the speaker app from it
+               'S10eSpeakerTrim.cs', 'stay-s10.ps1') {   # v2.4.1: speaker app source; v2.5.1: SetupComplete v1.5 runs stay-s10 on
     if (Test-Path (Join-Path $PSScriptRoot $f)) { Copy-Item (Join-Path $PSScriptRoot $f) $kit -Force }
   }
   # v2.4: the GPU package and the test tools / media next to the scripts that use them

@@ -1959,3 +1959,23 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   cross-built with zig 0.13 aarch64-windows-gnu into the kit's tools\.
 - SetupComplete v1.4 + install-in-windows v1.6 set CodecEnable 1 (MicGain 24) for new installs.
 - 2026-11-16 03:14 user: "mic ok r" - the microphones work on the S10 after mic-s10.ps1 (CodecEnable 1).
+
+## 2026-11-16 "sometimes the boot does not go into Windows but reboots into recovery once" (user)
+- Cause (code read, Beyond0LteBootLogDxe.c:672-805, built into beyond1lte-uefi v0.2.2 via Beyond1LtePkg.dsc:634):
+  the W23 "boot pair". Before handing over, ReadyToBoot leaves \WINRUN.FLG on the ESP (the FAT volume with
+  \EFI\Microsoft\Boot\BCD, OpenEspRoot). The next boot finds it; unless Windows asked for that reset itself (0x80 at
+  0x8FE0F000[0], written by Beyond0LteResetSystemLib on an OS restart) it saves \WINPRAM.BIN and - with no
+  \S10EDIAG\stay.flg - RebootToRecovery(). So: shutdown + power on (cold boot loses the RAM marker), a blue screen,
+  a hang, Vol Down + Power -> one trip to TWRP; the TWRP reboot then finds no WINRUN.FLG -> Windows. Windows' own
+  restarts are not affected - hence "sometimes".
+- The S10e's interactive setup ran with stay.flg on the ESP and BEYOND0LTE_WINDOWS_WATCHDOG 0 (HANDOFF §29: "Before
+  handing back to the user: BEYOND0LTE_WINDOWS_WATCHDOG back to 0, put S10EDIAG\stay.flg back"). The S10 kit never
+  created stay.flg, and Beyond1LtePkg.dsc builds BootLogDxe with the defaults: WINDOWS_PAIR 1, WINDOWS_WATCHDOG 1
+  (82 s cl0 WDT left armed into Windows, fed by the UFS driver), STAY_MAX_DEATHS 2.
+- With stay.flg: the death counter (0x8FE0F000[12], RAM: survives WDT/key resets, not a cold boot; cleared by a clean
+  OS restart) lets the 1st death continue into Windows, the 2nd in a row goes to TWRP - the safety net stays.
+- Fix now (no flash): tools/s10-kit/stay-s10.ps1 v1.0 (on / off / status: creates/removes \S10EDIAG\stay.flg on every
+  FAT volume carrying \EFI\Microsoft\Boot\BCD, mountvol /s if none is lettered; status prints the BootLog boot-pair
+  lines from UEFILOG.TXT). SetupComplete v1.5 runs it on new installs (make-windows v2.5.1-s10 copies it into
+  C:\S10Prov\kit). NOT run on the phone yet.
+- Left for the next UEFI build: Beyond1LtePkg.dsc BootLogDxe -DBEYOND0LTE_WINDOWS_WATCHDOG=0 (interactive, per §29).
