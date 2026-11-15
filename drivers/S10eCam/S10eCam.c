@@ -62,6 +62,9 @@
 #define   TOP_CIS1_MUX        (0x1014u - 0x1000u)
 #define   TOP_CIS1_DIV        (0x1810u - 0x1000u)
 #define   TOP_PERIC1_BUS_GATE (0x20C4u - 0x1000u)
+#define   TOP_PERIC1_IP_MUX   (0x10C4u - 0x1000u)   /* MUX_CLKCMU_PERIC1_IP [0]: PLL_SHARED0_DIV4 / PLL_SHARED2_DIV2 */
+#define   TOP_PERIC1_IP_DIV   (0x18B0u - 0x1000u)   /* DIV_CLKCMU_PERIC1_IP [3:0] */
+#define   TOP_PERIC1_IP_GATE  (0x20C8u - 0x1000u)   /* GATE_CLKCMU_PERIC1_IP: both I2C ipclks come from it (user mux 1) */
 #define   TOP_CIS1_GATE       (0x202Cu - 0x1000u)
 #define   TOP_CIS1_QCH        (0x300Cu - 0x1000u)
 #define CMU_PERIC1          0x10800000ULL
@@ -301,6 +304,9 @@ static NTSTATUS I2cXfer(volatile UCHAR *b, UCHAR Addr, BOOLEAN Read, PUCHAR Data
         return STATUS_DEVICE_BUSY;
     }
     W32(b, HSI2C_INT_STAT, HSI2C_INT_ALL);
+    /* INT_STAT shows only ENABLED sources: Linux enables TRANSFER_DONE even when it polls (i2c-exynos5.c:775), and
+       0.1 without it timed out with INT_STAT 000 (phone, 2026-11-16 03:04). */
+    W32(b, HSI2C_INT_EN, HSI2C_INT_DONE | HSI2C_INT_ERRORS);
     W32(b, HSI2C_AUTO_CONF, ac | AUTO_RUN);
     if (!Read) {
         for (i = 0; i < Len; i++) {
@@ -315,7 +321,8 @@ static NTSTATUS I2cXfer(volatile UCHAR *b, UCHAR Addr, BOOLEAN Read, PUCHAR Data
             break;
         KeStallExecutionProcessor(100);
     }
-    *IntOut = st;
+    *IntOut = st | (R32(b, HSI2C_TRANS_STATUS) << 12);   /* report: INT_STAT [11:0], TRANS_STATUS above */
+    W32(b, HSI2C_INT_EN, 0);
     if ((st & (HSI2C_INT_DONE | HSI2C_INT_ERRORS)) == 0) {
         I2cReset(b);
         return STATUS_IO_TIMEOUT;
@@ -361,7 +368,8 @@ static NTSTATUS PbRead(MAPS *m, UCHAR Reg, PUCHAR Val, REPORT *r)
 
     *Val = v[0];
     if (!NT_SUCCESS(s))
-        Log(r, "  S2MPB02 read 0x%02X failed 0x%08X (INT_STAT %03X)\r\n", Reg, s, st);
+        Log(r, "  S2MPB02 read 0x%02X failed 0x%08X (INT_STAT %03X, TRANS_STATUS %05X, FIFO %08X, ERR %08X)\r\n", Reg, s,
+            st & 0xFFF, st >> 12, R32(m->I2cPmic, HSI2C_FIFO_STAT), R32(m->I2cPmic, HSI2C_ERR_STAT));
     return s;
 }
 
@@ -415,6 +423,9 @@ static NTSTATUS Stage1(MAPS *m, FOUND *f, REPORT *r)
     Log(r, "  CIS_CLK1 mux %08X (sel %u: %s) div %08X (/%u) gate %08X qch %08X\r\n", f->CisMux, f->CisMux & 1,
         (f->CisMux & 1) ? "PLL_SHARED2_DIV2" : "OSCCLK 26 MHz", f->CisDiv, (f->CisDiv & 0x1F) + 1, f->CisGate, f->CisQch);
     Log(r, "  PERIC1_BUS gate %08X -> %s\r\n", g, ClkOn(g) ? "on" : "NOT on");
+    Log(r, "  PERIC1_IP mux %08X div %08X (/%u) gate %08X -> %s (the I2C ipclk source when a user mux bit 4 is 1)\r\n",
+        R32(m->Top, TOP_PERIC1_IP_MUX), R32(m->Top, TOP_PERIC1_IP_DIV), (R32(m->Top, TOP_PERIC1_IP_DIV) & 0xF) + 1,
+        R32(m->Top, TOP_PERIC1_IP_GATE), ClkOn(R32(m->Top, TOP_PERIC1_IP_GATE)) ? "on" : "NOT on");
     if (!ClkOn(g)) {
         Log(r, "PERIC1's bus clock is not provably on: nothing in PERIC1 is touched\r\n");
         return STATUS_DEVICE_POWERED_OFF;
@@ -587,7 +598,8 @@ static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
         s = RegRead(m->I2cCam, SENSOR_ADDR, 0x0000, 2, d, &st);
         if (NT_SUCCESS(s))
             break;
-        Log(r, "  model ID read failed 0x%08X (INT_STAT %03X, ERR %08X)%s\r\n", s, st, R32(m->I2cCam, HSI2C_ERR_STAT),
+        Log(r, "  model ID read failed 0x%08X (INT_STAT %03X, TRANS_STATUS %05X, ERR %08X)%s\r\n", s, st & 0xFFF, st >> 12,
+            R32(m->I2cCam, HSI2C_ERR_STAT),
             try_ == 0 ? " - 20 ms more, again" : "");
         SleepUs(20000);
     }
@@ -638,7 +650,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.1 stage %u\r\n", in.Stage);
+    Log(&r, "S10eCam 0.2 stage %u\r\n", in.Stage);
     s = Stage1(&m, &f, &r);
     Log(&r, "stage 1: 0x%08X\r\n", s);
     if (in.Stage == 2 && NT_SUCCESS(s)) {

@@ -77,3 +77,12 @@ sim, vân tay, gps". Vibration first (feasibility below).
 - 1.0.0.9: VibClockOn = !(MANUAL && !CG_VAL). Same fix in S10eCam's ClkOn (not run yet).
 - Also: cam-s10.ps1 refused by the execution policy ("not digitally signed" = Mark-of-the-Web on a downloaded file):
   Unblock-File / Set-ExecutionPolicy -Scope Process Bypass, as README section 2 says.
+
+## 2026-11-16 03:04 VIBRATION WORKS (S10eBattery 1.0.0.9, user: "rung ok")
+- Steps 1-7 OK on every run. PWM input clock measured 26 268 862 Hz (2638 counts / 2611 QPC ticks at 26 MHz;
+  = OSCCLK 26 MHz within the 100 us window's error). TCFG0 was 0x00000C19 (prescaler0 0x19, prescaler1 0x0C) with
+  TCON 0x00500408 (timer 4 running with autoreload - someone's tick, untouched; timer 0 idle -> prescaler0 set 0).
+  TCNT 1282 / TCMP 320 at 100 % (= 75 % duty, 48828 ns), TCMP 480 at 50 %.
+- Pins after: GPP3 CON 0x00003320 (gpp3-1 = 2 TOUT1), PUD 0x10; GPG1 CON 0x10000001 (gpg1-7 output), DAT 0xD7 (bit 7).
+- PMIC: MAINCTRL1 0x81 (BIASEN already set by the bootloader), MCONFIG 0x82 -> 0xC2 (LRA | DIV128 was there, EN set).
+- Next for vibration: a Windows-facing interface (none yet; IOCTL only).

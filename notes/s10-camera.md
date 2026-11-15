@@ -35,3 +35,15 @@ AE -> stage 5 a Windows camera driver. Front camera first (S5K3J1), like the S9 
 - Stage 2: refuses if a camera LDO is already on; power-up per the module file; ID reads (0x0000 model, 0x0002 rev
   -> 0xA101 expected, 0x0005 frame count -> 0xFF); power-down ALWAYS (also on error) + CIS_CLK1 registers restored.
 - Syntax-checked against WDK 26100 km headers (clang, -Wall -Wextra -Wconversion clean). NOT built with EWDK, NOT run.
+
+## 2026-11-16 03:04 stage 1 run (S10eCam 0.1)
+- CMU_TOP CIS_CLK1 mux 0 (OSCCLK) div 0 gate 0x00200000 qch 0x2; PERIC1_BUS gate 0x00200000 (on per ra_get_gate).
+- CMU_PERIC1 user muxes BUS/I2C_CAM2/USI10 = 0x10 (CMU_TOP clocks), dividers 0, all gates 0x00200000, QCH 0x003F0002.
+- Pins: gpp6 CON 0x11 (gpp6-0/1 = outputs, DAT 3), gpc0 CON 0 (gpc0-4/5 inputs), gpc1 CON 0, gpg2 CON 0x1 DAT 0xD,
+  gpg4 CON 0.
+- I2C_CAM2 as found: CTL 0x8 (master) CONF 0x980110FF FS1 0x0180FF00 FS2 0x030003F8 FS3 0x00FF0000 USI_CON 1.
+- USI10 mode was 0 (set 4), USI_CON 1; S2MPB02 ID read: STATUS_IO_TIMEOUT with INT_STAT 000.
+- Cause: INT_STAT shows only enabled sources; Linux writes INT_ENABLE = TRANSFER_DONE even in polling mode
+  (i2c-exynos5.c:775), S10eBattery sets DONE|ERRORS, 0.1 left INT_EN 0. 0.2: INT_EN = DONE | ERRORS around the
+  transfer, timeouts log TRANS_STATUS / FIFO / ERR, and CMU_TOP PERIC1_IP mux/div/gate (0x10C4/0x18B0/0x20C8, the
+  ipclk source with user mux 1) is logged.
