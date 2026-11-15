@@ -19,7 +19,7 @@
 
   v2.4-s10 (2026-11-15, "a finished Windows, GPU final already"): the image comes up in the kit's FINISHED state, no
   gpu-s10.ps1 / power-s10.ps1 steps on the phone:
-    - GPU: out-gpu\MaliG76Wddm (build-s10.cmd with S10_GPU=1: KMD 1.0.72.2 + UMD 0222-s10.4 in the package) is added
+    - GPU: out-gpu\MaliG76Wddm (build-s10.cmd with S10_GPU=1: KMD 1.0.72.2 + UMD 0222-s10.6 in the package) is added
       to the image; TDR 10 / 20 s and GPU preemption off are written offline (what "gpu-s10.ps1 final" sets). The
       first boot (Setup / OOBE) runs it display-only - the proven path; SetupComplete.cmd then writes the final mode
       (FullAdapter 1, GpuEnable 1, Wddm2 5, DirectFlip 1) and the first logon restarts ONCE (20 s notice): from then
@@ -211,7 +211,7 @@ try {
     $gv = (Select-String -Path $GpuInf -Pattern '^\s*DriverVer\s*=\s*[^,]+,\s*([\d.]+)' | Select-Object -First 1).Matches.Groups[1].Value
     if ([version]$gv -lt [version]'1.0.72.2') { Warn "MaliG76Wddm $gv - 1.0.72.2+ is the one with the S10 brightness" }
     $uh = (Get-FileHash (Join-Path (Split-Path $GpuInf) 'maliumd.dll') -Algorithm SHA256).Hash.ToLower().Substring(0, 8)
-    Ok "GPU: MaliG76Wddm $gv, maliumd.dll $uh (0222-s10.4 = 572f69d7)"
+    Ok "GPU: MaliG76Wddm $gv, maliumd.dll $uh (0222-s10.6 = 2c261402)"
   }
   $PowerDir = Join-Path $DriverDir 'S10ePower'
   if ($NoPower) { $PowerDir = $null }
