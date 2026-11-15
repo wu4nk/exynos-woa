@@ -96,3 +96,17 @@ AE -> stage 5 a Windows camera driver. Front camera first (S5K3J1), like the S9 
 Read PMU DPU/ISPPRE CONFIGURATION+STATUS and MIPI PHY isolation. Domain off -> report, touch nothing inside it (an
 access to a powered-off block = SError/hang). Domain on -> CMU_ISPPRE (incl. CMU_TOP ISPPRE_BUS), then each block
 only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysreg; D-PHY only if pd-dpu is on.
+
+## S10eCam 0.3 - stage 3 (3a survey) written (2026-11-16)
+- Stage 3 is independent of 1/2 (no PERIC1 / PMIC access). Always: PMU pd-dpu / pd-isppre CONF+STATUS, CSIS2 D-PHY
+  isolation (PMU +0x730), CMU_TOP ISPPRE_BUS mux/div/gate. Stops there unless S10ECAM_FLAG_DEEP (cam-s10.ps1 '3deep').
+- Deep (only with both domains ON and the CMU_TOP gate on): CMU_ISPPRE BUS_USER/BUSP + 7 gates/QCHs; LHM_AXI_P gate
+  must be on, else stop; then SYSREG +0x500 (pclk gate), CSIS2 (aclk), CSIS DMA0 + common (CSISX4_PDP_DMA aclk),
+  SysMMU non-secure frame (SYSMMU aclk). Each block skipped if its gate is MANUAL+!CG_VAL.
+- Why 'deep' is a separate run: Linux restores D_TZPC (SMC 0x82000410) after power-on BEFORE its first CMU_ISPPRE
+  access (K pmucal_local.c pmucal_local_enable: on-seq -> exynos_pd_tz_restore -> restore_seq). If the domain is on
+  with a secure TZPC, a non-secure read = bus error -> SError -> bugcheck (reboot, nothing written).
+- The D-PHY registers (0x19162300) are NOT read: DPU block, next to the panel's DSIM PHY; 3b programs them anyway.
+- cam-s10.ps1 v1.1: actions 3 / 3deep (Flags at input offset 4), log per action C:\S10Prov\cam-s10-<action>.txt.
+- Checks: clang -fsyntax-only vs WDK 26100 km (-Wall -Wextra -Wconversion) clean; pwsh parser 0 errors; the embedded
+  C# compiles (Run(Int32, Int32)). NOT built with EWDK, NOT run.

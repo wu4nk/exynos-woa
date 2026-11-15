@@ -13,12 +13,17 @@
  * Stage 1: read the clocks, pins, both I2C controllers and the S2MPB02's camera rails (the camera stays unpowered;
  *          the S2MPB02's bus is set up: USI10 mode, its two pins, controller reset/timing).
  * Stage 2: stage 1, then the front camera (S5K3J1) powered up exactly as Android does, its model ID / revision /
- *          frame count read, and powered down again (always, also after an error). */
+ *          frame count read, and powered down again (always, also after an error).
+ * Stage 3: read-only survey of the CSI receive path (power domains pd-dpu / pd-isppre in the PMU, CMU_TOP's ISPPRE bus
+ *          clock); with S10ECAM_FLAG_DEEP also CMU_ISPPRE, CSIS2, the CSIS DMA, the ISPPRE SysMMU and sysreg. Writes
+ *          nothing; does not run stage 1/2. */
 #define IOCTL_S10ECAM_STAGE  CTL_CODE(S10ECAM_TYPE, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 typedef struct _S10ECAM_STAGE_IN {
-    unsigned int Stage;     /* 1 or 2 */
-    unsigned int Flags;     /* 0 */
+    unsigned int Stage;     /* 1, 2 or 3 */
+    unsigned int Flags;     /* S10ECAM_FLAG_* (stage 3 only), else 0 */
 } S10ECAM_STAGE_IN;
+
+#define S10ECAM_FLAG_DEEP   0x1u   /* stage 3: also read the blocks inside ISPPRE */
 
 #define S10ECAM_REPORT_MAX  16384u
