@@ -44,6 +44,10 @@
  * access can hang the bus). The I2C runs in standard mode (100 kHz) with timings computed for a 200 MHz input
  * clock (the DT's default-clk): a slower real clock only makes the bus slower.
  *
+ * STAGE 4 (0.5, "3b"): IOCTL_S10ECAM_SHOT - the sensor streams mode 8 (1824 x 1368 RAW10 @30) through the D-PHY,
+ * CSIS2 and the VC0 DMA into a 16 MiB buffer below 4 GB (SysMMU untouched = bypass); see Stage4 and notes/s10-camera.md
+ * "Stage 3b facts". The setfile tables are S10eCam3j1.h (generated from Samsung's GPL setfile).
+ *
  * SPDX-License-Identifier: GPL-2.0
  */
 
@@ -55,6 +59,7 @@
 #define NTSTRSAFE_LIB
 #include <ntstrsafe.h>
 #include "S10eCamIoctl.h"
+#include "S10eCam3j1.h"
 
 /* ---------------------------------------------------------------------------------------------- addresses */
 #define CMU_TOP_MAP         0x1A241000ULL   /* CMU_TOP 0x1A240000 + 0x1000, three pages */
@@ -225,6 +230,48 @@
 #define   DMAC_ERR_CODE       0x018u
 /* SysMMU ISPPRE 0x17210000: NEVER read - its non-secure frame answers a load with an external abort (bugcheck 0x124
    P1 0x11, 2026-11-16 03:44 and 04:09). The CSIS DMA is to run with it untouched (reset state = bypass, as the S9's). */
+
+/* stage 4 (notes/s10-camera.md "Stage 3b facts"): CSIS2 + D-PHY + VC0 DMA write path */
+#define   CSIS_CMN_CSI_EN       (1u << 0)
+#define   CSIS_CMN_SW_RESET     (1u << 1)
+#define   CSIS_CMN_LANES_SHIFT  8           /* [9:8] lanes - 1 */
+#define   CSIS_CMN_ILV_SHIFT    10          /* [11:10] interleave mode */
+#define   CSIS_CMN_SHADOW_SHIFT 16          /* [19:16] UPDATE_SHADOW */
+#define   CSIS_CMN_QCH_EN       (1u << 20)
+#define   CSIS_CMN_PHY_SEL      (1u << 21)  /* 0 = D-PHY */
+#define   CSIS_PHY_EN_CLK       (1u << 0)
+#define   CSIS_PHY_EN_DAT_SHIFT 1           /* [4:1] */
+#define   CSIS_DEBUG_OPTION     0x500u      /* DEBUG_OPTION_SUITE = PIXEL_ALIGN_MODE */
+#define   CSIS_CH_STRIDE        0x10u       /* ISP_CONFIG_CHn / ISP_RESOL_CHn = 0x40 / 0x44 + 0x10 n */
+#define   CSIS_MODE_VC_ONLY     2u
+#define   CSIS_PIXEL_DUAL       1u
+#define   CSIS_PIXEL_QUAD       2u
+#define   HW_FORMAT_RAW10       0x2Bu
+#define   HW_FORMAT_UNKNOWN     0x3Fu
+#define   CSIS_IRQ_MASK0_DBG    0x0FFFFF1Fu /* DBG_CSIISR set: every frame start too (only the SRC view matters here) */
+#define   CSIS_IRQ_MASK1_DBG    0x0000FFFFu
+#define   CSIS_FRAMESTART_SHIFT 24
+#define   CSIS_FRAMEEND_SHIFT   20
+#define   DMA0_EN               (1u << 0)
+#define   DMA0_UPDT_PTR_EN      (1u << 1)
+#define   DMA0_UPDT_FRAMEPTR(n) (1u << (2 + (n)))
+#define   DMA0_RESOL_MASK       0x3FFFu
+#define   DMAC_OTF_FORMAT       0x01Cu
+#define   CSIS_DMA_IRQ_MASK_DBG 0x00F11FF0u
+#define   DMAC_INT_DMA_ERROR    (1u << 12)
+#define COMMON_DMA          0x170E0000ULL   /* fimc_is@17190000 reg[0] = IORESOURCE_CSIS_DMA */
+#define   CDMA_ARB_PRI          0x00u       /* [3:2] PRI_1 = 1 (CSIS2 first), [1:0] PRI_0 = 2 */
+#define   CDMA_CTRL             0x08u       /* b1 IP_PROCESSING */
+#define   CDMA_SRAM_SPLIT       0x0Cu       /* [27:16] SRAM1, [11:0] SRAM0 */
+#define   CDMA_MATRIX           0x10u       /* [4:0] */
+#define DPHY_PAGE           0x19162000ULL   /* dphy_m0s4s4s4_csis2 0x19162300 (size 0x500): DPU block, pd-dpu on */
+#define   DPHY_CSIS2            0x300u
+#define   DPHY_SETTLE_1807      9u          /* fimc_is_hw_find_settle(1807): ALIGN 1810 -> 9 (8nm-lpp table) */
+#define   ISPPRE_PHY_RST_CSIS2  (1u << 1)
+#define CMU_TOP_DIV_BUSY        (1u << 16)
+#define   IP_LHS_AXI_D          0x20C8u     /* the DMA's way out to DRAM */
+#define SHOT_ALLOC              (16u * 1024u * 1024u)   /* width is fixed by DMA0_RESOL, lines are not: room for 4599 */
+#define SHOT_FILL               0xEEu
 
 /* ---------------------------------------------------------------------------------------------- state */
 typedef struct _MAPS {
@@ -867,6 +914,461 @@ out:
     return s;
 }
 
+/* ---------------------------------------------------------------------------------------------- stage 4 (3b) */
+
+static NTSTATUS SenW16(MAPS *m, ULONG Reg, ULONG Val)
+{
+    UCHAR b[4] = { (UCHAR)(Reg >> 8), (UCHAR)Reg, (UCHAR)(Val >> 8), (UCHAR)Val };
+    ULONG st;
+    return I2cXfer(m->I2cCam, SENSOR_ADDR, FALSE, b, 4, TRUE, &st);
+}
+
+static NTSTATUS SenW8(MAPS *m, ULONG Reg, ULONG Val)
+{
+    UCHAR b[3] = { (UCHAR)(Reg >> 8), (UCHAR)Reg, (UCHAR)Val };
+    ULONG st;
+    return I2cXfer(m->I2cCam, SENSOR_ADDR, FALSE, b, 3, TRUE, &st);
+}
+
+static ULONG SenR16(MAPS *m, ULONG Reg)
+{
+    UCHAR d[2];
+    ULONG st;
+    if (!NT_SUCCESS(RegRead(m->I2cCam, SENSOR_ADDR, Reg, 2, d, &st)))
+        return 0xFFFFFFFFu;
+    return ((ULONG)d[0] << 8) | d[1];
+}
+
+/* A setfile table (S10eCam3j1.h). Linux sleeps 3 ms before each (sensor_cis_set_registers). Consecutive 0x6F12 words
+   go out as one I2C message of up to 7 words (16-byte FIFO): what the kernel's burst does in one longer message. */
+static NTSTATUS SenTable(MAPS *m, const S10E_REG16 *t, ULONG n, PCSTR Name, REPORT *r)
+{
+    ULONG    i = 0, k, msgs = 0, st = 0;
+    UCHAR    b[HSI2C_FIFO_DEPTH];
+    NTSTATUS s = STATUS_SUCCESS;
+
+    SleepUs(3000);
+    while (i < n) {
+        if (t[i].Addr == S10E_REG_DELAY) {
+            SleepUs(t[i].Val);
+            i++;
+            continue;
+        }
+        b[0] = (UCHAR)(t[i].Addr >> 8);
+        b[1] = (UCHAR)t[i].Addr;
+        k = 0;
+        do {
+            b[2 + 2 * k] = (UCHAR)(t[i + k].Val >> 8);
+            b[3 + 2 * k] = (UCHAR)t[i + k].Val;
+            k++;
+        } while (t[i].Addr == 0x6F12 && k < (HSI2C_FIFO_DEPTH - 2) / 2 && i + k < n && t[i + k].Addr == 0x6F12);
+        s = I2cXfer(m->I2cCam, SENSOR_ADDR, FALSE, b, 2 + 2 * k, TRUE, &st);
+        if (!NT_SUCCESS(s)) {
+            Log(r, "  %s: write #%u (0x%04X) failed 0x%08X (INT_STAT %03X)\r\n", Name, i, t[i].Addr, s, st & 0xFFF);
+            return s;
+        }
+        msgs++;
+        i += k;
+    }
+    Log(r, "  %s: %u entries in %u I2C messages\r\n", Name, n, msgs);
+    return s;
+}
+
+static VOID RmwField(volatile UCHAR *b, ULONG Off, ULONG Shift, ULONG Width, ULONG Val)
+{
+    ULONG mask = ((Width >= 32) ? 0xFFFFFFFFu : ((1u << Width) - 1u)) << Shift;
+    W32(b, Off, (R32(b, Off) & ~mask) | ((Val << Shift) & mask));
+}
+
+/* phy-exynos-mipi.c __set_phy_cfg_0502_0002_dphy for 4 lanes, 1807 Mbps, type 0xDC (CSI_ID_C), settle 9 */
+static VOID DphyConfig(volatile UCHAR *p)
+{
+    ULONG i;
+
+    W32(p, 0x0000, 0x00000001);                          /* SC_GNR_CON0 */
+    W32(p, 0x0004, 0x00001450);                          /* SC_GNR_CON1 */
+    W32(p, 0x0008, 0x00000004);                          /* SC_ANA_CON0 (speed <= 4500) */
+    W32(p, 0x000C, 0x00009000);                          /* SC_ANA_CON1 */
+    W32(p, 0x0010, 0x00000005);                          /* SC_ANA_CON2 */
+    RmwField(p, 0x0010, 8, 2, 0);                        /* clk_div1234_mc = max(0, 5 - ceil(903 / 26)) = 0 */
+    W32(p, 0x0014, 0x00000600);                          /* SC_ANA_CON3 */
+    W32(p, 0x0030, 0x00000301);                          /* SC_TIME_CON0 */
+    for (i = 0; i < 4; i++) {
+        ULONG o = 0x100 * i;
+        W32(p, 0x0100 + o, 0x00000001);                  /* SD_GNR_CON0 */
+        W32(p, 0x0104 + o, 0x00001450);                  /* SD_GNR_CON1 */
+        W32(p, 0x0108 + o, 0x00000004);                  /* SD_ANA_CON0 */
+        W32(p, 0x010C + o, 0x00009000);                  /* SD_ANA_CON1 (speed < 4500) */
+        W32(p, 0x0110 + o, 0x00000005);                  /* SD_ANA_CON2 */
+        RmwField(p, 0x0110 + o, 8, 2, 3);                /* skew_delay_sel 3 (1500 <= 1807 < 2000) */
+        W32(p, 0x0114 + o, 0x00000600);                  /* SD_ANA_CON3 */
+        if (i < 3)
+            W32(p, 0x0124 + o, 0x00000040);              /* SD_ANA_CON7 (DC combo lanes 0-2) */
+        RmwField(p, 0x0130 + o, 0, 8, DPHY_SETTLE_1807); /* SD_TIME_CON0 settle */
+        RmwField(p, 0x0130 + o, 8, 1, 0);                /* settle_clk_sel 0 (>= 1500) */
+        W32(p, 0x0134 + o, 0x00000003);                  /* SD_TIME_CON1 */
+        RmwField(p, 0x0140 + o, 0, 1, 1);                /* SD_DESKEW_CON0 skew_cal_en (>= 1500) */
+        W32(p, 0x0150 + o, 0x0000081A);                  /* SD_DESKEW_CON4 */
+    }
+}
+
+static VOID CsisConfigVc(volatile UCHAR *c, ULONG Vc, ULONG Fmt, ULONG PixelMode, ULONG W, ULONG H)
+{
+    ULONG o = CSIS_ISP_CONFIG_CH0 + CSIS_CH_STRIDE * Vc;
+    ULONG v = R32(c, o);
+
+    v &= ~(0x3u | (0x3Fu << 2) | (1u << 8) | (1u << 9) | (1u << 11) | (0x3u << 12));
+    v |= (Vc & 0x3u) | ((Fmt & 0x3Fu) << 2) | (((Fmt >> 6) & 1u) << 8) | (((Fmt >> 7) & 1u) << 9) | (PixelMode << 12);
+    W32(c, o, v);                                                   /* VC map = Vc, DATAFORMAT, DECOMP, POTF 0 */
+    W32(c, CSIS_ISP_RESOL_CH0 + CSIS_CH_STRIDE * Vc, (H << 16) | W);
+}
+
+typedef struct _SHOT {
+    volatile UCHAR *Pmu, *Cmu, *Sys, *Csis, *Dma, *Cdma, *Phy;
+    PUCHAR          Buf;
+    PHYSICAL_ADDRESS Pa;
+    ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1;
+    BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming;
+} SHOT;
+
+static VOID ShotUnmap(SHOT *x)
+{
+    if (x->Phy)  MmUnmapIoSpace((PVOID)x->Phy, PAGE_4K);
+    if (x->Cdma) MmUnmapIoSpace((PVOID)x->Cdma, PAGE_4K);
+    if (x->Dma)  MmUnmapIoSpace((PVOID)x->Dma, PAGE_4K);
+    if (x->Csis) MmUnmapIoSpace((PVOID)x->Csis, PAGE_4K);
+    if (x->Sys)  MmUnmapIoSpace((PVOID)x->Sys, PAGE_4K);
+    if (x->Cmu)  MmUnmapIoSpace((PVOID)x->Cmu, CMU_ISPPRE_SIZE);
+    if (x->Pmu)  MmUnmapIoSpace((PVOID)x->Pmu, PMU_SIZE);
+    if (x->Buf)  MmFreeContiguousMemorySpecifyCache(x->Buf, SHOT_ALLOC, MmNonCached);
+    RtlZeroMemory(x, sizeof(*x));
+}
+
+/* Everything back, in Linux's stream-off / power-off order. Safe to call at any stage. */
+static VOID ShotTeardown(MAPS *m, FOUND *f, SHOT *x, REPORT *r)
+{
+    ULONG w;
+
+    Log(r, "== teardown\r\n");
+    if (x->DmaOn) {
+        W32(x->Dma, DMA0_CTRL, R32(x->Dma, DMA0_CTRL) & ~(DMA0_EN | DMA0_UPDT_PTR_EN));   /* csi_hw_s_output_dma off */
+        SleepUs(50000);                                  /* the frame in flight ends (33 ms at 30 fps) */
+    }
+    if (x->Streaming) {
+        (VOID)SenW8(m, 0x0100, 0x00);                    /* sensor stream off */
+        SleepUs(40000);
+        x->Streaming = FALSE;
+    }
+    if (x->CsisOn) {
+        W32(x->Csis, CSIS_PHY_CMN_CTRL, R32(x->Csis, CSIS_PHY_CMN_CTRL) & ~(CSIS_PHY_EN_CLK | (0xFu << CSIS_PHY_EN_DAT_SHIFT)));
+        W32(x->Csis, CSIS_CMN_CTRL, R32(x->Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_CSI_EN);
+        W32(x->Csis, CSIS_CMN_CTRL, R32(x->Csis, CSIS_CMN_CTRL) | CSIS_CMN_SW_RESET);
+        for (w = 0; w < 10 && (R32(x->Csis, CSIS_CMN_CTRL) & CSIS_CMN_SW_RESET); w++) KeStallExecutionProcessor(10);
+        W32(x->Csis, CSIS_INT_MSK0, x->CsisMsk0);
+        W32(x->Csis, CSIS_INT_MSK1, x->CsisMsk1);
+        x->CsisOn = FALSE;
+    }
+    if (x->DmaOn) {
+        W32(x->Dma, DMA0_CTRL, 0);
+        W32(x->Dma, DMAC_BASE + DMAC_INT_MASK, x->DmacMask);
+        W32(x->Cdma, CDMA_ARB_PRI, x->CdmaSaved[0]);
+        W32(x->Cdma, CDMA_CTRL, x->CdmaSaved[1]);
+        W32(x->Cdma, CDMA_SRAM_SPLIT, x->CdmaSaved[2]);
+        W32(x->Cdma, CDMA_MATRIX, x->CdmaSaved[3]);
+        x->DmaOn = FALSE;
+    }
+    if (x->PhyOn) {                                      /* phy power_off: reset, then isolation (found values back) */
+        W32(x->Sys, ISPPRE_PHY_RST, R32(x->Sys, ISPPRE_PHY_RST) & ~ISPPRE_PHY_RST_CSIS2);
+        W32(x->Sys, ISPPRE_PHY_RST, (R32(x->Sys, ISPPRE_PHY_RST) & ~ISPPRE_PHY_RST_CSIS2) | (x->PhyRst & ISPPRE_PHY_RST_CSIS2));
+        W32(x->Pmu, PMU_MIPI_ISO_CSIS2, x->Iso);
+        x->PhyOn = FALSE;
+    }
+    if (x->SensorOn) {
+        PowerDown(m, f, r);
+        x->SensorOn = FALSE;
+    }
+    if (x->DivSet) {
+        W32(m->Top, TOP_ISPPRE_BUS_DIV, (R32(m->Top, TOP_ISPPRE_BUS_DIV) & ~0xFu) | (x->TopDiv & 0xFu));
+        for (w = 0; w < 100 && (R32(m->Top, TOP_ISPPRE_BUS_DIV) & CMU_TOP_DIV_BUSY); w++) KeStallExecutionProcessor(1);
+        x->DivSet = FALSE;
+    }
+    Log(r, "  CMU_TOP ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X, CSIS2 CMN_CTRL %08X, DMA0 CTRL %08X\r\n",
+        R32(m->Top, TOP_ISPPRE_BUS_DIV), R32(x->Pmu, PMU_MIPI_ISO_CSIS2), R32(x->Sys, ISPPRE_PHY_RST),
+        R32(x->Csis, CSIS_CMN_CTRL), R32(x->Dma, DMA0_CTRL));
+}
+
+/* What the DMA left in the buffer: rows written (any byte not SHOT_FILL), past the frame too, and a value summary. */
+static VOID ShotAnalyse(SHOT *x, REPORT *r)
+{
+    ULONG   y, xx, firstRow = 0xFFFFFFFFu, lastRow = 0, rowsTouched = 0, over = 0, hi = 0, px = 0;
+    ULONG64 sum = 0;
+    ULONG   maxRows = SHOT_ALLOC / S10ECAM_SHOT_STRIDE;
+
+    for (y = 0; y < maxRows; y++) {
+        PUCHAR row = x->Buf + (SIZE_T)y * S10ECAM_SHOT_STRIDE;
+        BOOLEAN touched = FALSE;
+        for (xx = 0; xx < S10ECAM_SHOT_STRIDE; xx += 64) {
+            if (row[xx] != SHOT_FILL || row[xx + 1] != SHOT_FILL) { touched = TRUE; break; }
+        }
+        if (!touched)
+            continue;
+        rowsTouched++;
+        if (firstRow == 0xFFFFFFFFu) firstRow = y;
+        lastRow = y;
+        if (y >= S10ECAM_SHOT_H)
+            over++;
+        else if ((y & 15) == 0) {
+            for (xx = 0; xx < S10ECAM_SHOT_W; xx += 8) {
+                USHORT v = ((PUSHORT)row)[xx];
+                if (v > 0x3FF) hi++;
+                sum += (v & 0x3FFu);
+                px++;
+            }
+        }
+    }
+    if (rowsTouched == 0) {
+        Log(r, "  buffer: NOTHING written (every sampled byte still 0x%02X)\r\n", SHOT_FILL);
+        return;
+    }
+    Log(r, "  buffer: %u rows written (first %u, last %u), %u past row %u; sampled %u px: mean %u / 1023, %u above 0x3FF\r\n",
+        rowsTouched, firstRow, lastRow, over, S10ECAM_SHOT_H - 1, px, px ? (ULONG)(sum / px) : 0, hi);
+    Log(r, "  row 0: %04X %04X %04X %04X %04X %04X %04X %04X\r\n", ((PUSHORT)x->Buf)[0], ((PUSHORT)x->Buf)[1],
+        ((PUSHORT)x->Buf)[2], ((PUSHORT)x->Buf)[3], ((PUSHORT)x->Buf)[4], ((PUSHORT)x->Buf)[5], ((PUSHORT)x->Buf)[6],
+        ((PUSHORT)x->Buf)[7]);
+}
+
+static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, PUCHAR Frame, ULONG FrameCap, PULONG FrameOut)
+{
+    SHOT             x;
+    NTSTATUS         s = STATUS_SUCCESS;
+    PHYSICAL_ADDRESS lo, hi, bnd;
+    ULONG            g, w, d, frames, fc = 0, fc0, src0 = 0, src1 = 0, dsrc = 0, t, tFirst = 0, tLast = 0, v;
+
+    RtlZeroMemory(&x, sizeof(x));
+    *FrameOut = 0;
+    frames = in->Frames ? in->Frames : 4;
+    if (frames > 60) frames = 60;
+
+    /* --- preconditions: the domain and the clocks stage 3 saw, mapped */
+    x.Pmu = Map(PMU_BASE, PMU_SIZE);
+    x.Cmu = Map(CMU_ISPPRE, CMU_ISPPRE_SIZE);
+    x.Sys = Map(SYSREG_ISPPRE_PAGE, PAGE_4K);
+    x.Csis = Map(CSIS2_BASE, PAGE_4K);
+    x.Dma = Map(CSIS_DMA_PAGE, PAGE_4K);
+    x.Cdma = Map(COMMON_DMA, PAGE_4K);
+    x.Phy = Map(DPHY_PAGE, PAGE_4K);
+    if (!x.Pmu || !x.Cmu || !x.Sys || !x.Csis || !x.Dma || !x.Cdma || !x.Phy) {
+        Log(r, "map failed\r\n");
+        ShotUnmap(&x);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    Log(r, "== stage 4: preconditions\r\n");
+    g = R32(m->Top, TOP_ISPPRE_BUS_GATE);
+    if (!(R32(x.Pmu, PMU_DPU_STAT) & PD_ON) || !(R32(x.Pmu, PMU_ISPPRE_STAT) & PD_ON) || !ClkOn(g)) {
+        Log(r, "  refused: pd-dpu %08X pd-isppre %08X ISPPRE_BUS gate %08X\r\n", R32(x.Pmu, PMU_DPU_STAT),
+            R32(x.Pmu, PMU_ISPPRE_STAT), g);
+        ShotUnmap(&x);
+        return STATUS_DEVICE_POWERED_OFF;
+    }
+    if (!ClkOn(R32(x.Cmu, IP_LHM_AXI_P)) || !ClkOn(R32(x.Cmu, IP_CSIS2_ACLK)) || !ClkOn(R32(x.Cmu, IP_CSISDMA_ACLK)) ||
+        !ClkOn(R32(x.Cmu, IP_PDPDMA_ACLK)) || !ClkOn(R32(x.Cmu, IP_SYSREG_PCLK)) || !ClkOn(R32(x.Cmu, IP_LHS_AXI_D))) {
+        Log(r, "  refused: an ISPPRE gate is off (LHM %08X CSIS2 %08X DMA %08X PDP %08X SYSREG %08X LHS_D %08X)\r\n",
+            R32(x.Cmu, IP_LHM_AXI_P), R32(x.Cmu, IP_CSIS2_ACLK), R32(x.Cmu, IP_CSISDMA_ACLK), R32(x.Cmu, IP_PDPDMA_ACLK),
+            R32(x.Cmu, IP_SYSREG_PCLK), R32(x.Cmu, IP_LHS_AXI_D));
+        ShotUnmap(&x);
+        return STATUS_DEVICE_NOT_READY;
+    }
+    if (R32(x.Csis, CSIS_CMN_CTRL) & CSIS_CMN_CSI_EN) {
+        Log(r, "  refused: CSIS2 is already enabled (CMN_CTRL %08X)\r\n", R32(x.Csis, CSIS_CMN_CTRL));
+        ShotUnmap(&x);
+        return STATUS_DEVICE_BUSY;
+    }
+
+    /* --- the buffer: physically contiguous, below 4 GB (the DMA address registers are 32-bit; the SysMMU is
+       never touched = left in its reset bypass), uncached, filled so the analysis sees what the DMA wrote */
+    lo.QuadPart = 0;
+    hi.QuadPart = 0xFFFFFFFFLL;
+    bnd.QuadPart = 0;
+    x.Buf = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_ALLOC, lo, hi, bnd, MmNonCached);
+    if (x.Buf == NULL) {
+        Log(r, "  no %u MiB contiguous below 4 GB\r\n", SHOT_ALLOC >> 20);
+        ShotUnmap(&x);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    x.Pa = MmGetPhysicalAddress(x.Buf);
+    RtlFillMemory(x.Buf, SHOT_ALLOC, SHOT_FILL);
+    Log(r, "  buffer %u MiB at PA %08X%08X\r\n", SHOT_ALLOC >> 20, (ULONG)(x.Pa.QuadPart >> 32), (ULONG)x.Pa.QuadPart);
+
+    /* --- found values */
+    x.TopDiv = R32(m->Top, TOP_ISPPRE_BUS_DIV);
+    x.Iso = R32(x.Pmu, PMU_MIPI_ISO_CSIS2);
+    x.PhyRst = R32(x.Sys, ISPPRE_PHY_RST);
+    x.CdmaSaved[0] = R32(x.Cdma, CDMA_ARB_PRI);
+    x.CdmaSaved[1] = R32(x.Cdma, CDMA_CTRL);
+    x.CdmaSaved[2] = R32(x.Cdma, CDMA_SRAM_SPLIT);
+    x.CdmaSaved[3] = R32(x.Cdma, CDMA_MATRIX);
+    x.DmacMask = R32(x.Dma, DMAC_BASE + DMAC_INT_MASK);
+    x.CsisMsk0 = R32(x.Csis, CSIS_INT_MSK0);
+    x.CsisMsk1 = R32(x.Csis, CSIS_INT_MSK1);
+    Log(r, "  found: ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X, common DMA %08X %08X %08X %08X\r\n",
+        x.TopDiv, x.Iso, x.PhyRst, x.CdmaSaved[0], x.CdmaSaved[1], x.CdmaSaved[2], x.CdmaSaved[3]);
+
+    /* --- ISPPRE bus clock (CSIS2 and its DMA): 400 MHz / (div + 1) */
+    if (in->IspDiv != 0x100) {
+        d = (in->IspDiv == 0) ? 3u : (in->IspDiv & 0xFu);
+        W32(m->Top, TOP_ISPPRE_BUS_DIV, (x.TopDiv & ~0xFu) | d);
+        x.DivSet = TRUE;
+        for (w = 0; w < 100 && (R32(m->Top, TOP_ISPPRE_BUS_DIV) & CMU_TOP_DIV_BUSY); w++) KeStallExecutionProcessor(1);
+        Log(r, "  ISPPRE_BUS div -> %08X (mux %u: %u MHz / %u)\r\n", R32(m->Top, TOP_ISPPRE_BUS_DIV),
+            R32(m->Top, TOP_ISPPRE_BUS_MUX) & 3u, (R32(m->Top, TOP_ISPPRE_BUS_MUX) & 3u) == 3u ? 400u : 0u, d + 1);
+    }
+
+    /* --- sensor: power, identity, global + mode 8 */
+    s = SensorPowerUp(m, f, r);
+    if (!NT_SUCCESS(s))
+        goto out;                                        /* SensorPowerUp powered down itself */
+    x.SensorOn = TRUE;
+    s = SensorCheckId(m, r);
+    if (!NT_SUCCESS(s))
+        goto out;
+    Log(r, "== sensor setfile A (fimc-is-cis-3j1-setA.h)\r\n");
+    s = SenTable(m, S10eCam3j1Global, RTL_NUMBER_OF(S10eCam3j1Global), "global", r);
+    if (NT_SUCCESS(s))
+        s = SenTable(m, S10eCam3j1Mode1824, RTL_NUMBER_OF(S10eCam3j1Mode1824), "mode 8 1824x1368@30", r);
+    if (NT_SUCCESS(s) && in->Coarse)
+        s = SenW16(m, 0x0202, in->Coarse & 0xFFFFu);
+    if (NT_SUCCESS(s) && in->AGain)
+        s = SenW16(m, 0x0204, in->AGain & 0xFFFFu);
+    if (NT_SUCCESS(s) && (in->Flags & S10ECAM_SHOT_PATTERN))
+        s = SenW8(m, 0x0601, 0x02);                      /* SMIA test_pattern_mode 2 = colour bars */
+    if (!NT_SUCCESS(s))
+        goto out;
+    Log(r, "  read back: coarse 0x0202 %04X, again 0x0204 %04X, FLL 0x0340 %04X, LLP 0x0342 %04X, out %u x %u (0x034C/E), pattern 0x0600 %04X\r\n",
+        SenR16(m, 0x0202), SenR16(m, 0x0204), SenR16(m, 0x0340), SenR16(m, 0x0342), SenR16(m, 0x034C), SenR16(m, 0x034E),
+        SenR16(m, 0x0600));
+
+    /* --- D-PHY power_on (isolation bypass, reset released) + 0502_0002 config */
+    Log(r, "== D-PHY\r\n");
+    W32(x.Pmu, PMU_MIPI_ISO_CSIS2, x.Iso | 1u);
+    x.PhyOn = TRUE;
+    W32(x.Sys, ISPPRE_PHY_RST, R32(x.Sys, ISPPRE_PHY_RST) & ~ISPPRE_PHY_RST_CSIS2);
+    W32(x.Sys, ISPPRE_PHY_RST, R32(x.Sys, ISPPRE_PHY_RST) | ISPPRE_PHY_RST_CSIS2);
+    SleepUs(10);
+    Log(r, "  PMU iso %08X, sysreg +0x500 %08X; PHY SC_GNR_CON0 %08X SD0_TIME_CON0 %08X (before)\r\n",
+        R32(x.Pmu, PMU_MIPI_ISO_CSIS2), R32(x.Sys, ISPPRE_PHY_RST), R32(x.Phy, DPHY_CSIS2), R32(x.Phy, DPHY_CSIS2 + 0x130));
+    DphyConfig(x.Phy + DPHY_CSIS2);
+    Log(r, "  PHY SC %08X %08X %08X %08X %08X  SD0 %08X %08X %08X  SD3 TIME_CON0 %08X\r\n",
+        R32(x.Phy, DPHY_CSIS2), R32(x.Phy, DPHY_CSIS2 + 4), R32(x.Phy, DPHY_CSIS2 + 0x10), R32(x.Phy, DPHY_CSIS2 + 0x14),
+        R32(x.Phy, DPHY_CSIS2 + 0x30), R32(x.Phy, DPHY_CSIS2 + 0x100), R32(x.Phy, DPHY_CSIS2 + 0x110),
+        R32(x.Phy, DPHY_CSIS2 + 0x130), R32(x.Phy, DPHY_CSIS2 + 0x430));
+
+    /* --- CSIS2: reset, 4 lanes, VC_ONLY, the cfg's 4 VCs, interrupt sources visible */
+    Log(r, "== CSIS2\r\n");
+    W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) | CSIS_CMN_SW_RESET);
+    for (w = 0; w < 10 && (R32(x.Csis, CSIS_CMN_CTRL) & CSIS_CMN_SW_RESET); w++) KeStallExecutionProcessor(10);
+    x.CsisOn = TRUE;
+    if (R32(x.Csis, CSIS_CMN_CTRL) & CSIS_CMN_SW_RESET) {
+        Log(r, "  SW_RESET did not clear (CMN_CTRL %08X)\r\n", R32(x.Csis, CSIS_CMN_CTRL));
+        s = STATUS_DEVICE_NOT_READY;
+        goto out;
+    }
+    RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_LANES_SHIFT, 2, 3);          /* 4 lanes */
+    RmwField(x.Csis, CSIS_PHY_CMN_CTRL, CSIS_PHY_EN_DAT_SHIFT, 4, 0xF);
+    RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_ILV_SHIFT, 2, CSIS_MODE_VC_ONLY);
+    W32(x.Csis, CSIS_DEBUG_OPTION, 1);                                     /* PIXEL_ALIGN_MODE */
+    CsisConfigVc(x.Csis, 0, HW_FORMAT_RAW10, CSIS_PIXEL_DUAL, S10ECAM_SHOT_W, S10ECAM_SHOT_H);
+    CsisConfigVc(x.Csis, 1, HW_FORMAT_RAW10, CSIS_PIXEL_QUAD, S10ECAM_SHOT_W, 342);   /* PD_MOD3 PDAF lines */
+    CsisConfigVc(x.Csis, 2, HW_FORMAT_UNKNOWN, CSIS_PIXEL_DUAL, 0, 0);
+    CsisConfigVc(x.Csis, 3, HW_FORMAT_UNKNOWN, CSIS_PIXEL_DUAL, 0, 0);
+    W32(x.Csis, CSIS_INT_MSK0, CSIS_IRQ_MASK0_DBG);
+    W32(x.Csis, CSIS_INT_MSK1, CSIS_IRQ_MASK1_DBG);
+    W32(x.Csis, CSIS_INT_SRC0, 0xFFFFFFFFu);
+    W32(x.Csis, CSIS_INT_SRC1, 0xFFFFFFFFu);
+
+    /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address */
+    W32(x.Cdma, CDMA_ARB_PRI, (x.CdmaSaved[0] & ~0xFu) | (1u << 2) | 2u);
+    W32(x.Cdma, CDMA_CTRL, x.CdmaSaved[1] | (1u << 1));
+    W32(x.Cdma, CDMA_SRAM_SPLIT, (x.CdmaSaved[2] & ~((0xFFFu << 16) | 0xFFFu)) | (0x480u << 16) | 0x480u);
+    W32(x.Cdma, CDMA_MATRIX, x.CdmaSaved[3] & ~0x1Fu);
+    x.DmaOn = TRUE;
+    W32(x.Dma, DMA0_FMT, R32(x.Dma, DMA0_FMT) & ~0x3Fu);                   /* RAW10, NORMAL, legacy, 2D */
+    W32(x.Dma, DMA0_RESOL, (R32(x.Dma, DMA0_RESOL) & ~DMA0_RESOL_MASK) | S10ECAM_SHOT_W);
+    W32(x.Dma, DMA0_FCNTSEQ, 0);
+    W32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT, R32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT) & ~0x3u);
+    W32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL, R32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL) & ~0x1u);   /* input path OTF */
+    W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) & ~DMA0_UPDT_FRAMEPTR(0));
+    W32(x.Dma, DMA0_ADDR1, (ULONG)x.Pa.QuadPart);
+    W32(x.Dma, DMA0_FCNTSEQ, R32(x.Dma, DMA0_FCNTSEQ) | 1u);
+    W32(x.Dma, DMAC_BASE + DMAC_INT_MASK, CSIS_DMA_IRQ_MASK_DBG);
+    W32(x.Dma, DMAC_BASE + DMAC_INT_SRC, 0xFFFFFFFFu);
+    W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) | DMA0_EN | DMA0_UPDT_PTR_EN);
+    Log(r, "  DMA0 CTRL %08X FMT %08X ADDR1 %08X RESOL %08X FCNTSEQ %08X; common %08X %08X %08X %08X\r\n",
+        R32(x.Dma, DMA0_CTRL), R32(x.Dma, DMA0_FMT), R32(x.Dma, DMA0_ADDR1), R32(x.Dma, DMA0_RESOL),
+        R32(x.Dma, DMA0_FCNTSEQ), R32(x.Cdma, CDMA_ARB_PRI), R32(x.Cdma, CDMA_CTRL), R32(x.Cdma, CDMA_SRAM_SPLIT),
+        R32(x.Cdma, CDMA_MATRIX));
+
+    /* --- csi_hw_enable */
+    RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_SHADOW_SHIFT, 4, 0xF);
+    W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_PHY_SEL);
+    W32(x.Csis, CSIS_PHY_CMN_CTRL, R32(x.Csis, CSIS_PHY_CMN_CTRL) | CSIS_PHY_EN_CLK);
+    W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) | CSIS_CMN_CSI_EN);
+    Log(r, "  CMN_CTRL %08X PHY_CMN_CTRL %08X CONFIG0 %08X RESOL0 %08X CONFIG1 %08X PHY_STATUS %08X\r\n",
+        R32(x.Csis, CSIS_CMN_CTRL), R32(x.Csis, CSIS_PHY_CMN_CTRL), R32(x.Csis, CSIS_ISP_CONFIG_CH0),
+        R32(x.Csis, CSIS_ISP_RESOL_CH0), R32(x.Csis, CSIS_ISP_CONFIG_CH0 + CSIS_CH_STRIDE), R32(x.Csis, CSIS_PHY_STATUS));
+
+    /* --- sensor stream on (sensor_3j1_cis_stream_on) */
+    Log(r, "== stream on, waiting for %u frames (2 s at most)\r\n", frames);
+    SleepUs(8000);
+    s = SenW16(m, 0x0A70, 0x0001);
+    if (NT_SUCCESS(s)) s = SenW16(m, 0x0A72, 0x0100);
+    if (NT_SUCCESS(s)) s = SenW8(m, 0x0100, 0x01);
+    if (NT_SUCCESS(s)) { x.Streaming = TRUE; s = SenW8(m, 0x021E, 0x00); }
+    if (!NT_SUCCESS(s)) {
+        Log(r, "  stream-on write failed 0x%08X\r\n", s);
+        goto out;
+    }
+    fc0 = R32(x.Csis, CSIS_FRM_CNT_CH0);
+    for (t = 0; t < 2000; t++) {                          /* 1 ms steps */
+        SleepUs(1000);
+        v = R32(x.Csis, CSIS_INT_SRC0);
+        if (v) { src0 |= v; W32(x.Csis, CSIS_INT_SRC0, v); }
+        v = R32(x.Csis, CSIS_INT_SRC1);
+        if (v) { src1 |= v; W32(x.Csis, CSIS_INT_SRC1, v); }
+        v = R32(x.Dma, DMAC_BASE + DMAC_INT_SRC);
+        if (v) { dsrc |= v; W32(x.Dma, DMAC_BASE + DMAC_INT_SRC, v); }
+        v = R32(x.Csis, CSIS_FRM_CNT_CH0) - fc0;
+        if (v != fc) {
+            if (fc == 0) tFirst = t;
+            tLast = t;
+            fc = v;
+        }
+        if (fc >= frames)
+            break;
+    }
+    Log(r, "  %u frames counted on CH0 in %u ms (first at %u ms, last at %u ms)\r\n", fc, t, tFirst, tLast);
+    Log(r, "  INT_SRC0 seen %08X (FS %X FE %X errors %03X), INT_SRC1 %08X, DMA cmn INT_SRC %08X%s\r\n", src0,
+        (src0 >> CSIS_FRAMESTART_SHIFT) & 0xFu, (src0 >> CSIS_FRAMEEND_SHIFT) & 0xFu, (src0 >> 8) & 0xFFFu, src1, dsrc,
+        (dsrc & DMAC_INT_DMA_ERROR) ? " (DMA FIFO FULL)" : "");
+    Log(r, "  PHY_STATUS %08X, DMA0 ACT_CTRL %08X FCNTSEQ_STAT %08X, cmn ERR_CODE %08X\r\n", R32(x.Csis, CSIS_PHY_STATUS),
+        R32(x.Dma, DMA0_ACT_CTRL), R32(x.Dma, DMA0_FCNTSEQ_STAT), R32(x.Dma, DMAC_BASE + DMAC_ERR_CODE));
+    if (fc == 0)
+        s = STATUS_IO_TIMEOUT;
+
+out:
+    ShotTeardown(m, f, &x, r);
+    if (x.Buf != NULL) {
+        ShotAnalyse(&x, r);
+        if (Frame != NULL && FrameCap >= S10ECAM_SHOT_BYTES) {
+            RtlCopyMemory(Frame, x.Buf, S10ECAM_SHOT_BYTES);
+            *FrameOut = S10ECAM_SHOT_BYTES;
+        }
+    }
+    ShotUnmap(&x);
+    Log(r, "FRAME %u x %u RAW10-in-16 stride %u bytes %u Bayer GRBG returned %u\r\n", S10ECAM_SHOT_W, S10ECAM_SHOT_H,
+        S10ECAM_SHOT_STRIDE, S10ECAM_SHOT_BYTES, *FrameOut);
+    return s;
+}
+
 /* ---------------------------------------------------------------------------------------------- dispatch */
 
 static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
@@ -880,6 +1382,42 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     UNREFERENCED_PARAMETER(DeviceObject);
     Irp->IoStatus.Information = 0;
+    if (sp->Parameters.DeviceIoControl.IoControlCode == IOCTL_S10ECAM_SHOT) {
+        S10ECAM_SHOT_IN shot;
+        PUCHAR          out;
+        ULONG           outLen = sp->Parameters.DeviceIoControl.OutputBufferLength, got = 0;
+
+        if (sp->Parameters.DeviceIoControl.InputBufferLength < sizeof(shot) || outLen < S10ECAM_SHOT_HDR ||
+            Irp->MdlAddress == NULL) {
+            s = STATUS_INVALID_PARAMETER;
+            goto done;
+        }
+        out = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
+        if (out == NULL) {
+            s = STATUS_INSUFFICIENT_RESOURCES;
+            goto done;
+        }
+        shot = *(S10ECAM_SHOT_IN *)Irp->AssociatedIrp.SystemBuffer;
+        r.Buf = (PCHAR)out;
+        r.Size = S10ECAM_SHOT_HDR;
+        r.Used = 0;
+        r.Buf[0] = 0;
+        RtlZeroMemory(&m, sizeof(m));
+        (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
+        Log(&r, "S10eCam 0.5 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+            shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
+        s = Stage1(&m, &f, &r);
+        Log(&r, "stage 1: 0x%08X\r\n", s);
+        if (NT_SUCCESS(s)) {
+            s = Stage4(&m, &f, &r, &shot, out + S10ECAM_SHOT_HDR, outLen - S10ECAM_SHOT_HDR, &got);
+            Log(&r, "stage 4: 0x%08X\r\n", s);
+        }
+        UnmapAll(&m);
+        KeSetEvent(&gLock, IO_NO_INCREMENT, FALSE);
+        Irp->IoStatus.Information = S10ECAM_SHOT_HDR + (ULONG_PTR)got;
+        s = STATUS_SUCCESS;                              /* the outcome is in the report */
+        goto done;
+    }
     if (sp->Parameters.DeviceIoControl.IoControlCode != IOCTL_S10ECAM_STAGE ||
         sp->Parameters.DeviceIoControl.InputBufferLength < sizeof(in) ||
         sp->Parameters.DeviceIoControl.OutputBufferLength < 1024) {
@@ -900,7 +1438,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.4.1 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.5 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

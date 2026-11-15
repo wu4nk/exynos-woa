@@ -29,3 +29,26 @@ typedef struct _S10ECAM_STAGE_IN {
 #define S10ECAM_STEP_MAX    7u   /* 8 (SysMMU) removed: it aborts (2026-11-16) */
 
 #define S10ECAM_REPORT_MAX  16384u
+
+/* IOCTL_S10ECAM_SHOT (stage 4 = "3b"): the front camera streams mode 8 (1824 x 1368 RAW10 @30, 4 lanes x 1807 Mbps)
+ * through D-PHY -> CSIS2 -> VC0 DMA into a buffer below 4 GB; after S10ECAM_SHOT_IN.Frames frames everything is
+ * stopped and powered down again, and the buffer comes back. METHOD_OUT_DIRECT: output = S10ECAM_SHOT_HDR bytes of
+ * ASCII report (NUL-terminated), then the frame (S10ECAM_SHOT_BYTES: 16 bits per pixel, the 10-bit value in the low
+ * bits as the DMA stores RAW10 with PACK12 off, S10ECAM_SHOT_STRIDE bytes a line) when the buffer is big enough. */
+#define IOCTL_S10ECAM_SHOT   CTL_CODE(S10ECAM_TYPE, 0x802, METHOD_OUT_DIRECT, FILE_ANY_ACCESS)
+
+typedef struct _S10ECAM_SHOT_IN {
+    unsigned int Flags;     /* S10ECAM_SHOT_* */
+    unsigned int Coarse;    /* 0 = the setfile's; else 0x0202 coarse integration (lines) */
+    unsigned int AGain;     /* 0 = the setfile's; else 0x0204 analog gain (0x20 = x1) */
+    unsigned int IspDiv;    /* CMU_TOP CLKCMU_ISPPRE_BUS divider field: 0 = default 3 (/4 = 100 MHz), 1..15, 0x100 = leave */
+    unsigned int Frames;    /* frames to wait for before stopping: 0 = 4 */
+} S10ECAM_SHOT_IN;
+
+#define S10ECAM_SHOT_PATTERN  0x1u   /* sensor colour-bar test pattern (0x0601 = 2) instead of the scene */
+#define S10ECAM_SHOT_W        1824u
+#define S10ECAM_SHOT_H        1368u
+#define S10ECAM_SHOT_STRIDE   (S10ECAM_SHOT_W * 2u)
+#define S10ECAM_SHOT_BYTES    (S10ECAM_SHOT_STRIDE * S10ECAM_SHOT_H)
+#define S10ECAM_SHOT_HDR      16384u
+
