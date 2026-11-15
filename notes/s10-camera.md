@@ -114,3 +114,13 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
   0x20A0; DIV ratio 4 bits, ISPPRE_BUS select 2 bits per cmucal-sfr.c); escapes in the VERDICT strings correct;
   stage 3 never touches FOUND/MAPS. Found: the CSIS DMA read was gated only on ACLK_CSISX4_PDP_DMA although nothing
   read so far ties 0x170C0000 to that gate (vs PDP_TOP_DMA). Fixed in a follow-up: both DMA aclks must be on.
+
+## 2026-11-16 03:44 stage 3deep -> BUGCHECK (user report: "sau khi chạy 3deep thì màn xanh luôn")
+- 3deep only reads inside ISPPRE when PMU says pd-dpu AND pd-isppre are ON and CMU_TOP's ISPPRE_BUS gate is on, so
+  the domain was ON and one of the reads inside ISPPRE faulted (first candidate: the very first CMU_ISPPRE read).
+  Matches the risk written in 0.3: Linux restores D_TZPC (SMC 0x82000410) before its first CMU_ISPPRE access; an
+  NS read of a block still marked secure = bus error -> SError -> bugcheck. Not yet proven: the stage-3 log
+  (cam-s10-3.txt) and the bugcheck code (System log event 1001 / C:\Windows\Minidump) were asked for.
+- Lesson: no more reads inside ISPPRE from Windows until the TZPC question is settled. Next options: (a) per-read
+  step mode with the "about to read X" line flushed to disk before each IOCTL, to name the faulting register; (b) the
+  UEFI (EL2/EL1 before ExitBootServices, ArmCallSmc like G3D) powers ISPPRE and issues 0x82000410 itself.
