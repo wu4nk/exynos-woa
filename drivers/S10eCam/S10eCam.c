@@ -1206,15 +1206,10 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     x.TopDiv = R32(m->Top, TOP_ISPPRE_BUS_DIV);
     x.Iso = R32(x.Pmu, PMU_MIPI_ISO_CSIS2);
     x.PhyRst = R32(x.Sys, ISPPRE_PHY_RST);
-    x.CdmaSaved[0] = R32(x.Cdma, CDMA_ARB_PRI);
-    x.CdmaSaved[1] = R32(x.Cdma, CDMA_CTRL);
-    x.CdmaSaved[2] = R32(x.Cdma, CDMA_SRAM_SPLIT);
-    x.CdmaSaved[3] = R32(x.Cdma, CDMA_MATRIX);
     x.DmacMask = R32(x.Dma, DMAC_BASE + DMAC_INT_MASK);
     x.CsisMsk0 = R32(x.Csis, CSIS_INT_MSK0);
     x.CsisMsk1 = R32(x.Csis, CSIS_INT_MSK1);
-    Log(r, "  found: ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X, common DMA %08X %08X %08X %08X\r\n",
-        x.TopDiv, x.Iso, x.PhyRst, x.CdmaSaved[0], x.CdmaSaved[1], x.CdmaSaved[2], x.CdmaSaved[3]);
+    Log(r, "  found: ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X\r\n", x.TopDiv, x.Iso, x.PhyRst);
 
     /* --- ISPPRE bus clock (CSIS2 and its DMA): 400 MHz / (div + 1) */
     if (in->IspDiv != 0x100) {
@@ -1299,7 +1294,15 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     W32(x.Csis, CSIS_INT_SRC1, 0xFFFFFFFFu);
     if (phaseMax == 3) { Log(r, "  phase limit 3 (CSIS2 configured, not enabled): stopping\r\n"); goto out; }
 
-    /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address */
+    /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address. The common block 0x170E0000
+       was never read before this phase (stage 3 did not): its first read is here, after phase 3, so -Phase 3
+       vs 4 tells it apart if it aborts like the SysMMU did. */
+    x.CdmaSaved[0] = R32(x.Cdma, CDMA_ARB_PRI);
+    x.CdmaSaved[1] = R32(x.Cdma, CDMA_CTRL);
+    x.CdmaSaved[2] = R32(x.Cdma, CDMA_SRAM_SPLIT);
+    x.CdmaSaved[3] = R32(x.Cdma, CDMA_MATRIX);
+    Log(r, "== DMA (common found %08X %08X %08X %08X)\r\n", x.CdmaSaved[0], x.CdmaSaved[1], x.CdmaSaved[2],
+        x.CdmaSaved[3]);
     W32(x.Cdma, CDMA_ARB_PRI, (x.CdmaSaved[0] & ~0xFu) | (1u << 2) | 2u);
     W32(x.Cdma, CDMA_CTRL, x.CdmaSaved[1] | (1u << 1));
     W32(x.Cdma, CDMA_SRAM_SPLIT, (x.CdmaSaved[2] & ~((0xFFFu << 16) | 0xFFFu)) | (0x480u << 16) | 0x480u);

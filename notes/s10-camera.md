@@ -275,3 +275,9 @@ ISPPRE bus clock: CMU_TOP MUX_CLKCMU_ISPPRE_BUS parents {PLL_SHARED4 666 MHz, SH
   percentile, gamma 1/2.2). Preview verified on Linux with a synthetic GRBG 8-bar frame: the 8 colours come out right.
 - Checks: clang vs WDK 26100 km clean (-Wall -Wextra -Wconversion); pwsh parse 0; MSVC C4389 spots cast. NOT built
   with EWDK, NOT run.
+- Review of the 0.5 commits: (1) the common DMA block 0x170E0000 was first READ in the "found values" before phase 1 -
+  a block stage 3 never read (could abort like the SysMMU) ahead of every phase -> moved to the DMA phase (after
+  phase 3), so -Phase 3 vs 4 isolates it. (2) MSVC C4389 USHORT/UCHAR vs unsigned compares cast. (3) HWACG
+  QCHANNEL_EN handling added (Linux clears it at enable). (4) DMA0_RESOL bounds only the width -> 0x034C/E guard.
+  First-ever accesses in a full shot, in order: CMU_ISPPRE 0x20C8 (CMU, as the gates read fine), PMU 0x730 write,
+  sysreg 0x500 write, D-PHY 0x19162300.. (DPU block, phase 2), CSIS2 writes (phase 3), common DMA (phase 4).
