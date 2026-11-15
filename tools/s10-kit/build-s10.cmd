@@ -1,10 +1,12 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.16) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.17) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
+rem v1.17: S10eCam (camera bring-up stages, legacy service like S10ePower, cam-s10.ps1) -> out\S10eCam\. Never
+rem fails the kit.
 rem v1.16: the UFS driver is built for the DUAL-BOOT S10 by default (-Board Beyond1Dual, board id 3: write fence =
 rem the Windows slot's ESP sda39 + Windows sda45 only, Android's partitions refused - live GPT 2026-11-15). The old
 rem single-boot layout (Windows in sda34 userdata, ESP sda31): set S10_SINGLEBOOT=1. make-windows checks the match.
@@ -86,6 +88,7 @@ call :diag || exit /b 1
 rem v1.13: S10ePower (ACPM clocks + temperatures, thermal guard) + S10eGovernor + clocks.exe - out\S10ePower\ (no INF:
 rem power-s10.ps1 installs it as services). Never fails the kit.
 call :power || echo [WARN] S10ePower not built - clocks stay at the boot rates
+call :cam || echo [WARN] S10eCam not built - cam-s10.ps1 has nothing to install
 rem v1.11: Bluetooth - Exynos9820Bt (BthxDDI transport over the BT UART, binds DSDT BTH0 = UEFI v0.2.1+ with the BT
 rem role latch). Its INF ships the phone's own patch file as bcm4375B1_semco.hcd; get-wifi-fw.cmd v1.1 puts the one
 rem that matches this phone's module in bcm4375\bt\. Without it Bluetooth is skipped (never fails the kit).
@@ -197,6 +200,20 @@ set "S10E_SIGN_SKIP="
 del /q "%DST%\*.obj" >nul 2>&1
 for %%F in ("%DST%\*.sys" "%DST%\*.exe") do call :sign "%%~F" || exit /b 1
 echo [ OK ] S10ePower
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+:cam
+set "DST=%OUT%\S10eCam"
+echo.
+echo ==== S10eCam (camera bring-up stages) ====
+set "S10E_SIGN_SKIP=1"
+call "%SRCROOT%S10eCam\build.bat" "%DST%"
+if errorlevel 1 (set "S10E_SIGN_SKIP=" & echo [FAIL] S10eCam build.bat & exit /b 1)
+set "S10E_SIGN_SKIP="
+del /q "%DST%\*.obj" >nul 2>&1
+for %%F in ("%DST%\*.sys") do call :sign "%%~F" || exit /b 1
+echo [ OK ] S10eCam
 exit /b 0
 
 rem ---------------------------------------------------------------------------
