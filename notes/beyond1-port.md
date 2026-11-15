@@ -1903,3 +1903,20 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   change on the desktop path that was never exercised.
 - UMD 0222-s10.6: maliumd 2c261402, maliumd32 21ab23b0, maligl 0bd4de69 (= s10.5's; GL unchanged). Built on Linux
   (zig mingw), NOT run on the phone yet. Expected: gputest msaa4-resolve / msaa4-load-samples PASS; nothing else moves.
+- Audio gap found while re-reading v2.8: make-windows never set the Exynos9820Audio Parameters (only
+  install-in-windows does) and the INF defaults are 0 -> the v2.8 image would come up SILENT. SetupComplete v1.3
+  writes AmpInit / AmpEnable / AboxEnable / Stereo 1, SpkAtten / RcvAtten 0 and "a bit louder": analog gain +3 dB on
+  both amps over the by-ear baseline (Rcv 12 -> 15, Spk 10 -> 13; AMP_GAIN_CTRL 1 dB/step, driver clamp 17 = stock
+  gain-media-dual-speaker, which stock runs behind DSP protection). Speaker app compiled from C:\S10Prov\kit\
+  S10eSpeakerTrim.cs onto the Public desktop. install-in-windows v1.5: same gains only when none are set.
+- Battery (what is safe without device experiments): the ~2 W floor is SoC-level (no PEP -> cores WFI only, GPU
+  cores never powered down, UFS AHIT 0) and not touched. SetupComplete v1.3 cuts Windows' own background work, all
+  MS-documented settings: Privacy LetAppsRunInBackground 2 (force deny, Store apps), DeliveryOptimization
+  DODownloadMode 0 (HTTP only), Set-MpPreference ScanAvgCPULoadFactor 20 / EnableLowCpuPriority /
+  ScanOnlyIfIdleEnabled / DisableCatchupFull+QuickScan, battery saver threshold 30 % (ESBATTTHRESHOLD). Governor Eco
+  stays default-on (EcoMs 3000), IdleMifMs stays 0. Expected gain: fewer CPU bursts, not a lower floor.
+- gpu-validate v1.5: gputest KNOWN when every FAIL line is texture-format-BC* (BCn -> ETC2 by design); -Soak <min>
+  (gputest + d3dcs + d3dtess + gltest loop, s10epowerctl temps / G3D clock per round, TDR count, KMD stats, guard
+  peaks) -> C:\S10Prov\gpu-soak.txt.
+- 17:0x kit v2.9 (s10-woa-kit-v2.9.zip 6ce73a70, repo c6710dc): umd\ = 0222-s10.6, make-windows v2.4.1-s10,
+  SetupComplete v1.3, UEFI v0.2.2. NOT run.
