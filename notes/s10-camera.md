@@ -302,3 +302,14 @@ Log: notes/data/cam-s10-shot-1-20261116.txt (raw frame kept off-repo: 4.99 MB, o
   bus 400 MHz (mux 3 SHARED2_DIV2, div /1) - under Android's 466 (SHARED1_DIV4). Voltage NOT raised (no ACPM
   dvfs_cam request): INFERENCE that the boot voltage carries 400 MHz; a failure would be a hang/abort, not damage.
 - The 0.5 IspDiv field could not express divider field 0 (0 meant "default") -> 0.5.1: IspDiv = the RATIO 1..16.
+
+## 2026-11-16 05:02 FULL FRAME - colour bars through D-PHY -> CSIS2 -> DMA -> RAM under Windows (S10eCam 0.5.1)
+Log: notes/data/cam-s10-shot-2-bars-20261116.txt. ISPPRE bus 400 MHz (mux 3, div 0).
+- INT_SRC0 0x03300000: FS + FE on VC0/VC1, NO overflow; DMA cmn INT_SRC 0x111, no FIFO-full; PHY_STATUS F1 -> F0.
+- DMA extent exactly 4990464 bytes = 1824 x 1368 x 2; 1368 rows, none past; every value in rows 0/1/700/1367 is
+  0x000 or 0x3FF (the bars are pure) -> layout CONFIRMED: 16 bits per pixel, 10-bit value low, stride 3648, Bayer
+  GRBG (the BMP preview shows the 8 SMPTE-order bars white/yellow/cyan/green/magenta/red/blue/black in order).
+- 400 MHz without an ACPM voltage request ran fine for this shot (one run: not a stability proof).
+- Teardown left everything as found (ISPPRE div 0xF, iso 0, sysreg 0, CMN_CTRL 0x4000, DMA0 CTRL 0, rails off).
+- Stage 3b = DONE for the test pattern. Next: the scene (pattern off), exposure by hand (coarse max = FLL 1431 - 4 =
+  1427 lines at 30 fps; again 0x20 = x1), then an AE loop, then a Windows camera driver (AVStream / frame server).
