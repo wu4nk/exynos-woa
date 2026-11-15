@@ -57,3 +57,11 @@ AE -> stage 5 a Windows camera driver. Front camera first (S5K3J1), like the S9 
   (2.95 V), LDO16 0x58 (2.80 V) - all off, every vsel EXACTLY the value computed from the DT and the regulator
   driver's min/step (= the register map and encodings are right). LDO17 0xDE (on, 2.95 V: VDD_GRIP_3P3 2.8-3.0 V).
 - Ready for stage 2 (all camera rails off, sensor bus clocks on).
+
+## 2026-11-16 03:16 STAGE 2 PASS - the front sensor answers under Windows
+- Power-up writes all read back: B2CTRL1 0x18 -> 0xD8 (BUCK2 on), L16 0xD8, L13 0xDE, L6 0xB0, L5 0xA4.
+- CIS_CLK1 gate 0x00200000 -> 0x00300000 (MANUAL + CG_VAL), mux/div 0 = 26 MHz; pins gpc0-4/5 f2, gpc1-5 f2,
+  gpg2-5 output high, gpg4-3 output 0.
+- Sensor 0x10 on I2C_CAM2: MODEL ID 0x30A1, REVISION 0xA101 (= DT rev_reg), FRAME COUNT 0xFF (not streaming).
+- Power-down: every rail back to its vsel with enable off, BUCK2 0x18, CIS_CLK1 gate restored 0x00200000; gpc1-5
+  left f1 output low (sensor-mclk1-out), gpg2-5 output low, gpg4-3 output 0.
