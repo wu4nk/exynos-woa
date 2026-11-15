@@ -1947,3 +1947,14 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   readlink by-name userdata = sda45 and cache = sda39 before the size check; set-esp-type gets the GUIDs + indexes;
   UEFI not flashed in Dual unless -Uefi. set-esp-type v1.4: names cut at the first NUL (tested on the dump: cache =
   sda39, userdata = sda45, GptType.Set = already ESP, no write). update-ufs.ps1 still board 2 only (fails closed).
+
+## 2026-11-16 01:45 user: "fix lại xem cái mic thế nào, chưa thấy nó trong sound manager"
+- Cause: Exynos9820Audio builds Microphone0 (and Headphones) only with Parameters\CodecEnable = 1 (Capture.c
+  AudMicEndpoint: CodecEnable && AboxEnable && HpMaster); INF default 0, and neither SetupComplete nor
+  install-in-windows ever set it on the S10 -> no capture endpoint at all. Not a driver bug.
+- S10 codec wiring = S10e (live DT cs47l93@0 spi@10470000, dmic-ref <0 0 1 1>; Codec.c maps the same physical
+  addresses), where the mic path was measured (notes/d8-mic.md, 1.0.3.7: 1 kHz -49.3 dB). On the S10: never run.
+- tools/s10-kit/mic-s10.ps1 v1.0: CodecEnable 1 + MicTest 500 (one driver self-test), pnputil /restart-device,
+  endpoint list, run-log mic/codec lines, 3 s wascap recording -> RMS/peak dBFS. wascap.exe (tools/phone/audio/wascap.c)
+  cross-built with zig 0.13 aarch64-windows-gnu into the kit's tools\.
+- SetupComplete v1.4 + install-in-windows v1.6 set CodecEnable 1 (MicGain 24) for new installs.

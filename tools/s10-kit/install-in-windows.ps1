@@ -1,5 +1,5 @@
 <#
-  install-in-windows.ps1 (v1.5) - add the S10 kit drivers to a Windows ALREADY installed on the
+  install-in-windows.ps1 (v1.6) - add the S10 kit drivers to a Windows ALREADY installed on the
   Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator, from the kit
   folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
@@ -15,6 +15,7 @@
   (SpkAtten 0; analog gains stay at the by-ear baseline, the trim app raises them up to stock 17); the audio device is
   restarted so it takes them now. Bluetooth (Exynos9820Bt, needs UEFI v0.2.1+). S10eSpeakerTrim.exe compiled from
   the kit's .cs with the in-box .NET Framework csc and put on the desktop.
+  v1.6 (2026-11-16): CodecEnable 1 - the microphones (and the 3.5 mm jack) need the codec on (mic-s10.ps1).
   v1.5 (2026-11-15, louder audio): analog gains RcvGain 15 / SpkGain 13 (+3 dB over the 12 / 10 baseline, 2 steps
   under the stock 17) when the key has none yet - gains already set (the speaker app) are kept. Same as SetupComplete
   v1.3 for a new image.
@@ -77,6 +78,7 @@ Set-ItemProperty $ap 'SpkAtten' 0 -Type DWord
 $gains = Get-ItemProperty $ap -ErrorAction SilentlyContinue
 if ($null -eq $gains.RcvGain) { Set-ItemProperty $ap 'RcvGain' 15 -Type DWord }
 if ($null -eq $gains.SpkGain) { Set-ItemProperty $ap 'SpkGain' 13 -Type DWord }
+Set-ItemProperty $ap 'CodecEnable' 1 -Type DWord   # v1.6: Microphone + Headphones endpoints
 Ok 'audio: AmpInit / AmpEnable / AboxEnable / Stereo = 1, SpkAtten 0 (both speakers), gains 15 / 13 unless already set'
 
 # 4. driver packages

@@ -1,5 +1,5 @@
 @echo off
-rem SetupComplete.cmd (Galaxy S10 kit v1.3) - Windows Setup runs this as SYSTEM at the end of the
+rem SetupComplete.cmd (Galaxy S10 kit v1.4) - Windows Setup runs this as SYSTEM at the end of the
 rem installation (C:\Windows\Setup\Scripts\). Installs the key agent the way the S10e's
 rem s10e-setupcomplete.cmd does: S10eDiag (kernel service, ALIVE GPIO reads) + S10eAgent
 rem (polls power / Bixby / volume every 25 ms, actions in C:\ProgramData\S10e\buttons.ini).
@@ -18,6 +18,8 @@ rem                    no digital attenuation, analog gain +3 dB on both amps ov
 rem                    loudspeaker 10 -> 13; 1 dB per step, Exynos9820Audio clamps at 17 = stock music level, which stock
 rem                    runs behind Samsung's DSP speaker protection - we stay 2 steps under it). The speaker app
 rem                    (S10eSpeakerTrim, compiled from the kit's .cs) goes on the desktop to set it by ear up to 17.
+rem v1.4 (2026-11-16, user: no microphone in Sound settings): CodecEnable 1 - the driver builds the Microphone
+rem                    (and 3.5 mm Headphones) endpoint only with the CS47L93 codec on (notes/d8-mic.md; S10 wiring = S10e).
 rem   battery          background work Windows does on its own, cut (MS Learn Policy CSP / Set-MpPreference):
 rem                    Store apps not in the background (Privacy/LetAppsRunInBackground 2 = force deny), Delivery
 rem                    Optimization without peer-to-peer (DODownloadMode 0 = HTTP only), Defender scans at 20 % average
@@ -87,7 +89,7 @@ echo power services installed (start at boot) >> "%LOG%"
 :nopower
 rem ---- v1.3: audio on, a little louder (see the header)
 set AK=HKLM\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters
-for %%V in ("AmpInit 1" "AmpEnable 1" "AboxEnable 1" "Stereo 1" "SpkAtten 0" "RcvAtten 0" "RcvGain 15" "SpkGain 13") do (
+for %%V in ("AmpInit 1" "AmpEnable 1" "AboxEnable 1" "Stereo 1" "SpkAtten 0" "RcvAtten 0" "RcvGain 15" "SpkGain 13" "CodecEnable 1" "MicGain 24") do (
   for /f "tokens=1,2" %%A in (%%V) do reg add %AK% /v %%A /t REG_DWORD /d %%B /f >> "%LOG%" 2>&1
 )
 rem the driver reads Parameters when it starts: with the GPU restart pending that restart applies them, otherwise now
