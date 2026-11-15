@@ -45,6 +45,20 @@ chỉnh tiếp tới mức gốc 17), bớt việc nền cho pin (app Store khô
 `set S10_SINGLEBOOT=1` trước `build-s10.cmd` và `make-windows.ps1 -Layout Single`. `update-ufs.ps1` chỉ nhận driver
 bố cục cũ (board 2) — với dual boot thì cài lại bằng make-windows.
 
+## 0b. Rung (kit v3.1, S10eBattery 1.0.0.8)
+
+Motor rung của S10 do chip MAX77705 (cùng chip pin/sạc) điều khiển, nên tính năng rung nằm trong driver pin.
+1. EWDK: `build-s10.cmd` (không cần build lại UEFI hay cài lại Windows).
+2. Chép `out\` + `vibra-s10.ps1` sang máy, PowerShell Admin trong thư mục đó:
+
+```powershell
+.\vibra-s10.ps1 install    # thay driver pin bằng 1.0.0.8 (không reboot)
+.\vibra-s10.ps1            # 3 nhịp ngắn + 1 s nhẹ - cầm máy để cảm nhận
+.\vibra-s10.ps1 -Ms 500 -Strength 60
+```
+
+Gửi lại `C:\S10Prov\vibra-s10.txt` + cảm nhận (có rung không, mạnh/yếu).
+
 ## 1. Build driver (cửa sổ EWDK)
 
 ```bat

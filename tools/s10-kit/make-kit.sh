@@ -13,7 +13,7 @@ case "$(basename "$UEFI")" in beyond1lte-uefi-v*.img) ;; *) echo "UEFI must be n
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 D="$TMP/s10-woa-kit-v$VER"
 mkdir -p "$D"
-cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,power-s10.ps1,update-ufs.ps1,collect-logs.ps1,push-to-windows.cmd,get-logs-twrp.cmd,s10-log.cmd,kit-watch.ps1,auto-install.ps1,gpu-s10.ps1,umd-test.ps1,gpu-watch.ps1,gpu-fill.ps1,twrp-log.sh,s10-wddm-inf.ps1,gpu-validate.ps1,drag-probe.ps1,video-s10.ps1,panel-s10.ps1,touch-rescue.cmd} "$D/"
+cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs,new-cert.ps1,get-wifi-fw.cmd,get-wifi-fw.sh,install-in-windows.ps1,power-s10.ps1,update-ufs.ps1,collect-logs.ps1,push-to-windows.cmd,get-logs-twrp.cmd,s10-log.cmd,kit-watch.ps1,auto-install.ps1,gpu-s10.ps1,umd-test.ps1,gpu-watch.ps1,gpu-fill.ps1,twrp-log.sh,s10-wddm-inf.ps1,gpu-validate.ps1,drag-probe.ps1,video-s10.ps1,panel-s10.ps1,touch-rescue.cmd,vibra-s10.ps1} "$D/"
 cp "$KIT/../S10eSpeakerTrim/S10eSpeakerTrim.cs" "$D/"
 mkdir -p "$D/setup" && cp "$KIT/setup/SetupComplete.cmd" "$KIT/setup/S10-install-once.cmd" "$D/setup/"
 cp "$UEFI" "$D/"
