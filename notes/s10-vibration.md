@@ -50,3 +50,22 @@ sim, vân tay, gps". Vibration first (feasibility below).
   monitor, Samsung's proprietary IPC, then a Windows WWAN/MBIM driver on top -> research project of months, low odds.
 - Camera: Exynos ISP (Pablo/FIMC-IS) needs Samsung's closed ISP library + firmware; a raw-sensor path (CSIS + sensor
   I2C init from the GPL sensor drivers + software debayer + a Windows AVStream camera driver) is months of work.
+
+## 2026-11-15 20:32 camera precedent (user: github.com/danstronics/ios-s9plus-exynos)
+- That repo (S9+ star2lte, iOS on HakiOS/Scion) does NOT have a camera: its README table "Camera/audio/cellular/App
+  Store | Not qualified by this release"; core/docs/devices/star2lte.md: camera "no ... nothing tried on an S9+".
+- Its core/ snapshot (Scion's HakiOS fork) has the precedent: core/docs/devices/starlte.md - Galaxy S9 (Exynos 9810)
+  FRONT camera S5K3H1 "partly": raw sensor path WITHOUT Samsung's ISP firmware/library, auto-exposed, demosaiced
+  1632 x 1224, 30 fps into the stock Camera app preview, "seen on the phone, 3 November" (cam_s9=7 cam=5).
+  Driver core/drivers/camera/hakios.exynos_camera.c (staged cam_s9=1..7: S2MPB02 LDOs/BUCK2, CIS_CLK MCLK, sensor
+  I2C, ISPPRE power domain + DTZPC SMC 0x82000410 restore, CSIS v5.1 link + VC0 WDMA, D-PHY settle, setfile mode
+  table, AE loop). Their own AVF camera (core/avf/CAMERA.md) is different: an Android app's Camera2 frames passed
+  into an iOS VM - not hardware.
+- LICENSE: their kernel side (drivers/) is APSL-2.0 (XNU derivative) -> reference reading only, not copied into our
+  drivers; the facts come from Samsung's GPL kernel (LineageOS exynos9820) as theirs did from the 9810 one.
+- S10 (live DT): sensors 2L4 (rear wide), 3M3 (tele), 3P9 (ultra-wide), 3J1 (front, fimc-is-3j1@10, sensor_i2c_ch 4,
+  mclk_ch 1, gpio_reset, af on i2c_ch 5; sensor-module-3j1 live.dts:15614). Camera blocks at 0x1703xxxx (9820 IS),
+  i.e. different addresses from the 9810's ISPPRE 0x162xxxxx - the 9810 code is a map of the steps, not of the values.
+- Revised estimate: a raw front-camera frame on the S10 is a staged, realistic project (precedent exists); getting it
+  into Windows' Camera app additionally needs an AVStream / camera driver + software ISP (demosaic, AE, AWB) on our
+  side - the larger part.
