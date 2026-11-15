@@ -179,3 +179,6 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
 - Meaning: a synchronous external abort = the slave (or the interconnect / TZPC filter) answered the load with an
   ERROR response - not a hang of a clock-stopped block. Fits a D_TZPC deny (DECERR) best; a Q-channel-gated slave
   may also answer with an error on this bus. The 3step log will say which read.
+- 04:17 WINPRAM-3step.BIN (notes/data/winpram-cam3step-20261116.bin): fresh ring (S10eDiag loaded once, uptime
+  1308 s = boot ~03:47, right after the 3deep crash) -> BUGCHECK BC 0x124, P1 0x11 (SEA), "reset to recovery".
+  Same signature as 3deep. The step is in C:\S10Prov\cam-s10-3step.txt (asked again).
