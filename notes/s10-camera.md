@@ -335,3 +335,20 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
 - The raw path (sensor -> D-PHY -> CSIS2 -> DMA) is proven on real content. Remaining for a usable camera: AE (coarse/
   gain from the frame mean, a few shots), white balance (gray world is fine to start), demosaic beyond 2x2 binning,
   orientation, then the Windows-facing driver (AVStream/frame server; MS docs first) - a big separate milestone.
+
+## 2026-11-16 05:15 user: "all" (AE + WB + demosaic + a Windows camera). Windows camera path - MS docs first (rule 13)
+- MFCreateVirtualCamera (learn.microsoft.com/windows/win32/api/mfvirtualcamera/nf-mfvirtualcamera-mfcreatevirtualcamera):
+  "In the current release, only MFVirtualCameraType_SoftwareCameraSource is supported"; sourceId = "The unique
+  CLSID of the custom media source to be activated for this virtual camera"; MFVirtualCameraLifetime_System to
+  "persist across sessions and/or across reboots"; AllUsers access "must have administrator permissions"; minimum
+  client Windows Build 22000; lib mfsensorgroup.lib. -> a user-mode COM media source + a registering step.
+- AVStream samples (learn.microsoft.com/windows-hardware/drivers/stream/avstream-samples): Avshws "provides a
+  pin-centric AVStream capture driver for a simulated piece of hardware ... video captures at 320 x 240 pixels in
+  either RGB24 or YUV422 format using direct memory access (DMA) into capture buffers"; Avssamp = filter-centric.
+- Choice: an AVStream capture minidriver (kernel, a real KSCATEGORY_VIDEO_CAMERA device - what the Camera app /
+  Frame Server enumerate; no user-mode registration; fits "native only" rule 12 best). It reuses S10eCam's capture
+  engine (power, setfile, D-PHY, CSIS2, DMA) and converts the Bayer frame in kernel (2x2 binning -> 912x684, cheap)
+  into YUY2/NV12. The virtual camera stays the fallback if the AVStream path stalls.
+- Order: (1) S10eCam 0.6 streaming engine (start / latest frame / exposure / stop, 3-buffer DMA ring) + a user-mode
+  'stream' test with AE + gray-world WB + full demosaic + rotation (cam-s10.ps1); (2) the engine moved into a shared
+  file; (3) the AVStream driver (S10eCamera) on it; (4) INF + root-enumerated device + kit.
