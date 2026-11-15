@@ -690,26 +690,35 @@ static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
 /* Read-only survey of the CSI receive path. Nothing is written anywhere. Every block is read only when the power
    domain it sits in reads ON in the PMU and its clock gate is provably on (a read of a powered-off or clock-stopped
    block can stall the bus = SError / hang).
-   Without S10ECAM_FLAG_DEEP only the PMU and CMU_TOP are read (always-on / top blocks: no risk). With it, the blocks
-   inside ISPPRE are read too. That part carries one risk this code cannot check: ISPPRE's slaves sit behind D_TZPC
-   (need_smc 0x17010204) and Linux re-applies that TZPC (SMC 0x82000410) after power-on BEFORE its first CMU_ISPPRE
-   access (K pmucal_local.c pmucal_local_enable). If the domain is on but its TZPC still says secure, a non-secure
-   read is a bus error -> SError -> bugcheck (a reboot, nothing written). Hence the separate 'deep' run.
+   Without S10ECAM_FLAG_DEEP only the PMU and CMU_TOP are read (always-on / top blocks: no risk).
+   0.3 then read everything inside ISPPRE in one call and BUGCHECKED (2026-11-16, no dump: the faulting read is
+   unknown). Candidates: D_TZPC (Linux restores it, SMC 0x82000410, before its first CMU_ISPPRE access - K
+   pmucal_local.c), or one register whose own Q-channel clock was stopped (the S9 precedent read a found-on ISPPRE
+   with NO SMC, but a CMU_ISPPRE Q-channel read, 0x303C on the 9810, and SysMMU reads took external aborts there).
+   0.4: one STEP per call (S10ECAM_STEP(Flags)), safest first; cam-s10.ps1 writes "step N ..." to disk write-through
+   before each call, so a bugcheck names its step. Step 0 (= 0.3's all-in-one) is refused.
+     1 CMU_ISPPRE BUS_USER 0x100 / BUSP 0x1804 (pmucal's isppre_save list reads exactly these)
+     2 CMU_ISPPRE CLK_CON_GAT gates (7)        3 Q-channels CSIS2 / CSIS DMA / PDP DMA (the S9 wrote its CSIS QCHs)
+     4 Q-channels LHM_AXI_P / SYSREG / SYSMMU  5 CSIS2 (aclk on)   6 CSIS DMA0 + common (both DMA aclks on)
+     7 SYSREG_ISPPRE +0x500 (pclk on)          8 SysMMU, non-secure frame (aclk on) - last: the S9 kept it off
+   Steps 5-8 re-read their gate (step 2's registers) first.
    The D-PHY (0x19162300) is not read at all: it sits in the DPU block next to the running panel's DSIM PHY, and
    3b programs it from scratch anyway. Its PMU isolation bit is read (PMU = always on). */
 static NTSTATUS Stage3(REPORT *r, ULONG Flags)
 {
     volatile UCHAR *pmu = NULL, *top = NULL, *cmu = NULL, *sys = NULL, *csis = NULL, *dma = NULL, *mmu = NULL;
-    ULONG    dpuSt, ispSt, iso, tg, lhm, g, i;
+    ULONG    dpuSt, ispSt, iso, tg, g, i, step;
     NTSTATUS s = STATUS_SUCCESS;
-    static const struct { PCSTR Name; ULONG Gate, Qch; } clk[] = {
-        { "CMU pclk     ", IP_CMU_PCLK, 0 },
-        { "LHM_AXI_P    ", IP_LHM_AXI_P, IP_Q_LHM_AXI_P },
-        { "SYSREG pclk  ", IP_SYSREG_PCLK, IP_Q_SYSREG },
-        { "CSIS2 aclk   ", IP_CSIS2_ACLK, IP_Q_CSIS2 },
-        { "CSIS DMA aclk", IP_CSISDMA_ACLK, IP_Q_CSISDMA },
-        { "PDP DMA aclk ", IP_PDPDMA_ACLK, IP_Q_PDPDMA },
-        { "SYSMMU aclk  ", IP_SYSMMU_ACLK, IP_Q_SYSMMU },
+    static const struct { PCSTR Name; ULONG Reg; } gates[] = {
+        { "CMU pclk     ", IP_CMU_PCLK },     { "LHM_AXI_P    ", IP_LHM_AXI_P },   { "SYSREG pclk  ", IP_SYSREG_PCLK },
+        { "CSIS2 aclk   ", IP_CSIS2_ACLK },   { "CSIS DMA aclk", IP_CSISDMA_ACLK }, { "PDP DMA aclk ", IP_PDPDMA_ACLK },
+        { "SYSMMU aclk  ", IP_SYSMMU_ACLK },
+    };
+    static const struct { PCSTR Name; ULONG Reg; } qch3[] = {
+        { "CSIS2   ", IP_Q_CSIS2 }, { "CSIS DMA", IP_Q_CSISDMA }, { "PDP DMA ", IP_Q_PDPDMA },
+    };
+    static const struct { PCSTR Name; ULONG Reg; } qch4[] = {
+        { "LHM_AXI_P", IP_Q_LHM_AXI_P }, { "SYSREG   ", IP_Q_SYSREG }, { "SYSMMU   ", IP_Q_SYSMMU },
     };
 
     pmu = Map(PMU_BASE, PMU_SIZE);
@@ -748,83 +757,99 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
     }
     if ((Flags & S10ECAM_FLAG_DEEP) == 0) {
         Log(r, "VERDICT: pd-isppre and pd-dpu are ON, ISPPRE's bus clock runs. Stopping here (the safe part); the reads\r\n"
-               "  inside ISPPRE are stage 3 with the 'deep' flag: .\\cam-s10.ps1 3deep\r\n");
+               "  inside ISPPRE are one step at a time: .\\cam-s10.ps1 3step\r\n");
+        goto out;
+    }
+    step = S10ECAM_STEP(Flags);
+    if (step < 1 || step > S10ECAM_STEP_MAX) {
+        Log(r, "deep step %u refused: only 1..%u, one per call (0.3's all-in-one read bugchecked)\r\n", step, S10ECAM_STEP_MAX);
+        s = STATUS_INVALID_PARAMETER;
         goto out;
     }
 
+    Log(r, "== deep step %u\r\n", step);
     cmu = Map(CMU_ISPPRE, CMU_ISPPRE_SIZE);
-    sys = Map(SYSREG_ISPPRE_PAGE, PAGE_4K);
-    csis = Map(CSIS2_BASE, PAGE_4K);
-    dma = Map(CSIS_DMA_PAGE, PAGE_4K);
-    mmu = Map(SYSMMU_ISPPRE, PAGE_4K);
-    if (!cmu || !sys || !csis || !dma || !mmu) {
+    if (!cmu) {
         Log(r, "map failed\r\n");
         s = STATUS_INSUFFICIENT_RESOURCES;
         goto out;
     }
-    Log(r, "== CMU_ISPPRE 0x17000000\r\n");
-    Log(r, "  BUS_USER %08X (bit 4: 1 = CMU_TOP clock) BUSP div %08X\r\n", R32(cmu, IP_BUS_USER), R32(cmu, IP_BUSP_DIV));
-    for (i = 0; i < RTL_NUMBER_OF(clk); i++) {
-        g = R32(cmu, clk[i].Gate);
-        if (clk[i].Qch != 0)
-            Log(r, "  %s gate %08X qch %08X -> %s\r\n", clk[i].Name, g, R32(cmu, clk[i].Qch), ClkOn(g) ? "on" : "NOT on");
-        else
-            Log(r, "  %s gate %08X -> %s\r\n", clk[i].Name, g, ClkOn(g) ? "on" : "NOT on");
-    }
-    lhm = R32(cmu, IP_LHM_AXI_P);
-    if (!ClkOn(lhm)) {
-        Log(r, "VERDICT: the register path into ISPPRE (LHM_AXI_P) is gated - no block read\r\n");
-        s = STATUS_DEVICE_NOT_READY;
-        goto out;
-    }
-
-    g = R32(cmu, IP_SYSREG_PCLK);
-    if (ClkOn(g))
-        Log(r, "== SYSREG_ISPPRE +0x500 (D-PHY resets) %08X -> CSIS2 D-PHY %s\r\n", R32(sys, ISPPRE_PHY_RST),
-            (R32(sys, ISPPRE_PHY_RST) & (1u << 1)) ? "out of reset" : "IN reset");
-    else
-        Log(r, "== SYSREG_ISPPRE not read (pclk gated)\r\n");
-
-    g = R32(cmu, IP_CSIS2_ACLK);
-    if (ClkOn(g)) {
-        Log(r, "== CSIS2 0x17050000\r\n");
-        Log(r, "  VERSION %08X CMN_CTRL %08X CLK_CTRL %08X\r\n", R32(csis, CSIS_VERSION), R32(csis, CSIS_CMN_CTRL),
+    switch (step) {
+    case 1:
+        Log(r, "  CMU_ISPPRE BUS_USER %08X (bit 4: 1 = CMU_TOP clock) BUSP div %08X\r\n", R32(cmu, IP_BUS_USER),
+            R32(cmu, IP_BUSP_DIV));
+        break;
+    case 2:
+        for (i = 0; i < RTL_NUMBER_OF(gates); i++) {
+            g = R32(cmu, gates[i].Reg);
+            Log(r, "  %s gate [+%04X] %08X -> %s\r\n", gates[i].Name, gates[i].Reg, g, ClkOn(g) ? "on" : "NOT on");
+        }
+        break;
+    case 3:
+        for (i = 0; i < RTL_NUMBER_OF(qch3); i++)
+            Log(r, "  QCH %s [+%04X] %08X\r\n", qch3[i].Name, qch3[i].Reg, R32(cmu, qch3[i].Reg));
+        break;
+    case 4:
+        for (i = 0; i < RTL_NUMBER_OF(qch4); i++)
+            Log(r, "  QCH %s [+%04X] %08X\r\n", qch4[i].Name, qch4[i].Reg, R32(cmu, qch4[i].Reg));
+        break;
+    case 5:
+        g = R32(cmu, IP_CSIS2_ACLK);
+        if (!ClkOn(g) || !ClkOn(R32(cmu, IP_LHM_AXI_P))) {
+            Log(r, "  CSIS2 not read: aclk %08X / LHM_AXI_P %08X gated\r\n", g, R32(cmu, IP_LHM_AXI_P));
+            break;
+        }
+        csis = Map(CSIS2_BASE, PAGE_4K);
+        if (!csis) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+        Log(r, "  CSIS2 VERSION %08X CMN_CTRL %08X CLK_CTRL %08X\r\n", R32(csis, CSIS_VERSION), R32(csis, CSIS_CMN_CTRL),
             R32(csis, CSIS_CLK_CTRL));
         Log(r, "  INT_MSK0 %08X SRC0 %08X  INT_MSK1 %08X SRC1 %08X\r\n", R32(csis, CSIS_INT_MSK0), R32(csis, CSIS_INT_SRC0),
             R32(csis, CSIS_INT_MSK1), R32(csis, CSIS_INT_SRC1));
         Log(r, "  ISP_CONFIG_CH0 %08X ISP_RESOL_CH0 %08X FRM_CNT_CH0 %08X\r\n", R32(csis, CSIS_ISP_CONFIG_CH0),
             R32(csis, CSIS_ISP_RESOL_CH0), R32(csis, CSIS_FRM_CNT_CH0));
         Log(r, "  PHY_STATUS %08X PHY_CMN_CTRL %08X\r\n", R32(csis, CSIS_PHY_STATUS), R32(csis, CSIS_PHY_CMN_CTRL));
-    } else {
-        Log(r, "== CSIS2 not read (aclk gated)\r\n");
-    }
-
-    /* which DMA gate feeds 0x170C0000 is not stated anywhere read so far (CSISX4_PDP_DMA by name; mode1's 0x17120000
-       is likely PDP_TOP_DMA): both must be on, so a wrong guess can only skip the read, never fault it */
-    g = R32(cmu, IP_CSISDMA_ACLK);
-    if (ClkOn(g) && ClkOn(R32(cmu, IP_PDPDMA_ACLK))) {
-        Log(r, "== CSIS DMA0 0x170C0000 / common 0x170C0400\r\n");
+        break;
+    case 6:
+        /* which DMA gate feeds 0x170C0000 is not stated anywhere read so far (CSISX4_PDP_DMA by name; mode1's
+           0x17120000 is likely PDP_TOP_DMA): both must be on, so a wrong guess can only skip the read */
+        if (!ClkOn(R32(cmu, IP_CSISDMA_ACLK)) || !ClkOn(R32(cmu, IP_PDPDMA_ACLK)) || !ClkOn(R32(cmu, IP_LHM_AXI_P))) {
+            Log(r, "  CSIS DMA not read: a DMA aclk or LHM_AXI_P gated\r\n");
+            break;
+        }
+        dma = Map(CSIS_DMA_PAGE, PAGE_4K);
+        if (!dma) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
         Log(r, "  DMA0 CTRL %08X FMT %08X ADDR1 %08X ACT_CTRL %08X RESOL %08X FCNTSEQ %08X STAT %08X\r\n",
             R32(dma, DMA0_CTRL), R32(dma, DMA0_FMT), R32(dma, DMA0_ADDR1), R32(dma, DMA0_ACT_CTRL), R32(dma, DMA0_RESOL),
             R32(dma, DMA0_FCNTSEQ), R32(dma, DMA0_FCNTSEQ_STAT));
         Log(r, "  common DATA_CTRL %08X INT_MASK %08X INT_SRC %08X CMN_CTRL %08X ERR_CODE %08X\r\n",
             R32(dma, DMAC_BASE + DMAC_DATA_CTRL), R32(dma, DMAC_BASE + DMAC_INT_MASK), R32(dma, DMAC_BASE + DMAC_INT_SRC),
             R32(dma, DMAC_BASE + DMAC_CMN_CTRL), R32(dma, DMAC_BASE + DMAC_ERR_CODE));
-    } else {
-        Log(r, "== CSIS DMA not read (a DMA aclk gated)\r\n");
-    }
-
-    g = R32(cmu, IP_SYSMMU_ACLK);
-    if (ClkOn(g)) {
-        ULONG c = R32(mmu, MMU_CTRL);
-        Log(r, "== SysMMU ISPPRE 0x17210000\r\n");
-        Log(r, "  CTRL %08X (%s) CFG %08X STATUS %08X CAPA %08X VERSION %08X\r\n", c,
-            (c & 0x7u) == 0x5u ? "translating" : (c & 0x7u) == 0 ? "disabled = bypass?" : "other",
+        break;
+    case 7:
+        if (!ClkOn(R32(cmu, IP_SYSREG_PCLK)) || !ClkOn(R32(cmu, IP_LHM_AXI_P))) {
+            Log(r, "  SYSREG_ISPPRE not read: pclk or LHM_AXI_P gated\r\n");
+            break;
+        }
+        sys = Map(SYSREG_ISPPRE_PAGE, PAGE_4K);
+        if (!sys) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+        g = R32(sys, ISPPRE_PHY_RST);
+        Log(r, "  SYSREG_ISPPRE +0x500 (D-PHY resets) %08X -> CSIS2 D-PHY %s\r\n", g,
+            (g & (1u << 1)) ? "out of reset" : "IN reset");
+        break;
+    case 8:
+        if (!ClkOn(R32(cmu, IP_SYSMMU_ACLK)) || !ClkOn(R32(cmu, IP_LHM_AXI_P))) {
+            Log(r, "  SysMMU not read: aclk or LHM_AXI_P gated\r\n");
+            break;
+        }
+        mmu = Map(SYSMMU_ISPPRE, PAGE_4K);
+        if (!mmu) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+        g = R32(mmu, MMU_CTRL);
+        Log(r, "  SysMMU CTRL %08X (%s) CFG %08X STATUS %08X CAPA %08X VERSION %08X\r\n", g,
+            (g & 0x7u) == 0x5u ? "translating" : (g & 0x7u) == 0 ? "disabled = bypass?" : "other",
             R32(mmu, MMU_CFG), R32(mmu, MMU_STATUS), R32(mmu, MMU_CAPA), R32(mmu, MMU_VERSION));
-    } else {
-        Log(r, "== SysMMU not read (aclk gated)\r\n");
+        break;
     }
-    Log(r, "VERDICT: pd-isppre is ON - the survey above is the starting state for stage 3b\r\n");
+    Log(r, "step %u done\r\n", step);
 
 out:
     if (mmu)  MmUnmapIoSpace((PVOID)mmu, PAGE_4K);
@@ -870,7 +895,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.3 stage %u\r\n", in.Stage);
+    Log(&r, "S10eCam 0.4 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

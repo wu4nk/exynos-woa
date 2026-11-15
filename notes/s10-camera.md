@@ -142,3 +142,17 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
   off = CONF 0, wait STATUS 0; save list = CMU_ISPPRE BUSP div 0x1804 + BUS_USER 0x100 (only restored after a save).
 - Candidate fix, Linux's runtime cycle in the UEFI (as GpuPower.c does for G3D): tz_save SMC(0x82000410, 0,
   0x17010204, 2) -> ISPPRE off -> on -> tz_restore SMC(0x82000410, 1, 0x17010204, 2). Not written yet.
+
+### 2026-11-16 ~04:00 re-think + S10eCam 0.4 (step mode)
+- The S9 precedent weakens the TZPC-only reading: hakios.exynos_camera.c used a FOUND-ON ISPPRE "as it is, no SMC"
+  and read CMU_ISPPRE / CSIS / WDMA fine, but its CMU_ISPPRE Q-channel sweep read of 0x303C (9810) took a synchronous
+  external abort, and it kept SysMMU reads off ("its clock or Q-channel may be off, and a read then aborts"). Our 0.3
+  read QCH registers AND the SysMMU. So the faulting read is unknown: TZPC or one register; a UEFI SMC could be
+  unneeded or insufficient. Plan changed from "UEFI first" to "find the read first".
+- S10eCam 0.4: deep = one step per IOCTL (Flags bit0 + step in bits 15:8, S10ECAM_STEP_MAX 8): 1 BUS_USER/BUSP
+  (pmucal's save list reads them), 2 the 7 gates, 3 QCH CSIS2/CSISDMA/PDPDMA, 4 QCH LHM/SYSREG/SYSMMU, 5 CSIS2,
+  6 CSIS DMA, 7 SYSREG +0x500, 8 SysMMU. Steps 5-8 re-check their gate + LHM_AXI_P. Step 0 (v1.1's 3deep) refused.
+- cam-s10.ps1 v1.2: '3step [N]' runs N..8, writes "step N (...): calling the driver ..." write-through + FlushFileBuffers
+  before each call (log appends across runs), stops at a step without "step N done"; refuses in a window that still
+  has the v1.0 type. '3deep' removed. Checks: clang WDK clean; pwsh parse 0; the loop run on Linux with a fake
+  S10Cam type (steps 2..5, stop at an incomplete 5) - output as intended. NOT built with EWDK, NOT run.
