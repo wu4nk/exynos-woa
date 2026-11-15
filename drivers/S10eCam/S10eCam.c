@@ -949,7 +949,7 @@ static NTSTATUS SenTable(MAPS *m, const S10E_REG16 *t, ULONG n, PCSTR Name, REPO
 
     SleepUs(3000);
     while (i < n) {
-        if (t[i].Addr == S10E_REG_DELAY) {
+        if ((ULONG)t[i].Addr == S10E_REG_DELAY) {   /* (ULONG): MSVC C4389 on USHORT-int vs unsigned */
             SleepUs(t[i].Val);
             i++;
             continue;
@@ -1027,7 +1027,7 @@ typedef struct _SHOT {
     volatile UCHAR *Pmu, *Cmu, *Sys, *Csis, *Dma, *Cdma, *Phy;
     PUCHAR          Buf;
     PHYSICAL_ADDRESS Pa;
-    ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1;
+    ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1, CsisCmn;
     BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming;
 } SHOT;
 
@@ -1062,6 +1062,8 @@ static VOID ShotTeardown(MAPS *m, FOUND *f, SHOT *x, REPORT *r)
     if (x->CsisOn) {
         W32(x->Csis, CSIS_PHY_CMN_CTRL, R32(x->Csis, CSIS_PHY_CMN_CTRL) & ~(CSIS_PHY_EN_CLK | (0xFu << CSIS_PHY_EN_DAT_SHIFT)));
         W32(x->Csis, CSIS_CMN_CTRL, R32(x->Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_CSI_EN);
+        /* csi_hw_disable (ENABLE_HWACG_CONTROL, v7_0_0 fimc-is-config.h) sets QCHANNEL_EN again: here = as found */
+        W32(x->Csis, CSIS_CMN_CTRL, (R32(x->Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_QCH_EN) | (x->CsisCmn & CSIS_CMN_QCH_EN));
         W32(x->Csis, CSIS_CMN_CTRL, R32(x->Csis, CSIS_CMN_CTRL) | CSIS_CMN_SW_RESET);
         for (w = 0; w < 10 && (R32(x->Csis, CSIS_CMN_CTRL) & CSIS_CMN_SW_RESET); w++) KeStallExecutionProcessor(10);
         W32(x->Csis, CSIS_INT_MSK0, x->CsisMsk0);
@@ -1108,7 +1110,7 @@ static VOID ShotAnalyse(SHOT *x, REPORT *r)
         PUCHAR row = x->Buf + (SIZE_T)y * S10ECAM_SHOT_STRIDE;
         BOOLEAN touched = FALSE;
         for (xx = 0; xx < S10ECAM_SHOT_STRIDE; xx += 64) {
-            if (row[xx] != SHOT_FILL || row[xx + 1] != SHOT_FILL) { touched = TRUE; break; }
+            if ((ULONG)row[xx] != SHOT_FILL || (ULONG)row[xx + 1] != SHOT_FILL) { touched = TRUE; break; }
         }
         if (!touched)
             continue;
@@ -1142,7 +1144,8 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     SHOT             x;
     NTSTATUS         s = STATUS_SUCCESS;
     PHYSICAL_ADDRESS lo, hi, bnd;
-    ULONG            g, w, d, frames, fc = 0, fc0, src0 = 0, src1 = 0, dsrc = 0, t, tFirst = 0, tLast = 0, v;
+    ULONG            g, w, d, frames, fc = 0, fc0, src0 = 0, src1 = 0, dsrc = 0, t, tFirst = 0, tLast = 0, v, ow, oh;
+    ULONG            phaseMax = S10ECAM_SHOT_PHASE(in->Flags);   /* 0 = all; 1..4 = stop after that phase (bisecting) */
 
     RtlZeroMemory(&x, sizeof(x));
     *FrameOut = 0;
@@ -1243,9 +1246,17 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         s = SenW8(m, 0x0601, 0x02);                      /* SMIA test_pattern_mode 2 = colour bars */
     if (!NT_SUCCESS(s))
         goto out;
+    ow = SenR16(m, 0x034C);
+    oh = SenR16(m, 0x034E);
     Log(r, "  read back: coarse 0x0202 %04X, again 0x0204 %04X, FLL 0x0340 %04X, LLP 0x0342 %04X, out %u x %u (0x034C/E), pattern 0x0600 %04X\r\n",
-        SenR16(m, 0x0202), SenR16(m, 0x0204), SenR16(m, 0x0340), SenR16(m, 0x0342), SenR16(m, 0x034C), SenR16(m, 0x034E),
-        SenR16(m, 0x0600));
+        SenR16(m, 0x0202), SenR16(m, 0x0204), SenR16(m, 0x0340), SenR16(m, 0x0342), ow, oh, SenR16(m, 0x0600));
+    /* DMA0_RESOL bounds the width only: a sensor still in another mode (3648 x 2736) would write past the buffer. */
+    if (ow != S10ECAM_SHOT_W || oh != S10ECAM_SHOT_H) {
+        Log(r, "  refused: the sensor's output size is not %u x %u - no DMA\r\n", S10ECAM_SHOT_W, S10ECAM_SHOT_H);
+        s = STATUS_DEVICE_CONFIGURATION_ERROR;
+        goto out;
+    }
+    if (phaseMax == 1) { Log(r, "  phase limit 1 (sensor set up): stopping\r\n"); goto out; }
 
     /* --- D-PHY power_on (isolation bypass, reset released) + 0502_0002 config */
     Log(r, "== D-PHY\r\n");
@@ -1261,9 +1272,11 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         R32(x.Phy, DPHY_CSIS2), R32(x.Phy, DPHY_CSIS2 + 4), R32(x.Phy, DPHY_CSIS2 + 0x10), R32(x.Phy, DPHY_CSIS2 + 0x14),
         R32(x.Phy, DPHY_CSIS2 + 0x30), R32(x.Phy, DPHY_CSIS2 + 0x100), R32(x.Phy, DPHY_CSIS2 + 0x110),
         R32(x.Phy, DPHY_CSIS2 + 0x130), R32(x.Phy, DPHY_CSIS2 + 0x430));
+    if (phaseMax == 2) { Log(r, "  phase limit 2 (D-PHY set up): stopping\r\n"); goto out; }
 
     /* --- CSIS2: reset, 4 lanes, VC_ONLY, the cfg's 4 VCs, interrupt sources visible */
     Log(r, "== CSIS2\r\n");
+    x.CsisCmn = R32(x.Csis, CSIS_CMN_CTRL);
     W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) | CSIS_CMN_SW_RESET);
     for (w = 0; w < 10 && (R32(x.Csis, CSIS_CMN_CTRL) & CSIS_CMN_SW_RESET); w++) KeStallExecutionProcessor(10);
     x.CsisOn = TRUE;
@@ -1284,6 +1297,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     W32(x.Csis, CSIS_INT_MSK1, CSIS_IRQ_MASK1_DBG);
     W32(x.Csis, CSIS_INT_SRC0, 0xFFFFFFFFu);
     W32(x.Csis, CSIS_INT_SRC1, 0xFFFFFFFFu);
+    if (phaseMax == 3) { Log(r, "  phase limit 3 (CSIS2 configured, not enabled): stopping\r\n"); goto out; }
 
     /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address */
     W32(x.Cdma, CDMA_ARB_PRI, (x.CdmaSaved[0] & ~0xFu) | (1u << 2) | 2u);
@@ -1306,11 +1320,13 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         R32(x.Dma, DMA0_CTRL), R32(x.Dma, DMA0_FMT), R32(x.Dma, DMA0_ADDR1), R32(x.Dma, DMA0_RESOL),
         R32(x.Dma, DMA0_FCNTSEQ), R32(x.Cdma, CDMA_ARB_PRI), R32(x.Cdma, CDMA_CTRL), R32(x.Cdma, CDMA_SRAM_SPLIT),
         R32(x.Cdma, CDMA_MATRIX));
+    if (phaseMax == 4) { Log(r, "  phase limit 4 (DMA armed, CSIS2 not enabled, no stream): stopping\r\n"); goto out; }
 
     /* --- csi_hw_enable */
     RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_SHADOW_SHIFT, 4, 0xF);
     W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_PHY_SEL);
     W32(x.Csis, CSIS_PHY_CMN_CTRL, R32(x.Csis, CSIS_PHY_CMN_CTRL) | CSIS_PHY_EN_CLK);
+    W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_QCH_EN);   /* ENABLE_HWACG_CONTROL: Q-channel off */
     W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) | CSIS_CMN_CSI_EN);
     Log(r, "  CMN_CTRL %08X PHY_CMN_CTRL %08X CONFIG0 %08X RESOL0 %08X CONFIG1 %08X PHY_STATUS %08X\r\n",
         R32(x.Csis, CSIS_CMN_CTRL), R32(x.Csis, CSIS_PHY_CMN_CTRL), R32(x.Csis, CSIS_ISP_CONFIG_CH0),

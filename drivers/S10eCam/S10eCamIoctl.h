@@ -46,6 +46,7 @@ typedef struct _S10ECAM_SHOT_IN {
 } S10ECAM_SHOT_IN;
 
 #define S10ECAM_SHOT_PATTERN  0x1u   /* sensor colour-bar test pattern (0x0601 = 2) instead of the scene */
+#define S10ECAM_SHOT_PHASE(f) (((f) >> 8) & 0xFu)   /* 0 = everything; 1 sensor, 2 + D-PHY, 3 + CSIS2, 4 + DMA: then stop */
 #define S10ECAM_SHOT_W        1824u
 #define S10ECAM_SHOT_H        1368u
 #define S10ECAM_SHOT_STRIDE   (S10ECAM_SHOT_W * 2u)

@@ -251,3 +251,27 @@ ISPPRE bus clock: CMU_TOP MUX_CLKCMU_ISPPRE_BUS parents {PLL_SHARED4 666 MHz, SH
   sets it through ACPM DVFS dvfs_cam (dfs_id 0xB04000C, levels 690000/650000) - clock AND voltage. Plan: divider only,
   /4 = 100 MHz (well under any level), restored at the end. INFERENCE: 100 MHz x 2 pixels/clock > the ~77 Mpixel/s a
   1824-wide line at 30 fps needs on average.
+- correction to the facts above: ISP_CONFIG_CHn / ISP_RESOL_CHn step is 0x10 per VC (0x40/0x44, 0x50/0x54, ...),
+  not 0xC (fimc-is-hw-csi-v5_2.h:110-121). ENABLE_HWACG_CONTROL is defined for v7_0_0 (fimc-is-config.h:195):
+  csi_hw_enable clears CMN_CTRL QCHANNEL_EN b20, csi_hw_disable sets it. CMU_TOP ISPPRE_BUS DIV BUSY = b16.
+
+## S10eCam 0.5 - stage 4 "shot" written (2026-11-16 ~05:30)
+- IOCTL_S10ECAM_SHOT 0x802 METHOD_OUT_DIRECT, in S10ECAM_SHOT_IN {Flags (b0 colour bars, [11:8] phase limit),
+  Coarse, AGain, IspDiv (0 -> 3 = /4 = 100 MHz, 0x100 leave), Frames (0 -> 4)}; out = 16 KiB report + 1824x1368x2.
+- Order: stage 1 -> preconditions (pd-dpu/isppre ON, CMU_TOP gate, ISPPRE gates LHM/CSIS2/CSISDMA/PDPDMA/SYSREG/
+  LHS_AXI_D 0x20C8 on, CSIS2 not enabled) -> 16 MiB contiguous < 4 GB uncached, filled 0xEE -> ISPPRE div ->
+  SensorPowerUp + SensorCheckId -> global (227) + mode 8 (326) tables (0x6F12 runs batched 7 words / message) ->
+  optional 0x0202/0x0204/0x0601=2 -> read back + GUARD: 0x034C/0x034E must be 1824/1368 (DMA0_RESOL bounds only the
+  width) [phase 1] -> PMU iso b0=1, sysreg b1 0->1, D-PHY 0502_0002 writes [phase 2] -> CSIS2 reset, 4 lanes,
+  VC_ONLY, PIXEL_ALIGN 1, VC0 RAW10 dual 1824x1368, VC1 RAW10 quad 1824x342, VC2/3 0x3F, masks DBG [phase 3] ->
+  common DMA (ARB 1/2, IP_PROCESSING, SRAM 0x480/0x480, MATRIX 0), VC0 FMT 0, RESOL 1824, OTF_FORMAT 0, input OTF,
+  ADDR1 = PA, FCNTSEQ 1, DMA mask, CTRL EN|UPDT_PTR_EN [phase 4] -> csi_hw_enable (+QCH_EN off) -> sensor
+  stream on (8 ms, 0x0A70 1, 0x0A72 0x100, 0x0100=1, 0x021E=0) -> poll FRM_CNT_CH0 / INT_SRC0/1 / DMA INT_SRC 1 ms
+  steps up to 2 s for N frames -> teardown (DMA off + 50 ms, stream off + 40 ms, CSIS off/QCH as found/reset, masks,
+  DMA regs, common DMA regs back, PHY reset + isolation as found, sensor PowerDown, ISPPRE div back) -> analysis of
+  the buffer (rows written, rows past 1367, mean of sampled 10-bit values) -> frame copied out.
+- cam-s10.ps1 v1.3: 'shot' / 'shot bars' (+ -Coarse -AGain -IspDiv -Frames -Phase), type S10Cam13 (new name: old
+  windows keep the old S10Cam), saves cam-shot.raw + cam-shot.bmp (2x2 GRBG binning 912x684, white point 99.5th
+  percentile, gamma 1/2.2). Preview verified on Linux with a synthetic GRBG 8-bar frame: the 8 colours come out right.
+- Checks: clang vs WDK 26100 km clean (-Wall -Wextra -Wconversion); pwsh parse 0; MSVC C4389 spots cast. NOT built
+  with EWDK, NOT run.
