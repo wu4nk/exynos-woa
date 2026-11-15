@@ -1979,3 +1979,4 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   lines from UEFILOG.TXT). SetupComplete v1.5 runs it on new installs (make-windows v2.5.1-s10 copies it into
   C:\S10Prov\kit). NOT run on the phone yet.
 - Left for the next UEFI build: Beyond1LtePkg.dsc BootLogDxe -DBEYOND0LTE_WINDOWS_WATCHDOG=0 (interactive, per §29).
+- Review of the stay-s10 commit: make-windows diff = 4 lines, CRLF kept; no other 'v2.5-s10' literal left; the BootLog strings stay-s10 status greps for exist verbatim (rg 'BootLog: previous boot|Windows asked|clean Windows|Windows died' in BootLogDxe.c); stay.flg path = BootLogDxe's L"\\S10EDIAG\\stay.flg" on the BCD volume. Nothing found.

@@ -156,3 +156,4 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
   before each call (log appends across runs), stops at a step without "step N done"; refuses in a window that still
   has the v1.0 type. '3deep' removed. Checks: clang WDK clean; pwsh parse 0; the loop run on Linux with a fake
   S10Cam type (steps 2..5, stop at an incomplete 5) - output as intended. NOT built with EWDK, NOT run.
+- Review of the 0.4 commit: rg 'lhm' -> no leftover; every step's gate re-read uses a step-2 register; old v1.1 3deep (Flags 1) -> step 0 -> refused before any ISPPRE map; the '3' VERDICT names 3step; ps1 report filter keeps the first step's PMU lines only. Nothing found.
