@@ -124,3 +124,21 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
 - Lesson: no more reads inside ISPPRE from Windows until the TZPC question is settled. Next options: (a) per-read
   step mode with the "about to read X" line flushed to disk before each IOCTL, to name the faulting register; (b) the
   UEFI (EL2/EL1 before ExitBootServices, ArmCallSmc like G3D) powers ISPPRE and issues 0x82000410 itself.
+
+### 2026-11-16 03:51 follow-up: logs after the bugcheck
+- No System event 1001 and no Kernel-Power event 41 at all, no C:\Windows\Minidump: our UFS driver has no crash-dump
+  path, and the event log / file data written just before the crash was evidently not flushed either.
+- cam-s10-3.txt (03:43:51, S10eCam 0.3): pd-dpu CONF 1 STATUS 1 (ON); pd-isppre CONF 1 STATUS 1 (ON - left on since
+  reset/sboot, nobody under Windows powered it); CSIS2 D-PHY isolation PMU+0x730 = 0 (isolated); CMU_TOP ISPPRE_BUS
+  mux 3, div 0xF (/16), gate 0x00200000 (on per ra_get_gate).
+- cam-s10-3deep.txt is dated 03:36:02 (BEFORE the 03:43 '3' run) and holds only "driver: running" + "log:" = no
+  report. Reading: that run was in the old PowerShell window where the v1.0 S10Cam type (Run(int)) was already
+  loaded -> "[S10Cam]::Run($stage, $flags)" failed on the console, $rep empty, the driver never called. The 3deep
+  that bugchecked came after 03:43:51 and its file writes were lost in the crash (same as the event log). INFERENCE.
+- So: ISPPRE is ON with a TZPC state nobody restored since reset, and a read inside it bugchecks. Same shape as G3D
+  (gpu-m16-g3don.md H4: first NS CMU_G3D read depends on the DTZPC restore). Linux never touches a need_smc domain
+  without exynos_pd_tz_restore after power-on; the S9 HakiOS camera also did ISPPRE on + 0x82000410 restore.
+- ISPPRE pmucal (flexpmu_cal_local_exynos9820.h:600-699): on = CONF(+0x2500) bit0 1, wait STATUS(+0x2504) bit0 1;
+  off = CONF 0, wait STATUS 0; save list = CMU_ISPPRE BUSP div 0x1804 + BUS_USER 0x100 (only restored after a save).
+- Candidate fix, Linux's runtime cycle in the UEFI (as GpuPower.c does for G3D): tz_save SMC(0x82000410, 0,
+  0x17010204, 2) -> ISPPRE off -> on -> tz_restore SMC(0x82000410, 1, 0x17010204, 2). Not written yet.
