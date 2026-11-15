@@ -799,8 +799,10 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
         Log(r, "== CSIS2 not read (aclk gated)\r\n");
     }
 
+    /* which DMA gate feeds 0x170C0000 is not stated anywhere read so far (CSISX4_PDP_DMA by name; mode1's 0x17120000
+       is likely PDP_TOP_DMA): both must be on, so a wrong guess can only skip the read, never fault it */
     g = R32(cmu, IP_CSISDMA_ACLK);
-    if (ClkOn(g)) {
+    if (ClkOn(g) && ClkOn(R32(cmu, IP_PDPDMA_ACLK))) {
         Log(r, "== CSIS DMA0 0x170C0000 / common 0x170C0400\r\n");
         Log(r, "  DMA0 CTRL %08X FMT %08X ADDR1 %08X ACT_CTRL %08X RESOL %08X FCNTSEQ %08X STAT %08X\r\n",
             R32(dma, DMA0_CTRL), R32(dma, DMA0_FMT), R32(dma, DMA0_ADDR1), R32(dma, DMA0_ACT_CTRL), R32(dma, DMA0_RESOL),
@@ -809,7 +811,7 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
             R32(dma, DMAC_BASE + DMAC_DATA_CTRL), R32(dma, DMAC_BASE + DMAC_INT_MASK), R32(dma, DMAC_BASE + DMAC_INT_SRC),
             R32(dma, DMAC_BASE + DMAC_CMN_CTRL), R32(dma, DMAC_BASE + DMAC_ERR_CODE));
     } else {
-        Log(r, "== CSIS DMA not read (aclk gated)\r\n");
+        Log(r, "== CSIS DMA not read (a DMA aclk gated)\r\n");
     }
 
     g = R32(cmu, IP_SYSMMU_ACLK);

@@ -110,3 +110,7 @@ only if its gate is provably on: CSIS2, CSIS DMA0 + common, SysMMU, ISPPRE sysre
 - cam-s10.ps1 v1.1: actions 3 / 3deep (Flags at input offset 4), log per action C:\S10Prov\cam-s10-<action>.txt.
 - Checks: clang -fsyntax-only vs WDK 26100 km (-Wall -Wextra -Wconversion) clean; pwsh parser 0 errors; the embedded
   C# compiles (Run(Int32, Int32)). NOT built with EWDK, NOT run.
+- Review of the 0.3 commit: offsets re-derived (CMU_TOP map base 0x1A241000 + 0x94/0x884/0x10A0 = 0x1094/0x1884/
+  0x20A0; DIV ratio 4 bits, ISPPRE_BUS select 2 bits per cmucal-sfr.c); escapes in the VERDICT strings correct;
+  stage 3 never touches FOUND/MAPS. Found: the CSIS DMA read was gated only on ACLK_CSISX4_PDP_DMA although nothing
+  read so far ties 0x170C0000 to that gate (vs PDP_TOP_DMA). Fixed in a follow-up: both DMA aclks must be on.
