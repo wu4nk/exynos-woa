@@ -1,5 +1,5 @@
 <#
-  make-windows.ps1 (v2.4-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
+  make-windows.ps1 (v2.4.1-s10) - full Windows 11 ARM64 for the Galaxy S10 (beyond1lte,
   SM-G973F), built on the PC. The z3s (S20 Ultra) make-windows v2.1 with the S10's
   layout, drivers and UEFI; everything else - VHDX, lite, registry, unattend, BCD,
   pieces + flash-windows.cmd - is the same pipeline.
@@ -28,6 +28,8 @@
       S10 passed its tests at: GPU 806 MHz (gpuoc), A55 2002 MHz (cpuoc) - -NoOc for stock clocks, -NoPower for none.
     - video: Exynos9820Mfc is in out\ (and so in the image) when build-s10.cmd found mfc\mfc_fw.bin.
     - the in-Windows scripts (gpu-s10, power-s10, panel-s10, video-s10, gpu-validate) + tools\ + video\ in C:\S10Prov\kit.
+  v2.4.1-s10 (2026-11-15): S10eSpeakerTrim.cs in C:\S10Prov\kit (SetupComplete.cmd v1.3 turns the speakers on - the
+  v2.8 image left them silent - a little louder, builds the speaker app, and cuts Windows' background work).
   Rescue as always: TWRP -> \S10EDIAG\nogpu.flg on the ESP hides the GPU for one boot.
 
   Same idea as the S9+ port: no repartitioning. Windows (NTFS) goes into
@@ -93,7 +95,7 @@ param(
   [string] $EspGuidText = '21ca1362-c5e9-45d2-b5bd-3f4dd0f30251',
   [string] $WinGuidText = '712bcd12-3071-4f1c-8951-9c75a5ecca08'
 )
-$ScriptVersion = 'make-windows v2.4-s10'
+$ScriptVersion = 'make-windows v2.4.1-s10'
 $ErrorActionPreference = 'Stop'
 function Ok($m)   { Write-Host "[ OK ] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
@@ -459,7 +461,8 @@ try {
   if ($WifiFw) { Copy-Item $WifiFw "$kit\bcm4375" -Recurse -Force }
   Copy-Item (Join-Path $PSScriptRoot 'setup') "$kit\setup" -Recurse -Force
   foreach ($f in 'install-in-windows.ps1', 'collect-logs.ps1', 'auto-install.ps1', 'kit-watch.ps1',
-               'gpu-s10.ps1', 'power-s10.ps1', 'panel-s10.ps1', 'video-s10.ps1', 'gpu-validate.ps1', 'drag-probe.ps1') {
+               'gpu-s10.ps1', 'power-s10.ps1', 'panel-s10.ps1', 'video-s10.ps1', 'gpu-validate.ps1', 'drag-probe.ps1',
+               'S10eSpeakerTrim.cs') {   # v2.4.1: SetupComplete v1.3 compiles the speaker app from it
     if (Test-Path (Join-Path $PSScriptRoot $f)) { Copy-Item (Join-Path $PSScriptRoot $f) $kit -Force }
   }
   # v2.4: the GPU package and the test tools / media next to the scripts that use them

@@ -1,5 +1,5 @@
 <#
-  gpu-validate.ps1 (v1.4) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
+  gpu-validate.ps1 (v1.5) - Galaxy S10: one run of every GPU check that needs no typing, after the upstream stack
   (KMD 1.0.72.1 as WDDM 2.0 + UMD 0222-s10.x) is up with DWM on the Mali ("gpu-s10.ps1 gpu-dwm" + reboot).
   Run ON THE PHONE from the kit folder, PowerShell as Administrator, IN THE DESKTOP SESSION (gltest needs a window):
       Set-ExecutionPolicy -Scope Process Bypass
@@ -40,14 +40,22 @@
   current files go to *.s10try for this run instead (2026-11-12 13:00: s10.4 was not swapped in because s10.3's
   -Keep left *.s10prev - the run tested s10.3). -Keep then leaves the replaced copy as *.s10try; -Restore still puts
   the originals (*.s10prev) back.
+  v1.5 (2026-11-15, "fix xong gpu cho done"): gputest's texture-format-BC* differences count as KNOWN (BCn is
+  re-compressed to ETC2/EAC on the Mali by design - upstream G26; d3dbc lossy checks those formats with the right
+  tolerance) when they are its ONLY failures; any other FAIL / MISSING keeps it a FAIL. UMD 0222-s10.6 (Mesa s10-0011)
+  fixes msaa4-resolve / msaa4-load-samples, so gputest is expected KNOWN with s10.6.
+  -Soak <minutes>: endurance run instead of the checks - gputest + d3dcs + d3dtess + gltest in a loop at the
+  installed clocks (806 MHz GPU on the kit's final setup) for that long, one line per round with the result and the
+  S10ePower temperatures / GPU clock, then TDRs, application crashes, KMD counters and the thermal guard's peak.
+  Writes C:\S10Prov\gpu-soak.txt. Stop early with Ctrl+C (the report so far stays).
   Not automatic (look yourself, write the result to the chat): Edge -> edge://gpu ("Hardware accelerated" lines),
   a WebGL page, a YouTube video, scrolling in Settings.
 #>
-param([int]$Timeout = 60, [string]$TryUmd = '', [switch]$Keep, [switch]$Restore)
+param([int]$Timeout = 60, [string]$TryUmd = '', [switch]$Keep, [switch]$Restore, [int]$Soak = 0)
 $ErrorActionPreference = 'Continue'
-$Report = 'C:\S10Prov\gpu-validate.txt'
+$Report = if ($Soak -gt 0) { 'C:\S10Prov\gpu-soak.txt' } else { 'C:\S10Prov\gpu-validate.txt' }
 New-Item -ItemType Directory -Force (Split-Path $Report) | Out-Null
-"gpu-validate.ps1 v1.4  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
+"gpu-validate.ps1 v1.5  $(Get-Date -Format s)  uptime $([int]([Environment]::TickCount / 1000)) s" | Set-Content $Report -Encoding ascii
 function W($m) { Write-Host $m; $m | Add-Content $Report -Encoding ascii }
 $Vd = Join-Path $PSScriptRoot 'tools\validate'
 $pass = 0; $fail = 0; $nKnown = 0; $miss = 0
@@ -55,6 +63,13 @@ $Dir = 'C:\S10Prov\gpu-validate'; Remove-Item $Dir -Recurse -Force -ErrorAction 
 $Logs = Join-Path $Dir 'logs'; New-Item -ItemType Directory -Force $Logs | Out-Null
 $env:MALIKM_TGSI_DIR = $Logs   # child processes inherit it: every test writes its UMD log there
 $KnownFail = @{ 'd3dsm41.exe' = 'S10e: 7/8 (Bifrost LOD)' }
+# v1.5: a test whose failures are ALL of a known kind (every FAIL / MISSING / BROKEN line matches) is KNOWN
+$KnownLines = @{ 'gputest.exe' = @('^FAIL\s+texture-format-BC', 'BCn re-compressed to ETC2/EAC by design') }
+function Known-Lines($name, $out) {
+  if (-not $KnownLines.ContainsKey($name)) { return $false }
+  $bad = @($out | Where-Object { "$_" -match '^(FAIL|MISSING|BROKEN)\s' })
+  return ($bad.Count -gt 0 -and @($bad | Where-Object { "$_" -notmatch $KnownLines[$name][0] }).Count -eq 0)
+}
 
 function Run-Test($exe, [string[]]$a = @(), [string]$label = '') {
   $name = Split-Path $exe -Leaf
@@ -71,10 +86,11 @@ function Run-Test($exe, [string[]]$a = @(), [string]$label = '') {
   $out = @(Get-Content $o, "$o.err" -ErrorAction SilentlyContinue)
   if (-not $ok) { try { $p.Kill() } catch {} ; $res = 'HANG'; $script:fail++ }
   elseif ($p.ExitCode -eq 0) { $res = 'PASS'; $script:pass++ }
-  elseif ($KnownFail.ContainsKey($name)) { $res = 'KNOWN'; $script:nKnown++ }
+  elseif ($KnownFail.ContainsKey($name)) { $res = 'KNOWN'; $why = $KnownFail[$name]; $script:nKnown++ }
+  elseif (Known-Lines $name $out) { $res = 'KNOWN'; $why = $KnownLines[$name][1]; $script:nKnown++ }
   else { $res = 'FAIL'; $script:fail++ }
   $code = if ($ok) { $p.ExitCode } else { 'timeout' }
-  W ("  {0,-5} {1,-22} exit {2}  {3} ms{4}" -f $res, $label, $code, $ms, $(if ($res -eq 'KNOWN') { "  ($($KnownFail[$name]))" } else { '' }))
+  W ("  {0,-5} {1,-22} exit {2}  {3} ms{4}" -f $res, $label, $code, $ms, $(if ($res -eq 'KNOWN') { "  ($why)" } else { '' }))
   $show = if ($res -eq 'PASS') { 3 } else { 25 }
   $out | Set-Content (Join-Path $Dir "$label.txt") -Encoding ascii
   $fl = @($out | Where-Object { "$_" -match '^\s*(FAIL|DIFF)\b' })
@@ -151,6 +167,58 @@ foreach ($n in 'GALLIUM_DRIVER', 'MALIUMD_NO_TC', 'MALIUMD_TC', 'MALIKM_TGSI_DIR
 }
 foreach ($f in 'C:\Windows\System32\maliumd.dll', 'C:\Windows\SysWOW64\maliumd32.dll', 'C:\Windows\System32\maligl.dll') {
   if (Test-Path $f) { W ("  {0}  {1:N0} B  sha256 {2}" -f $f, (Get-Item $f).Length, (Get-FileHash $f).Hash.ToLower().Substring(0, 16)) } else { W "  $f  missing" }
+}
+
+if ($Soak -gt 0) {
+  # v1.5: endurance run. One line per round; a round = gputest (100 scenes vs WARP) + d3dcs + d3dtess + gltest.
+  W "== soak: $Soak min at the installed clocks"
+  $ctl = 'C:\S10Prov\power\s10epowerctl.exe'
+  $pk = 'HKLM:\SYSTEM\CurrentControlSet\Services\S10ePower'
+  function Pwr { if (Test-Path $ctl) { return ((& $ctl 2>&1 | Out-String) -replace '\s+', ' ').Trim() } return 'no s10epowerctl (S10ePower not installed)' }
+  W "  start: $(Pwr)"
+  $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+  $tdr0 = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Display'; StartTime = $boot } -ErrorAction SilentlyContinue).Count
+  $gt = @((Join-Path $PSScriptRoot 'tools\gputest.exe'), (Join-Path $Vd 'gputest.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+  $set = @()
+  if ($gt) { $set += ,@($gt, @()) }
+  foreach ($t in 'd3dcs', 'd3dtess', 'gltest') { $f = Join-Path $Vd "$t.exe"; if (Test-Path $f) { $set += ,@($f, @()) } }
+  if (-not $set.Count) { W '  no test programs in the kit (tools\validate) - nothing to soak'; exit 1 }
+  $end = (Get-Date).AddMinutes($Soak); $round = 0; $maxG = 0; $maxC = 0; $bad = 0
+  while ((Get-Date) -lt $end) {
+    $round++; $res = @()
+    foreach ($e in $set) {
+      $exe = $e[0]; $name = Split-Path $exe -Leaf; $o = Join-Path $env:TEMP "gs-$name.out"
+      $p = Start-Process -FilePath $exe -NoNewWindow -PassThru -RedirectStandardOutput $o -RedirectStandardError "$o.err" -WorkingDirectory (Split-Path $exe)
+      $null = $p.Handle
+      if (-not $p.WaitForExit($Timeout * 1000)) { try { $p.Kill() } catch {}; $res += "$name HANG"; $bad++; continue }
+      $out = @(Get-Content $o, "$o.err" -ErrorAction SilentlyContinue)
+      if ($p.ExitCode -eq 0) { $res += "$name ok" }
+      elseif (Known-Lines $name $out) { $res += "$name ok(BCn)" }
+      else {
+        $res += "$name FAIL($($p.ExitCode))"; $bad++
+        $out | Set-Content (Join-Path $Dir "soak-r$round-$name.txt") -Encoding ascii
+      }
+    }
+    $pw = Pwr
+    if ($pw -match 'LITTLE (\d+) G3D (\d+)') { $maxC = [Math]::Max($maxC, [int]$Matches[1]); $maxG = [Math]::Max($maxG, [int]$Matches[2]) }
+    $g3d = if ($pw -match 'G3D cur (\d+)') { "G3D $([int]$Matches[1] / 1000) MHz" } else { '' }
+    $tp = if ($pw -match '(temp MID \d+ LITTLE \d+ G3D \d+)') { $Matches[1] } else { '' }
+    $gd = if ($pw -match 'guard (\d+)') { "guard $($Matches[1])" } else { '' }
+    W ("  {0:HH:mm:ss} round {1,3}: {2} | {3} {4} {5}" -f (Get-Date), $round, ($res -join ', '), $tp, $g3d, $gd)
+  }
+  $tdr = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Display'; StartTime = $boot } -ErrorAction SilentlyContinue).Count - $tdr0
+  $k = Get-ItemProperty $pk -ErrorAction SilentlyContinue
+  W "  end:   $(Pwr)"
+  W ("  thermal: peak during the soak LITTLE {0} / G3D {1}; driver peaks since boot TempPeakCpu {2} TempPeakG3d {3}, GuardTrips {4}, GuardPeak {5}" -f $maxC, $maxG, $k.TempPeakCpu, $k.TempPeakG3d, $k.GuardTrips, $k.GuardPeak)
+  $ks = @((Join-Path $PSScriptRoot 'tools\kmdstats.exe'), (Join-Path $PSScriptRoot 'out-gpu\tools\kmdstats.exe')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($ks) { & $ks 2 2>&1 | Select-Object -First 8 | ForEach-Object { W "  kmd> $_" } }
+  $ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1002; StartTime = $boot } -ErrorAction SilentlyContinue)
+  $ev | Select-Object -First 10 | ForEach-Object { W ("  {0:HH:mm:ss} id {1}: {2}" -f $_.TimeCreated, $_.Id, (($_.Message -split "`n")[0]).Trim()) }
+  if ($TrySwapped.Count -and -not $Keep) { Swap-Back }
+  W ''
+  W ("SOAK: {0} rounds in {1} min, {2} failed test runs, {3} TDR (display reset) events, {4} app crashes since boot -> {5}" -f $round, $Soak, $bad, $tdr, $ev.Count, $Report)
+  W $(if ($bad -eq 0 -and $tdr -eq 0) { 'SOAK PASS' } else { 'SOAK FAIL - send C:\S10Prov\gpu-soak.txt (+ C:\S10Prov\gpu-validate\soak-*.txt)' })
+  exit $(if ($bad -eq 0 -and $tdr -eq 0) { 0 } else { 1 })
 }
 
 W '== 2. dxdiag (about 20 s)'

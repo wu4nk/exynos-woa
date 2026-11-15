@@ -1,5 +1,5 @@
 @echo off
-rem SetupComplete.cmd (Galaxy S10 kit v1.2) - Windows Setup runs this as SYSTEM at the end of the
+rem SetupComplete.cmd (Galaxy S10 kit v1.3) - Windows Setup runs this as SYSTEM at the end of the
 rem installation (C:\Windows\Setup\Scripts\). Installs the key agent the way the S10e's
 rem s10e-setupcomplete.cmd does: S10eDiag (kernel service, ALIVE GPIO reads) + S10eAgent
 rem (polls power / Bixby / volume every 25 ms, actions in C:\ProgramData\S10e\buttons.ini).
@@ -11,6 +11,17 @@ rem                    (HKLM RunOnce) so the GPU comes up. (MS Learn "Add a cust
 rem                    from SetupComplete.cmd itself.)
 rem   final-power.flg  S10ePower + S10eGovernor at every boot (= power-s10.ps1 enable); final-oc.flg: GPU 806 MHz,
 rem                    A55 2002 MHz - the clocks this S10 passed gputest / cpustress at (2026-11-12).
+rem v1.3 (2026-11-15, user: louder audio, better battery):
+rem   audio            the speaker stages ON, as install-in-windows.ps1 does (the INF's defaults are 0 = silent, and
+rem                    v1.2 never set them: a v2.8 image had no sound): AmpInit / AmpEnable / AboxEnable / Stereo 1,
+rem                    no digital attenuation, analog gain +3 dB on both amps over the by-ear baseline (earpiece 12 -> 15,
+rem                    loudspeaker 10 -> 13; 1 dB per step, Exynos9820Audio clamps at 17 = stock music level, which stock
+rem                    runs behind Samsung's DSP speaker protection - we stay 2 steps under it). The speaker app
+rem                    (S10eSpeakerTrim, compiled from the kit's .cs) goes on the desktop to set it by ear up to 17.
+rem   battery          background work Windows does on its own, cut (MS Learn Policy CSP / Set-MpPreference):
+rem                    Store apps not in the background (Privacy/LetAppsRunInBackground 2 = force deny), Delivery
+rem                    Optimization without peer-to-peer (DODownloadMode 0 = HTTP only), Defender scans at 20 % average
+rem                    CPU, low priority, only when idle, no catch-up scans; battery saver from 30 %.
 set P=C:\S10Prov
 set LOG=%P%\setupcomplete.log
 echo %date% %time% start > "%LOG%"
@@ -74,6 +85,25 @@ copy /y "%P%\power\clocks.exe" "C:\Users\Public\Desktop\clocks.exe" >> "%LOG%" 2
 if not exist "%P%\final-gpu.flg" (sc start S10ePower >> "%LOG%" 2>&1 & sc start S10eGovernor >> "%LOG%" 2>&1)
 echo power services installed (start at boot) >> "%LOG%"
 :nopower
+rem ---- v1.3: audio on, a little louder (see the header)
+set AK=HKLM\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters
+for %%V in ("AmpInit 1" "AmpEnable 1" "AboxEnable 1" "Stereo 1" "SpkAtten 0" "RcvAtten 0" "RcvGain 15" "SpkGain 13") do (
+  for /f "tokens=1,2" %%A in (%%V) do reg add %AK% /v %%A /t REG_DWORD /d %%B /f >> "%LOG%" 2>&1
+)
+rem the driver reads Parameters when it starts: with the GPU restart pending that restart applies them, otherwise now
+if not exist "%P%\final-gpu.flg" pnputil /restart-device "ACPI\SAMS9827\0" >> "%LOG%" 2>&1
+set CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+if not exist "%CSC%" set CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe
+if exist "%P%\kit\S10eSpeakerTrim.cs" if exist "%CSC%" "%CSC%" /nologo /target:winexe /platform:anycpu "/out:C:\Users\Public\Desktop\S10eSpeakerTrim.exe" "%P%\kit\S10eSpeakerTrim.cs" >> "%LOG%" 2>&1
+echo audio on: stereo, gains 15 / 13 >> "%LOG%"
+
+rem ---- v1.3: battery - less background work (see the header)
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" /v LetAppsRunInBackground /t REG_DWORD /d 2 /f >> "%LOG%" 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode /t REG_DWORD /d 0 /f >> "%LOG%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-MpPreference -ScanAvgCPULoadFactor 20 -EnableLowCpuPriority $true -ScanOnlyIfIdleEnabled $true -DisableCatchupFullScan $true -DisableCatchupQuickScan $true" >> "%LOG%" 2>&1
+powercfg /setdcvalueindex SCHEME_CURRENT SUB_ENERGYSAVER ESBATTTHRESHOLD 30 >> "%LOG%" 2>&1
+powercfg /setactive SCHEME_CURRENT >> "%LOG%" 2>&1
+echo battery settings written >> "%LOG%"
 rem kit watcher (S10 kit v1.5): every logon offers a new ESP:\S10KIT (push-to-windows.cmd) for install
 if exist "%P%\kit\kit-watch.ps1" (
   copy /y "%P%\kit\kit-watch.ps1" "%P%\kit-watch.ps1" >> "%LOG%" 2>&1

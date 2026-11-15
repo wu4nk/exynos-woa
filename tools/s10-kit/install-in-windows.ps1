@@ -1,5 +1,5 @@
 <#
-  install-in-windows.ps1 (v1.4) - add the S10 kit drivers to a Windows ALREADY installed on the
+  install-in-windows.ps1 (v1.5) - add the S10 kit drivers to a Windows ALREADY installed on the
   Galaxy S10, without reinstalling. Run ON THE PHONE, in PowerShell as Administrator, from the kit
   folder that holds out\ (and bcm4375\ for WiFi), e.g. a USB stick in the dock:
       Set-ExecutionPolicy -Scope Process Bypass
@@ -15,6 +15,9 @@
   (SpkAtten 0; analog gains stay at the by-ear baseline, the trim app raises them up to stock 17); the audio device is
   restarted so it takes them now. Bluetooth (Exynos9820Bt, needs UEFI v0.2.1+). S10eSpeakerTrim.exe compiled from
   the kit's .cs with the in-box .NET Framework csc and put on the desktop.
+  v1.5 (2026-11-15, louder audio): analog gains RcvGain 15 / SpkGain 13 (+3 dB over the 12 / 10 baseline, 2 steps
+  under the stock 17) when the key has none yet - gains already set (the speaker app) are kept. Same as SetupComplete
+  v1.3 for a new image.
   v1.4: the audio Parameters key is no longer recreated (New-Item -Force wiped MicGain / HwVolume / CodecEnable ...).
   v1.3: the GPU packages (MaliG76Wddm / MaliG76Probe) are NO LONGER removed. That step dates from the round where
   the GPU was parked (kit v1.4); since gpu-s10.ps1 owns the GPU, removing them here took the Mali away (2026-11-11:
@@ -71,7 +74,10 @@ $ap = 'HKLM:\SYSTEM\CurrentControlSet\Services\Exynos9820Audio\Parameters'
 if (-not (Test-Path $ap)) { New-Item -Force $ap | Out-Null }   # v-fix: -Force on an existing key wipes its values
 foreach ($v in 'AmpInit', 'AmpEnable', 'AboxEnable', 'Stereo') { Set-ItemProperty $ap $v 1 -Type DWord }
 Set-ItemProperty $ap 'SpkAtten' 0 -Type DWord
-Ok 'audio: AmpInit / AmpEnable / AboxEnable / Stereo = 1, SpkAtten 0 (both speakers, loudspeaker +5 dB)'
+$gains = Get-ItemProperty $ap -ErrorAction SilentlyContinue
+if ($null -eq $gains.RcvGain) { Set-ItemProperty $ap 'RcvGain' 15 -Type DWord }
+if ($null -eq $gains.SpkGain) { Set-ItemProperty $ap 'SpkGain' 13 -Type DWord }
+Ok 'audio: AmpInit / AmpEnable / AboxEnable / Stereo = 1, SpkAtten 0 (both speakers), gains 15 / 13 unless already set'
 
 # 4. driver packages
 foreach ($n in 'S10Touch', 'S10eBattery', 'Exynos9820WlanCx', 'Exynos9820Audio', 'Exynos9820Bt') {
