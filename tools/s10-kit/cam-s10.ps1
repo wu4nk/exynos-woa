@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.3.1) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.3.2) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -48,7 +48,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.3.1  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.3.2  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {
@@ -117,8 +117,9 @@ public static class S10Cam13 {
     } else rep += "no frame came back (" + got + " bytes)\r\n";
     return rep;
   }
-  // 2x2 binning of GRBG (row 0: G R, row 1: B G) -> 912 x 684 24-bit BMP; white point = the 99.5th percentile of the
-  // brightest channel, gamma 1/2.2. Values are masked to 10 bits.
+  // 2x2 binning of GRBG (row 0: G R, row 1: B G) -> 912 x 684 24-bit BMP; black level 64 subtracted (the sensor's
+  // pedestal: a dark scene reads 64 +- 2, 2026-11-16), white point = the 99.5th percentile of the brightest channel
+  // but at least 32 above black (v1.3.1 stretched a black frame's noise to white), gamma 1/2.2. 10-bit values.
   static string Preview(byte[] b, int off, string path) {
     int ow = W / 2, oh = H / 2;
     int[] rgb = new int[ow * oh * 3];
@@ -130,10 +131,11 @@ public static class S10Cam13 {
       int i = (y * ow + x) * 3; rgb[i] = r; rgb[i + 1] = (g1 + g2) / 2; rgb[i + 2] = bl;
       hist[Math.Max(r, Math.Max(rgb[i + 1], bl))]++;
     }
+    const int BLACK = 64;
     int total = ow * oh, acc = 0, white = 1023;
-    for (int v = 0; v < 1024; v++) { acc += hist[v]; if (acc >= total * 0.995) { white = Math.Max(v, 16); break; } }
+    for (int v = 0; v < 1024; v++) { acc += hist[v]; if (acc >= total * 0.995) { white = Math.Max(v, BLACK + 32); break; } }
     byte[] lut = new byte[1024];
-    for (int v = 0; v < 1024; v++) lut[v] = (byte)Math.Min(255.0, Math.Round(255.0 * Math.Pow(Math.Min(1.0, (double)v / white), 1 / 2.2)));
+    for (int v = 0; v < 1024; v++) lut[v] = (byte)Math.Min(255.0, Math.Round(255.0 * Math.Pow(Math.Max(0.0, Math.Min(1.0, (double)(v - BLACK) / (white - BLACK))), 1 / 2.2)));
     int rowBytes = ow * 3, pad = (4 - rowBytes % 4) % 4, img = (rowBytes + pad) * oh;
     using (BinaryWriter w = new BinaryWriter(new FileStream(path, FileMode.Create))) {
       w.Write((byte)'B'); w.Write((byte)'M'); w.Write(54 + img); w.Write(0); w.Write(54);

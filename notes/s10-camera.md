@@ -313,3 +313,15 @@ Log: notes/data/cam-s10-shot-2-bars-20261116.txt. ISPPRE bus 400 MHz (mux 3, div
 - Teardown left everything as found (ISPPRE div 0xF, iso 0, sysreg 0, CMN_CTRL 0x4000, DMA0 CTRL 0, rails off).
 - Stage 3b = DONE for the test pattern. Next: the scene (pattern off), exposure by hand (coarse max = FLL 1431 - 4 =
   1427 lines at 30 fps; again 0x20 = x1), then an AE loop, then a Windows camera driver (AVStream / frame server).
+
+## 2026-11-16 05:07 FIRST SCENE (pattern off, -Coarse 1400 -AGain 128) - the sensor images, the room was dark
+Log: notes/data/cam-s10-shot-3-scene-20261116.txt. Read back coarse 0x0578, again 0x0080 (x4), pattern 0.
+- Full frame again (4990464 bytes, no overflow, 4 counts in 68 ms). Values: min 58, max 131, mean 64.4, std 1.3;
+  per channel G1 64.48 R 64.36 B 64.37 G2 64.49 -> black level (pedestal) = 64, the scene ~1 LSB above it.
+- The 0x3F-0x41 row-0 values + v1.3.1's preview (white point = p99.5 = 68 -> noise stretched to white) gave a flat
+  white BMP. Averaged in 8x8 blocks and stretched (notes/data/cam-first-scene-20261116-stretched.png) the frame
+  shows a real scene: a lit round shape (a head/face) in the middle-left, edges above - FIRST REAL IMAGE. At 05:07
+  the room was almost dark; exposure 1400 lines = ~32.6 ms (line = 18752 / 806 MHz = 23.3 us), gain x4.
+- cam-s10.ps1 v1.3.2: preview subtracts black 64 and keeps the white point >= 96 (a dark frame now looks dark).
+  Next: a lit scene; read 0x0084/0x0086 (analog gain code min/max, the kernel's get_min/max_analog_gain) for the gain
+  range; longer exposure = FLL 0x0340 up (lower fps); then AE + white balance.
