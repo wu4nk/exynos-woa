@@ -1,0 +1,174 @@
+From e36094c29823497ee0a1cb41d6dd99b70c956faa Mon Sep 17 00:00:00 2001
+From: exynos-woa <build@local>
+Date: Sun, 15 Nov 2026 16:37:07 +0700
+Subject: [PATCH] S10: MSAA rasterization on multisampled targets (feature
+ level 10.1+ ignores MultisampleEnable for triangles)
+
+---
+ src/gallium/frontends/d3d10umd/Device.cpp     |  3 ++
+ .../frontends/d3d10umd/OutputMerger.cpp       |  1 +
+ src/gallium/frontends/d3d10umd/Rasterizer.cpp | 48 ++++++++++++++++---
+ src/gallium/frontends/d3d10umd/State.h        | 14 +++++-
+ 4 files changed, 58 insertions(+), 8 deletions(-)
+
+diff --git a/src/gallium/frontends/d3d10umd/Device.cpp b/src/gallium/frontends/d3d10umd/Device.cpp
+index 6d8641e..bd42c21 100644
+--- a/src/gallium/frontends/d3d10umd/Device.cpp
++++ b/src/gallium/frontends/d3d10umd/Device.cpp
+@@ -174,6 +174,9 @@ CreateDevice(D3D10DDI_HADAPTER hAdapter,                 // IN
+ 
+    Device *pDevice = CastDevice(pCreateData->hDrvDevice);
+    memset(pDevice, 0, sizeof *pDevice);
++   pDevice->msaa_by_enable = pCreateData->Interface == D3D10_0_DDI_INTERFACE_VERSION ||
++                             pCreateData->Interface == D3D10_0_x_DDI_INTERFACE_VERSION ||
++                             pCreateData->Interface == D3D10_0_7_DDI_INTERFACE_VERSION;
+ 
+    /* A hardware driver's kernel driver is reached through this device's
+     * callbacks (the target decides whether the runtime is a hardware one);
+diff --git a/src/gallium/frontends/d3d10umd/OutputMerger.cpp b/src/gallium/frontends/d3d10umd/OutputMerger.cpp
+index cead142..b4604d0 100644
+--- a/src/gallium/frontends/d3d10umd/OutputMerger.cpp
++++ b/src/gallium/frontends/d3d10umd/OutputMerger.cpp
+@@ -962,6 +962,7 @@ SetRenderTargets(D3D10DDI_HDEVICE hDevice,                              // IN
+    pDevice->fb.height = height;
+ 
+    pipe->set_framebuffer_state(pipe, &pDevice->fb);
++   RasterizerRebind(pDevice);   /* S10 s10-0011: multisampled rasterizer state only on a multisampled framebuffer */
+ 
+    /* Whether a depth-stencil view is bound decides the effective state. */
+    BindDepthStencilState(pDevice);
+diff --git a/src/gallium/frontends/d3d10umd/Rasterizer.cpp b/src/gallium/frontends/d3d10umd/Rasterizer.cpp
+index 7a0c9a8..5761528 100644
+--- a/src/gallium/frontends/d3d10umd/Rasterizer.cpp
++++ b/src/gallium/frontends/d3d10umd/Rasterizer.cpp
+@@ -36,6 +36,8 @@
+ 
+ #include "Debug.h"
+ 
++#include "util/u_framebuffer.h"
++
+ 
+ /*
+  * ----------------------------------------------------------------------
+@@ -226,7 +228,7 @@ CreateRasterizerState(
+    state.offset_units = (float)pRasterizerDesc->DepthBias;
+    state.offset_scale = pRasterizerDesc->SlopeScaledDepthBias;
+    state.offset_clamp = pRasterizerDesc->DepthBiasClamp;
+-   state.multisample = /* pRasterizerDesc->MultisampleEnable */ 0;
++   state.multisample = 0;
+    state.half_pixel_center = 1;
+    state.bottom_edge_rule = 0;
+    state.clip_halfz = 1;
+@@ -242,6 +244,34 @@ CreateRasterizerState(
+    state.line_rectangular = 0;
+ 
+    pRasterizerState->handle = pipe->create_rasterizer_state(pipe, &state);
++
++   /* S10 s10-0011 (2026-11-15, gputest msaa4-resolve / msaa4-load-samples: aliased edges on a 4x target, WARP smooth):
++    * upstream hard-coded multisample 0 (its software targets had no MSAA), so Panfrost rasterized one sample per pixel
++    * and copied it to all four. MS Learn D3D11_RASTERIZER_DESC: "For feature levels 10.1 and higher, the setting of
++    * MultisampleEnable has no effect on points and triangles with regard to MSAA and impacts only the selection of
++    * the line-rendering algorithm"; for 9.x / 10.0 FALSE renders everything without anti-aliasing. A second pipe state
++    * with multisample 1 is bound only while the framebuffer is multisampled (RasterizerRebind), so single-sample
++    * rendering (the desktop) keeps the exact pre-0011 state. Gallium's flag covers lines too: 10.1+ lines on a
++    * multisampled target rasterize as quadrilaterals - the docs' recommended setting. */
++   pRasterizerState->handle_ms = NULL;
++   if (!CastDevice(hDevice)->msaa_by_enable || pRasterizerDesc->MultisampleEnable) {
++      state.multisample = 1;
++      pRasterizerState->handle_ms = pipe->create_rasterizer_state(pipe, &state);
++   }
++}
++
++
++void
++RasterizerRebind(Device *pDevice)
++{
++   RasterizerState *rso = pDevice->bound_rso;
++   void *want = rso ? rso->handle : NULL;
++   if (rso && rso->handle_ms && util_framebuffer_get_num_samples(&pDevice->fb) > 1)
++      want = rso->handle_ms;
++   if (want != pDevice->bound_rs) {
++      pDevice->pipe->bind_rasterizer_state(pDevice->pipe, want);
++      pDevice->bound_rs = want;   /* exynos-woa G25: restored after an emulated-GS / tessellation draw */
++   }
+ }
+ 
+ 
+@@ -266,7 +296,14 @@ DestroyRasterizerState(D3D10DDI_HDEVICE hDevice,                     // IN
+    struct pipe_context *pipe = CastPipeContext(hDevice);
+    RasterizerState *pRasterizerState = CastRasterizerState(hRasterizerState);
+ 
++   Device *pDevice = CastDevice(hDevice);
++   if (pDevice->bound_rso == pRasterizerState)
++      pDevice->bound_rso = NULL;
++   if (pDevice->bound_rs == pRasterizerState->handle || pDevice->bound_rs == pRasterizerState->handle_ms)
++      pDevice->bound_rs = NULL;
+    pipe->delete_rasterizer_state(pipe, pRasterizerState->handle);
++   if (pRasterizerState->handle_ms)
++      pipe->delete_rasterizer_state(pipe, pRasterizerState->handle_ms);
+ }
+ 
+ 
+@@ -286,9 +323,8 @@ SetRasterizerState(D3D10DDI_HDEVICE hDevice,                   // IN
+ {
+    LOG_ENTRYPOINT();
+ 
+-   struct pipe_context *pipe = CastPipeContext(hDevice);
+-   void *state = CastPipeRasterizerState(hRasterizerState);
+-
+-   pipe->bind_rasterizer_state(pipe, state);
+-   CastDevice(hDevice)->bound_rs = state;   /* exynos-woa G25: restored after an emulated-GS draw */
++   Device *pDevice = CastDevice(hDevice);
++   pDevice->bound_rso = CastRasterizerState(hRasterizerState);
++   pDevice->bound_rs = (void *)~(uintptr_t)0;   /* force the bind: the application set a state */
++   RasterizerRebind(pDevice);   /* S10 s10-0011: plain or multisampled variant by the framebuffer */
+ }
+diff --git a/src/gallium/frontends/d3d10umd/State.h b/src/gallium/frontends/d3d10umd/State.h
+index a882a87..4c3a3bd 100644
+--- a/src/gallium/frontends/d3d10umd/State.h
++++ b/src/gallium/frontends/d3d10umd/State.h
+@@ -114,6 +114,9 @@ struct GsEmu;
+ struct Device
+ {
+    struct pipe_screen *screen;
++   /* S10 s10-0011: created through a D3D10.0 DDI (feature level 10.0 semantics): MultisampleEnable = FALSE then turns
++    * MSAA off for every primitive; from 10.1 it only picks the line algorithm (MS Learn D3D11_RASTERIZER_DESC). */
++   bool msaa_by_enable;
+    /* exynos-woa G17 (0099): the device's live render-target / shader-resource views, so RotateResourceIdentities can
+     * point them at the rotated storage (MS Learn: "the driver must re-create such views") */
+    struct RenderTargetView *rtv_list;
+@@ -156,7 +159,8 @@ struct Device
+    struct pipe_sampler_view *ds_views[PIPE_MAX_SHADER_SAMPLER_VIEWS];
+    unsigned ds_view_count;
+    void *ds_samplers[PIPE_MAX_SAMPLERS];
+-   void *bound_rs;
++   void *bound_rs;    /* the pipe rasterizer actually bound (s10-0011: handle or handle_ms of bound_rso) */
++   struct RasterizerState *bound_rso;   /* S10 s10-0011: the application's rasterizer state */
+    struct pipe_constant_buffer tracked_cb[TRACKED_CB_STAGES][GS_EMU_TRACKED_CBS];
+    /* exynos-woa T6: the constant buffers bound per stage (VS, PS, GS, CS) - renamed ones are rebound at Map */
+    struct Resource *bound_cb[4][PIPE_MAX_CONSTANT_BUFFERS];
+@@ -472,7 +476,8 @@ CastPipeDepthStencilState(D3D10DDI_HDEPTHSTENCILSTATE hDepthStencilState)
+ 
+ struct RasterizerState
+ {
+-   void *handle;
++   void *handle;      /* multisample 0 */
++   void *handle_ms;   /* S10 s10-0011: multisample 1, for multisampled render targets (NULL: the state never wants MSAA) */
+ };
+ 
+ 
+@@ -490,6 +495,11 @@ CastPipeRasterizerState(D3D10DDI_HRASTERIZERSTATE hRasterizerState)
+    return pRasterizerState ? pRasterizerState->handle : NULL;
+ }
+ 
++/* S10 s10-0011: bind the multisampled variant of the application's rasterizer state while the framebuffer is
++ * multisampled, the plain one otherwise (single-sample targets keep exactly the pre-0011 state). Called after
++ * SetRasterizerState and after the device framebuffer changes. */
++void RasterizerRebind(Device *pDevice);
++
+ 
+ static inline Shader *
+ CastShader(D3D10DDI_HSHADER hShader)
+-- 
+2.43.0
+

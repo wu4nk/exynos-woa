@@ -1887,3 +1887,19 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
 - build-s10 v1.15: GPU built by default (S10_GPU=0 skips). README section 0.
 - pwsh parse of make-windows OK; NOT run (needs the user's PC: ISO, DISM).
 - 02:39 sent kit v2.8 (s10-woa-kit-v2.8.zip 23e9ca51, repo b3bf99b, UEFI v0.2.2 inside). NOT run.
+
+## 2026-11-15 16:xx user: "fix xong nốt gpu cho done, audio thêm 1 chút âm thanh to hơn, cải thiện lại pin"
+- MSAA root cause (gputest BMPs gv-e38c, msaa4-resolve: Mali stair-steps at the triangle edge, WARP smooth): upstream
+  d3d10umd Rasterizer.cpp hard-coded `state.multisample = 0`, so Panfrost rasterized one sample per pixel on a 4x
+  target and replicated it. Sample positions were never the problem (Panfrost ROTATED_4X = D3D standard pattern).
+  MS Learn D3D11_RASTERIZER_DESC: for feature level 10.1+ MultisampleEnable "has no effect on points and triangles
+  with regard to MSAA and impacts only the selection of the line-rendering algorithm"; 9.x / 10.0: FALSE disables MSAA.
+- Mesa s10-0011 (tools/mesa-build/patches-s10, Mesa tree e36094c): every rasterizer state gets a second pipe CSO with
+  multisample 1 (not created for a D3D10.0-DDI device with MultisampleEnable FALSE); RasterizerRebind binds it only
+  while util_framebuffer_get_num_samples(fb) > 1 - after SetRasterizerState and after SetRenderTargets. Single-sample
+  rendering (DWM, the desktop) binds exactly the pre-0011 CSO. GsEmu / TessEmu restore dev->bound_rs = whichever
+  variant is bound. First version (multisample 1 on every target) dropped before shipping: Panfrost then forces
+  per-sample blend shaders and the sample mask on 1x targets too (pan_cmdstream.c msaa && has_blend_shader) - a
+  change on the desktop path that was never exercised.
+- UMD 0222-s10.6: maliumd 2c261402, maliumd32 21ab23b0, maligl 0bd4de69 (= s10.5's; GL unchanged). Built on Linux
+  (zig mingw), NOT run on the phone yet. Expected: gputest msaa4-resolve / msaa4-load-samples PASS; nothing else moves.
