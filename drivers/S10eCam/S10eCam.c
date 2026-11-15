@@ -273,6 +273,9 @@
 #define   IP_LHS_AXI_D          0x20C8u     /* the DMA's way out to DRAM */
 #define SHOT_ALLOC              (16u * 1024u * 1024u)   /* width is fixed by DMA0_RESOL, lines are not: room for 4599 */
 #define SHOT_FILL               0xEEu
+#define SHOT_RING               3u          /* stream: frame n -> Ring[n % 3]; a finished frame stays 2 frames */
+#define SHOT_RING_BYTES         (S10ECAM_SHOT_BYTES + 0x10000u)
+#define SHOT_CANARY             0xEEEEEEEEu /* the last 8 bytes of a frame: no 10-bit pixel is 0xEEEE */
 
 /* ---------------------------------------------------------------------------------------------- state */
 typedef struct _MAPS {
@@ -1026,8 +1029,11 @@ static VOID CsisConfigVc(volatile UCHAR *c, ULONG Vc, ULONG Fmt, ULONG PixelMode
 
 typedef struct _SHOT {
     volatile UCHAR *Pmu, *Cmu, *Sys, *Csis, *Dma, *Cdma, *Phy;
-    PUCHAR          Buf;
+    PUCHAR          Buf;                                 /* shot: one 16 MiB buffer */
     PHYSICAL_ADDRESS Pa;
+    PUCHAR          Ring[SHOT_RING];                     /* stream: frame buffers, ADDRn = Ring[(n - 1) % SHOT_RING] */
+    PHYSICAL_ADDRESS RingPa[SHOT_RING];
+    ULONG           NBuf;
     ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1, CsisCmn;
     BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming;
 } SHOT;
@@ -1042,6 +1048,8 @@ static VOID ShotUnmap(SHOT *x)
     if (x->Cmu)  MmUnmapIoSpace((PVOID)x->Cmu, CMU_ISPPRE_SIZE);
     if (x->Pmu)  MmUnmapIoSpace((PVOID)x->Pmu, PMU_SIZE);
     if (x->Buf)  MmFreeContiguousMemorySpecifyCache(x->Buf, SHOT_ALLOC, MmNonCached);
+    for (ULONG i = 0; i < SHOT_RING; i++)
+        if (x->Ring[i]) MmFreeContiguousMemorySpecifyCache(x->Ring[i], SHOT_RING_BYTES, MmNonCached);
     RtlZeroMemory(x, sizeof(*x));
 }
 
@@ -1095,9 +1103,10 @@ static VOID ShotTeardown(MAPS *m, FOUND *f, SHOT *x, REPORT *r)
         for (w = 0; w < 100 && (R32(m->Top, TOP_ISPPRE_BUS_DIV) & CMU_TOP_DIV_BUSY); w++) KeStallExecutionProcessor(1);
         x->DivSet = FALSE;
     }
-    Log(r, "  CMU_TOP ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X, CSIS2 CMN_CTRL %08X, DMA0 CTRL %08X\r\n",
-        R32(m->Top, TOP_ISPPRE_BUS_DIV), R32(x->Pmu, PMU_MIPI_ISO_CSIS2), R32(x->Sys, ISPPRE_PHY_RST),
-        R32(x->Csis, CSIS_CMN_CTRL), R32(x->Dma, DMA0_CTRL));
+    if (x->Pmu && x->Sys && x->Csis && x->Dma)          /* a partial map (ShotStart's first failure) logs nothing */
+        Log(r, "  CMU_TOP ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X, CSIS2 CMN_CTRL %08X, DMA0 CTRL %08X\r\n",
+            R32(m->Top, TOP_ISPPRE_BUS_DIV), R32(x->Pmu, PMU_MIPI_ISO_CSIS2), R32(x->Sys, ISPPRE_PHY_RST),
+            R32(x->Csis, CSIS_CMN_CTRL), R32(x->Dma, DMA0_CTRL));
 }
 
 /* What the DMA left in the buffer: rows written (any byte not SHOT_FILL), past the frame too, and a value summary. */
@@ -1146,18 +1155,18 @@ static VOID ShotAnalyse(SHOT *x, REPORT *r)
         ((PUSHORT)x->Buf)[7]);
 }
 
-static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, PUCHAR Frame, ULONG FrameCap, PULONG FrameOut)
+/* Everything up to and including sensor stream-on. On failure the caller tears down (ShotTeardown + ShotUnmap):
+   x's flags say what was done. nbuf 1 = the 16 MiB single-shot buffer, SHOT_RING = the streaming ring. */
+static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in, ULONG nbuf, REPORT *r)
 {
-    SHOT             x;
+#define x (*px)
     NTSTATUS         s = STATUS_SUCCESS;
     PHYSICAL_ADDRESS lo, hi, bnd;
-    ULONG            g, w, d, frames, fc = 0, fc0, src0 = 0, src1 = 0, dsrc = 0, t, tFirst = 0, tLast = 0, v, ow, oh;
+    ULONG            g, w, d, ow, oh, i;
     ULONG            phaseMax = S10ECAM_SHOT_PHASE(in->Flags);   /* 0 = all; 1..4 = stop after that phase (bisecting) */
 
     RtlZeroMemory(&x, sizeof(x));
-    *FrameOut = 0;
-    frames = in->Frames ? in->Frames : 4;
-    if (frames > 60) frames = 60;
+    x.NBuf = nbuf;
 
     /* --- preconditions: the domain and the clocks stage 3 saw, mapped */
     x.Pmu = Map(PMU_BASE, PMU_SIZE);
@@ -1169,7 +1178,6 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     x.Phy = Map(DPHY_PAGE, PAGE_4K);
     if (!x.Pmu || !x.Cmu || !x.Sys || !x.Csis || !x.Dma || !x.Cdma || !x.Phy) {
         Log(r, "map failed\r\n");
-        ShotUnmap(&x);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
     Log(r, "== stage 4: preconditions\r\n");
@@ -1177,7 +1185,6 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     if (!(R32(x.Pmu, PMU_DPU_STAT) & PD_ON) || !(R32(x.Pmu, PMU_ISPPRE_STAT) & PD_ON) || !ClkOn(g)) {
         Log(r, "  refused: pd-dpu %08X pd-isppre %08X ISPPRE_BUS gate %08X\r\n", R32(x.Pmu, PMU_DPU_STAT),
             R32(x.Pmu, PMU_ISPPRE_STAT), g);
-        ShotUnmap(&x);
         return STATUS_DEVICE_POWERED_OFF;
     }
     if (!ClkOn(R32(x.Cmu, IP_LHM_AXI_P)) || !ClkOn(R32(x.Cmu, IP_CSIS2_ACLK)) || !ClkOn(R32(x.Cmu, IP_CSISDMA_ACLK)) ||
@@ -1185,12 +1192,10 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         Log(r, "  refused: an ISPPRE gate is off (LHM %08X CSIS2 %08X DMA %08X PDP %08X SYSREG %08X LHS_D %08X)\r\n",
             R32(x.Cmu, IP_LHM_AXI_P), R32(x.Cmu, IP_CSIS2_ACLK), R32(x.Cmu, IP_CSISDMA_ACLK), R32(x.Cmu, IP_PDPDMA_ACLK),
             R32(x.Cmu, IP_SYSREG_PCLK), R32(x.Cmu, IP_LHS_AXI_D));
-        ShotUnmap(&x);
         return STATUS_DEVICE_NOT_READY;
     }
     if (R32(x.Csis, CSIS_CMN_CTRL) & CSIS_CMN_CSI_EN) {
         Log(r, "  refused: CSIS2 is already enabled (CMN_CTRL %08X)\r\n", R32(x.Csis, CSIS_CMN_CTRL));
-        ShotUnmap(&x);
         return STATUS_DEVICE_BUSY;
     }
 
@@ -1199,15 +1204,28 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     lo.QuadPart = 0;
     hi.QuadPart = 0xFFFFFFFFLL;
     bnd.QuadPart = 0;
-    x.Buf = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_ALLOC, lo, hi, bnd, MmNonCached);
-    if (x.Buf == NULL) {
-        Log(r, "  no %u MiB contiguous below 4 GB\r\n", SHOT_ALLOC >> 20);
-        ShotUnmap(&x);
-        return STATUS_INSUFFICIENT_RESOURCES;
+    if (nbuf == 1) {
+        x.Buf = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_ALLOC, lo, hi, bnd, MmNonCached);
+        if (x.Buf == NULL) {
+            Log(r, "  no %u MiB contiguous below 4 GB\r\n", SHOT_ALLOC >> 20);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        x.Pa = MmGetPhysicalAddress(x.Buf);
+        RtlFillMemory(x.Buf, SHOT_ALLOC, SHOT_FILL);
+        Log(r, "  buffer %u MiB at PA %08X%08X\r\n", SHOT_ALLOC >> 20, (ULONG)(x.Pa.QuadPart >> 32), (ULONG)x.Pa.QuadPart);
+    } else {
+        for (i = 0; i < SHOT_RING; i++) {
+            x.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_RING_BYTES, lo, hi, bnd, MmNonCached);
+            if (x.Ring[i] == NULL) {
+                Log(r, "  no contiguous %u bytes below 4 GB for ring buffer %u\r\n", SHOT_RING_BYTES, i);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+            x.RingPa[i] = MmGetPhysicalAddress(x.Ring[i]);
+            RtlFillMemory(x.Ring[i], SHOT_RING_BYTES, SHOT_FILL);
+            Log(r, "  ring %u: %u bytes at PA %08X%08X\r\n", i, SHOT_RING_BYTES, (ULONG)(x.RingPa[i].QuadPart >> 32),
+                (ULONG)x.RingPa[i].QuadPart);
+        }
     }
-    x.Pa = MmGetPhysicalAddress(x.Buf);
-    RtlFillMemory(x.Buf, SHOT_ALLOC, SHOT_FILL);
-    Log(r, "  buffer %u MiB at PA %08X%08X\r\n", SHOT_ALLOC >> 20, (ULONG)(x.Pa.QuadPart >> 32), (ULONG)x.Pa.QuadPart);
 
     /* --- found values */
     x.TopDiv = R32(m->Top, TOP_ISPPRE_BUS_DIV);
@@ -1233,11 +1251,11 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     /* --- sensor: power, identity, global + mode 8 */
     s = SensorPowerUp(m, f, r);
     if (!NT_SUCCESS(s))
-        goto out;                                        /* SensorPowerUp powered down itself */
+        return s;                                        /* SensorPowerUp powered down itself */
     x.SensorOn = TRUE;
     s = SensorCheckId(m, r);
     if (!NT_SUCCESS(s))
-        goto out;
+        return s;
     Log(r, "== sensor setfile A (fimc-is-cis-3j1-setA.h)\r\n");
     s = SenTable(m, S10eCam3j1Global, RTL_NUMBER_OF(S10eCam3j1Global), "global", r);
     if (NT_SUCCESS(s))
@@ -1249,7 +1267,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     if (NT_SUCCESS(s) && (in->Flags & S10ECAM_SHOT_PATTERN))
         s = SenW8(m, 0x0601, 0x02);                      /* SMIA test_pattern_mode 2 = colour bars */
     if (!NT_SUCCESS(s))
-        goto out;
+        return s;
     ow = SenR16(m, 0x034C);
     oh = SenR16(m, 0x034E);
     Log(r, "  read back: coarse 0x0202 %04X, again 0x0204 %04X, FLL 0x0340 %04X, LLP 0x0342 %04X, out %u x %u (0x034C/E), pattern 0x0600 %04X\r\n",
@@ -1258,9 +1276,9 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     if (ow != S10ECAM_SHOT_W || oh != S10ECAM_SHOT_H) {
         Log(r, "  refused: the sensor's output size is not %u x %u - no DMA\r\n", S10ECAM_SHOT_W, S10ECAM_SHOT_H);
         s = STATUS_DEVICE_CONFIGURATION_ERROR;
-        goto out;
+        return s;
     }
-    if (phaseMax == 1) { Log(r, "  phase limit 1 (sensor set up): stopping\r\n"); goto out; }
+    if (phaseMax == 1) { Log(r, "  phase limit 1 (sensor set up): stopping\r\n"); return s; }
 
     /* --- D-PHY power_on (isolation bypass, reset released) + 0502_0002 config */
     Log(r, "== D-PHY\r\n");
@@ -1276,7 +1294,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         R32(x.Phy, DPHY_CSIS2), R32(x.Phy, DPHY_CSIS2 + 4), R32(x.Phy, DPHY_CSIS2 + 0x10), R32(x.Phy, DPHY_CSIS2 + 0x14),
         R32(x.Phy, DPHY_CSIS2 + 0x30), R32(x.Phy, DPHY_CSIS2 + 0x100), R32(x.Phy, DPHY_CSIS2 + 0x110),
         R32(x.Phy, DPHY_CSIS2 + 0x130), R32(x.Phy, DPHY_CSIS2 + 0x430));
-    if (phaseMax == 2) { Log(r, "  phase limit 2 (D-PHY set up): stopping\r\n"); goto out; }
+    if (phaseMax == 2) { Log(r, "  phase limit 2 (D-PHY set up): stopping\r\n"); return s; }
 
     /* --- CSIS2: reset, 4 lanes, VC_ONLY, the cfg's 4 VCs, interrupt sources visible */
     Log(r, "== CSIS2\r\n");
@@ -1287,7 +1305,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     if (R32(x.Csis, CSIS_CMN_CTRL) & CSIS_CMN_SW_RESET) {
         Log(r, "  SW_RESET did not clear (CMN_CTRL %08X)\r\n", R32(x.Csis, CSIS_CMN_CTRL));
         s = STATUS_DEVICE_NOT_READY;
-        goto out;
+        return s;
     }
     RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_LANES_SHIFT, 2, 3);          /* 4 lanes */
     RmwField(x.Csis, CSIS_PHY_CMN_CTRL, CSIS_PHY_EN_DAT_SHIFT, 4, 0xF);
@@ -1301,7 +1319,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     W32(x.Csis, CSIS_INT_MSK1, CSIS_IRQ_MASK1_DBG);
     W32(x.Csis, CSIS_INT_SRC0, 0xFFFFFFFFu);
     W32(x.Csis, CSIS_INT_SRC1, 0xFFFFFFFFu);
-    if (phaseMax == 3) { Log(r, "  phase limit 3 (CSIS2 configured, not enabled): stopping\r\n"); goto out; }
+    if (phaseMax == 3) { Log(r, "  phase limit 3 (CSIS2 configured, not enabled): stopping\r\n"); return s; }
 
     /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address. The common block 0x170E0000
        was never read before this phase (stage 3 did not): its first read is here, after phase 3, so -Phase 3
@@ -1323,8 +1341,16 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     W32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT, R32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT) & ~0x3u);
     W32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL, R32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL) & ~0x1u);   /* input path OTF */
     W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) & ~DMA0_UPDT_FRAMEPTR(0));
-    W32(x.Dma, DMA0_ADDR1, (ULONG)x.Pa.QuadPart);
-    W32(x.Dma, DMA0_FCNTSEQ, R32(x.Dma, DMA0_FCNTSEQ) | 1u);
+    if (nbuf == 1) {
+        W32(x.Dma, DMA0_ADDR1, (ULONG)x.Pa.QuadPart);
+        W32(x.Dma, DMA0_FCNTSEQ, R32(x.Dma, DMA0_FCNTSEQ) | 1u);
+    } else {
+        /* frame pointer n (0..31) -> ADDR(n + 1) = Ring[n % 3]; every pointer armed. The stream thread finds the
+           finished buffer by its canary, not by the pointer (FCNTSEQ's exact semantics are not documented here). */
+        for (i = 0; i < 32; i++)
+            W32(x.Dma, DMA0_ADDR1 + 4 * i, (ULONG)x.RingPa[i % SHOT_RING].QuadPart);
+        W32(x.Dma, DMA0_FCNTSEQ, 0xFFFFFFFFu);
+    }
     W32(x.Dma, DMAC_BASE + DMAC_INT_MASK, CSIS_DMA_IRQ_MASK_DBG);
     W32(x.Dma, DMAC_BASE + DMAC_INT_SRC, 0xFFFFFFFFu);
     W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) | DMA0_EN | DMA0_UPDT_PTR_EN);
@@ -1332,7 +1358,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         R32(x.Dma, DMA0_CTRL), R32(x.Dma, DMA0_FMT), R32(x.Dma, DMA0_ADDR1), R32(x.Dma, DMA0_RESOL),
         R32(x.Dma, DMA0_FCNTSEQ), R32(x.Cdma, CDMA_ARB_PRI), R32(x.Cdma, CDMA_CTRL), R32(x.Cdma, CDMA_SRAM_SPLIT),
         R32(x.Cdma, CDMA_MATRIX));
-    if (phaseMax == 4) { Log(r, "  phase limit 4 (DMA armed, CSIS2 not enabled, no stream): stopping\r\n"); goto out; }
+    if (phaseMax == 4) { Log(r, "  phase limit 4 (DMA armed, CSIS2 not enabled, no stream): stopping\r\n"); return s; }
 
     /* --- csi_hw_enable */
     RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_SHADOW_SHIFT, 4, 0xF);
@@ -1345,16 +1371,31 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         R32(x.Csis, CSIS_ISP_RESOL_CH0), R32(x.Csis, CSIS_ISP_CONFIG_CH0 + CSIS_CH_STRIDE), R32(x.Csis, CSIS_PHY_STATUS));
 
     /* --- sensor stream on (sensor_3j1_cis_stream_on) */
-    Log(r, "== stream on, waiting for %u frames (2 s at most)\r\n", frames);
+    Log(r, "== stream on\r\n");
     SleepUs(8000);
     s = SenW16(m, 0x0A70, 0x0001);
     if (NT_SUCCESS(s)) s = SenW16(m, 0x0A72, 0x0100);
     if (NT_SUCCESS(s)) s = SenW8(m, 0x0100, 0x01);
     if (NT_SUCCESS(s)) { x.Streaming = TRUE; s = SenW8(m, 0x021E, 0x00); }
-    if (!NT_SUCCESS(s)) {
+    if (!NT_SUCCESS(s))
         Log(r, "  stream-on write failed 0x%08X\r\n", s);
+    return s;
+#undef x
+}
+
+static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, PUCHAR Frame, ULONG FrameCap, PULONG FrameOut)
+{
+    SHOT     x;
+    NTSTATUS s;
+    ULONG    frames, fc = 0, fc0, src0 = 0, src1 = 0, dsrc = 0, t = 0, tFirst = 0, tLast = 0, v;
+
+    *FrameOut = 0;
+    frames = in->Frames ? in->Frames : 4;
+    if (frames > 60) frames = 60;
+    s = ShotStart(m, f, &x, in, 1, r);
+    if (!NT_SUCCESS(s) || !x.Streaming)
         goto out;
-    }
+    Log(r, "  waiting for %u frames (2 s at most)\r\n", frames);
     fc0 = R32(x.Csis, CSIS_FRM_CNT_CH0);
     for (t = 0; t < 2000; t++) {                          /* 1 ms steps */
         SleepUs(1000);
@@ -1383,7 +1424,8 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
         s = STATUS_IO_TIMEOUT;
 
 out:
-    ShotTeardown(m, f, &x, r);
+    if (x.Pmu != NULL)                                   /* mapped = ShotStart got past its preconditions' maps */
+        ShotTeardown(m, f, &x, r);
     if (x.Buf != NULL) {
         ShotAnalyse(&x, r);
         if (Frame != NULL && FrameCap >= S10ECAM_SHOT_BYTES) {
