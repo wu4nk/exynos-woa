@@ -281,3 +281,24 @@ ISPPRE bus clock: CMU_TOP MUX_CLKCMU_ISPPRE_BUS parents {PLL_SHARED4 666 MHz, SH
   QCHANNEL_EN handling added (Linux clears it at enable). (4) DMA0_RESOL bounds only the width -> 0x034C/E guard.
   First-ever accesses in a full shot, in order: CMU_ISPPRE 0x20C8 (CMU, as the gates read fine), PMU 0x730 write,
   sysreg 0x500 write, D-PHY 0x19162300.. (DPU block, phase 2), CSIS2 writes (phase 3), common DMA (phase 4).
+
+## 2026-11-16 04:55 FIRST SHOT (S10eCam 0.5, `shot bars`) - frames arrive, CSIS overflows at 100 MHz
+Log: notes/data/cam-s10-shot-1-20261116.txt (raw frame kept off-repo: 4.99 MB, only the first 70912 bytes written).
+- Everything up to the stream WORKED: rails, ID, global (227 entries / 54 msgs) + mode 8 (326 / 257) written, read
+  back coarse 0x0100, again 0x0020 (x1), FLL 0x0597 (1431 lines), LLP 0x4940, OUTPUT 1824 x 1368, pattern 0x0002.
+  D-PHY: iso 1, reset released (sysreg 0x2), SC/SD regs read back as written (SD0 TIME_CON0 9). No abort anywhere:
+  PHY block 0x19162300 and common DMA 0x170E0000 are NS-accessible. Common DMA found 0/4/0/0.
+- CSIS2: CMN_CTRL 0x4B01 (CSI_EN, 4 lanes, VC_ONLY, shadow F... ), PHY_CMN_CTRL 0x1F, CONFIG0 0x10AC (RAW10, dual),
+  RESOL0 0x05580720, CONFIG1 0x20AD (VC1, RAW10, quad). PHY_STATUS 0xF1 -> 0xF0 while streaming.
+- Stream: "4 frames counted on CH0 in 54 ms" (FRM_CNT_CH0 likely counts VC0 + VC1 frame starts: 2 sensor frames at
+  33 ms), INT_SRC0 0x03300010 = FS VC0+VC1, FE VC0+VC1, and bit 4 = OVER (CSIS overflow; S9 bit map "OVER 4"). DMA cmn
+  INT_SRC 0x01011011 incl. b12 DMA_ERROR (FIFO full). ACT_CTRL 1, FCNTSEQ_STAT 0x101.
+- Buffer: 70912 bytes written then nothing. Byte autocorrelation: period 2496 bytes (0.99 match) = consecutive
+  "lines" packed back to back; as 16-bit words (1248 per period) they form clean vertical bars (white run of 252
+  words, black runs) = the colour-bar pattern, 16 bits per pixel, the 10-bit value low (ff 03 = 0x3FF), but each line
+  lost ~1/3 of its pixels and values like 0x3FC/0xCC/0x330 appear = data dropped/corrupted by the overflow.
+- Same as the S9 precedent: "The boot leaves it at about 50 MHz, too slow: CSIS1 overflows and the WDMA's FIFO fills a
+  few lines into the frame". Need: CSIS2 at 2 pixels/clock >= 4 x 1807 Mbps / 10 bit / 2 = 361 MHz. Next: ISPPRE
+  bus 400 MHz (mux 3 SHARED2_DIV2, div /1) - under Android's 466 (SHARED1_DIV4). Voltage NOT raised (no ACPM
+  dvfs_cam request): INFERENCE that the boot voltage carries 400 MHz; a failure would be a hang/abort, not damage.
+- The 0.5 IspDiv field could not express divider field 0 (0 meant "default") -> 0.5.1: IspDiv = the RATIO 1..16.
