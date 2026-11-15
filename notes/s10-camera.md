@@ -202,3 +202,52 @@ Conclusions:
 - ISPPRE bus clock is CMU_TOP mux 3 / div 16 - slow, as the S9 found ("about 50 MHz, too slow: CSIS overflows") ->
   3b must raise CLKCMU_ISPPRE_BUS (source of mux 3 and the target rate: to be read from cmucal-vclklut / DT).
 - 0.4.1: step 8 removed (S10ECAM_STEP_MAX 7, cam-s10 v1.2.1 runs 1..7), SysMMU defines dropped.
+
+## Stage 3b (= driver stage 4, "shot") facts - 2026-11-16 ~05:00, all from K (LineageOS exynos9820) + live DT
+Sensor (fimc-is-cis-3j1.c, -setA.h; module fimc-is-device-module-3j1.c):
+- setfile "default" = setA. Table = u32 triples {addr, data, size}; size 2 = 16-bit write, 1 = 8-bit; markers
+  I2C_MODE_BASE 0xF0000000: BURST_ADDR +1 (addr word = 0x6F12), BURST_DATA +2 (one 16-bit word to that address, sent
+  in one I2C message = the same as single writes to 0x6F12, whose pointer auto-increments), DELAY +3 (data = us).
+  sensor_cis_set_registers sleeps 3 ms before every table.
+- Order (fimc-is-cis-3j1.c): global sensor_3j1_setfile_A_Global (then DT post_init_setting_list: none in our DT) ->
+  mode table sensor_3j1_setfiles_A[mode] -> stream_on: group hold 0, 8 ms, 0x0A70 = 0x0001, 0x0A72 = 0x0100 (16-bit),
+  0x0100 = 0x01 (8-bit), 0x021E = 0x00 (8-bit, no WDR). stream_off: 0x0100 = 0x00 (8-bit).
+- Mode 8 = 1824 x 1368 @30, 4 lanes, 1807 Mbps/lane, MCLK 26 MHz (setA header + module cfg #8: VC0 RAW10
+  1824x1368, VC1 RAW10 1824x342 PDAF, CSI_MODE_VC_ONLY, PD_MOD3). Bayer GR_BG (cis->bayer_order). Test pattern:
+  0x0601 (8-bit, CIS_TEST_PATTERN_MODE; SMIA: 2 = colour bars). Exposure regs 0x0202 coarse, 0x0204 again, 0x0340 FLL.
+CSIS2 v5.2 (fimc-is-hw-csi-v5_2.c/.h, fimc-is-device-csi_v4.c csi_stream_on):
+- fields: CMN_CTRL 0x4: CSI_EN b0, SW_RESET b1, LANE_NUMBER [9:8], INTERLEAVE_MODE [11:10], UPDATE_SHADOW [19:16],
+  QCHANNEL_EN b20, PHY_SEL b21 (0 = D-PHY). PHY_CMN_CTRL 0x704: ENABLE_CLK b0, ENABLE_DAT [4:1].
+  ISP_CONFIG_CHn 0x40+0xC*n: VC [1:0], DATAFORMAT [7:2] (RAW10 0x2B), DECOMP_EN b8, DECOMP_PREDICT b9, POTF_ONLY b11,
+  PIXEL_MODE [13:12] (VC0 dual=1 unless PD_MOD1/MSPD). ISP_RESOL_CHn 0x44: VRESOL [31:16], HRESOL [15:0].
+  DEBUG_OPTION_SUITE 0x500 (= PIXEL_ALIGN_MODE 1). LINE_INTR_CH0 0x110. INT_MSK0/1 = 0x011FFF1F / 0x0000FFF0
+  (non-EARLYBUF variant: mask 1 = enabled); FRAMESTART [27:24], FRAMEEND [23:20].
+- sequence: reset (SW_RESET 1, wait clear, 10 x 10 us) at s_format; stream on: [PHY] -> s_lane (LANE_NUMBER 3,
+  ENABLE_DAT 0xF) -> INTERLEAVE_MODE = CSI_MODE_VC_ONLY -> DEBUG_OPTION_SUITE 1 -> s_config per VC (VC_ONLY: all 4 VCs
+  from the cfg) -> DMA config -> csi_hw_enable: UPDATE_SHADOW 0xF, PHY_SEL 0, ENABLE_CLK 1, CSI_EN 1.
+  stream off: ENABLE_CLK 0, ENABLE_DAT 0, CSI_EN 0, reset, DMA0 CTRL ENABLE 0 for every VC.
+- VC DMA (vc_reg 0x170C0000 + cmn 0x170C0400): DMA0_CTRL 0x0: ENABLE b0, UPDT_PTR_EN b1, UPDT_FRAMEPTR [6:2];
+  DMA0_FMT 0x4: DATAFORMAT [1:0] (0 RAW10), PACK12 b3, STORAGE b4 (0 legacy), DIM b5 (0 2D); DMA0_ADDR1..32
+  0x10..0x8C; ACT_CTRL 0x90 (ACTIVE ENABLE b0, FRAMEPTR [6:2]); DMA0_RESOL 0xA4 [13:0] = width; FCNTSEQ 0xB0 (bit n =
+  ADDR n+1 in use), FCNTSEQ_STAT 0xB4. cmn: DMA_DATA_CTRL 0x0 (INPUT_PATH_CH0 b0: 0 OTF), INT_MASK 0x4, INT_SRC 0x8
+  (DMA_ERROR b12 = FIFO full), CMN_CTRL 0x14 (DMA_ABORT_REQ b0), OTF_FORMAT 0x1C [1:0] (0 RAW10).
+  Order: FMT (legacy RAW10, pack12 per pixelformat: our NORMAL = a pixel in 16 bits), RESOL = width, FCNTSEQ = 0;
+  cmn OTF_FORMAT 0, INPUT_PATH 0; addr: clear UPDT_FRAMEPTR bit n, ADDR(n+1) = phys, FCNTSEQ |= 1 << n; output on:
+  CTRL ENABLE 1 + UPDT_PTR_EN 1. The S9 precedent's WDMA wrote RAW10 as 16 bits per pixel (stride = 2 x width).
+- Common DMA = fimc_is@17190000 reg[0] = 0x170E0000 (+0x100) (IORESOURCE_CSIS_DMA 0): csi_hw_s_dma_common_dynamic:
+  ARB_PRI 0x0 [3:2]=1 [1:0]=2; CTRL 0x8 IP_PROCESSING b1 = 1; SRAM_SPLIT 0xC [27:16] = [11:0] = 0x480; MATRIX 0x10
+  [4:0] = 0. (STAT DMA 0x17140000 only with ENABLE_PDP_STAT_DMA - skipped.)
+D-PHY (phy-exynos-mipi.c, csi_hw_s_phy_set): power_on = PMU +0x730 bit0 <- 1 (isolation bypass; 0x730 is shared by
+  the m0s4s4s4 PHYs csis1/2/3, not the display's) then sysreg 0x17020500 bit1 <- 0 then 1 (reset release).
+  cfg = {0x05020002 (9820 non-EVT0, beyond1 defconfig "# CONFIG_SOC_EXYNOS9820_EVT0 is not set", 4 lanes),
+  0xD<<16 | 0xDC (instance CSI_ID_C = 2), lanes 3, 1807, settle}. settle = fimc_is_hw_find_settle(1807):
+  ALIGN 1810 -> 9 (fimc-is-hw-settle-8nm-lpp.h, v7_0_0). __set_phy_cfg_0502_0002_dphy at 0x19162300: SC 0x0=1, 0x4=0x1450,
+  0x8=4, 0xC=0x9000, 0x10=5 then [9:8]=clk_div1234_mc=max(0, 5-ceil(((3-1)*1807>>2)/26)) = 0, 0x14=0x600, 0x30=0x301;
+  per lane i=0..3 at +0x100*i: 0x100=1, 0x104=0x1450, 0x108=4, 0x10C=0x9000, 0x110=5 then [9:8]=skew_delay_sel 3
+  (1500<=1807<2000), 0x114=0x600, (type 0xDC, i<3) 0x124=0x40, 0x130 [7:0]=9 [8]=settle_clk_sel 0, 0x134=3,
+  0x140 b0 = skew_cal_en 1, 0x150 = 0x81A.
+ISPPRE bus clock: CMU_TOP MUX_CLKCMU_ISPPRE_BUS parents {PLL_SHARED4 666 MHz, SHARED0_DIV4, SHARED1_DIV4
+  (1865.5/4 = 466 MHz), SHARED2_DIV2 (800/2 = 400 MHz)}; found mux 3 / div 16 = 25 MHz (pmucal rate tables). Android
+  sets it through ACPM DVFS dvfs_cam (dfs_id 0xB04000C, levels 690000/650000) - clock AND voltage. Plan: divider only,
+  /4 = 100 MHz (well under any level), restored at the end. INFERENCE: 100 MHz x 2 pixels/clock > the ~77 Mpixel/s a
+  1824-wide line at 30 fps needs on average.
