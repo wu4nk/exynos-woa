@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.3) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.3.1) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -19,8 +19,8 @@
                                 quick 912 x 684 colour preview). ~2 s.
       .\cam-s10.ps1 shot bars   the same with the sensor's own colour-bar test pattern instead of the scene (the
                                 first thing to try: bars that look right = the whole receive path is right)
-         extra switches for 'shot': -Coarse N (exposure lines, 0x0202) -AGain N (0x0204, 32 = x1) -IspDiv N (CMU_TOP
-         ISPPRE bus divider field, default 3 = 100 MHz) -Frames N (frames to wait for, default 4) -Phase N (stop after
+         extra switches for 'shot': -Coarse N (exposure lines, 0x0202) -AGain N (0x0204, 32 = x1) -IspDiv N (the ISPPRE
+         bus = 400 MHz / N, default 1; v1.3's 100 MHz made the receiver overflow) -Frames N (frames to wait for, default 4) -Phase N (stop after
          phase N and tear down: 1 sensor set up, 2 + D-PHY, 3 + CSIS2, 4 + DMA armed - only to find a blue screen's step)
       .\cam-s10.ps1 remove      unregister the driver
   Writes C:\S10Prov\cam-s10-<action>.txt (e.g. cam-s10-shot.txt) - send it back, with cam-shot.bmp for 'shot'.
@@ -48,7 +48,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.3  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.3.1  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {

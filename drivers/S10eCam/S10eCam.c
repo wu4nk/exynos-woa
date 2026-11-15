@@ -252,6 +252,7 @@
 #define   CSIS_IRQ_MASK1_DBG    0x0000FFFFu
 #define   CSIS_FRAMESTART_SHIFT 24
 #define   CSIS_FRAMEEND_SHIFT   20
+#define   CSIS_INT_OVER         (1u << 4)   /* INT_SRC0 b4: CSIS overflow (seen at 100 MHz, 2026-11-16) */
 #define   DMA0_EN               (1u << 0)
 #define   DMA0_UPDT_PTR_EN      (1u << 1)
 #define   DMA0_UPDT_FRAMEPTR(n) (1u << (2 + (n)))
@@ -1128,6 +1129,12 @@ static VOID ShotAnalyse(SHOT *x, REPORT *r)
             }
         }
     }
+    for (y = SHOT_ALLOC; y >= 64; y -= 64) {             /* the DMA's extent: last 64-byte block not all fill */
+        for (xx = y - 64; xx < y; xx += 4)              /* 32-bit reads: the buffer is uncached */
+            if (*(volatile ULONG *)(x->Buf + xx) != SHOT_FILL * 0x01010101u) break;
+        if (xx < y) break;
+    }
+    Log(r, "  DMA extent: %u bytes from the buffer start (a full frame = %u)\r\n", y, S10ECAM_SHOT_BYTES);
     if (rowsTouched == 0) {
         Log(r, "  buffer: NOTHING written (every sampled byte still 0x%02X)\r\n", SHOT_FILL);
         return;
@@ -1213,7 +1220,9 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
 
     /* --- ISPPRE bus clock (CSIS2 and its DMA): 400 MHz / (div + 1) */
     if (in->IspDiv != 0x100) {
-        d = (in->IspDiv == 0) ? 3u : (in->IspDiv & 0xFu);
+        /* 0.5 ran /4 = 100 MHz: CSIS2 overflowed (INT_SRC0 OVER) after ~28 lines. 2 pixels a clock need >= 361 MHz
+           for 4 x 1807 Mbps RAW10 -> default /1 = 400 MHz (Android: 466). in->IspDiv = the ratio 1..16. */
+        d = (in->IspDiv == 0) ? 0u : ((in->IspDiv - 1u) & 0xFu);
         W32(m->Top, TOP_ISPPRE_BUS_DIV, (x.TopDiv & ~0xFu) | d);
         x.DivSet = TRUE;
         for (w = 0; w < 100 && (R32(m->Top, TOP_ISPPRE_BUS_DIV) & CMU_TOP_DIV_BUSY); w++) KeStallExecutionProcessor(1);
@@ -1365,9 +1374,9 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
             break;
     }
     Log(r, "  %u frames counted on CH0 in %u ms (first at %u ms, last at %u ms)\r\n", fc, t, tFirst, tLast);
-    Log(r, "  INT_SRC0 seen %08X (FS %X FE %X errors %03X), INT_SRC1 %08X, DMA cmn INT_SRC %08X%s\r\n", src0,
-        (src0 >> CSIS_FRAMESTART_SHIFT) & 0xFu, (src0 >> CSIS_FRAMEEND_SHIFT) & 0xFu, (src0 >> 8) & 0xFFFu, src1, dsrc,
-        (dsrc & DMAC_INT_DMA_ERROR) ? " (DMA FIFO FULL)" : "");
+    Log(r, "  INT_SRC0 seen %08X (FS %X FE %X errors %03X%s), INT_SRC1 %08X, DMA cmn INT_SRC %08X%s\r\n", src0,
+        (src0 >> CSIS_FRAMESTART_SHIFT) & 0xFu, (src0 >> CSIS_FRAMEEND_SHIFT) & 0xFu, (src0 >> 8) & 0xFFFu,
+        (src0 & CSIS_INT_OVER) ? ", OVERFLOW" : "", src1, dsrc, (dsrc & DMAC_INT_DMA_ERROR) ? " (DMA FIFO FULL)" : "");
     Log(r, "  PHY_STATUS %08X, DMA0 ACT_CTRL %08X FCNTSEQ_STAT %08X, cmn ERR_CODE %08X\r\n", R32(x.Csis, CSIS_PHY_STATUS),
         R32(x.Dma, DMA0_ACT_CTRL), R32(x.Dma, DMA0_FCNTSEQ_STAT), R32(x.Dma, DMAC_BASE + DMAC_ERR_CODE));
     if (fc == 0)
@@ -1423,7 +1432,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.5 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.5.1 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1457,7 +1466,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.5 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.5.1 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

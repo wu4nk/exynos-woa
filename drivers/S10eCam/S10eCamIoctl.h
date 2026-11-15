@@ -41,7 +41,7 @@ typedef struct _S10ECAM_SHOT_IN {
     unsigned int Flags;     /* S10ECAM_SHOT_* */
     unsigned int Coarse;    /* 0 = the setfile's; else 0x0202 coarse integration (lines) */
     unsigned int AGain;     /* 0 = the setfile's; else 0x0204 analog gain (0x20 = x1) */
-    unsigned int IspDiv;    /* CMU_TOP CLKCMU_ISPPRE_BUS divider field: 0 = default 3 (/4 = 100 MHz), 1..15, 0x100 = leave */
+    unsigned int IspDiv;    /* CMU_TOP CLKCMU_ISPPRE_BUS divider RATIO 1..16 of 400 MHz: 0 = default 1 (400 MHz), 0x100 = leave */
     unsigned int Frames;    /* frames to wait for before stopping: 0 = 4 */
 } S10ECAM_SHOT_IN;
 
