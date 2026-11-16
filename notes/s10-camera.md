@@ -365,3 +365,12 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
   next index (re-syncs if the DMA did not start at Ring[0]). FCNTSEQ re-armed when found not all ones (counted), a
   300 ms gap = a "stall" (counted, re-armed). FRAME copies the newest finished buffer (+ Tail), reports CopyUs and
   Torn (2+ frames finished during the copy = the buffer may have started over).
+- cam-s10.ps1 v1.4 'stream' [bars] (-Seconds, -Rotate, -Mirror): one handle for the run (closing it stops the
+  camera), frames every ~120 ms with header + stats (black-subtracted G/R/B means on a 16-px grid, clipped %), AE on
+  E = lines x gain/32 toward G 110 (ratio clamped 0.25..4, clip > 5 % halves, settled within 12 %; lines first up to
+  CoarseMax, then gain within 0x0084..0x0086; next decision only 3 frames after a write), last frame developed:
+  bilinear GRBG demosaic at full 1824 x 1368, gray-world WB (R/B gains = G/R, G/B of the stats, clamped), p99.5
+  white, gamma 1/2.2, rotation; saves cam-stream.bmp + .raw. Mock-tested on Linux (fake S10Cam14 driving the second
+  scene's raw scaled by exposure): AE walked 256/x1 -> 1024 -> 1427/x2.9 -> x11.5 -> x16 (dark scene, gain-limited),
+  the BMP came out; Develop of the real raw: 1824x1368 in ~0.5 s, rot 90 correct. Mirror: NOT verified (the text in
+  the scene is too blurred to read) -> opt-in -Mirror.
