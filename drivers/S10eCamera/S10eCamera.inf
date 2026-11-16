@@ -35,9 +35,11 @@ CopyFiles = S10eCamera.CopyFiles
 S10eCamera.sys
 
 [S10eCamera.Interfaces]
-AddInterface = %KSCATEGORY_CAPTURE%, "GLOBAL", CaptureInterface, 0
-AddInterface = %KSCATEGORY_VIDEO%, "GLOBAL", CaptureInterface, 0
-AddInterface = %KSCATEGORY_VIDEO_CAMERA%, "GLOBAL", CaptureInterface, 0
+; reference string = the filter descriptor's ReferenceGuid (KSNAME_Filter): AVStream registers the interface
+; instances as ...\#{9b365890-...}; 0.1-0.3 used "GLOBAL", whose instance no client opens (2026-11-16 registry dump).
+AddInterface = %KSCATEGORY_CAPTURE%, %KSNAME_Filter%, CaptureInterface, 0
+AddInterface = %KSCATEGORY_VIDEO%, %KSNAME_Filter%, CaptureInterface, 0
+AddInterface = %KSCATEGORY_VIDEO_CAMERA%, %KSNAME_Filter%, CaptureInterface, 0
 
 [CaptureInterface]
 AddReg = S10eCamera.Reader.AddReg
@@ -69,6 +71,7 @@ Proxy.CLSID              = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
 KSCATEGORY_CAPTURE       = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
 KSCATEGORY_VIDEO         = "{6994AD05-93EF-11D0-A3CC-00A0C9223196}"
 KSCATEGORY_VIDEO_CAMERA  = "{E5323777-F976-4f5b-9B55-B94699C46E44}"
+KSNAME_Filter            = "{9B365890-165F-11D0-A195-0020AFD156E4}"
 ProviderName             = "exynos-woa"
 MfgName                  = "exynos-woa (Galaxy S10)"
 DeviceDesc               = "Galaxy S10 Front Camera (S5K3J1)"

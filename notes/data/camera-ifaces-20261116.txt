@@ -1,0 +1,98 @@
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}
+
+
+DeviceInstance : ROOT\CAMERA\0000
+PSPath         : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}
+PSParentPath   : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}
+PSChildName    : ##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}
+PSProvider     : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#GLOBAL
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#GLOBAL\Device Parameters
+
+
+CLSID        : {17CCA71B-ECD7-11D0-B908-00A0C9223196}
+FriendlyName : Galaxy S10 Front Camera
+PSPath       : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#GLOBAL\Device Parameters
+PSParentPath : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#GLOBAL
+PSChildName  : Device Parameters
+PSProvider   : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#{9b365890-165f-11d0-a195-0020afd156e4}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#{9b365890-165f-11d0-a195-0020afd156e4}\Device Parameters
+
+
+FilterData   : {2, 0, 0, 0...}
+PSPath       : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#{9b365890-165f-11d0-a195-0020afd156e4}\Device Parameters
+PSParentPath : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{65e8773d-8f56-11d0-a3b9-00a0c9223196}\##?#ROOT#CAMERA#0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\#{9b365890-165f-11d0-a195-0020afd156e4}
+PSChildName  : Device Parameters
+PSProvider   : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}
+
+
+DeviceInstance : ROOT\CAMERA\0000
+PSPath         : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}
+PSParentPath   : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}
+PSChildName    : ##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}
+PSProvider     : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}\#GLOBAL
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}\#GLOBAL\Device Parameters
+
+
+CLSID        : {17CCA71B-ECD7-11D0-B908-00A0C9223196}
+FriendlyName : Galaxy S10 Front Camera
+PSPath       : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}\#GLOBAL\Device Parameters
+PSParentPath : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}\#GLOBAL
+PSChildName  : Device Parameters
+PSProvider   : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{6994ad05-93ef-11d0-a3cc-00a0c9223196}\##?#ROOT#CAMERA#0000#{6994ad05-93ef-11d0-a3cc-00a0c9223196}\#{9b365890-165f-11d0-a195-0020afd156e4}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}
+
+
+DeviceInstance : ROOT\CAMERA\0000
+PSPath         : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}
+PSParentPath   : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}
+PSChildName    : ##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}
+PSProvider     : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#GLOBAL
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#GLOBAL\Device Parameters
+
+
+CLSID        : {17CCA71B-ECD7-11D0-B908-00A0C9223196}
+FriendlyName : Galaxy S10 Front Camera
+PSPath       : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#GLOBAL\Device Parameters
+PSParentPath : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#GLOBAL
+PSChildName  : Device Parameters
+PSProvider   : Microsoft.PowerShell.Core\Registry
+
+
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#{9b365890-165f-11d0-a195-0020afd156e4}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#{9b365890-165f-11d0-a195-0020afd156e4}\Device Parameters
+
+
+MSCameraFlags : 1
+FilterData    : {2, 0, 0, 0...}
+PSPath        : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#{9b365890-165f-11d0-a195-0020afd156e4}\Device Parameters
+PSParentPath  : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\{e5323777-f976-4f5b-9b55-b94699c46e44}\##?#ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\#{9b365890-165f-11d0-a195-0020afd156e4}
+PSChildName   : Device Parameters
+PSProvider    : Microsoft.PowerShell.Core\Registry
+
+
+

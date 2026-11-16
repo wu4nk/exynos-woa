@@ -554,3 +554,20 @@ Logs: notes/data/cam-s10-stream-2nc-20261116.txt, cam-s10-stream-2wc-20261116.tx
   the same time, said 0xA00F4288 <AllCamerasAreReserved> = the other client held it (not a driver result). The
   generic name hints the INF's per-interface AddReg (CLSID + FriendlyName under reference string "GLOBAL") may not be
   on the interface instance clients open - to check from the DeviceClasses registry keys, not assumed.
+
+## S10eCamera 0.3 trace 2026-11-16 15:57 - ROOT CAUSES FOUND
+Logs: notes/data/camera-s10-status-3-20261116.txt, camera-ifaces-20261116.txt; dxdiag kept off-repo (Mali WDDM 2.0,
+DDI 11.3, feature levels up to 11_0, driver 1.0.72.2, Windows 11 22621).
+- The pipeline WORKS up to RUN: filter create -> intersect (client specifier 05589F80 = KSDATAFORMAT_SPECIFIER_
+  VIDEOINFO, size query then buffer 152) -> set format ok -> pin create YUY2 684 x 912 ok -> STOP->ACQUIRE->PAUSE ->
+  PAUSE->RUN: CamStart -> "no contiguous 5056000 bytes below 4 GB for ring buffer 0" -> 0xC000009A
+  (STATUS_INSUFFICIENT_RESOURCES) -> the client unwinds (PAUSE->ACQUIRE->STOP, close). Twice (app + browser).
+  So the Camera app's 0x887A0004 was its rendering of our start failure, not (shown to be) a GPU limit.
+- Cause 1: 3 x 4.8 MiB physically contiguous below 4 GB per start. cam-s10 got them earlier (minutes after boot);
+  ~75 min after boot (interrupt time 4485 s) MmAllocateContiguousMemorySpecifyCache(MmWriteCombined) found none.
+  Fix (0.4): allocate the ring once at device start (boot time, least fragmented) and keep it across streams; free
+  at device stop/remove; write-combined falls back to non-cached; per-stream allocation stays the fallback.
+- Cause 2 (name): AVStream registered the interfaces with reference string #{9b365890-165f-11d0-a195-0020afd156e4}
+  (= KSNAME_Filter, our filter's ReferenceGuid; that instance carries FilterData and the frame server's
+  MSCameraFlags 1), while the INF's AddInterface used "GLOBAL" -> CLSID + FriendlyName landed on an unused #GLOBAL
+  instance; clients saw "AvStream Media Device". Fix: INF AddInterface reference string = KSNAME_Filter's string.
