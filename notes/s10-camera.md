@@ -420,3 +420,4 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
   patch only for the buffer whose canary was consumed (= Latest); CAMPIN from ExAllocatePool2 is zeroed; WriteReport
   only at PASSIVE (SetDeviceState / close). Open risks to watch on the phone: Process time vs 33 ms (drops counted),
   whether the Camera app accepts YUY2-only, whether the SWD device survives a reboot.
+- 2026-11-16 14:22 EWDK build: S10eCam.c(1678) C4701 'si' potentially uninitialized (STREAM_STOP path) -> zero-initialised. S10eCamera.c built clean with EWDK (S10ECAMERA_BUILD_OK, inf2cat signability OK).
