@@ -549,3 +549,8 @@ Logs: notes/data/cam-s10-stream-2nc-20261116.txt, cam-s10-stream-2wc-20261116.tx
   so the 0.3 note ended up followed by the "Auto exposure ... KSSTATE_RUN" paragraph). Fixed in its own commit (comment
   only). Code checks: Trace() keeps `end` even on STATUS_BUFFER_OVERFLOW truncation; the refused-format trace reads the
   bitmap header only when FormatSize covers it; every traced callback runs at PASSIVE (KS dispatch, file write ok).
+- 2026-11-16 15:54 screenshot (driver version unknown, no logs): Brave lists the camera as "AvStream Media Device"
+  (not the INF's interface FriendlyName "Galaxy S10 Front Camera") and fails to start it; the Camera app, opened at
+  the same time, said 0xA00F4288 <AllCamerasAreReserved> = the other client held it (not a driver result). The
+  generic name hints the INF's per-interface AddReg (CLSID + FriendlyName under reference string "GLOBAL") may not be
+  on the interface instance clients open - to check from the DeviceClasses registry keys, not assumed.
