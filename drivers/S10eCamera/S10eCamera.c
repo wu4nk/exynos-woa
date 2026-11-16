@@ -5,9 +5,14 @@
  * canary, exposure in a group hold) is S10eCam's, validated on the phone 2026-11-16 (notes/s10-camera.md): this file
  * includes S10eCam.c with S10ECAM_ENGINE_ONLY and adds the AVStream side only.
  *
- * One filter (KSCATEGORY_VIDEO + CAPTURE + VIDEO_CAMERA), one capture pin, one format: YUY2 912 x 684 @30 fps. A
- * frame = the newest finished raw frame (1824 x 1368 GRBG RAW10-in-16), 2 x 2 Bayer binned, black level 64
- * subtracted, gray-world white balance, gamma 1/2.2, BT.601 limited range. Auto exposure (lines first, then analog
+ * One filter (KSCATEGORY_VIDEO + CAPTURE + VIDEO_CAMERA), one capture pin, one format: YUY2 @30 fps, 684 x 912
+ * (portrait: rotation 90 / 270) or 912 x 684 (0 / 180). A frame = the newest finished raw frame (1824 x 1368 GRBG
+ * RAW10-in-16), 2 x 2 Bayer binned, black level 64 subtracted, gray-world white balance, gamma 1/2.2, rotated
+ * clockwise + optionally mirrored left-right (after rotating), BT.601 limited range.
+ * 0.2 settings (Services\S10eCamera\Parameters, DWORDs, read at each device start; camera-s10.ps1 set):
+ *   Rotation 0/90/180/270 (default 270: upright on the phone held upright, 2026-11-16), Mirror 0/1 (default 0),
+ *   RingWc 0/1 (default 1: the frame ring write-combined instead of non-cached - 0.6's non-cached copy ran at
+ *   ~80 MB/s, 60 ms a frame). Auto exposure (lines first, then analog
  * gain) runs on the same sums. Frames are pushed: the engine's poll thread calls KsPinAttemptProcessing after each
  * finished raw frame; the pin does not let AVStream initiate processing (KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING), so a
  * frame without an empty buffer waiting is dropped (counted in KS_FRAME_INFO.DropCount).
@@ -29,10 +34,9 @@
 #include <ksmedia.h>
 #include "S10eCameraLut.h"
 
-#define CAM_W           (S10ECAM_SHOT_W / 2)             /* 912 */
-#define CAM_H           (S10ECAM_SHOT_H / 2)             /* 684 */
-#define CAM_STRIDE      (CAM_W * 2)                      /* YUY2: 2 bytes a pixel */
-#define CAM_BYTES       (CAM_STRIDE * CAM_H)
+#define CAM_SW          (S10ECAM_SHOT_W / 2)             /* 912: the binned image, sensor orientation */
+#define CAM_SH          (S10ECAM_SHOT_H / 2)             /* 684 */
+#define CAM_BYTES       (CAM_SW * CAM_SH * 2)            /* YUY2: 2 bytes a pixel, whichever way round */
 #define CAM_INTERVAL    333333                           /* 100 ns units: 30 fps (the sensor's mode 8) */
 #define CAM_AE_TARGET   110u                             /* black-subtracted green mean (of 959): mid grey after gamma */
 #define CAM_TAG         'mCeS'
@@ -45,14 +49,21 @@ typedef struct _CAMPIN {
     LONG    LastSeq;        /* engine frame number last delivered (or dropped) */
     ULONG64 Frames;         /* delivered */
     ULONG64 Drops;          /* raw frames with no buffer waiting */
+    ULONG64 Torn;           /* delivered frames whose ring slot the DMA started over during the conversion */
+    ULONG64 ConvUs;         /* conversion time: sum ... */
+    ULONG   ConvUsMax;      /* ... and worst */
     ULONG   WbR, WbB;       /* white balance gains, Q8 (256 = x1) */
     ULONG   AeWait;         /* frames to wait before the next AE decision */
     BOOLEAN Running;
 } CAMPIN;
 
 static FAST_MUTEX gCamMutex;                             /* Process vs start / stop (the ring must not go away) */
-static UCHAR      gRows[2 * S10ECAM_SHOT_STRIDE];        /* 2 raw lines, cached (the ring is uncached); image = nonpaged */
+static UCHAR      gRows[4 * S10ECAM_SHOT_STRIDE];        /* 4 raw lines, cached (the ring is uncached); image = nonpaged */
+static UCHAR      gY[2][CAM_SW], gU[2][CAM_SW], gV[2][CAM_SW];   /* 2 binned rows as Y, U, V (under gCamMutex) */
 static CHAR       gLog[8192];                            /* the engine's report of the last start / stop */
+static ULONG      gRot = 270, gMirror, gRingWc = 1;      /* settings (Parameters), read at device start */
+static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
+static WCHAR      gParamPath[260];                       /* <service key>\Parameters */
 
 /* ---------------------------------------------------------------------------------------------- the report file */
 
@@ -80,27 +91,60 @@ static UCHAR Clamp8(LONG v)
     return (UCHAR)(v < 0 ? 0 : (v > 255 ? 255 : v));
 }
 
-/* Ring[i] (+ its saved tail) -> YUY2. Sums of the black-subtracted channels for AE / WB. */
+/* Binned source pixel (sx, sy) (912 x 684, sensor orientation) -> output (ox, oy): clockwise rotation, then the
+   left-right mirror. Same convention as cam-s10.ps1 v1.5 (its Develop: rotate 270 takes the source's top-left corner to
+   the picture's bottom-left, checked 2026-11-16). */
+static VOID MapOut(ULONG sx, ULONG sy, ULONG *ox, ULONG *oy)
+{
+    switch (gRot) {
+    case 90:  *ox = CAM_SH - 1 - sy; *oy = sx;               break;
+    case 180: *ox = CAM_SW - 1 - sx; *oy = CAM_SH - 1 - sy;  break;
+    case 270: *ox = sy;              *oy = CAM_SW - 1 - sx;  break;
+    default:  *ox = sx;              *oy = sy;               break;
+    }
+    if (gMirror)
+        *ox = gOutW - 1 - *ox;
+}
+
+/* Two source pixels that land side by side on one output row = one YUY2 macropixel (Y0 U Y1 V): A and B are
+   horizontal neighbours (sx even, sx + 1) for rotation 0/180 and vertical ones (sy even, sy + 1) for 90/270; the
+   output widths (912 / 684) are even, so either way they fill one macropixel, also mirrored. */
+static VOID PutPair(PUCHAR Out, ULONG sxa, ULONG sya, ULONG ka, ULONG sxb, ULONG syb, ULONG kb)
+{
+    ULONG  oxa, oya, oxb, oyb;
+    PUCHAR p;
+
+    MapOut(sxa, sya, &oxa, &oya);
+    MapOut(sxb, syb, &oxb, &oyb);                            /* oyb == oya, oxb == oxa ^ 1 */
+    p = Out + ((SIZE_T)oya * gOutW + (oxa & ~1u)) * 2;
+    p[(oxa & 1u) * 2] = gY[ka][sxa];
+    p[(oxb & 1u) * 2] = gY[kb][sxb];
+    p[1] = (UCHAR)((gU[ka][sxa] + gU[kb][sxb] + 1u) / 2u);
+    p[3] = (UCHAR)((gV[ka][sxa] + gV[kb][sxb] + 1u) / 2u);
+}
+
+/* Ring[i] (+ its saved tail) -> YUY2, 4 raw lines (= 2 binned rows) at a time. Sums of the black-subtracted channels
+   for AE / WB. */
 static VOID Convert(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG64 *SumB, ULONG WbR, ULONG WbB)
 {
-    ULONG   oy, ox, k;
+    ULONG   j, k, bx;
     ULONG64 sg = 0, sr = 0, sb = 0;
 
-    for (oy = 0; oy < CAM_H; oy++) {
-        PUSHORT r0 = (PUSHORT)gRows, r1 = (PUSHORT)(gRows + S10ECAM_SHOT_STRIDE);
-        PUCHAR  o = Out + (SIZE_T)oy * CAM_STRIDE;
+    for (j = 0; j < CAM_SH / 2; j++) {
+        RtlCopyMemory(gRows, gS.x.Ring[i] + (SIZE_T)(4 * j) * S10ECAM_SHOT_STRIDE, 4 * S10ECAM_SHOT_STRIDE);
+        if (j == CAM_SH / 2 - 1)                             /* the canary's 8 bytes: the frame's own values */
+            RtlCopyMemory(gRows + 4 * S10ECAM_SHOT_STRIDE - 8, gS.Tail[i], 8);
+        for (k = 0; k < 2; k++) {
+            PUSHORT r0 = (PUSHORT)(gRows + (2 * k) * S10ECAM_SHOT_STRIDE);
+            PUSHORT r1 = (PUSHORT)(gRows + (2 * k + 1) * S10ECAM_SHOT_STRIDE);
 
-        RtlCopyMemory(gRows, gS.x.Ring[i] + (SIZE_T)(2 * oy) * S10ECAM_SHOT_STRIDE, 2 * S10ECAM_SHOT_STRIDE);
-        if (oy == CAM_H - 1)                                 /* the canary's 8 bytes: the frame's own values */
-            RtlCopyMemory(gRows + 2 * S10ECAM_SHOT_STRIDE - 8, gS.Tail[i], 8);
-        for (ox = 0; ox < CAM_W; ox += 2) {
-            LONG y[2], u = 0, v = 0;
-            for (k = 0; k < 2; k++) {
-                ULONG x = 2 * (ox + k);
+            for (bx = 0; bx < CAM_SW; bx++) {
+                ULONG x = 2 * bx;
                 LONG  g = (LONG)(((r0[x] & 0x3FFu) + (r1[x + 1] & 0x3FFu)) / 2u) - 64;   /* G R / B G */
                 LONG  r = (LONG)(r0[x + 1] & 0x3FFu) - 64;
                 LONG  b = (LONG)(r1[x] & 0x3FFu) - 64;
                 LONG  R, G, B;
+
                 if (g < 0) g = 0;
                 if (r < 0) r = 0;
                 if (b < 0) b = 0;
@@ -110,14 +154,18 @@ static VOID Convert(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG64 *
                 R = gGamma[r > 1023 ? 1023 : r];
                 G = gGamma[g > 1023 ? 1023 : g];
                 B = gGamma[b > 1023 ? 1023 : b];
-                y[k] = ((66 * R + 129 * G + 25 * B + 128) >> 8) + 16;          /* BT.601, limited range */
-                u += ((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128;
-                v += ((112 * R - 94 * G - 18 * B + 128) >> 8) + 128;
+                gY[k][bx] = Clamp8(((66 * R + 129 * G + 25 * B + 128) >> 8) + 16);     /* BT.601, limited range */
+                gU[k][bx] = Clamp8(((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128);
+                gV[k][bx] = Clamp8(((112 * R - 94 * G - 18 * B + 128) >> 8) + 128);
             }
-            o[2 * ox + 0] = Clamp8(y[0]);
-            o[2 * ox + 1] = Clamp8(u / 2);
-            o[2 * ox + 2] = Clamp8(y[1]);
-            o[2 * ox + 3] = Clamp8(v / 2);
+        }
+        if (gRot == 90 || gRot == 270) {
+            for (bx = 0; bx < CAM_SW; bx++)
+                PutPair(Out, bx, 2 * j, 0, bx, 2 * j + 1, 1);
+        } else {
+            for (k = 0; k < 2; k++)
+                for (bx = 0; bx < CAM_SW; bx += 2)
+                    PutPair(Out, bx, 2 * j + k, k, bx + 1, 2 * j + k, k);
         }
     }
     *SumG = sg; *SumR = sr; *SumB = sb;
@@ -166,7 +214,9 @@ static NTSTATUS PinProcess(PKSPIN Pin)
     PKSSTREAM_HEADER   hdr;
     PIKSREFERENCECLOCK clock;
     LONG               seq, i;
-    ULONG64            sg, sr, sb, n = (ULONG64)CAM_W * CAM_H;
+    ULONG64            sg, sr, sb, n = (ULONG64)CAM_SW * CAM_SH;
+    LARGE_INTEGER      t0, t1, fq;
+    ULONG              us;
 
     ExAcquireFastMutex(&gCamMutex);
     if (!c->Running || !gS.Active) {
@@ -192,7 +242,15 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         ExReleaseFastMutex(&gCamMutex);
         return STATUS_PENDING;
     }
+    t0 = KeQueryPerformanceCounter(&fq);
     Convert((ULONG)i, (PUCHAR)lead->OffsetOut.Data, &sg, &sr, &sb, c->WbR, c->WbB);
+    t1 = KeQueryPerformanceCounter(NULL);
+    us = (ULONG)((t1.QuadPart - t0.QuadPart) * 1000000 / fq.QuadPart);
+    c->ConvUs += us;
+    if (us > c->ConvUsMax)
+        c->ConvUsMax = us;
+    if (gS.Seq - seq >= 2)                               /* as S10eCam's StreamFrame: the slot started over meanwhile */
+        c->Torn++;
     if (seq - c->LastSeq > 1)
         c->Drops += (ULONG)(seq - c->LastSeq - 1);
     c->LastSeq = seq;
@@ -236,10 +294,15 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     NTSTATUS        s;
 
     RtlZeroMemory(&in, sizeof(in));                      /* setfile exposure, ISPPRE 400 MHz (the defaults) */
+    if (gRingWc)
+        in.Flags |= S10ECAM_SHOT_WC;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.1 start\r\n");
+    Log(&r, "S10eCamera 0.2 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+        gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     ExAcquireFastMutex(&gCamMutex);
     c->LastSeq = 0;
+    c->Frames = c->Drops = c->Torn = c->ConvUs = 0;
+    c->ConvUsMax = 0;
     c->WbR = c->WbB = 256;
     c->AeWait = 2;
     ExReleaseFastMutex(&gCamMutex);
@@ -267,7 +330,8 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.1 stop: %I64u frames delivered, %I64u dropped\r\n", c->Frames, c->Drops);
+    Log(&r, "S10eCamera 0.2 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+        c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
     ExAcquireFastMutex(&gCamMutex);
@@ -283,7 +347,7 @@ static NTSTATUS PinCreate(PKSPIN Pin, PIRP Irp)
 
     UNREFERENCED_PARAMETER(Irp);
     if (Pin->ConnectionFormat->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ||
-        f->VideoInfoHeader.bmiHeader.biWidth != CAM_W || f->VideoInfoHeader.bmiHeader.biHeight != CAM_H ||
+        f->VideoInfoHeader.bmiHeader.biWidth != (LONG)gOutW || f->VideoInfoHeader.bmiHeader.biHeight != (LONG)gOutH ||
         f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2)
         return STATUS_NO_MATCH;
     c = (CAMPIN *)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(CAMPIN), CAM_TAG);
@@ -327,7 +391,7 @@ static NTSTATUS PinSetDataFormat(PKSPIN Pin, PKSDATAFORMAT OldFormat, PKSMULTIPL
     UNREFERENCED_PARAMETER(DataRange);
     UNREFERENCED_PARAMETER(AttributeRange);
     if (Pin->ConnectionFormat->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ||
-        f->VideoInfoHeader.bmiHeader.biWidth != CAM_W || f->VideoInfoHeader.bmiHeader.biHeight != CAM_H ||
+        f->VideoInfoHeader.bmiHeader.biWidth != (LONG)gOutW || f->VideoInfoHeader.bmiHeader.biHeight != (LONG)gOutH ||
         f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2)
         return STATUS_NO_MATCH;
     return STATUS_SUCCESS;
@@ -335,7 +399,8 @@ static NTSTATUS PinSetDataFormat(PKSPIN Pin, PKSDATAFORMAT OldFormat, PKSMULTIPL
 
 /* ---------------------------------------------------------------------------------------------- descriptors */
 
-static const KS_DATARANGE_VIDEO gRangeYuy2 = {
+/* Built for the portrait default; SetRangeSize writes the size the settings give at device start (no pin exists then). */
+static KS_DATARANGE_VIDEO gRangeYuy2 = {
     {   sizeof(KS_DATARANGE_VIDEO), 0, CAM_BYTES, 0,
         { STATIC_KSDATAFORMAT_TYPE_VIDEO }, { STATIC_S10_SUBTYPE_YUY2 }, { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO } },
     TRUE,                                                /* bFixedSizeSamples */
@@ -344,16 +409,28 @@ static const KS_DATARANGE_VIDEO gRangeYuy2 = {
     0,                                                   /* MemoryAllocationFlags */
     {   { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO },
         KS_AnalogVideo_None,
-        { CAM_W, CAM_H }, { CAM_W, CAM_H }, { CAM_W, CAM_H },   /* input, min / max cropping */
+        { CAM_SH, CAM_SW }, { CAM_SH, CAM_SW }, { CAM_SH, CAM_SW },   /* input, min / max cropping */
         1, 1, 1, 1,                                      /* crop granularity / alignment */
-        { CAM_W, CAM_H }, { CAM_W, CAM_H },              /* min / max output */
+        { CAM_SH, CAM_SW }, { CAM_SH, CAM_SW },          /* min / max output */
         1, 1, 0, 0, 0, 0,                                /* output granularity, stretch / shrink taps */
         CAM_INTERVAL, CAM_INTERVAL,                      /* min / max frame interval */
         CAM_BYTES * 8 * 30, CAM_BYTES * 8 * 30 },        /* min / max bits per second */
     {   { 0, 0, 0, 0 }, { 0, 0, 0, 0 },                  /* rcSource, rcTarget */
         CAM_BYTES * 8 * 30, 0, CAM_INTERVAL,             /* bit rate, bit error rate, AvgTimePerFrame */
-        { sizeof(KS_BITMAPINFOHEADER), CAM_W, CAM_H, 1, 16, S10_FOURCC_YUY2, CAM_BYTES, 0, 0, 0, 0 } }
+        { sizeof(KS_BITMAPINFOHEADER), CAM_SH, CAM_SW, 1, 16, S10_FOURCC_YUY2, CAM_BYTES, 0, 0, 0, 0 } }
 };
+
+static VOID SetRangeSize(ULONG W, ULONG H)
+{
+    KS_VIDEO_STREAM_CONFIG_CAPS *c = &gRangeYuy2.ConfigCaps;
+    SIZE                         z;
+
+    z.cx = (LONG)W;
+    z.cy = (LONG)H;
+    c->InputSize = c->MinCroppingSize = c->MaxCroppingSize = c->MinOutputSize = c->MaxOutputSize = z;
+    gRangeYuy2.VideoInfoHeader.bmiHeader.biWidth = (LONG)W;
+    gRangeYuy2.VideoInfoHeader.bmiHeader.biHeight = (LONG)H;
+}
 
 static const PKSDATARANGE gRanges[] = { (PKSDATARANGE)&gRangeYuy2 };
 
@@ -420,7 +497,51 @@ static const KSFILTER_DESCRIPTOR gFilter = {
 
 static const KSFILTER_DESCRIPTOR *const gFilters[] = { &gFilter };
 
-static const KSDEVICE_DISPATCH gDeviceDispatch = { NULL };
+/* ---------------------------------------------------------------------------------------------- settings */
+
+static ULONG RegDword(HANDLE Key, PCWSTR Name, ULONG Default)
+{
+    UNICODE_STRING                 n;
+    ULONG                          buf[(sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG) + 3) / 4], got;
+    PKEY_VALUE_PARTIAL_INFORMATION v = (PKEY_VALUE_PARTIAL_INFORMATION)buf;
+
+    RtlInitUnicodeString(&n, Name);
+    if (Key != NULL && NT_SUCCESS(ZwQueryValueKey(Key, &n, KeyValuePartialInformation, v, sizeof(buf), &got)) &&
+        v->Type == REG_DWORD && v->DataLength == sizeof(ULONG))
+        return *(ULONG UNALIGNED *)v->Data;
+    return Default;
+}
+
+/* Parameters -> gRot / gMirror / gRingWc and the output size; at each device start (PnP start: also after
+   camera-s10.ps1 set's restart), before any filter or pin of this start exists. */
+static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Translated, PCM_RESOURCE_LIST Untranslated)
+{
+    UNICODE_STRING    p;
+    OBJECT_ATTRIBUTES oa;
+    HANDLE            h = NULL;
+    ULONG             rot;
+
+    UNREFERENCED_PARAMETER(Device);
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(Translated);
+    UNREFERENCED_PARAMETER(Untranslated);
+    RtlInitUnicodeString(&p, gParamPath);
+    InitializeObjectAttributes(&oa, &p, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    if (p.Length == 0 || !NT_SUCCESS(ZwOpenKey(&h, KEY_READ, &oa)))
+        h = NULL;
+    rot = RegDword(h, L"Rotation", 270);
+    gRot = (rot == 0 || rot == 90 || rot == 180 || rot == 270) ? rot : 270;
+    gMirror = RegDword(h, L"Mirror", 0) ? 1u : 0u;
+    gRingWc = RegDword(h, L"RingWc", 1) ? 1u : 0u;
+    if (h != NULL)
+        ZwClose(h);
+    gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
+    gOutH = (gRot == 90 || gRot == 270) ? CAM_SW : CAM_SH;
+    SetRangeSize(gOutW, gOutH);
+    return STATUS_SUCCESS;
+}
+
+static const KSDEVICE_DISPATCH gDeviceDispatch = { NULL /* Add */, DeviceStart };
 
 static const KSDEVICE_DESCRIPTOR gDevice = { &gDeviceDispatch, SIZEOF_ARRAY(gFilters), gFilters };
 
@@ -428,6 +549,14 @@ DRIVER_INITIALIZE DriverEntry;
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
+    UNICODE_STRING p;
+
+    p.Buffer = gParamPath;
+    p.Length = 0;
+    p.MaximumLength = sizeof(gParamPath) - sizeof(WCHAR);   /* stays NUL-terminated (gParamPath is zeroed) */
+    if (!NT_SUCCESS(RtlAppendUnicodeStringToString(&p, RegistryPath)) ||
+        !NT_SUCCESS(RtlAppendUnicodeToString(&p, L"\\Parameters")))
+        gParamPath[0] = 0;                               /* -> the defaults */
     ExInitializeFastMutex(&gCamMutex);
     KeInitializeEvent(&gLock, SynchronizationEvent, TRUE);
     return KsInitializeDriver(DriverObject, RegistryPath, &gDevice);

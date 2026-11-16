@@ -474,3 +474,25 @@ people: not kept in the repo).
   /remove-device for each S10eCamera device (ROOT / SWD / ACPI ids) + /delete-driver.
 - S10eCamera.inf: ROOT\S10eCamera added as the first hardware ID (SWD + ACPI ids kept).
 - Checks: pwsh parse 0, embedded C# compiles (Linux; the P/Invokes are not exercised here).
+
+## S10eCamera 0.2 (2026-11-16) - NOT built, NOT run
+- Settings: Services\S10eCamera\Parameters DWORDs Rotation (0/90/180/270, default 270 = upright, from the 14:49 run),
+  Mirror (0/1, default 0 - handedness still unverified), RingWc (0/1, default 1 = S10eCam 0.7's write-combined ring,
+  because the non-cached one costs ~60 ms a frame). Read in KSDEVICE_DISPATCH.Start (each PnP start, so
+  camera-s10.ps1 set + pnputil /restart-device applies them without a reboot or driver unload). Path =
+  DriverEntry's RegistryPath + "\Parameters" (copied into a static buffer). INF: [S10eCamera.Params.AddReg] from the
+  service-install section (HKR = service key there, per the AddReg directive page), flags 0x00010003 =
+  FLG_ADDREG_TYPE_DWORD | FLG_ADDREG_NOCLOBBER (user changes survive a driver update). DriverVer 0.2.0.0.
+- Output: 684 x 912 for rotation 90/270, 912 x 684 for 0/180 (same byte count, so the framing is unchanged). The data
+  range is no longer const: Start writes the size into InputSize / cropping / output min-max and the bitmap header;
+  PinCreate / SetDataFormat check gOutW / gOutH.
+- Convert: 4 raw lines (2 binned rows) per ring read; per binned pixel Y/U/V into gY/gU/gV (static, under gCamMutex);
+  then pairs that share one output YUY2 macropixel are written together: horizontal neighbours for 0/180, vertical
+  neighbours (rows 2j, 2j+1) for 90/270 (output x = source row there); U/V = the pair's average. Mapping = cam-s10
+  v1.5's (rotate clockwise, then mirror the output left-right).
+  Host test (gcc, the real Convert/MapOut/PutPair text extracted, bright block at the source's top-left): rotate
+  0 -> TL, 90 -> TR, 180 -> BR, 270 -> BL; with mirror TR, TL, BL, BR; every output byte written in all 8 cases.
+- Stats per run in camera-avs.txt at stop: frames, drops, torn (frame counter +2 during the conversion = the DMA
+  started over in that slot), conversion avg / max us. The start line names output size, rotation, mirror, ring type.
+- Checks: clang vs WDK 26100 (ks.h/ksmedia.h) -Wextra -Wconversion: only missing-braces / missing-field-initializer
+  style warnings (as 0.1, which EWDK built clean).
