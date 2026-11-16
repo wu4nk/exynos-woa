@@ -1038,6 +1038,7 @@ typedef struct _SHOT {
     PUCHAR          Ring[SHOT_RING];                     /* stream: frame buffers, ADDRn = Ring[(n - 1) % SHOT_RING] */
     PHYSICAL_ADDRESS RingPa[SHOT_RING];
     ULONG           NBuf;
+    MEMORY_CACHING_TYPE Cache;                           /* the buffers' mapping (0.7: MmNonCached or MmWriteCombined) */
     ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1, CsisCmn;
     BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming;
 } SHOT;
@@ -1051,9 +1052,9 @@ static VOID ShotUnmap(SHOT *x)
     if (x->Sys)  MmUnmapIoSpace((PVOID)x->Sys, PAGE_4K);
     if (x->Cmu)  MmUnmapIoSpace((PVOID)x->Cmu, CMU_ISPPRE_SIZE);
     if (x->Pmu)  MmUnmapIoSpace((PVOID)x->Pmu, PMU_SIZE);
-    if (x->Buf)  MmFreeContiguousMemorySpecifyCache(x->Buf, SHOT_ALLOC, MmNonCached);
+    if (x->Buf)  MmFreeContiguousMemorySpecifyCache(x->Buf, SHOT_ALLOC, x->Cache);
     for (ULONG i = 0; i < SHOT_RING; i++)
-        if (x->Ring[i]) MmFreeContiguousMemorySpecifyCache(x->Ring[i], SHOT_RING_BYTES, MmNonCached);
+        if (x->Ring[i]) MmFreeContiguousMemorySpecifyCache(x->Ring[i], SHOT_RING_BYTES, x->Cache);
     RtlZeroMemory(x, sizeof(*x));
 }
 
@@ -1204,30 +1205,35 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     }
 
     /* --- the buffer: physically contiguous, below 4 GB (the DMA address registers are 32-bit; the SysMMU is
-       never touched = left in its reset bypass), uncached, filled so the analysis sees what the DMA wrote */
+       never touched = left in its reset bypass), uncached, filled so the analysis sees what the DMA wrote.
+       0.7: MmNonCached (default) or MmWriteCombined (S10ECAM_SHOT_WC). Neither is cached, so the DMA's writes need no
+       cache maintenance either way; 0.6's copy out of MmNonCached ran at ~80 MB/s (notes, 2026-11-16 14:49), which
+       mapping reads faster on this CPU is what the flag measures. */
+    x.Cache = (in->Flags & S10ECAM_SHOT_WC) ? MmWriteCombined : MmNonCached;
     lo.QuadPart = 0;
     hi.QuadPart = 0xFFFFFFFFLL;
     bnd.QuadPart = 0;
     if (nbuf == 1) {
-        x.Buf = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_ALLOC, lo, hi, bnd, MmNonCached);
+        x.Buf = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_ALLOC, lo, hi, bnd, x.Cache);
         if (x.Buf == NULL) {
             Log(r, "  no %u MiB contiguous below 4 GB\r\n", SHOT_ALLOC >> 20);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
         x.Pa = MmGetPhysicalAddress(x.Buf);
         RtlFillMemory(x.Buf, SHOT_ALLOC, SHOT_FILL);
-        Log(r, "  buffer %u MiB at PA %08X%08X\r\n", SHOT_ALLOC >> 20, (ULONG)(x.Pa.QuadPart >> 32), (ULONG)x.Pa.QuadPart);
+        Log(r, "  buffer %u MiB at PA %08X%08X (%s)\r\n", SHOT_ALLOC >> 20, (ULONG)(x.Pa.QuadPart >> 32), (ULONG)x.Pa.QuadPart,
+            x.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     } else {
         for (i = 0; i < SHOT_RING; i++) {
-            x.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_RING_BYTES, lo, hi, bnd, MmNonCached);
+            x.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_RING_BYTES, lo, hi, bnd, x.Cache);
             if (x.Ring[i] == NULL) {
                 Log(r, "  no contiguous %u bytes below 4 GB for ring buffer %u\r\n", SHOT_RING_BYTES, i);
                 return STATUS_INSUFFICIENT_RESOURCES;
             }
             x.RingPa[i] = MmGetPhysicalAddress(x.Ring[i]);
             RtlFillMemory(x.Ring[i], SHOT_RING_BYTES, SHOT_FILL);
-            Log(r, "  ring %u: %u bytes at PA %08X%08X\r\n", i, SHOT_RING_BYTES, (ULONG)(x.RingPa[i].QuadPart >> 32),
-                (ULONG)x.RingPa[i].QuadPart);
+            Log(r, "  ring %u: %u bytes at PA %08X%08X (%s)\r\n", i, SHOT_RING_BYTES, (ULONG)(x.RingPa[i].QuadPart >> 32),
+                (ULONG)x.RingPa[i].QuadPart, x.Cache == MmWriteCombined ? "write-combined" : "non-cached");
         }
     }
 
@@ -1675,7 +1681,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.6 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.7 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1745,7 +1751,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.6 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.7 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1779,7 +1785,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.6 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.7 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

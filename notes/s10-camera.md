@@ -448,3 +448,16 @@ people: not kept in the repo).
   Instead: a root-enumerated device created the documented SetupAPI way (devcon's "install" sequence:
   SetupDiCreateDeviceInfo + SPDRP_HARDWAREID + DIF_REGISTERDEVICE, then UpdateDriverForPlugAndPlayDevices), hwid
   ROOT\S10eCamera. Root devices also persist across reboots by design (open question for SWD gone).
+
+## S10eCam 0.7 + cam-s10.ps1 v1.5 (2026-11-16) - NOT run
+- S10ECAM_SHOT_WC (0x2) in SHOT_IN.Flags: the shot buffer / stream ring are allocated MmWriteCombined instead of
+  MmNonCached (SHOT.Cache remembers it for MmFreeContiguousMemorySpecifyCache). Neither type is cacheable, so the
+  DMA-coherence argument of 0.6 is unchanged; only the CPU read speed may differ - which one is faster on this
+  CPU's mapping of the two types is what the run measures (no claim made here about how Windows maps them on ARM64:
+  not documented on the MEMORY_CACHING_TYPE page). Logged per buffer ("non-cached" / "write-combined").
+- cam-s10 v1.5 (type S10Cam15): -Wc sets the flag for shot/stream; -Mirror now flips the SAVED picture left-right
+  after the rotation (v1.4 flipped the source x, which after a 90/270 rotation is an up-down flip); the "saved" line
+  names rotate/mirror. Develop checked on Linux (pwsh) with a bright source top-left block: rotate 0 -> TL,
+  0 + mirror -> TR, 270 -> BL, 270 + mirror -> BR (= rotate 270 clockwise is source (sx, sy) -> (sy, W-1-sx)).
+- Checks: clang vs WDK 26100 km -Wextra -Wconversion: only the pre-existing DO_DEVICE_INITIALIZING sign warning;
+  pwsh parse 0 errors, embedded C# compiles.

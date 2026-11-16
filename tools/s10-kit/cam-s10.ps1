@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.4) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.5) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -28,8 +28,10 @@
                                 (1824 x 1368) + cam-stream.raw. The camera is stopped and powered down at the end (also
                                 if the script is interrupted: closing the handle stops it).
       .\cam-s10.ps1 stream bars  the same on the test pattern (checks the streaming ring: every frame must be bars)
-         extra switches for 'stream': -Seconds N (default 4) -Rotate 0|90|180|270 (default 0 = as the sensor reads out)
-         -Mirror (flip left-right; whether the sensor's readout is mirrored is not verified yet - look at some text)
+         extra switches for 'stream': -Seconds N (default 4) -Rotate 0|90|180|270 (default 0 = as the sensor reads out;
+         270 = upright, found 2026-11-16) -Mirror (v1.5: flip the SAVED PICTURE left-right after rotating; whether the
+         sensor's readout is mirrored is not verified yet - hold up some text) -Wc (S10eCam 0.7: the frame ring
+         write-combined instead of non-cached - compare the "copy ... us" column with and without it)
       .\cam-s10.ps1 remove      unregister the driver
   Writes C:\S10Prov\cam-s10-<action>.txt (e.g. cam-s10-shot.txt) - send it back, with cam-shot.bmp for 'shot'.
   Touches nothing of touch / USB / display / storage. Run the stages in order and send each log before the next.
@@ -37,7 +39,8 @@
 param([Parameter(Position = 0)][ValidateSet('install', 'remove', '1', '2', '3', '3step', 'shot', 'stream')][string]$Action = '1',
       [Parameter(Position = 1)][string]$Opt = '',
       [int]$Coarse = 0, [int]$AGain = 0, [int]$IspDiv = 0, [int]$Frames = 0, [ValidateRange(0, 4)][int]$Phase = 0,
-      [ValidateRange(1, 60)][int]$Seconds = 4, [ValidateSet(0, 90, 180, 270)][int]$Rotate = 0, [switch]$Mirror)
+      [ValidateRange(1, 60)][int]$Seconds = 4, [ValidateSet(0, 90, 180, 270)][int]$Rotate = 0, [switch]$Mirror,
+      [switch]$Wc)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\cam-s10-$Action.txt"
 $Dir = 'C:\S10Prov\cam'
@@ -57,7 +60,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.4  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.5  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {
@@ -82,14 +85,14 @@ switch ($Action) {
 
 $stage = if ($Action -in 'shot', 'stream') { 4 } else { [int]$Action.Substring(0, 1) }
 sc.exe start S10eCam 2>&1 | Out-Null
-# v1.3/v1.4: a new type name per version (S10Cam14): a window that loaded an older one keeps that old type.
-if (-not ('S10Cam14' -as [type])) {
+# v1.3+: a new type name per version (S10Cam15): a window that loaded an older one keeps that old type.
+if (-not ('S10Cam15' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-public static class S10Cam14 {
+public static class S10Cam15 {
   [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint c, uint f, IntPtr t);
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool DeviceIoControl(IntPtr h, uint code, byte[] i, int il, byte[] o, int ol, out int got, IntPtr ov);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
@@ -205,18 +208,18 @@ public static class S10Cam14 {
       w.Write(2835); w.Write(2835); w.Write(0); w.Write(0);
       byte[] line = new byte[rowBytes + pad];
       for (int oy = oh - 1; oy >= 0; oy--) {
-        for (int ox = 0; ox < ow; ox++) {
+        for (int ox0 = 0; ox0 < ow; ox0++) {
+          int ox = mirror ? ow - 1 - ox0 : ox0;   // v1.5: mirror = the picture flipped left-right after rotating
           int sx, sy;   // output (ox, oy) <- source (sx, sy), clockwise rotation
           if (rot == 90) { sx = oy; sy = H - 1 - ox; } else if (rot == 180) { sx = W - 1 - ox; sy = H - 1 - oy; }
           else if (rot == 270) { sx = W - 1 - oy; sy = ox; } else { sx = ox; sy = oy; }
-          if (mirror) sx = W - 1 - sx;                // opt-in: the readout's handedness is not verified yet
           int i = sy * W + sx;
-          line[3 * ox] = T(B[i] * (float)wbB); line[3 * ox + 1] = T(G[i]); line[3 * ox + 2] = T(R[i] * (float)wbR);
+          line[3 * ox0] = T(B[i] * (float)wbB); line[3 * ox0 + 1] = T(G[i]); line[3 * ox0 + 2] = T(R[i] * (float)wbR);
         }
         w.Write(line);
       }
     }
-    return "saved " + path + " (" + ow + " x " + oh + ", WB R x" + wbR.ToString("0.00") + " B x" + wbB.ToString("0.00") + ", white " + white.ToString("0") + ")\r\n";
+    return "saved " + path + " (" + ow + " x " + oh + ", rotate " + rot + (mirror ? " + mirror" : "") + ", WB R x" + wbR.ToString("0.00") + " B x" + wbB.ToString("0.00") + ", white " + white.ToString("0") + ")\r\n";
   }
   // 2x2 binning of GRBG (row 0: G R, row 1: B G) -> 912 x 684 24-bit BMP; black level 64 subtracted (the sensor's
   // pedestal: a dark scene reads 64 +- 2, 2026-11-16), white point = the 99.5th percentile of the brightest channel
@@ -255,14 +258,14 @@ public static class S10Cam14 {
 $svc = (sc.exe query S10eCam | Out-String)
 W ("driver: " + $(if ($svc -match 'RUNNING') { 'running' } else { "NOT running:`n$svc" }))
 if ($Action -eq 'shot') {
-  $rep = [S10Cam14]::Shot($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor ($Phase -shl 8), $Coarse, $AGain, $IspDiv, $Frames,
+  $rep = [S10Cam15]::Shot($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor ($Phase -shl 8), $Coarse, $AGain, $IspDiv, $Frames,
                           'C:\S10Prov\cam-shot.raw', 'C:\S10Prov\cam-shot.bmp')
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
   if (Test-Path 'C:\S10Prov\cam-shot.bmp') { W 'open C:\S10Prov\cam-shot.bmp to look at it' }
 } elseif ($Action -eq 'stream') {
-  $rep = [S10Cam14]::StreamStart($(if ($Opt -eq 'bars') { 1 } else { 0 }), $Coarse, $AGain, $IspDiv)
+  $rep = [S10Cam15]::StreamStart($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }), $Coarse, $AGain, $IspDiv)
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
-  $buf = New-Object byte[] ([S10Cam14]::FHDR + [S10Cam14]::BYTES)
+  $buf = New-Object byte[] ([S10Cam15]::FHDR + [S10Cam15]::BYTES)
   $last = $null; $lastSeq = 0; $applied = 0; $settled = $false
   $target = 110.0                                   # black-subtracted green mean (of 959) ~ mid-grey after gamma
   try {
@@ -270,10 +273,10 @@ if ($Action -eq 'shot') {
     $t0 = Get-Date
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
       Start-Sleep -Milliseconds 120
-      $h = [S10Cam14]::Frame($buf)
+      $h = [S10Cam15]::Frame($buf)
       if ($null -eq $h) { W 'frame ioctl failed'; break }
       if ($h[1] -eq 0) { W ('  no frame yet  (re-arms {0}, stalls {1}, INT_SRC0 {2:X8}, DMA {3:X8})' -f $h[9], $h[10], $h[11], $h[12]); continue }
-      $st = [S10Cam14]::Stats($buf, [S10Cam14]::FHDR)
+      $st = [S10Cam15]::Stats($buf, [S10Cam15]::FHDR)
       W ('  seq {0,4} ring {1} age {2,3} ms copy {3,5} us torn {4}  coarse {5,4} again 0x{6:X3} ({7:X}-{8:X})  G {9,6:0.0} R {10,6:0.0} B {11,6:0.0} clip {12,4:0.0}%  INT {13:X8} DMA {14:X8} rearm {15} stall {16}' -f `
         $h[1], $h[2], $h[3], $h[13], $h[14], $h[4], $h[5], $h[6], $h[7], $st[0], $st[1], $st[2], $st[3], $h[11], $h[12], $h[9], $h[10])
       $last = $st; $lastSeq = $h[1]
@@ -286,29 +289,29 @@ if ($Action -eq 'shot') {
       $e2 = $e * $ratio
       $c2 = [int][Math]::Max(2, [Math]::Min([double]$h[8], $e2))
       $g2 = [int][Math]::Round([Math]::Max([double]$h[6], [Math]::Min([double]$h[7], $e2 / $c2 * 32.0)))
-      if ([S10Cam14]::Exposure($c2, $g2)) { $applied = $h[1] } else { W '  exposure ioctl failed' }
+      if ([S10Cam15]::Exposure($c2, $g2)) { $applied = $h[1] } else { W '  exposure ioctl failed' }
     }
     if ($lastSeq -gt 0) {
-      $fs = [IO.File]::Create('C:\S10Prov\cam-stream.raw'); $fs.Write($buf, [S10Cam14]::FHDR, [S10Cam14]::BYTES); $fs.Dispose()
+      $fs = [IO.File]::Create('C:\S10Prov\cam-stream.raw'); $fs.Write($buf, [S10Cam15]::FHDR, [S10Cam15]::BYTES); $fs.Dispose()
       $wbR = $(if ($Opt -eq 'bars' -or $last[1] -lt 1) { 1.0 } else { [Math]::Min(4.0, [Math]::Max(0.25, $last[0] / $last[1])) })
       $wbB = $(if ($Opt -eq 'bars' -or $last[2] -lt 1) { 1.0 } else { [Math]::Min(4.0, [Math]::Max(0.25, $last[0] / $last[2])) })
-      W ([S10Cam14]::Develop($buf, [S10Cam14]::FHDR, $wbR, $wbB, $Rotate, $Mirror.IsPresent, 'C:\S10Prov\cam-stream.bmp')).Trim()
+      W ([S10Cam15]::Develop($buf, [S10Cam15]::FHDR, $wbR, $wbB, $Rotate, $Mirror.IsPresent, 'C:\S10Prov\cam-stream.bmp')).Trim()
       W 'open C:\S10Prov\cam-stream.bmp to look at it'
     }
   } catch { W "stopped: $_" }
   finally {
-    $rep = [S10Cam14]::StreamStop()
+    $rep = [S10Cam15]::StreamStop()
     $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
   }
 } elseif ($Action -ne '3step') {
-  $rep = [S10Cam14]::Run($stage, 0)
+  $rep = [S10Cam15]::Run($stage, 0)
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
 } else {
   $names = @('', 'CMU_ISPPRE mux/divider', 'CMU_ISPPRE clock gates', 'Q-channels CSIS2/DMA', 'Q-channels LHM/SYSREG/SYSMMU',
              'CSIS2 registers', 'CSIS DMA registers', 'SYSREG_ISPPRE')   # v1.2.1: step 8 (SysMMU) aborts - removed
   foreach ($n in $From..7) {
     W "step $n ($($names[$n])): calling the driver ..."
-    $rep = [S10Cam14]::Run(3, 1 -bor ($n -shl 8))   # S10ECAM_FLAG_DEEP | step << 8
+    $rep = [S10Cam15]::Run(3, 1 -bor ($n -shl 8))   # S10ECAM_FLAG_DEEP | step << 8
     $lines = @($rep -split "`r?`n" | Where-Object { $_ })
     $start = 0
     if ($n -ne $From) { for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -like '== deep step*') { $start = $i; break } } }
