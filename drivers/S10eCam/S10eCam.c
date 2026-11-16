@@ -1439,6 +1439,197 @@ out:
     return s;
 }
 
+/* ---------------------------------------------------------------------------------------------- streaming (0.6) */
+
+typedef struct _STREAM {
+    BOOLEAN        Active;
+    PFILE_OBJECT   Owner;                    /* the handle that started it: its IRP_MJ_CLEANUP stops it */
+    MAPS           m;
+    FOUND          f;
+    SHOT           x;
+    PKTHREAD       Thread;
+    KEVENT         Stop;
+    volatile LONG  Seq;                      /* frames finished */
+    volatile LONG  Latest;                   /* ring index of the newest finished frame, -1 = none */
+    volatile LONG64 LatestTime;              /* KeQueryInterruptTime of it */
+    ULONG          Tail[SHOT_RING][2];       /* the last 8 bytes of each finished frame (the canary's place) */
+    ULONG          Next;                     /* the ring index expected to finish next */
+    ULONG          Coarse, AGain, AGainMin, AGainMax, CoarseMax;
+    volatile LONG  Rearms, Stalls;
+    volatile LONG  Src0, DmaSrc;
+} STREAM;
+
+static STREAM gS;
+
+static ULONG volatile *Canary(ULONG i)
+{
+    return (ULONG volatile *)(gS.x.Ring[i] + S10ECAM_SHOT_BYTES - 8);
+}
+
+/* Polls (1 ms timer resolution while it runs): interrupt sources (accumulated + cleared), finished frames by their
+   canary (in ring order, so 2 finished between polls still come out in order), FCNTSEQ re-armed. */
+static VOID StreamThread(PVOID Ctx)
+{
+    LARGE_INTEGER t;
+    ULONG         v, k, i;
+    LONG64        lastDone = (LONG64)KeQueryInterruptTime();
+
+    UNREFERENCED_PARAMETER(Ctx);
+    t.QuadPart = -20000;                                 /* 2 ms */
+    while (KeWaitForSingleObject(&gS.Stop, Executive, KernelMode, FALSE, &t) == STATUS_TIMEOUT) {
+        v = R32(gS.x.Csis, CSIS_INT_SRC0);
+        if (v) { W32(gS.x.Csis, CSIS_INT_SRC0, v); InterlockedOr(&gS.Src0, (LONG)v); }
+        v = R32(gS.x.Dma, DMAC_BASE + DMAC_INT_SRC);
+        if (v) { W32(gS.x.Dma, DMAC_BASE + DMAC_INT_SRC, v); InterlockedOr(&gS.DmaSrc, (LONG)v); }
+        /* scanned from the expected next one around the ring: with a 2 ms poll and 33 ms frames two finishing in
+           one poll is not expected, and if the DMA did not start at Ring[0] the first find re-syncs Next */
+        for (k = 0, i = gS.Next; k < SHOT_RING; k++, i = (i + 1) % SHOT_RING) {
+            if (Canary(i)[0] == SHOT_CANARY && Canary(i)[1] == SHOT_CANARY)
+                continue;
+            gS.Tail[i][0] = Canary(i)[0];
+            gS.Tail[i][1] = Canary(i)[1];
+            Canary(i)[0] = SHOT_CANARY;
+            Canary(i)[1] = SHOT_CANARY;
+            InterlockedExchange64(&gS.LatestTime, (LONG64)KeQueryInterruptTime());
+            InterlockedExchange(&gS.Latest, (LONG)i);
+            InterlockedIncrement(&gS.Seq);
+            gS.Next = (i + 1) % SHOT_RING;
+            lastDone = (LONG64)KeQueryInterruptTime();
+            if (R32(gS.x.Dma, DMA0_FCNTSEQ) != 0xFFFFFFFFu) {   /* Linux re-arms per buffer: so do we */
+                W32(gS.x.Dma, DMA0_FCNTSEQ, 0xFFFFFFFFu);
+                InterlockedIncrement(&gS.Rearms);
+            }
+        }
+        if ((LONG64)KeQueryInterruptTime() - lastDone > 3000000) {   /* 300 ms (100 ns units) without a frame */
+            InterlockedIncrement(&gS.Stalls);
+            W32(gS.x.Dma, DMA0_FCNTSEQ, 0xFFFFFFFFu);
+            lastDone = (LONG64)KeQueryInterruptTime();
+        }
+    }
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+
+static VOID StreamStop(REPORT *r)
+{
+    if (!gS.Active)
+        return;
+    Log(r, "== stream stop: %ld frames, %ld re-arms, %ld stalls\r\n", gS.Seq, gS.Rearms, gS.Stalls);
+    if (gS.Thread != NULL) {
+        KeSetEvent(&gS.Stop, IO_NO_INCREMENT, FALSE);
+        (VOID)KeWaitForSingleObject(gS.Thread, Executive, KernelMode, FALSE, NULL);
+        ObDereferenceObject(gS.Thread);
+        gS.Thread = NULL;
+        (VOID)ExSetTimerResolution(0, FALSE);
+    }
+    ShotTeardown(&gS.m, &gS.f, &gS.x, r);
+    ShotUnmap(&gS.x);
+    UnmapAll(&gS.m);
+    gS.Active = FALSE;
+    gS.Owner = NULL;
+}
+
+static NTSTATUS StreamStart(const S10ECAM_SHOT_IN *in, PFILE_OBJECT Owner, REPORT *r)
+{
+    NTSTATUS s;
+    HANDLE   h;
+    ULONG    i;
+
+    if (gS.Active) {
+        Log(r, "already streaming\r\n");
+        return STATUS_DEVICE_BUSY;
+    }
+    RtlZeroMemory(&gS, sizeof(gS));
+    gS.Latest = -1;
+    KeInitializeEvent(&gS.Stop, NotificationEvent, FALSE);
+    s = Stage1(&gS.m, &gS.f, r);
+    Log(r, "stage 1: 0x%08X\r\n", s);
+    if (NT_SUCCESS(s))
+        s = ShotStart(&gS.m, &gS.f, &gS.x, in, SHOT_RING, r);
+    if (NT_SUCCESS(s) && !gS.x.Streaming)
+        s = STATUS_CANCELLED;                            /* a phase limit stopped it: nothing to stream */
+    gS.Active = TRUE;                                    /* from here StreamStop undoes whatever was done */
+    if (!NT_SUCCESS(s)) {
+        StreamStop(r);
+        return s;
+    }
+    for (i = 0; i < SHOT_RING; i++) {
+        Canary(i)[0] = SHOT_CANARY;
+        Canary(i)[1] = SHOT_CANARY;
+    }
+    gS.AGainMin = SenR16(&gS.m, 0x0084);
+    gS.AGainMax = SenR16(&gS.m, 0x0086);
+    gS.Coarse = SenR16(&gS.m, 0x0202);
+    gS.AGain = SenR16(&gS.m, 0x0204);
+    gS.CoarseMax = SenR16(&gS.m, 0x0340);                /* FLL - SENSOR_3J1_COARSE_INTEGRATION_TIME_MAX_MARGIN 4 */
+    gS.CoarseMax = (gS.CoarseMax == 0xFFFFFFFFu || gS.CoarseMax < 8) ? 1427u : gS.CoarseMax - 4;
+    Log(r, "  analog gain code range 0x0084 %04X .. 0x0086 %04X; coarse %u (max %u), again %04X\r\n", gS.AGainMin,
+        gS.AGainMax, gS.Coarse, gS.CoarseMax, gS.AGain);
+    (VOID)ExSetTimerResolution(10000, TRUE);             /* 1 ms ticks for the poll */
+    s = PsCreateSystemThread(&h, THREAD_ALL_ACCESS, NULL, NULL, NULL, StreamThread, NULL);
+    if (NT_SUCCESS(s)) {
+        s = ObReferenceObjectByHandle(h, THREAD_ALL_ACCESS, *PsThreadType, KernelMode, (PVOID *)&gS.Thread, NULL);
+        ZwClose(h);
+    }
+    if (!NT_SUCCESS(s)) {
+        Log(r, "  poll thread failed 0x%08X\r\n", s);
+        (VOID)ExSetTimerResolution(0, FALSE);
+        StreamStop(r);
+        return s;
+    }
+    gS.Owner = Owner;
+    Log(r, "streaming: ring of %u, frames finish into it until STREAM_STOP or this handle closes\r\n", SHOT_RING);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS StreamExposure(const S10ECAM_EXPOSURE_IN *e)
+{
+    ULONG    c = e->Coarse, g = e->AGain;
+    NTSTATUS s;
+
+    if (!gS.Active)
+        return STATUS_DEVICE_NOT_READY;
+    if (c < 2) c = 2;
+    if (c > gS.CoarseMax) c = gS.CoarseMax;
+    if (gS.AGainMin != 0xFFFFFFFFu && g < gS.AGainMin) g = gS.AGainMin;
+    if (gS.AGainMax != 0xFFFFFFFFu && g > gS.AGainMax) g = gS.AGainMax;
+    s = SenW8(&gS.m, 0x0104, 0x01);                      /* grouped parameter hold: both apply on one frame */
+    if (NT_SUCCESS(s)) s = SenW16(&gS.m, 0x0202, c);
+    if (NT_SUCCESS(s)) s = SenW16(&gS.m, 0x0204, g);
+    (VOID)SenW8(&gS.m, 0x0104, 0x00);
+    if (NT_SUCCESS(s)) { gS.Coarse = c; gS.AGain = g; }
+    return s;
+}
+
+/* The newest finished frame (copied out; its last 8 bytes from Tail). Returns the bytes written to Out. */
+static ULONG StreamFrame(PUCHAR Out, ULONG OutLen)
+{
+    S10ECAM_FRAME_HDR *h = (S10ECAM_FRAME_HDR *)Out;
+    LONG               i, seq;
+    LARGE_INTEGER      t0, t1, fq;
+
+    RtlZeroMemory(h, sizeof(*h));
+    h->Magic = S10ECAM_FRAME_MAGIC;
+    h->Coarse = gS.Coarse; h->AGain = gS.AGain; h->AGainMin = gS.AGainMin; h->AGainMax = gS.AGainMax;
+    h->CoarseMax = gS.CoarseMax;
+    h->Rearms = (ULONG)gS.Rearms; h->Stalls = (ULONG)gS.Stalls;
+    h->IntSrc0 = (ULONG)InterlockedExchange(&gS.Src0, 0);
+    h->DmaIntSrc = (ULONG)InterlockedExchange(&gS.DmaSrc, 0);
+    i = gS.Latest;
+    seq = gS.Seq;
+    if (!gS.Active || i < 0 || OutLen < sizeof(*h) + S10ECAM_SHOT_BYTES)
+        return sizeof(*h);
+    h->Seq = (ULONG)seq;
+    h->Ring = (ULONG)i;
+    h->AgeMs = (ULONG)(((LONG64)KeQueryInterruptTime() - gS.LatestTime) / 10000);
+    t0 = KeQueryPerformanceCounter(&fq);
+    RtlCopyMemory(Out + sizeof(*h), gS.x.Ring[i], S10ECAM_SHOT_BYTES - 8);
+    RtlCopyMemory(Out + sizeof(*h) + S10ECAM_SHOT_BYTES - 8, gS.Tail[i], 8);
+    t1 = KeQueryPerformanceCounter(NULL);
+    h->CopyUs = (ULONG)((t1.QuadPart - t0.QuadPart) * 1000000 / fq.QuadPart);
+    h->Torn = (gS.Seq - seq >= 2) ? 1u : 0u;             /* the copied buffer started over meanwhile */
+    return sizeof(*h) + S10ECAM_SHOT_BYTES;
+}
+
 /* ---------------------------------------------------------------------------------------------- dispatch */
 
 static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
@@ -1452,6 +1643,75 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     UNREFERENCED_PARAMETER(DeviceObject);
     Irp->IoStatus.Information = 0;
+    switch (sp->Parameters.DeviceIoControl.IoControlCode) {
+    case IOCTL_S10ECAM_STREAM_START:
+    case IOCTL_S10ECAM_STREAM_STOP: {
+        S10ECAM_SHOT_IN si;
+        BOOLEAN         start = sp->Parameters.DeviceIoControl.IoControlCode == IOCTL_S10ECAM_STREAM_START;
+
+        if ((start && sp->Parameters.DeviceIoControl.InputBufferLength < sizeof(si)) ||
+            sp->Parameters.DeviceIoControl.OutputBufferLength < 1024) {
+            s = STATUS_INVALID_PARAMETER;
+            goto done;
+        }
+        if (start)
+            si = *(S10ECAM_SHOT_IN *)Irp->AssociatedIrp.SystemBuffer;
+        r.Buf = (PCHAR)Irp->AssociatedIrp.SystemBuffer;
+        r.Size = sp->Parameters.DeviceIoControl.OutputBufferLength;
+        if (r.Size > S10ECAM_REPORT_MAX)
+            r.Size = S10ECAM_REPORT_MAX;
+        r.Used = 0;
+        r.Buf[0] = 0;
+        (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
+        if (start) {
+            Log(&r, "S10eCam 0.6 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+                si.IspDiv);
+            s = StreamStart(&si, sp->FileObject, &r);
+            Log(&r, "stream start: 0x%08X\r\n", s);
+        } else {
+            if (!gS.Active)
+                Log(&r, "not streaming\r\n");
+            StreamStop(&r);
+        }
+        KeSetEvent(&gLock, IO_NO_INCREMENT, FALSE);
+        Irp->IoStatus.Information = r.Used + 1;
+        s = STATUS_SUCCESS;
+        goto done;
+    }
+    case IOCTL_S10ECAM_STREAM_EXPOSURE:
+        if (sp->Parameters.DeviceIoControl.InputBufferLength < sizeof(S10ECAM_EXPOSURE_IN)) {
+            s = STATUS_INVALID_PARAMETER;
+            goto done;
+        }
+        (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
+        s = StreamExposure((S10ECAM_EXPOSURE_IN *)Irp->AssociatedIrp.SystemBuffer);
+        KeSetEvent(&gLock, IO_NO_INCREMENT, FALSE);
+        goto done;
+    case IOCTL_S10ECAM_STREAM_FRAME: {
+        PUCHAR out;
+
+        if (Irp->MdlAddress == NULL || sp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(S10ECAM_FRAME_HDR)) {
+            s = STATUS_INVALID_PARAMETER;
+            goto done;
+        }
+        out = (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute);
+        if (out == NULL) {
+            s = STATUS_INSUFFICIENT_RESOURCES;
+            goto done;
+        }
+        (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
+        Irp->IoStatus.Information = StreamFrame(out, sp->Parameters.DeviceIoControl.OutputBufferLength);
+        KeSetEvent(&gLock, IO_NO_INCREMENT, FALSE);
+        s = STATUS_SUCCESS;
+        goto done;
+    }
+    default:
+        break;
+    }
+    if (gS.Active) {                                     /* stages 1-4 would re-program what the stream is using */
+        s = STATUS_DEVICE_BUSY;
+        goto done;
+    }
     if (sp->Parameters.DeviceIoControl.IoControlCode == IOCTL_S10ECAM_SHOT) {
         S10ECAM_SHOT_IN shot;
         PUCHAR          out;
@@ -1474,7 +1734,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.5.1 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.6 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1508,7 +1768,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.5.1 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.6 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);
@@ -1532,7 +1792,18 @@ done:
 
 static NTSTATUS S10eCamCreateClose(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
+    PIO_STACK_LOCATION sp = IoGetCurrentIrpStackLocation(Irp);
+
     UNREFERENCED_PARAMETER(DeviceObject);
+    if (sp->MajorFunction == IRP_MJ_CLEANUP) {           /* the handle that started the stream is going away */
+        CHAR   buf[1024];
+        REPORT r = { buf, sizeof(buf), 0 };
+
+        (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
+        if (gS.Active && gS.Owner == sp->FileObject)
+            StreamStop(&r);
+        KeSetEvent(&gLock, IO_NO_INCREMENT, FALSE);
+    }
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1544,6 +1815,11 @@ static VOID S10eCamUnload(PDRIVER_OBJECT DriverObject)
     UNICODE_STRING dos;
 
     UNREFERENCED_PARAMETER(DriverObject);
+    if (gS.Active) {                                     /* (CLEANUP normally stopped it already) */
+        CHAR   buf[1024];
+        REPORT r = { buf, sizeof(buf), 0 };
+        StreamStop(&r);
+    }
     RtlInitUnicodeString(&dos, S10ECAM_DOS_NAME);
     (VOID)IoDeleteSymbolicLink(&dos);
     if (gDevice != NULL)
@@ -1569,6 +1845,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     (VOID)IoCreateSymbolicLink(&dos, &name);
     DriverObject->MajorFunction[IRP_MJ_CREATE] = S10eCamCreateClose;
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = S10eCamCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CLEANUP] = S10eCamCreateClose;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = S10eCamIoctl;
     gDevice->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;

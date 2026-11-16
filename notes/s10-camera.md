@@ -352,3 +352,16 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
 - Order: (1) S10eCam 0.6 streaming engine (start / latest frame / exposure / stop, 3-buffer DMA ring) + a user-mode
   'stream' test with AE + gray-world WB + full demosaic + rotation (cam-s10.ps1); (2) the engine moved into a shared
   file; (3) the AVStream driver (S10eCamera) on it; (4) INF + root-enumerated device + kit.
+
+## S10eCam 0.6 - streaming engine (2026-11-16, written, NOT built/run)
+- IOCTLs 0x803 STREAM_START (in S10ECAM_SHOT_IN, out report), 0x804 STREAM_FRAME (OUT_DIRECT: 64-byte
+  S10ECAM_FRAME_HDR + frame), 0x805 STREAM_EXPOSURE ({Coarse, AGain}, written inside a 0x0104 group hold, clamped to
+  2..FLL-4 and the sensor's 0x0084..0x0086 gain codes), 0x806 STREAM_STOP. IRP_MJ_CLEANUP of the starting handle and
+  DriverUnload stop it; stages 1-4 return STATUS_DEVICE_BUSY while it runs.
+- Ring: 3 contiguous uncached buffers < 4 GB (frame + 64 KiB); DMA ADDR1..32 = Ring[n % 3], FCNTSEQ all ones.
+  Finished-frame detection does not rely on the undocumented FCNTSEQ / frame-pointer semantics: each buffer's last 8
+  bytes hold a canary 0xEEEEEEEE (no 10-bit pixel is 0xEEEE); a 2 ms poll thread (ExSetTimerResolution 1 ms) sees it
+  overwritten = that frame finished, saves those 8 bytes (Tail) and re-plants the canary; scans from the expected
+  next index (re-syncs if the DMA did not start at Ring[0]). FCNTSEQ re-armed when found not all ones (counted), a
+  300 ms gap = a "stall" (counted, re-armed). FRAME copies the newest finished buffer (+ Tail), reports CopyUs and
+  Torn (2+ frames finished during the copy = the buffer may have started over).

@@ -53,3 +53,32 @@ typedef struct _S10ECAM_SHOT_IN {
 #define S10ECAM_SHOT_BYTES    (S10ECAM_SHOT_STRIDE * S10ECAM_SHOT_H)
 #define S10ECAM_SHOT_HDR      16384u
 
+/* STREAMING (0.6): the camera keeps running into a 3-buffer ring until STREAM_STOP or until the handle that started
+ * it is closed (IRP_MJ_CLEANUP), so a test (or a crashed caller) can never leave it on. Stages 1-4 are refused while
+ * it runs. */
+#define IOCTL_S10ECAM_STREAM_START    CTL_CODE(S10ECAM_TYPE, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)    /* in S10ECAM_SHOT_IN, out report */
+#define IOCTL_S10ECAM_STREAM_FRAME    CTL_CODE(S10ECAM_TYPE, 0x804, METHOD_OUT_DIRECT, FILE_ANY_ACCESS)  /* out HDR + frame */
+#define IOCTL_S10ECAM_STREAM_EXPOSURE CTL_CODE(S10ECAM_TYPE, 0x805, METHOD_BUFFERED, FILE_ANY_ACCESS)    /* in S10ECAM_EXPOSURE_IN */
+#define IOCTL_S10ECAM_STREAM_STOP     CTL_CODE(S10ECAM_TYPE, 0x806, METHOD_BUFFERED, FILE_ANY_ACCESS)    /* out report */
+
+typedef struct _S10ECAM_EXPOSURE_IN {
+    unsigned int Coarse;    /* 0x0202 lines, clamped to 2 .. FLL - 4 */
+    unsigned int AGain;     /* 0x0204, clamped to the sensor's 0x0084 .. 0x0086 */
+} S10ECAM_EXPOSURE_IN;
+
+#define S10ECAM_FRAME_MAGIC  0x46303153u    /* 'S10F' */
+typedef struct _S10ECAM_FRAME_HDR {         /* 64 bytes, then S10ECAM_SHOT_BYTES of frame when Seq != 0 */
+    unsigned int Magic;
+    unsigned int Seq;       /* frames finished since stream start; 0 = none yet (no frame follows) */
+    unsigned int Ring;      /* which ring buffer it came from */
+    unsigned int AgeMs;     /* how long ago it finished */
+    unsigned int Coarse, AGain, AGainMin, AGainMax, CoarseMax;
+    unsigned int Rearms;    /* times FCNTSEQ was found not all-ones and re-armed */
+    unsigned int Stalls;    /* 300 ms gaps without a finished frame */
+    unsigned int IntSrc0;   /* CSIS2 INT_SRC0 bits seen since the last FRAME call */
+    unsigned int DmaIntSrc; /* VC0 DMA common INT_SRC bits seen since the last FRAME call */
+    unsigned int CopyUs;    /* the copy's duration */
+    unsigned int Torn;      /* 1 = 2+ frames finished during the copy: may be torn */
+    unsigned int Reserved;
+} S10ECAM_FRAME_HDR;
+
