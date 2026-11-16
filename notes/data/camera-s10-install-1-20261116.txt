@@ -1,0 +1,13 @@
+camera-s10.ps1 v1.0  install  2026-11-01T23:23:26
+  Microsoft PnP Utility
+  
+  Adding driver package:  S10eCamera.inf
+  Driver package added successfully.
+  Published Name:         oem14.inf
+  
+  Total driver packages:  1
+  Added driver packages:  1
+SwDeviceCreate failed 0x8007007E
+device: none (run install)
+next: open the Camera app (or Teams / a browser) and pick "Galaxy S10 Front Camera"; then .\camera-s10.ps1 status
+log: C:\S10Prov\camera-s10-install.txt

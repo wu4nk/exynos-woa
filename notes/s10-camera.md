@@ -421,3 +421,30 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
   only at PASSIVE (SetDeviceState / close). Open risks to watch on the phone: Process time vs 33 ms (drops counted),
   whether the Camera app accepts YUY2-only, whether the SWD device survives a reboot.
 - 2026-11-16 14:22 EWDK build: S10eCam.c(1678) C4701 'si' potentially uninitialized (STREAM_STOP path) -> zero-initialised. S10eCamera.c built clean with EWDK (S10ECAMERA_BUILD_OK, inf2cat signability OK).
+
+## Phone run 2026-11-16 14:49: cam-s10 stream (S10eCam 0.6) + camera-s10 install
+Logs: notes/data/cam-s10-stream-1-20261116.txt, notes/data/camera-s10-install-1-20261116.txt (the scene image shows
+people: not kept in the repo).
+- STREAMING ENGINE VALIDATED: 183 frames in ~6 s (= 30 fps), 0 re-arms, 0 stalls, INT_SRC0 03300000 only (no OVER
+  bit 4), DMA INT 00000111; teardown restored everything (ISPPRE div F, iso 0, sysreg 0, CMN_CTRL 4000, DMA CTRL 0).
+- AE works: coarse 256 -> 1427 (max), again 0x20 -> 0xC8 -> 0xE1 (x7), G 7.9 -> 107 (target 110), "AE settled" twice.
+  Indoor scene needs x7 gain at max exposure (1/30 s); the image is noisy-ish but clean, colours plausible after
+  gray-world WB (R x1.60, B x1.50); low contrast/saturation: no colour matrix yet (and lens flare from a ceiling tube).
+- ORIENTATION: the last run was "-Rotate 90" (bmp 1368 x 1824): the scene came out UPSIDE DOWN -> upright is
+  rotate 270 clockwise (cam-s10's convention), the same number as Android's usual front-camera sensor orientation.
+  Handedness (mirror) still unknown: a face does not tell; needs text in the scene.
+- PROBLEM 1, copy speed: StreamFrame's 4.99 MB copy out of the MmNonCached ring takes 56-73 ms (~80 MB/s).
+  "torn" = the frame counter moved >= 2 during the copy; it fits age + copy > 66 ms (= 2 frame times, after which the
+  DMA is writing the same ring slot again) on every line: age 30 + 57 -> torn, age 7 + 57 -> clean, age 0 + 58 ->
+  clean, age 9 + 61 = 70 -> torn. So torn frames are real overwrites, and the AVStream driver (which reads the same
+  5 MB uncached per frame in Convert) would cap at ~15 fps with ~100 % of a core. Next: measure a write-combined
+  mapping of the ring (S10eCam 0.7 flag), and/or the sensor's own 912x684 binned mode (setfile A has
+  sensor_3j1_setfile_A_912x684_120fps: 1/4 of the data per frame; its rate would be set to 30 fps by FLL as the
+  kernel's frame-duration path does) - not done yet.
+- PROBLEM 2, install: SwDeviceCreate returned 0x8007007E (HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND)) at once (no
+  callback). The SwDeviceCreate page (learn.microsoft.com/windows/win32/api/swdevice/nf-swdevice-swdevicecreate)
+  documents no error codes beyond S_OK and requires only Administrator (the script runs elevated); parent
+  HTREE\ROOT\0 is the documented example. Cause not found in docs; not investigated inside Windows (AGENTS rule 11).
+  Instead: a root-enumerated device created the documented SetupAPI way (devcon's "install" sequence:
+  SetupDiCreateDeviceInfo + SPDRP_HARDWAREID + DIF_REGISTERDEVICE, then UpdateDriverForPlugAndPlayDevices), hwid
+  ROOT\S10eCamera. Root devices also persist across reboots by design (open question for SWD gone).
