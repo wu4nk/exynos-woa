@@ -395,3 +395,22 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
   frames pushed by the engine's poll thread (OnFrame -> KsPinAttemptProcessing(TRUE)), pin flag
   KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING; AE + gray-world WB in kernel from the conversion's channel sums; RUN = engine
   StreamStart, STOP = StreamStop (a fast mutex keeps Process and teardown apart).
+
+## S10eCamera 0.1 (AVStream) written 2026-11-16 - NOT built (EWDK on the user's PC), NOT run
+- drivers/S10eCamera: S10eCamera.c includes ../S10eCam/S10eCam.c with S10ECAM_ENGINE_ONLY (C4505 off for the
+  engine's unused stages); one filter (VIDEO + CAPTURE + VIDEO_CAMERA, KSNAME_Filter), one pin (category = name =
+  PINNAME_VIDEO_CAPTURE = PIN_CATEGORY_CAPTURE's GUID FB6C4281-...; flags PROCESS_IN_RUN_STATE_ONLY |
+  DO_NOT_INITIATE_PROCESSING; simple framing 2 x 1247616 nonpaged), one range YUY2 912x684 @ 333333; intersect handler
+  returns KS_DATAFORMAT_VIDEOINFOHEADER from it. PAUSE->RUN = engine StreamStart (OnFrame = KsPinAttemptProcessing
+  TRUE), RUN->x / close = StreamStop; a FAST_MUTEX keeps Process away from start/stop. Process: newest finished ring
+  buffer -> 2 cached raw lines at a time -> 2x2 binning, black 64, WB (Q8, smoothed gray world, x0.25..x4), gamma LUT
+  (S10eCameraLut.h, generated), BT.601 limited YUY2; KS_FRAME_INFO picture number + drop count; clock time when the
+  pin has a clock; AE every 3 frames toward G 110 (lines first, gain via StreamExposure's clamps). Engine reports
+  (start/stop) appended to C:\S10Prov\camera-avs.txt.
+- S10eCamera.inf: Class Camera, hardware IDs SWD\S10eCamera + ACPI\SAMS982B, ks.inf/kscaptur.inf registration, 3
+  interfaces "GLOBAL" + proxy CLSID, service demand-start. build.bat (= S10eCam's + ks.lib ksguid.lib), build-s10.cmd
+  v1.18 :camera (-> catsign), make-kit.sh copies S10eCamera + camera-s10.ps1.
+- camera-s10.ps1 v1.0: install = pnputil /add-driver /install + SwDeviceCreate("S10eCamera", HTREE\ROOT\0,
+  hwid SWD\S10eCamera, SilentInstall|DriverRequired) + SwDeviceSetLifetime(ParentPresent); status; remove (reclaim,
+  lifetime Handle, close; pnputil /delete-driver). C# compiles (pwsh, Linux); SwDevice calls not run.
+- Checks: clang vs WDK 26100 km/shared (ks.h, ksmedia.h) -Wall -Wextra -Wconversion clean for S10eCamera.c.

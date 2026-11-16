@@ -1,0 +1,67 @@
+; S10eCamera.inf - Galaxy S10 (beyond1lte) front camera (S5K3J1) as a Windows camera: AVStream capture minidriver.
+; notes/s10-camera.md. Binds the software device camera-s10.ps1 creates (SWD\S10eCamera, SwDeviceCreate) or a
+; future DSDT node ACPI\SAMS982B. KS registration per the WDK's AVStream INF pattern (ks.inf / kscaptur.inf).
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = Camera
+ClassGuid   = {ca3e7ab9-b4c3-4ae6-8251-579ef933890f}
+Provider    = %ProviderName%
+CatalogFile = S10eCamera.cat
+DriverVer   = 11/16/2026,0.1.0.0
+PnpLockdown = 1
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+S10eCamera.sys = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[Manufacturer]
+%MfgName% = S10e, NTarm64.10.0...16299
+
+[S10e.NTarm64.10.0...16299]
+%DeviceDesc% = S10eCamera, SWD\S10eCamera, ACPI\SAMS982B
+
+[S10eCamera]
+Include   = ks.inf, kscaptur.inf
+Needs     = KS.Registration, KSCAPTUR.Registration.NT
+CopyFiles = S10eCamera.CopyFiles
+
+[S10eCamera.CopyFiles]
+S10eCamera.sys
+
+[S10eCamera.Interfaces]
+AddInterface = %KSCATEGORY_CAPTURE%, "GLOBAL", CaptureInterface, 0
+AddInterface = %KSCATEGORY_VIDEO%, "GLOBAL", CaptureInterface, 0
+AddInterface = %KSCATEGORY_VIDEO_CAMERA%, "GLOBAL", CaptureInterface, 0
+
+[CaptureInterface]
+AddReg = S10eCamera.Reader.AddReg
+
+[S10eCamera.Reader.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%FriendlyName%
+
+[S10eCamera.Services]
+AddService = S10eCamera, 0x00000002, S10eCamera.Service
+
+[S10eCamera.Service]
+DisplayName   = %DeviceDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %13%\S10eCamera.sys
+
+[Strings]
+Proxy.CLSID              = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_CAPTURE       = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_VIDEO         = "{6994AD05-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_VIDEO_CAMERA  = "{E5323777-F976-4f5b-9B55-B94699C46E44}"
+ProviderName             = "exynos-woa"
+MfgName                  = "exynos-woa (Galaxy S10)"
+DeviceDesc               = "Galaxy S10 Front Camera (S5K3J1)"
+FriendlyName             = "Galaxy S10 Front Camera"
+DiskName                 = "S10eCamera"
