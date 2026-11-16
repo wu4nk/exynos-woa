@@ -287,7 +287,7 @@ _Use_decl_annotations_
 VOID S10eBattPollWork(WDFWORKITEM WorkItem)
 {
     PAGED_CODE();
-    S10eBattPoll((WDFDEVICE)WdfWorkItemGetParentObject(WorkItem));
+    S10eBattTick((WDFDEVICE)WdfWorkItemGetParentObject(WorkItem));
 }
 
 _Use_decl_annotations_

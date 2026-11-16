@@ -30,6 +30,7 @@ VOID S10eBattInitState(_Inout_ PS10E_BATT_FDO Fdo)
 {
     Fdo->BatteryTag = BATTERY_TAG_INVALID;
     Fdo->NextTag    = 1;
+    Fdo->LastChgin  = 0xFF;
     RtlZeroMemory(&Fdo->Info, sizeof(Fdo->Info));
     RtlZeroMemory(&Fdo->Status, sizeof(Fdo->Status));
     Fdo->Status.Voltage = BATTERY_UNKNOWN_VOLTAGE;
@@ -142,6 +143,14 @@ static VOID SaveDiagnostics(_In_ PS10E_BATT_FDO Fdo, _In_ PS10E_BATT_READING R)
         { L"UsbcRev", R->UsbcRead ? ((ULONG)R->UsbcRev[0] | ((ULONG)R->UsbcRev[1] << 8)) : 0xFFFFFFFF },
         { L"UsbcSt0", R->UsbcRead ? *(const ULONG UNALIGNED *)&R->UsbcStatus[0] : 0xFFFFFFFF },
         { L"UsbcSt1", R->UsbcRead ? *(const ULONG UNALIGNED *)&R->UsbcStatus[4] : 0xFFFFFFFF },
+        /* 1.0.0.10 ChargeTune: setting, BC_STATUS seen, target ILIM / CC (0 = no decision), hot latch, writes */
+        { L"TuneSetting", Fdo->TuneSetting },
+        { L"TuneBc",      Fdo->TuneBc },
+        { L"TuneIlimMa",  Fdo->TuneIlimMa },
+        { L"TuneCcMa",    Fdo->TuneCcMa },
+        { L"TuneHot",     Fdo->TuneHot },
+        { L"TuneWrites",  Fdo->TuneWrites },
+        { L"Tick",        Fdo->Tick },
     };
     ULONG          i;
     UNICODE_STRING Name;
@@ -188,6 +197,50 @@ static VOID SaveHistory(_In_ PS10E_BATT_FDO Fdo, _In_ PS10E_BATT_READING R)
     WdfRegistryClose(Key);
 }
 
+/* Services\S10eBattery\Parameters\ChargeTune (DWORD, absent = 0). Read at every full reading, so
+   charge-s10.ps1 tune on/off applies within 20 s without a restart. */
+static ULONG ReadChargeTune(VOID)
+{
+    WDFKEY         Key;
+    ULONG          Value = 0;
+    UNICODE_STRING Name;
+
+    RtlInitUnicodeString(&Name, L"ChargeTune");
+    if (NT_SUCCESS(WdfDriverOpenParametersRegistryKey(WdfGetDriver(), KEY_READ, WDF_NO_OBJECT_ATTRIBUTES, &Key))) {
+        if (!NT_SUCCESS(WdfRegistryQueryULong(Key, &Name, &Value))) {
+            Value = 0;
+        }
+        WdfRegistryClose(Key);
+    }
+    return Value != 0 ? 1u : 0u;
+}
+
+/* Timer tick (2 s, PASSIVE work item): one CHG_DETAILS_00 read; the full reading every 10th tick, at once when
+   CHGIN_DTLS changed (plug / unplug), and every tick while a charger's BC1.2 type is still unknown. */
+VOID S10eBattTick(_In_ WDFDEVICE Device)
+{
+    PS10E_BATT_FDO Fdo = S10eBattGetFdo(Device);
+    UCHAR          Chg[2];
+    BOOLEAN        Full;
+
+    Fdo->Tick++;
+    Full = ((Fdo->Tick % S10E_BATT_FULL_EVERY) == 0) || (Fdo->TunePending != 0);
+    if (!Full) {
+        WdfWaitLockAcquire(Fdo->BusLock, NULL);
+        if (NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_CHG_ADDR, MAX77705_CHG_DETAILS_00, Chg, sizeof(Chg))) &&
+            (MAX77705_CHGIN_DTLS(Chg[0]) != Fdo->LastChgin)) {
+            Full = TRUE;
+        }
+        WdfWaitLockRelease(Fdo->BusLock);
+    }
+    if (Fdo->TunePending != 0) {
+        Fdo->TunePending--;
+    }
+    if (Full) {
+        S10eBattPoll(Device);
+    }
+}
+
 VOID S10eBattPoll(_In_ WDFDEVICE Device)
 {
     PS10E_BATT_FDO    Fdo = S10eBattGetFdo(Device);
@@ -198,9 +251,18 @@ VOID S10eBattPoll(_In_ WDFDEVICE Device)
     ULONG             OldPowerState;
     ULONG             OldPercent;
     ULONG             OldTag;
+    ULONG             Tune;
 
+    Tune = ReadChargeTune();
     WdfWaitLockAcquire(Fdo->BusLock, NULL);
     Status = S10eMax77705Read(Fdo, &R);
+    if (NT_SUCCESS(Status)) {
+        Fdo->TuneSetting = Tune;
+        S10eMax77705Tune(Fdo, &R);
+        if (R.ChargerRead) {
+            Fdo->LastChgin = (UCHAR)MAX77705_CHGIN_DTLS(R.ChgDetails00);
+        }
+    }
     WdfWaitLockRelease(Fdo->BusLock);
 
     WdfWaitLockAcquire(Fdo->StateLock, NULL);
@@ -222,7 +284,8 @@ VOID S10eBattPoll(_In_ WDFDEVICE Device)
         BuildStatus(Fdo, &R);
         Notify = (OldTag != Fdo->BatteryTag) || (OldPowerState != Fdo->Status.PowerState) ||
                  (OldPercent != R.SocTenths / 10);
-        Save = (Fdo->PollOk == 1) || Notify || ((Fdo->PollOk % 15) == 0);   /* every 5 min: QueryStatusCount */
+        Save = (Fdo->PollOk == 1) || Notify || ((Fdo->PollOk % 15) == 0) ||  /* every 5 min: QueryStatusCount */
+               (R.ChargerRead && MAX77705_CHGIN_DTLS(R.ChgDetails00) == MAX77705_CHGIN_DTLS_VALID);   /* charging */
     } else {
         Fdo->PollFail++;
         if (Status == STATUS_NO_MEDIA_IN_DEVICE) {

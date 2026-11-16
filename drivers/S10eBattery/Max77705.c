@@ -2,7 +2,8 @@
  * Max77705.c - one complete, READ-ONLY reading of the MAX77705 fuel gauge (0x36) and charger status (0x69).
  *
  * Conversions are the vendor's, verbatim (drivers/battery_v2/max77705_fuelgauge.c), exactly as the device-run
- * UEFI PoC does them (Beyond0LteUsbHostDxe/FuelGauge.c). No gauge or charger register is ever written here.
+ * UEFI PoC does them (Beyond0LteUsbHostDxe/FuelGauge.c). No gauge register is ever written here; the charger gets
+ * the watchdog kick (CNFG_06 WDTCLR) and, with ChargeTune 1 (1.0.0.10), CHGIN_ILIM / CHG_CC (S10eMax77705Tune).
  * Every register is read as a 2-byte transfer (the 1-byte-read bug on this bus, Pmic.c:Max77705RegRead).
  * Caller holds Fdo->BusLock.
  */
@@ -147,7 +148,7 @@ NTSTATUS S10eMax77705Read(_Inout_ PS10E_BATT_FDO Fdo, _Out_ PS10E_BATT_READING R
         Reading->ChargerRead  = TRUE;
     }
 
-    /* Kick the charger watchdog every poll (20 s; the WDT is tens of seconds) - the one write this driver does.
+    /* Kick the charger watchdog every full reading (20 s; the WDT is tens of seconds).
        Read-modify-write of WDTCLR only; a failure leaves the reading intact. */
     if (NT_SUCCESS(S10eMax77705ReadN(Fdo, MAX77705_CHG_ADDR, MAX77705_CHG_CNFG_00, Chg, sizeof(Chg)))) {
         Reading->ChgCnfg00  = Chg[0];
@@ -180,4 +181,87 @@ NTSTATUS S10eMax77705Read(_Inout_ PS10E_BATT_FDO Fdo, _Out_ PS10E_BATT_READING R
     }
 
     return STATUS_SUCCESS;
+}
+
+/* One charger register read-modify-write: only the bits in Mask change. */
+static NTSTATUS ChgUpdate(_Inout_ PS10E_BATT_FDO Fdo, _In_ UCHAR Reg, _In_ UCHAR Value, _In_ UCHAR Mask)
+{
+    NTSTATUS Status;
+    UCHAR    Cur[2];
+    UCHAR    Write[2];
+
+    Status = S10eMax77705ReadN(Fdo, MAX77705_CHG_ADDR, Reg, Cur, sizeof(Cur));
+    if (!NT_SUCCESS(Status)) {
+        return Status;
+    }
+    Write[0] = Reg;
+    Write[1] = (UCHAR)((Cur[0] & ~Mask) | (Value & Mask));
+    if (Write[1] == Cur[0]) {
+        return STATUS_SUCCESS;
+    }
+    Status = S10eHsi2cXfer(Fdo, MAX77705_CHG_ADDR, FALSE, Write, sizeof(Write), TRUE);
+    if (NT_SUCCESS(Status)) {
+        Fdo->TuneWrites++;
+    }
+    return Status;
+}
+
+/* ChargeTune (1.0.0.10): what the vendor charger stack does per cable type, for the three BC1.2 types the MAX77705
+   USB-C block reports (S10eBattery.h S10E_TUNE_*). Only with ChargeTune 1, only while CHGIN is valid, never the
+   charger mode (CNFG_00). A charger without a BC1.2 result (type 0) keeps whatever the chip has. */
+VOID S10eMax77705Tune(_Inout_ PS10E_BATT_FDO Fdo, _In_ PS10E_BATT_READING R)
+{
+    UCHAR Bc;
+    ULONG Ilim;
+    ULONG Cc;
+    UCHAR IlimReg;
+    UCHAR CcReg;
+
+    Fdo->TuneIlimMa = 0;
+    Fdo->TuneCcMa   = 0;
+    if (!R->ChargerRead || (MAX77705_CHGIN_DTLS(R->ChgDetails00) != MAX77705_CHGIN_DTLS_VALID) || !R->UsbcRead) {
+        Fdo->TunePending = 0;
+        Fdo->TuneHot     = FALSE;
+        return;
+    }
+    Bc = R->UsbcStatus[MAX77705_USBC_BC_STATUS - MAX77705_USBC_STATUS1];
+    Fdo->TuneBc = Bc;
+    switch (MAX77705_BC_CHGTYP(Bc)) {
+    case 1:  Ilim = S10E_TUNE_USB_ILIM_MA; Cc = S10E_TUNE_USB_CC_MA; break;
+    case 2:  Ilim = S10E_TUNE_CDP_ILIM_MA; Cc = S10E_TUNE_CDP_CC_MA; break;
+    case 3:  Ilim = S10E_TUNE_TA_ILIM_MA;  Cc = S10E_TUNE_TA_CC_MA;  break;
+    default:                                     /* detection still running (or none): look again next tick */
+        if (Fdo->TunePending == 0) {
+            Fdo->TunePending = S10E_TUNE_PENDING_TICKS;
+        }
+        return;
+    }
+    Fdo->TunePending = 0;
+
+    if (R->TempMilliC >= S10E_TUNE_HOT_MILLIC) {
+        Fdo->TuneHot = TRUE;
+    } else if (R->TempMilliC < S10E_TUNE_COOL_MILLIC) {
+        Fdo->TuneHot = FALSE;
+    }
+    if (Fdo->TuneHot) {
+        Ilim = S10E_TUNE_HOT_ILIM_MA;
+        Cc   = S10E_TUNE_HOT_CC_MA;
+    }
+    Fdo->TuneIlimMa = Ilim;
+    Fdo->TuneCcMa   = Cc;
+    if (Fdo->TuneSetting == 0 || R->ChgCnfg02 == 0xFF || R->ChgCnfg09 == 0xFF) {
+        return;                                  /* report the decision only */
+    }
+
+    IlimReg = (UCHAR)(Ilim / 25u - 1u);          /* vendor: (I / 25) - 1, I >= 100 */
+    CcReg   = (UCHAR)(Cc / 50u);                 /* vendor: I / 50, I >= 100 */
+    if (((R->ChgCnfg09 & MAX77705_CHG_CHGIN_LIM_MASK) == IlimReg) && ((R->ChgCnfg02 & MAX77705_CHG_CC_MASK) == CcReg)) {
+        return;
+    }
+    /* Unlock the settings first (CHGPROT = 11), as max77705_charger_unlock does (update of bits 3:2 only). */
+    if (!NT_SUCCESS(ChgUpdate(Fdo, MAX77705_CHG_CNFG_06, MAX77705_CHG_CNFG_06_CHGPROT, MAX77705_CHG_CNFG_06_CHGPROT))) {
+        return;
+    }
+    (VOID)ChgUpdate(Fdo, MAX77705_CHG_CNFG_09, IlimReg, MAX77705_CHG_CHGIN_LIM_MASK);
+    (VOID)ChgUpdate(Fdo, MAX77705_CHG_CNFG_02, CcReg, MAX77705_CHG_CC_MASK);
 }

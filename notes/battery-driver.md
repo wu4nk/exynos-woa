@@ -248,3 +248,29 @@ free.
   writes CNFG_00 in Windows, so most likely the MAX77705 itself (CC detach / VBUS-in). UNVERIFIED which event did it;
   read CNFG_00 every 100 ms (usbcwatch-style) across an unplug to find out. The "stays until the next boot" claim
   above was wrong: earlier reads were taken while the hub (or no external supply) was still attached.
+
+### 2026-11-16 20:06 user report (S10, Windows): slow charging, the charger is noticed late, % drops while plugged
+- Delay: S10eBattery 1.0.0.9 read the charger only every 20 s (S10E_BATT_POLL_MS 20000) -> up to 20 s before
+  BatteryClassStatusNotify tells Windows that AC came / went. Certain from the code.
+- Drop / slow: known since 10-16 (above): nothing under Windows sets CHGIN_ILIM / CHG_CC; measured on a PC port
+  ILIM 500 mA / CC 450 mA while Windows draws ~2-2.7 W (no PEP idle) -> net -77 mA. Under Windows with a WALL charger
+  the registers were never read (the "stays 500 mA whatever the cable" line above is an inference, not a reading).
+  Linux sets per cable type; no AFC (9 V) here at all.
+- Vendor S10 values (LineageOS android_kernel_samsung_exynos9820, fetched 2026-11-16):
+  arch/arm64/boot/dts/samsung/battery_data_beyondlte_common.dtsi cable-info: default (TA) input 1800 / charging 2100;
+  USB (4) group_12 475 / 550; USB_CDP (5) group_3 1500 / 1500; 9V_TA 1650 / 2350 (needs AFC, not here);
+  temp_high_threshold_normal 500 / recovery 480 (0.1 C). drivers/battery_v2/max77705_charger.c: ILIM reg = I/25 - 1
+  (CNFG_09 mask 0x7F), CC reg = I/50 (CNFG_02 mask 0x3F, bits 7:6 OTG_ILIM kept), settings unlock CNFG_06 bits 3:2
+  = 11 (max77705_charger_unlock). AutoIBUS: DETAILS_00 bit 7 = 1 "set by charger", 0 "set by USBC" (the USB-C
+  firmware sets ILIM itself; Linux then sends a no-autoibus opcode - not done here; the watch shows bit 7 via
+  ChgDetails). BC1.2 type: USB-C BC_STATUS 0x08 bits 1:0 (include/linux/muic/max77705-muic.h:224-299).
+- S10eBattery 1.0.0.10 (NOT built, NOT run): 2 s tick = one CHG_DETAILS_00 read; full reading every 10th tick, at
+  once on a CHGIN_DTLS change, and every tick (<= 10) while a charger's BC1.2 type is 0. ChargeTune (Services\
+  S10eBattery\Parameters, DWORD, absent = 0, read at each full reading): 1 = RMW CNFG_06 CHGPROT, CNFG_09 ILIM,
+  CNFG_02 CC to the vendor values for SDP / CDP / DCP; >= 50.0 C latches 500 / 100 mA until < 48.0 C (the vendor
+  stops charging; the mode register is not touched here). The decision (TuneIlimMa / TuneCcMa / TuneBc / TuneHot /
+  TuneWrites / Tick) is saved in Device Parameters, saved on every full reading while CHGIN is valid. Default 0
+  until the watch shows the wall charger's BC type and registers (first step read-only, then tune on).
+- charge-s10.ps1 v1.0: install / watch (2 s table: AC, CHG_DTLS state, BC type, ILIM, CC, battery mA, SOC, temp,
+  tune decision) / tune on|off. pwsh parse 0; DWORD sign handling checked (0xFFFFFFFF reads as -1).
+- Checks: clang vs WDK 26100 + KMDF 1.33 -Wextra -Wconversion: no new warnings in Max77705.c / Miniclass.c / Driver.c.

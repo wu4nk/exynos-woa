@@ -148,6 +148,32 @@ typedef struct _S10E_USBC_WRITE_IN { UCHAR Reg; UCHAR Value; } S10E_USBC_WRITE_I
    CHGIN_ILIM input current limit, (field + 1) x 25 mA. Read only (notes/battery-driver.md). */
 #define MAX77705_CHG_CNFG_02      0xB9
 #define MAX77705_CHG_CNFG_09      0xC0
+#define   MAX77705_CHG_CC_MASK              0x3F  /* [K] max77705_charger.h:189 MAX77705_CHG_CC (bits 7:6 OTG_ILIM kept) */
+#define   MAX77705_CHG_CHGIN_LIM_MASK       0x7F  /* [K] max77705_charger.h:270 MAX77705_CHG_CHGIN_LIM */
+#define   MAX77705_CHG_CNFG_06_CHGPROT      0x0C  /* [K] bits 3:2 = 11 unlocks the charger settings
+                                                     (max77705_charger_unlock / _initialize) */
+
+/* 1.0.0.10 ChargeTune: CHGIN_ILIM / CHG_CC per BC1.2 type, from the vendor S10 (beyondlte) cable table
+   arch/arm64/boot/dts/samsung/battery_data_beyondlte_common.dtsi "cable-info" (LineageOS
+   android_kernel_samsung_exynos9820, fetched 2026-11-16): TA (3) = default_input_current 1800 /
+   default_charging_current 2100; USB (4) = current_group_12 475 / 550; USB_CDP (5) = current_group_3 1500 / 1500.
+   Register encodings = vendor max77705_set_input_current (I/25 - 1) / max77705_set_charge_current (I/50).
+   Hot guard: temp_high_threshold_normal 500 / temp_high_recovery_normal 480 (0.1 degC) - the vendor stops charging
+   there; this driver does not touch the charger mode, it drops to CC 100 mA / ILIM 500 mA instead. */
+#define S10E_TUNE_TA_ILIM_MA      1800u
+#define S10E_TUNE_TA_CC_MA        2100u
+#define S10E_TUNE_USB_ILIM_MA     475u
+#define S10E_TUNE_USB_CC_MA       550u
+#define S10E_TUNE_CDP_ILIM_MA     1500u
+#define S10E_TUNE_CDP_CC_MA       1500u
+#define S10E_TUNE_HOT_ILIM_MA     500u
+#define S10E_TUNE_HOT_CC_MA       100u
+#define S10E_TUNE_HOT_MILLIC      50000
+#define S10E_TUNE_COOL_MILLIC     48000
+/* USB-C block BC_STATUS 0x08 [K] max77705-muic.h:224-231 / :293-299: bits 1:0 ChgTyp 0 none, 1 SDP (USB),
+   2 CDP, 3 DCP (dedicated charger); bit 2 DCDTmo; bits 5:3 PrChgTyp; bit 7 VBUSDet. UsbcStatus[] starts at 0x06. */
+#define MAX77705_USBC_BC_STATUS   0x08
+#define   MAX77705_BC_CHGTYP(x)             ((x) & 0x03)
 #define   MAX77705_CHG_CNFG_06_WDTCLR_MASK  0x03
 #define   MAX77705_CHG_CNFG_06_WDTCLR       0x01
 #define MAX77705_CHG_DETAILS_00   0xB3    /* [K] bits 6:5 CHGIN_DTLS (3 = VBUS valid) */
@@ -166,7 +192,10 @@ typedef struct _S10E_USBC_WRITE_IN { UCHAR Reg; UCHAR Value; } S10E_USBC_WRITE_I
 #define S10E_PLAUSIBLE_VCELL_MIN_MV         2500u
 #define S10E_PLAUSIBLE_VCELL_MAX_MV         5000u
 
-#define S10E_BATT_POLL_MS         20000   /* poll period; class queries are answered from the cache */
+#define S10E_BATT_POLL_MS         2000    /* 1.0.0.10: tick period - a 1-register charger check (CHGIN_DTLS) */
+#define S10E_BATT_FULL_EVERY      10      /* full reading every 10th tick (20 s, as before), or at once when
+                                             CHGIN_DTLS changed (plug / unplug seen within 2 s, was up to 20 s) */
+#define S10E_TUNE_PENDING_TICKS   10      /* charger seen but BC1.2 type not yet known: full reading each tick */
 #define S10E_BATT_TAG             'tBeS'
 
 /* ---------------------------------------------------------------------------------------------------------------
@@ -303,6 +332,17 @@ typedef struct _S10E_BATT_FDO {
     ULONG               PollOk;
     ULONG               PollFail;
     NTSTATUS            LastPollStatus;
+    ULONG               Tick;                /* timer ticks (PollWork) */
+    UCHAR               LastChgin;           /* CHGIN_DTLS of the last full reading (0xFF = none yet) */
+
+    /* ChargeTune (BusLock): Services\S10eBattery\Parameters\ChargeTune, read at every full reading */
+    ULONG               TuneSetting;         /* 0 = read only (as 1.0.0.9), 1 = set ILIM / CC per BC1.2 type */
+    ULONG               TunePending;         /* ticks left with a charger present and no BC1.2 type yet */
+    BOOLEAN             TuneHot;             /* hot guard latched (hysteresis) */
+    UCHAR               TuneBc;              /* BC_STATUS of the last full reading with the charger present */
+    ULONG               TuneIlimMa;          /* target of the last decision (0 = none: no charger / unknown type) */
+    ULONG               TuneCcMa;
+    ULONG               TuneWrites;          /* register writes done (counted per CNFG_02 / 09 / 06 write) */
 
     /* battery class registration (ClassInitLock) */
     WDFWAITLOCK         ClassInitLock;
@@ -354,6 +394,7 @@ NTSTATUS S10eMax77705ReadN(_Inout_ PS10E_BATT_FDO Fdo, _In_ UCHAR ClientAddr, _I
 
 /* Max77705.c - one complete reading. Caller holds BusLock. */
 NTSTATUS S10eMax77705Read(_Inout_ PS10E_BATT_FDO Fdo, _Out_ PS10E_BATT_READING Reading);
+VOID     S10eMax77705Tune(_Inout_ PS10E_BATT_FDO Fdo, _In_ PS10E_BATT_READING Reading);   /* BusLock held */
 
 /* Vibra.c */
 NTSTATUS S10eVibCreate(_Inout_ PS10E_BATT_FDO Fdo);                 /* AddDevice: lock, timer, work item */
@@ -363,6 +404,7 @@ VOID     S10eVibUnmap(_Inout_ PS10E_BATT_FDO Fdo);                  /* ReleaseHa
 
 /* Miniclass.c */
 VOID     S10eBattPoll(_In_ WDFDEVICE Device);
+VOID     S10eBattTick(_In_ WDFDEVICE Device);
 VOID     S10eBattInitState(_Inout_ PS10E_BATT_FDO Fdo);
 BCLASS_QUERY_TAG_CALLBACK             S10eBattQueryTag;
 BCLASS_QUERY_INFORMATION_CALLBACK     S10eBattQueryInformation;
