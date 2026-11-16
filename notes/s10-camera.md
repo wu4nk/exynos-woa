@@ -519,3 +519,13 @@ Logs: notes/data/cam-s10-stream-2nc-20261116.txt, cam-s10-stream-2wc-20261116.tx
 - Consequence for S10eCamera: Convert reads the same 5 MB -> 16-55 ms per frame of CPU; 30 fps only on a fast core.
   The fix that removes the cause is less data: the sensor's own 912x684 mode (setfile A
   sensor_3j1_setfile_A_912x684_120fps, 1/4 of the bytes) - next engine change, after the Camera app result.
+
+## Camera app 2026-11-16 15:37: "Can't start your camera" 0xA00F4246 <ErrorRetryFailed> (0x887A0004)
+- 0x887A0004 = DXGI_ERROR_UNSUPPORTED ("the requested functionality is not supported by the device or the driver"):
+  a D3D/DXGI call failed, not a KS/driver HRESULT. Hypothesis (UNVERIFIED): the capture pipeline asks the GPU for
+  something the phone's display/render driver (Basic Display/Render or our Mali WDDM in progress) does not offer,
+  e.g. D3D11 video processing for YUY2 -> NV12. Not known yet whether S10eCamera even reached RUN (camera-avs.txt).
+- Docs: the archived Device.Streaming requirements (learn.microsoft.com/.../cert-program/devicestreaming-requirements)
+  accept "YUY2 and/or NV12" for an uncompressed preview pin (only in the H.264 webcam requirement); no rule found that
+  forces NV12. Next reads asked from the user: camera-s10 status (camera-avs.txt), the active Display adapter, the
+  FrameServer / MediaFoundation event logs, and the same camera in Edge (getUserMedia) to split app vs pipeline.
