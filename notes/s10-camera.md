@@ -571,3 +571,14 @@ DDI 11.3, feature levels up to 11_0, driver 1.0.72.2, Windows 11 22621).
   (= KSNAME_Filter, our filter's ReferenceGuid; that instance carries FilterData and the frame server's
   MSCameraFlags 1), while the INF's AddInterface used "GLOBAL" -> CLSID + FriendlyName landed on an unused #GLOBAL
   instance; clients saw "AvStream Media Device". Fix: INF AddInterface reference string = KSNAME_Filter's string.
+
+## S10eCam 0.8 (engine) + S10eCamera 0.4: frame ring kept from device start - NOT built, NOT run
+- Engine: RINGPOOL gPool {Ring[3], Pa[3], Cache, Ok}; ShotStart's ring path uses it when Ok (SHOT.Borrowed = TRUE:
+  ShotUnmap does not free it; buffers refilled with 0xEE per start), else allocates per start as 0.7.
+  RingPoolAlloc(Wc) / RingPoolFree() exist only with S10ECAM_ENGINE_ONLY (S10eCam.sys never fills the pool and its
+  /W4 build would flag the unused pair, C4505). Alloc: write-combined first if asked, non-cached as the fallback
+  (the two read equally fast, 15:34 run).
+- S10eCamera 0.4: DeviceStart -> RingPoolAlloc (traced: PAs + type, or "none now"); KSDEVICE_DISPATCH Stop and
+  Remove -> RingPoolFree (no pin exists at PnP stop/remove). Cost: 3 x 4.8 MiB held while the device is started.
+  A driver update starts the device late (fragmented memory) -> reboot after install so the start happens at boot.
+- Checks: clang vs WDK 26100 clean apart from the existing style warnings (both files).

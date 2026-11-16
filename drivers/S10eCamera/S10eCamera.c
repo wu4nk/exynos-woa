@@ -21,6 +21,10 @@
  * 0.3: every KS call into the driver (device start, filter create/close, data intersection, pin create / format /
  *   state / close) is traced to C:\S10Prov\camera-avs.txt with its result: the Camera app's DXGI_ERROR_UNSUPPORTED
  *   (2026-11-16) left no start report, so how far a client gets is the first thing to know.
+ * 0.4: the trace showed every client reaching PAUSE -> RUN and CamStart failing with "no contiguous 5056000 bytes
+ *   below 4 GB" (~75 min after boot). The 3 frame buffers are now allocated ONCE at device start (boot, memory still
+ *   unfragmented) into S10eCam's gPool and lent to every stream; freed at device stop / remove. If that allocation
+ *   fails, each start still tries its own, as before.
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
@@ -318,7 +322,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     if (gRingWc)
         in.Flags |= S10ECAM_SHOT_WC;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.3 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+    Log(&r, "S10eCamera 0.4 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     ExAcquireFastMutex(&gCamMutex);
     c->LastSeq = 0;
@@ -351,7 +355,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.3 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+    Log(&r, "S10eCamera 0.4 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
         c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
@@ -594,12 +598,30 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
     gOutH = (gRot == 90 || gRot == 270) ? CAM_SW : CAM_SH;
     SetRangeSize(gOutW, gOutH);
-    Trace("S10eCamera 0.3 device start: YUY2 %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+    if (RingPoolAlloc(gRingWc ? TRUE : FALSE))
+        Trace("frame ring kept for the device's lifetime: 3 x %u bytes at PA %08X %08X %08X (%s)\r\n", SHOT_RING_BYTES,
+              (ULONG)gPool.Pa[0].QuadPart, (ULONG)gPool.Pa[1].QuadPart, (ULONG)gPool.Pa[2].QuadPart,
+              gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
+    else
+        Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", SHOT_RING_BYTES);
+    Trace("S10eCamera 0.4 device start: YUY2 %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
           gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     return STATUS_SUCCESS;
 }
 
-static const KSDEVICE_DISPATCH gDeviceDispatch = { NULL /* Add */, DeviceStart };
+/* PnP stop / remove: no pin exists then (KS closes them first), so no stream holds the ring. */
+static VOID DeviceStop(PKSDEVICE Device, PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(Device);
+    UNREFERENCED_PARAMETER(Irp);
+    RingPoolFree();
+    Trace("device stop: frame ring freed\r\n");
+}
+
+static const KSDEVICE_DISPATCH gDeviceDispatch = {
+    NULL /* Add */, DeviceStart, NULL /* PostStart */, NULL /* QueryStop */, NULL /* CancelStop */, DeviceStop,
+    NULL /* QueryRemove */, NULL /* CancelRemove */, DeviceStop /* Remove */
+};
 
 static const KSDEVICE_DESCRIPTOR gDevice = { &gDeviceDispatch, SIZEOF_ARRAY(gFilters), gFilters };
 
