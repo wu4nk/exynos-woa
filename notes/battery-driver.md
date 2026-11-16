@@ -274,3 +274,8 @@ free.
 - charge-s10.ps1 v1.0: install / watch (2 s table: AC, CHG_DTLS state, BC type, ILIM, CC, battery mA, SOC, temp,
   tune decision) / tune on|off. pwsh parse 0; DWORD sign handling checked (0xFFFFFFFF reads as -1).
 - Checks: clang vs WDK 26100 + KMDF 1.33 -Wextra -Wconversion: no new warnings in Max77705.c / Miniclass.c / Driver.c.
+- Review of bd886db: with a charger whose BC1.2 type stays 0 (e.g. a non-BC1.2 adapter), Tune re-armed TunePending
+  every time it ran out -> a full reading every 2 s for as long as it stays plugged (not the "<= 10" the comment
+  promised). Fixed in the next commit: TuneArmed grants the 10 fast ticks once per plug-in (cleared when CHGIN goes
+  invalid). Also checked: the timer now runs at 2 s from D0Entry (same macro), the work item stays single-queued,
+  Vibra shares BusLock, CNFG_06 update touches bits 3:2 only (as the vendor), registry is read outside BusLock.

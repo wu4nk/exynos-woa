@@ -339,6 +339,7 @@ typedef struct _S10E_BATT_FDO {
     ULONG               TuneSetting;         /* 0 = read only (as 1.0.0.9), 1 = set ILIM / CC per BC1.2 type */
     ULONG               TunePending;         /* ticks left with a charger present and no BC1.2 type yet */
     BOOLEAN             TuneHot;             /* hot guard latched (hysteresis) */
+    BOOLEAN             TuneArmed;           /* the <= 10 fast ticks were granted for this plug-in already */
     UCHAR               TuneBc;              /* BC_STATUS of the last full reading with the charger present */
     ULONG               TuneIlimMa;          /* target of the last decision (0 = none: no charger / unknown type) */
     ULONG               TuneCcMa;

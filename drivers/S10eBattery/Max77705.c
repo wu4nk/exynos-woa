@@ -221,6 +221,7 @@ VOID S10eMax77705Tune(_Inout_ PS10E_BATT_FDO Fdo, _In_ PS10E_BATT_READING R)
     Fdo->TuneCcMa   = 0;
     if (!R->ChargerRead || (MAX77705_CHGIN_DTLS(R->ChgDetails00) != MAX77705_CHGIN_DTLS_VALID) || !R->UsbcRead) {
         Fdo->TunePending = 0;
+        Fdo->TuneArmed   = FALSE;
         Fdo->TuneHot     = FALSE;
         return;
     }
@@ -230,8 +231,9 @@ VOID S10eMax77705Tune(_Inout_ PS10E_BATT_FDO Fdo, _In_ PS10E_BATT_READING R)
     case 1:  Ilim = S10E_TUNE_USB_ILIM_MA; Cc = S10E_TUNE_USB_CC_MA; break;
     case 2:  Ilim = S10E_TUNE_CDP_ILIM_MA; Cc = S10E_TUNE_CDP_CC_MA; break;
     case 3:  Ilim = S10E_TUNE_TA_ILIM_MA;  Cc = S10E_TUNE_TA_CC_MA;  break;
-    default:                                     /* detection still running (or none): look again next tick */
-        if (Fdo->TunePending == 0) {
+    default:                                     /* detection still running (or none): look again next tick, */
+        if (!Fdo->TuneArmed) {                   /* for at most 10 ticks per plug-in */
+            Fdo->TuneArmed   = TRUE;
             Fdo->TunePending = S10E_TUNE_PENDING_TICKS;
         }
         return;
