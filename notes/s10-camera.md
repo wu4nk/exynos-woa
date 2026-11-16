@@ -461,3 +461,16 @@ people: not kept in the repo).
   0 + mirror -> TR, 270 -> BL, 270 + mirror -> BR (= rotate 270 clockwise is source (sx, sy) -> (sy, W-1-sx)).
 - Checks: clang vs WDK 26100 km -Wextra -Wconversion: only the pre-existing DO_DEVICE_INITIALIZING sign warning;
   pwsh parse 0 errors, embedded C# compiles.
+
+## camera-s10.ps1 v1.1: root-enumerated device instead of SwDeviceCreate (2026-11-16) - NOT run
+- install: pnputil /add-driver /install; if no ROOT\S10eCamera device exists: SetupDiGetINFClass(inf) ->
+  SetupDiCreateDeviceInfoList(class) -> SetupDiCreateDeviceInfo(class name, DICD_GENERATE_ID) ->
+  SetupDiSetDeviceRegistryProperty(SPDRP_HARDWAREID, "ROOT\S10eCamera\0\0") -> SetupDiCallClassInstaller(
+  DIF_REGISTERDEVICE); then UpdateDriverForPlugAndPlayDevices(hwid, inf, INSTALLFLAG_FORCE) (newdev.dll) = devcon's
+  documented "install" sequence. Constants from setupapi.h / newdev.h: DICD_GENERATE_ID 1, SPDRP_HARDWAREID 1,
+  DIF_REGISTERDEVICE 0x19, INSTALLFLAG_FORCE 1. Instance = ROOT\CAMERA\nnnn (class name + generated number).
+- status also prints Services\S10eCamera\Parameters (Rotation / Mirror / RingWc, for S10eCamera 0.2); new action
+  'set -Rotation -Mirror -RingWc' writes them and pnputil /restart-device's the camera. remove = pnputil
+  /remove-device for each S10eCamera device (ROOT / SWD / ACPI ids) + /delete-driver.
+- S10eCamera.inf: ROOT\S10eCamera added as the first hardware ID (SWD + ACPI ids kept).
+- Checks: pwsh parse 0, embedded C# compiles (Linux; the P/Invokes are not exercised here).

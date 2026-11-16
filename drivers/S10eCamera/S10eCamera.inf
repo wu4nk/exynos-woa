@@ -1,6 +1,7 @@
 ; S10eCamera.inf - Galaxy S10 (beyond1lte) front camera (S5K3J1) as a Windows camera: AVStream capture minidriver.
-; notes/s10-camera.md. Binds the software device camera-s10.ps1 creates (SWD\S10eCamera, SwDeviceCreate) or a
-; future DSDT node ACPI\SAMS982B. KS registration per the WDK's AVStream INF pattern (ks.inf / kscaptur.inf).
+; notes/s10-camera.md. Binds the root-enumerated device camera-s10.ps1 v1.1+ creates (ROOT\S10eCamera, SetupAPI
+; DIF_REGISTERDEVICE as devcon does), v1.0's software device SWD\S10eCamera, or a future DSDT node ACPI\SAMS982B.
+; KS registration per the WDK's AVStream INF pattern (ks.inf / kscaptur.inf).
 [Version]
 Signature   = "$WINDOWS NT$"
 Class       = Camera
@@ -23,7 +24,7 @@ DefaultDestDir = 13
 %MfgName% = S10e, NTarm64.10.0...16299
 
 [S10e.NTarm64.10.0...16299]
-%DeviceDesc% = S10eCamera, SWD\S10eCamera, ACPI\SAMS982B
+%DeviceDesc% = S10eCamera, ROOT\S10eCamera, SWD\S10eCamera, ACPI\SAMS982B
 
 [S10eCamera]
 Include   = ks.inf, kscaptur.inf
