@@ -25,6 +25,9 @@
  *   below 4 GB" (~75 min after boot). The 3 frame buffers are now allocated ONCE at device start (boot, memory still
  *   unfragmented) into S10eCam's gPool and lent to every stream; freed at device stop / remove. If that allocation
  *   fails, each start still tries its own, as before.
+ * 0.5: setting RingKeep (default 1; 0 = 0.3's per-start allocation) - a DIAGNOSIS switch: with 0.4 the clients closed
+ *   the filter right after the data intersection, before any pin (2026-11-16 18:18), where with 0.3 they reached
+ *   RUN; RingKeep 0 tells whether the 15 MiB held below 4 GB is what they missed.
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
@@ -68,7 +71,7 @@ static FAST_MUTEX gCamMutex;                             /* Process vs start / s
 static UCHAR      gRows[4 * S10ECAM_SHOT_STRIDE];        /* 4 raw lines, cached (the ring is uncached); image = nonpaged */
 static UCHAR      gY[2][CAM_SW], gU[2][CAM_SW], gV[2][CAM_SW];   /* 2 binned rows as Y, U, V (under gCamMutex) */
 static CHAR       gLog[8192];                            /* the engine's report of the last start / stop */
-static ULONG      gRot = 270, gMirror, gRingWc = 1;      /* settings (Parameters), read at device start */
+static ULONG      gRot = 270, gMirror, gRingWc = 1, gRingKeep = 1;   /* settings (Parameters), read at device start */
 static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
 static WCHAR      gParamPath[260];                       /* <service key>\Parameters */
 
@@ -322,7 +325,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     if (gRingWc)
         in.Flags |= S10ECAM_SHOT_WC;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.4 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+    Log(&r, "S10eCamera 0.5 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     ExAcquireFastMutex(&gCamMutex);
     c->LastSeq = 0;
@@ -355,7 +358,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.4 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+    Log(&r, "S10eCamera 0.5 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
         c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
@@ -593,18 +596,22 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gRot = (rot == 0 || rot == 90 || rot == 180 || rot == 270) ? rot : 270;
     gMirror = RegDword(h, L"Mirror", 0) ? 1u : 0u;
     gRingWc = RegDword(h, L"RingWc", 1) ? 1u : 0u;
+    gRingKeep = RegDword(h, L"RingKeep", 1) ? 1u : 0u;
     if (h != NULL)
         ZwClose(h);
     gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
     gOutH = (gRot == 90 || gRot == 270) ? CAM_SW : CAM_SH;
     SetRangeSize(gOutW, gOutH);
-    if (RingPoolAlloc(gRingWc ? TRUE : FALSE))
+    if (!gRingKeep) {
+        RingPoolFree();
+        Trace("frame ring: not kept (RingKeep 0): each start allocates its own\r\n");
+    } else if (RingPoolAlloc(gRingWc ? TRUE : FALSE))
         Trace("frame ring kept for the device's lifetime: 3 x %u bytes at PA %08X %08X %08X (%s)\r\n", SHOT_RING_BYTES,
               (ULONG)gPool.Pa[0].QuadPart, (ULONG)gPool.Pa[1].QuadPart, (ULONG)gPool.Pa[2].QuadPart,
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
         Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", SHOT_RING_BYTES);
-    Trace("S10eCamera 0.4 device start: YUY2 %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+    Trace("S10eCamera 0.5 device start: YUY2 %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
           gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     return STATUS_SUCCESS;
 }

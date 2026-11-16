@@ -586,3 +586,18 @@ DDI 11.3, feature levels up to 11_0, driver 1.0.72.2, Windows 11 22621).
   failure path inside RingPoolAlloc frees with the pass's own type before RingPoolFree zeroes it; a restart's Start
   frees an old pool first (RingPoolAlloc calls RingPoolFree); Stop then Remove both free = idempotent; the borrowed
   ring is never freed by ShotUnmap. Nothing to fix.
+
+## Phone 2026-11-16 18:09-18:18: S10eCamera 0.4 after a reboot
+- Device start at 3.5 s after boot: "frame ring kept for the device's lifetime: 3 x 5056000 bytes at PA FD363000
+  FCE90000 FC9BD000 (write-combined)" - the boot-time allocation WORKS.
+- But now the Camera app fails with 0xA00F4271 <MediaCaptureFailedEvent> (0x800705AA = HRESULT_FROM_WIN32(
+  ERROR_NO_SYSTEM_RESOURCES)), and the trace shows each client (40.4 s, 225.5 s) doing filter create -> intersect
+  (size query + 152-byte buffer) -> filter close 37-100 ms later: NO pin create, no state change. With 0.3 the same
+  clients went on to set format + pin create + RUN. So something after the intersection, on the client side, now
+  fails for lack of a resource. Changes 0.3 -> 0.4: (a) the INF AddReg (CLSID 17CCA71B ks proxy + FriendlyName) now
+  on the KSNAME_Filter interface instance, (b) 15 MiB held below 4 GB from boot, (c) a reboot. Not decided which.
+  Other holders of contiguous memory below 4 GiB in this tree: Exynos9820Mfc MfcAllocate (16 MiB fw + 112/32 MiB
+  session, High 0xFFFFFFFF, at its start); the Mali WDDM uses an aperture segment (no contiguous need) and 1-page
+  tables addressable to the GPU's PA bits.
+- 0.5 / camera-s10 v1.2: diagnosis switch Parameters\RingKeep (default 1; 0 = per-start allocation as 0.3) to
+  separate (b) from (a). Not a fix - recorded as a diagnosis tool (AGENTS rule 12).
