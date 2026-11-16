@@ -1,0 +1,101 @@
+cam-s10.ps1 v1.5  stream   2026-11-02T00:08:12
+driver: running
+S10eCam 0.7 stream start flags 00000000 coarse 0 again 0 ispdiv 0
+== CMU_TOP
+  CIS_CLK1 mux 00000000 (sel 0: OSCCLK 26 MHz) div 00000000 (/1) gate 00200000 qch 00000002
+  PERIC1_BUS gate 00200000 -> on
+  PERIC1_IP mux 00000001 div 00000001 (/2) gate 00200000 -> on (the I2C ipclk source when a user mux bit 4 is 1)
+== CMU_PERIC1
+  user muxes: BUS 00000010 I2C_CAM2 00000010 USI10 00000010 (bit 4: 1 = CMU_TOP clock, 0 = OSCCLK)
+  dividers: I2C_CAM2 00000000 USI10 00000000
+  I2C_CAM2 ipclk 00200000 pclk 00200000 rst 00200000 qch 003F0002 -> on
+  USI10    ipclk 00200000 pclk 00200000 rst 00200000 qch 003F0002 -> on
+== pins
+  gpp6   CON 00000022 DAT 00000003 PUD 00001100
+  gpc0   CON 00000000 DAT 000000C3 PUD 11001111
+  gpc1   CON 00100000 DAT 00000000 PUD 11111111
+  gpg2   CON 00100001 DAT 0000000D PUD 01110111
+  gpg4   CON 00001000 DAT 00000000 PUD 00001111
+== I2C_CAM2 (sensor bus) as found: CTL 00000008 CONF 80000000 USI_CON 00000000 FS1 01FCFF00 FS2 030003F8 FS3 007D0000
+== S2MPB02 bus (USI10): mode 00000004, CTL 00000048 USI_CON 00000000 as found
+  set: mode 00000004, gpp6 CON 00000022, FS1 01FCFF00 FS2 030003F8 FS3 007D0000
+  S2MPB02 ID 0x00  B2CTRL1 0x18 (on no) B2CTRL2 0x90 (1300 mV)
+  LDO5 0x24 (1050 mV off) LDO6 0x30 (1800 mV off) LDO13 0x5E (2950 mV off) LDO16 0x58 (2800 mV off)
+  (LDO17 VDD_GRIP_3P3, never written: 0xDE)
+stage 1: 0x00000000
+== stage 4: preconditions
+  ring 0: 5056000 bytes at PA 00000000F2F4D000 (non-cached)
+  ring 1: 5056000 bytes at PA 00000000F2A7A000 (non-cached)
+  ring 2: 5056000 bytes at PA 00000000F25A7000 (non-cached)
+  found: ISPPRE_BUS div 0000000F, PMU iso 00000000, sysreg +0x500 00000000
+  ISPPRE_BUS div -> 00000000 (mux 3: 400 MHz / 1)
+== power up (fimc-is-device-module-3j1.c, BSS_V01)
+  S2MPB02 0x0D <- 0xD8 (read back 0xD8) ok
+  S2MPB02 0x2D <- 0xD8 (read back 0xD8) ok
+  S2MPB02 0x2A <- 0xDE (read back 0xDE) ok
+  S2MPB02 0x23 <- 0xB0 (read back 0xB0) ok
+  S2MPB02 0x22 <- 0xA4 (read back 0xA4) ok
+  CIS_CLK1 on: mux 00000000 div 00000000 gate 00300000 qch 00000002
+  gpc0   CON 00220000 DAT 000000F3 PUD 11001111
+  gpc1   CON 00200000 DAT 00000000 PUD 11011111
+  gpg2   CON 00100001 DAT 0000002D PUD 01110111
+  gpg4   CON 00001000 DAT 00000000 PUD 00001111
+== sensor 0x10 on I2C_CAM2
+  MODEL ID 0x30A1  REVISION 0xA101 (= DT rev_reg 0xA101: the S5K3J1)  FRAME COUNT 0xFF (not streaming, as expected)
+== sensor setfile A (fimc-is-cis-3j1-setA.h)
+  global: 227 entries in 54 I2C messages
+  mode 8 1824x1368@30: 326 entries in 257 I2C messages
+  read back: coarse 0x0202 0100, again 0x0204 0020, FLL 0x0340 0597, LLP 0x0342 4940, out 1824 x 1368 (0x034C/E), pattern 0x0600 0000
+== D-PHY
+  PMU iso 00000001, sysreg +0x500 00000002; PHY SC_GNR_CON0 00000003 SD0_TIME_CON0 00000009 (before)
+  PHY SC 00000003 00001450 00000005 00000600 00000301  SD0 00000003 00000305 00000009  SD3 TIME_CON0 00000009
+== CSIS2
+== DMA (common found 00000000 00000004 00000000 00000000)
+  DMA0 CTRL 00000003 FMT 00000000 ADDR1 F2F4D000 RESOL 00000720 FCNTSEQ FFFFFFFF; common 00000006 00000006 04800480 00000000
+  CMN_CTRL 00004B01 PHY_CMN_CTRL 0000001F CONFIG0 000010AC RESOL0 05580720 CONFIG1 000020AD PHY_STATUS 000000F1
+== stream on
+  analog gain code range 0x0084 0020 .. 0x0086 0200; coarse 256 (max 1427), again 0020
+streaming: ring of 3, frames finish into it until STREAM_STOP or this handle closes
+stream start: 0x00000000
+  seq   21 ring 2 age  29 ms copy 51565 us torn 1  coarse  256 again 0x020 (20-200)  G    6.7 R    4.4 B    5.6 clip  0.3%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   27 ring 2 age  16 ms copy 25576 us torn 0  coarse 1024 again 0x020 (20-200)  G   14.8 R   10.4 B   11.9 clip  0.6%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   32 ring 1 age  17 ms copy 16058 us torn 0  coarse 1427 again 0x05C (20-200)  G   44.0 R   27.3 B   32.4 clip  0.9%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   38 ring 2 age   1 ms copy 56546 us torn 0  coarse 1427 again 0x0E6 (20-200)  G   96.6 R   55.6 B   67.6 clip  1.0%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   43 ring 1 age  30 ms copy 24534 us torn 0  coarse 1427 again 0x106 (20-200)  G  108.2 R   62.9 B   75.6 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  AE settled
+  seq   50 ring 2 age   0 ms copy 19422 us torn 0  coarse 1427 again 0x106 (20-200)  G  108.9 R   63.6 B   76.3 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   54 ring 0 age  18 ms copy 55072 us torn 1  coarse 1427 again 0x106 (20-200)  G  109.3 R   63.1 B   76.1 clip  1.1%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   60 ring 0 age   8 ms copy 24430 us torn 0  coarse 1427 again 0x106 (20-200)  G  109.5 R   63.8 B   76.6 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   65 ring 0 age  19 ms copy 15884 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.0 R   63.9 B   76.7 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   70 ring 2 age   7 ms copy 54905 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.4 R   64.2 B   76.9 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   75 ring 1 age  26 ms copy 17877 us torn 0  coarse 1427 again 0x106 (20-200)  G  108.9 R   63.6 B   75.7 clip  1.1%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   80 ring 0 age  22 ms copy 18238 us torn 0  coarse 1427 again 0x106 (20-200)  G  109.0 R   64.0 B   76.0 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   85 ring 2 age  17 ms copy 15929 us torn 0  coarse 1427 again 0x106 (20-200)  G  109.1 R   64.0 B   76.1 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   90 ring 1 age   4 ms copy 15974 us torn 0  coarse 1427 again 0x106 (20-200)  G  109.0 R   64.0 B   75.9 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq   95 ring 0 age   5 ms copy 19011 us torn 0  coarse 1427 again 0x106 (20-200)  G  109.9 R   64.6 B   76.8 clip  1.3%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  100 ring 0 age   9 ms copy 55123 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.8 R   63.7 B   77.2 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  105 ring 2 age  30 ms copy 15827 us torn 0  coarse 1427 again 0x106 (20-200)  G  111.2 R   64.1 B   77.5 clip  1.1%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  111 ring 2 age   0 ms copy 15827 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.7 R   64.4 B   77.1 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  115 ring 0 age  26 ms copy 50462 us torn 1  coarse 1427 again 0x106 (20-200)  G  111.0 R   64.8 B   77.4 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  121 ring 0 age  28 ms copy 16798 us torn 0  coarse 1427 again 0x106 (20-200)  G  111.0 R   64.4 B   77.2 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  126 ring 2 age  29 ms copy 15851 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.6 R   64.4 B   77.1 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  131 ring 2 age  19 ms copy 15839 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.7 R   64.2 B   77.3 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  136 ring 1 age   6 ms copy 16729 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.6 R   64.3 B   77.3 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+  seq  141 ring 0 age  20 ms copy 15834 us torn 0  coarse 1427 again 0x106 (20-200)  G  110.3 R   64.2 B   77.0 clip  1.2%  INT 03300000 DMA 00000111 rearm 0 stall 0
+saved C:\S10Prov\cam-stream.bmp (1368 x 1824, rotate 270, WB R x1.72 B x1.43, white 959)
+open C:\S10Prov\cam-stream.bmp to look at it
+== stream stop: 181 frames, 0 re-arms, 0 stalls
+== teardown
+== power down (module file's order)
+  S2MPB02 0x2D <- 0x58 (read back 0x58) ok
+  S2MPB02 0x22 <- 0x24 (read back 0x24) ok
+  S2MPB02 0x2A <- 0x5E (read back 0x5E) ok
+  S2MPB02 0x23 <- 0x30 (read back 0x30) ok
+  S2MPB02 0x0D <- 0x18 (read back 0x18) ok
+  CIS_CLK1 back: mux 00000000 div 00000000 gate 00200000 qch 00000002
+  gpc0   CON 00000000 DAT 000000C3 PUD 11001111
+  gpc1   CON 00100000 DAT 00000000 PUD 11111111
+  gpg2   CON 00100001 DAT 0000000D PUD 01110111
+  gpg4   CON 00001000 DAT 00000000 PUD 00001111
+  CMU_TOP ISPPRE_BUS div 0000000F, PMU iso 00000000, sysreg +0x500 00000000, CSIS2 CMN_CTRL 00004000, DMA0 CTRL 00000000
+log: C:\S10Prov\cam-s10-stream.txt

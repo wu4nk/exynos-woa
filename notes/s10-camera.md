@@ -504,3 +504,18 @@ people: not kept in the repo).
   ok; Get-PnpDevice -contains is case-insensitive (ROOT\S10eCamera vs ROOT\S10ECAMERA) ok. Nothing to fix; open
   risks are runtime only: whether MmWriteCombined allocations succeed / read faster, whether the Camera app takes a
   portrait YUY2 684 x 912, whether UpdateDriverForPlugAndPlayDevices prompts for the test certificate.
+
+## Phone run 2026-11-16 15:34: S10eCam 0.7 stream -Rotate 270, non-cached vs -Wc
+Logs: notes/data/cam-s10-stream-2nc-20261116.txt, cam-s10-stream-2wc-20261116.txt (pictures show a person: not kept).
+- Both 181 frames / ~6 s, 0 re-arms, 0 stalls; AE settles at coarse 1427, again 0x101-0x106 (x8), G ~109.
+- ROTATE 270 = UPRIGHT: confirmed on both pictures (face, ceiling up). Handedness: still unknown (no text in view).
+- COPY TIME IS BIMODAL, NOT A MAPPING-TYPE EFFECT: non-cached: 15.8-19 ms on 16 of 24 reads, 50-57 ms on 6 (+ 24-25
+  ms on 3); write-combined: 15.7-24 ms on 18 of 25, 41-59 ms on 6. So MmWriteCombined is no faster than MmNonCached
+  here (same distribution). 4.99 MB in ~16 ms = ~310 MB/s vs ~90 MB/s in the slow mode; the 14:49 run was slow on
+  every read. Most likely explanation (UNVERIFIED): which core / clock the copying thread ran on (the 9820 has
+  little A55 and big M4/A75 clusters; the script's thread is not pinned) - to verify, not assumed: a run with the
+  copy timed per CPU number (KeGetCurrentProcessorNumberEx) would show it.
+- Torn frames now only on slow copies (age + copy > 66 ms), as the model predicts.
+- Consequence for S10eCamera: Convert reads the same 5 MB -> 16-55 ms per frame of CPU; 30 fps only on a fast core.
+  The fix that removes the cause is less data: the sensor's own 912x684 mode (setfile A
+  sensor_3j1_setfile_A_912x684_120fps, 1/4 of the bytes) - next engine change, after the Camera app result.
