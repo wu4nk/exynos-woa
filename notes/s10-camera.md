@@ -582,3 +582,7 @@ DDI 11.3, feature levels up to 11_0, driver 1.0.72.2, Windows 11 22621).
   Remove -> RingPoolFree (no pin exists at PnP stop/remove). Cost: 3 x 4.8 MiB held while the device is started.
   A driver update starts the device late (fragmented memory) -> reboot after install so the start happens at boot.
 - Checks: clang vs WDK 26100 clean apart from the existing style warnings (both files).
+- Review of the 0.8/0.4 commit: S10eCam.sys still compiles (gPool is a used static there: ShotStart reads .Ok); the
+  failure path inside RingPoolAlloc frees with the pass's own type before RingPoolFree zeroes it; a restart's Start
+  frees an old pool first (RingPoolAlloc calls RingPoolFree); Stop then Remove both free = idempotent; the borrowed
+  ring is never freed by ShotUnmap. Nothing to fix.
