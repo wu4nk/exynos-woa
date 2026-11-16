@@ -529,3 +529,19 @@ Logs: notes/data/cam-s10-stream-2nc-20261116.txt, cam-s10-stream-2wc-20261116.tx
   accept "YUY2 and/or NV12" for an uncompressed preview pin (only in the H.264 webcam requirement); no rule found that
   forces NV12. Next reads asked from the user: camera-s10 status (camera-avs.txt), the active Display adapter, the
   FrameServer / MediaFoundation event logs, and the same camera in Edge (getUserMedia) to split app vs pipeline.
+
+## Diagnostics 2026-11-16 15:44 + S10eCamera 0.3 (KS call trace) - 0.3 NOT built, NOT run
+- camera-s10 status: device ROOT\CAMERA\0000 OK, driver 0.2.0.0, problem 0 - and NO C:\S10Prov\camera-avs.txt at
+  all: CamStart/CamStop never ran (both write it), so neither the Camera app nor the browser got the pin to RUN.
+- Display adapter: "Arm Mali-G76 MP12 (Galaxy S10e, G10/G11)" ACPI\SAMS9828\0 OK = our own Mali WDDM driver (the GPU
+  port), not Basic Display. So DXGI_ERROR_UNSUPPORTED may come from our Mali KMD/UMD lacking a D3D11 feature the
+  camera pipeline asks for (e.g. video processing / YUV textures) - UNVERIFIED.
+- Brave (Chromium) on webcamtests.com: the camera is listed (videoinput#1) but starting it fails with the site's
+  "used by another application" text (= getUserMedia NotReadableError, a start failure). Same stage as the app.
+- camera-events.txt: empty (the *FrameServer* / *MediaFoundation* / *Camera* logs had no records or are disabled).
+- S10eCamera 0.3: Trace() appends "[ms] text" to camera-avs.txt for device start, filter create/close, every
+  intersect call (client specifier, size, buffer), pin create (accepted / refused format), set format, every state
+  change with its result, pin close. Intersect now also accepts KSDATAFORMAT_SPECIFIER_WILDCARD (the docs page "Data
+  Range Intersections in AVStream" only promises ranges that "match in major type, subformat, and specifier"; a
+  wildcard specifier counts as a match there, and 0.1/0.2 returned STATUS_NO_MATCH for it). DriverVer 0.3.0.0.
+- Checks: clang vs WDK 26100 -Wextra -Wconversion -Wformat: only the existing brace/field-initializer style notes.

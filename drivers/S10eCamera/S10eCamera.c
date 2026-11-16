@@ -12,7 +12,10 @@
  * 0.2 settings (Services\S10eCamera\Parameters, DWORDs, read at each device start; camera-s10.ps1 set):
  *   Rotation 0/90/180/270 (default 270: upright on the phone held upright, 2026-11-16), Mirror 0/1 (default 0),
  *   RingWc 0/1 (default 1: the frame ring write-combined instead of non-cached - 0.6's non-cached copy ran at
- *   ~80 MB/s, 60 ms a frame). Auto exposure (lines first, then analog
+ *   ~80 MB/s, 60 ms a frame).
+ * 0.3: every KS call into the driver (device start, filter create/close, data intersection, pin create / format /
+ *   state / close) is traced to C:\S10Prov\camera-avs.txt with its result: the Camera app's DXGI_ERROR_UNSUPPORTED
+ *   (2026-11-16) left no start report, so how far a client gets is the first thing to know. Auto exposure (lines first, then analog
  * gain) runs on the same sums. Frames are pushed: the engine's poll thread calls KsPinAttemptProcessing after each
  * finished raw frame; the pin does not let AVStream initiate processing (KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING), so a
  * frame without an empty buffer waiting is dropped (counted in KS_FRAME_INFO.DropCount).
@@ -82,6 +85,24 @@ static VOID WriteReport(PCSTR Text, size_t Len)
         (VOID)ZwWriteFile(h, NULL, NULL, NULL, &io, (PVOID)Text, (ULONG)Len, NULL, NULL);
         ZwClose(h);
     }
+}
+
+/* One traced KS call: "[ms since boot] text". PASSIVE_LEVEL (every KS dispatch traced here runs there). */
+static VOID Trace(PCSTR Fmt, ...)
+{
+    CHAR    b[512];
+    REPORT  r = { b, sizeof(b), 0 };
+    PSTR    end = NULL;
+    va_list a;
+
+    b[0] = 0;
+    Log(&r, "[%I64u ms] ", (ULONG64)KeQueryInterruptTime() / 10000);
+    va_start(a, Fmt);
+    (VOID)RtlStringCbVPrintfExA(b + r.Used, sizeof(b) - r.Used, &end, NULL, STRSAFE_IGNORE_NULLS, Fmt, a);
+    va_end(a);
+    if (end != NULL)                                     /* also when truncated (STATUS_BUFFER_OVERFLOW) */
+        r.Used = (size_t)(end - b);
+    WriteReport(b, r.Used);
 }
 
 /* ---------------------------------------------------------------------------------------------- conversion */
@@ -297,7 +318,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     if (gRingWc)
         in.Flags |= S10ECAM_SHOT_WC;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.2 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+    Log(&r, "S10eCamera 0.3 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     ExAcquireFastMutex(&gCamMutex);
     c->LastSeq = 0;
@@ -330,7 +351,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.2 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+    Log(&r, "S10eCamera 0.3 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
         c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
@@ -348,12 +369,19 @@ static NTSTATUS PinCreate(PKSPIN Pin, PIRP Irp)
     UNREFERENCED_PARAMETER(Irp);
     if (Pin->ConnectionFormat->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ||
         f->VideoInfoHeader.bmiHeader.biWidth != (LONG)gOutW || f->VideoInfoHeader.bmiHeader.biHeight != (LONG)gOutH ||
-        f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2)
+        f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2) {
+        Trace("pin create: format size %u, subtype %08X, %d x %d, compression %08X -> NO_MATCH\r\n",
+              Pin->ConnectionFormat->FormatSize, Pin->ConnectionFormat->SubFormat.Data1,
+              Pin->ConnectionFormat->FormatSize >= sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ? f->VideoInfoHeader.bmiHeader.biWidth : 0,
+              Pin->ConnectionFormat->FormatSize >= sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ? f->VideoInfoHeader.bmiHeader.biHeight : 0,
+              Pin->ConnectionFormat->FormatSize >= sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ? f->VideoInfoHeader.bmiHeader.biCompression : 0);
         return STATUS_NO_MATCH;
+    }
     c = (CAMPIN *)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(CAMPIN), CAM_TAG);
     if (c == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
     Pin->Context = c;
+    Trace("pin create: YUY2 %u x %u ok\r\n", gOutW, gOutH);
     return STATUS_SUCCESS;
 }
 
@@ -362,6 +390,7 @@ static NTSTATUS PinClose(PKSPIN Pin, PIRP Irp)
     CAMPIN *c = (CAMPIN *)Pin->Context;
 
     UNREFERENCED_PARAMETER(Irp);
+    Trace("pin close\r\n");
     if (c != NULL) {
         CamStop(c);
         ExFreePoolWithTag(c, CAM_TAG);
@@ -372,13 +401,15 @@ static NTSTATUS PinClose(PKSPIN Pin, PIRP Irp)
 
 static NTSTATUS PinSetDeviceState(PKSPIN Pin, KSSTATE To, KSSTATE From)
 {
-    CAMPIN *c = (CAMPIN *)Pin->Context;
+    CAMPIN  *c = (CAMPIN *)Pin->Context;
+    NTSTATUS s = STATUS_SUCCESS;
 
     if (To == KSSTATE_RUN && From == KSSTATE_PAUSE)
-        return CamStart(Pin, c);
-    if (From == KSSTATE_RUN)
+        s = CamStart(Pin, c);
+    else if (From == KSSTATE_RUN)
         CamStop(c);
-    return STATUS_SUCCESS;
+    Trace("pin state %d -> %d: 0x%08X\r\n", (int)From, (int)To, s);   /* 0 STOP 1 ACQUIRE 2 PAUSE 3 RUN */
+    return s;
 }
 
 static NTSTATUS PinSetDataFormat(PKSPIN Pin, PKSDATAFORMAT OldFormat, PKSMULTIPLE_ITEM OldAttributeList,
@@ -392,8 +423,11 @@ static NTSTATUS PinSetDataFormat(PKSPIN Pin, PKSDATAFORMAT OldFormat, PKSMULTIPL
     UNREFERENCED_PARAMETER(AttributeRange);
     if (Pin->ConnectionFormat->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ||
         f->VideoInfoHeader.bmiHeader.biWidth != (LONG)gOutW || f->VideoInfoHeader.bmiHeader.biHeight != (LONG)gOutH ||
-        f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2)
+        f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2) {
+        Trace("pin set format: refused (size %u)\r\n", Pin->ConnectionFormat->FormatSize);
         return STATUS_NO_MATCH;
+    }
+    Trace("pin set format: ok\r\n");
     return STATUS_SUCCESS;
 }
 
@@ -444,8 +478,14 @@ static NTSTATUS PinIntersect(PVOID Context, PIRP Irp, PKSP_PIN Pin, PKSDATARANGE
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(Pin);
-    if (!IsEqualGUID(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_VIDEOINFO) ||
-        DataRange->FormatSize < sizeof(KS_DATARANGE_VIDEO) || MatchingDataRange != (PKSDATARANGE)&gRangeYuy2)
+    /* AVStream passes ranges that already "match in major type, subformat, and specifier" (Data Range Intersections in
+       AVStream); 0.3 also takes the wildcard specifier (0.1/0.2 refused it). Our range is one fixed format, so the
+       client range's own values are not needed. */
+    Trace("intersect: client specifier %08X size %u, buffer %u\r\n", DataRange->Specifier.Data1, DataRange->FormatSize,
+          DataBufferSize);
+    if (MatchingDataRange != (PKSDATARANGE)&gRangeYuy2 ||
+        (!IsEqualGUID(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_VIDEOINFO) &&
+         !IsEqualGUID(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_WILDCARD)))
         return STATUS_NO_MATCH;
     *DataSize = sizeof(KS_DATAFORMAT_VIDEOINFOHEADER);
     if (DataBufferSize == 0)
@@ -486,7 +526,23 @@ static const GUID gCategories[] = {
     { STATICGUIDOF(KSCATEGORY_VIDEO) }, { STATICGUIDOF(KSCATEGORY_CAPTURE) }, { STATICGUIDOF(KSCATEGORY_VIDEO_CAMERA) }
 };
 
-static const KSFILTER_DISPATCH gFilterDispatch = { NULL, NULL, NULL, NULL };
+static NTSTATUS FilterCreate(PKSFILTER Filter, PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(Filter);
+    UNREFERENCED_PARAMETER(Irp);
+    Trace("filter create (a client opened the camera)\r\n");
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS FilterClose(PKSFILTER Filter, PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(Filter);
+    UNREFERENCED_PARAMETER(Irp);
+    Trace("filter close\r\n");
+    return STATUS_SUCCESS;
+}
+
+static const KSFILTER_DISPATCH gFilterDispatch = { FilterCreate, FilterClose, NULL, NULL };
 
 static const KSFILTER_DESCRIPTOR gFilter = {
     &gFilterDispatch, NULL, KSFILTER_DESCRIPTOR_VERSION, 0, &KSNAME_Filter,
@@ -538,6 +594,8 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
     gOutH = (gRot == 90 || gRot == 270) ? CAM_SW : CAM_SH;
     SetRangeSize(gOutW, gOutH);
+    Trace("S10eCamera 0.3 device start: YUY2 %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
+          gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
     return STATUS_SUCCESS;
 }
 

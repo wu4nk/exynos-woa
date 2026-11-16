@@ -1,0 +1,6 @@
+
+Status FriendlyName                             InstanceId     
+------ ------------                             ----------     
+OK     Arm Mali-G76 MP12 (Galaxy S10e, G10/G11) ACPI\SAMS9828\0
+
+
