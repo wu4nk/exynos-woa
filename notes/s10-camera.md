@@ -496,3 +496,11 @@ people: not kept in the repo).
   started over in that slot), conversion avg / max us. The start line names output size, rotation, mirror, ring type.
 - Checks: clang vs WDK 26100 (ks.h/ksmedia.h) -Wextra -Wconversion: only missing-braces / missing-field-initializer
   style warnings (as 0.1, which EWDK built clean).
+- Review (adversarial) of 1d5c35a / 22d5c2e / S10eCamera 0.2: free uses the allocation's own type (SHOT.Cache, set
+  before any allocation; a zeroed SHOT = MmNonCached = 0) ok; the range edit happens in Start only, Process reads
+  gRot/gOutW only after Start, PinIntersect copies the edited header (size, biSizeImage unchanged = CAM_BYTES) ok;
+  RegDword buffer 20 bytes >= KEY_VALUE_PARTIAL_INFORMATION (16) + 4 ok; mean for AE still over 912 x 684 binned
+  pixels ok; FLG 0x00010003 = TYPE_DWORD 0x10001 | NOCLOBBER 0x2 ok; devcon constants re-read from the SDK headers
+  ok; Get-PnpDevice -contains is case-insensitive (ROOT\S10eCamera vs ROOT\S10ECAMERA) ok. Nothing to fix; open
+  risks are runtime only: whether MmWriteCombined allocations succeed / read faster, whether the Camera app takes a
+  portrait YUY2 684 x 912, whether UpdateDriverForPlugAndPlayDevices prompts for the test certificate.
