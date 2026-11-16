@@ -414,3 +414,9 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
   hwid SWD\S10eCamera, SilentInstall|DriverRequired) + SwDeviceSetLifetime(ParentPresent); status; remove (reclaim,
   lifetime Handle, close; pnputil /delete-driver). C# compiles (pwsh, Linux); SwDevice calls not run.
 - Checks: clang vs WDK 26100 km/shared (ks.h, ksmedia.h) -Wall -Wextra -Wconversion clean for S10eCamera.c.
+- Review of the S10eCamera commit: locking walked through (CamStart outside gCamMutex because StreamStart sleeps ~1 s
+  and its OnFrame only queues async processing; CamStop clears Running under the mutex, then takes/releases it once
+  so an in-flight Process finishes before StreamStop frees the ring; Process re-checks Running/Active under it); Tail
+  patch only for the buffer whose canary was consumed (= Latest); CAMPIN from ExAllocatePool2 is zeroed; WriteReport
+  only at PASSIVE (SetDeviceState / close). Open risks to watch on the phone: Process time vs 33 ms (drops counted),
+  whether the Camera app accepts YUY2-only, whether the SWD device survives a reboot.
