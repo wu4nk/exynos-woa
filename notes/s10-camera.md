@@ -374,3 +374,24 @@ Log: notes/data/cam-s10-shot-4-scene-20261116.txt (cam-s10.ps1 v1.3.1 still on t
   scene's raw scaled by exposure): AE walked 256/x1 -> 1024 -> 1427/x2.9 -> x11.5 -> x16 (dark scene, gain-limited),
   the BMP came out; Develop of the real raw: 1824x1368 in ~0.5 s, rot 90 correct. Mirror: NOT verified (the text in
   the scene is too blurred to read) -> opt-in -Mirror.
+
+## AVStream camera driver (S10eCamera) - docs read 2026-11-16 (rule 13)
+- KsPinAttemptProcessing (learn.microsoft.com/windows-hardware/drivers/ddi/ks/nf-ks-kspinattemptprocessing): "used
+  to resume processing on a specific pin on a pin-centric filter"; IRQL <= DISPATCH_LEVEL; "If TRUE, processing is
+  always asynchronous"; "only if the processing control gate is open".
+- Pin process (ddi/ks/nc-ks-pfnkspin): "Return STATUS_SUCCESS to continue processing. Return STATUS_PENDING to stop
+  processing until the next triggering event."; PASSIVE_LEVEL unless KSPIN_FLAG_DISPATCH_LEVEL_PROCESSING.
+- Device node without a UEFI change: SwDeviceCreate (win32/api/swdevice/nf-swdevice-swdevicecreate): "Initiates the
+  enumeration of a software device"; "The calling process must have Administrator access"; ID becomes
+  SWD\<enumerator>\<instance>; SwDeviceSetLifetime(SWDeviceLifetimeParentPresent): "the creator ... can then close
+  the handle ... and the device will still be enumerated" (survival across reboot not stated -> to verify on the
+  phone). The repo's other devices are ACPI nodes (ACPI\SAMS98xx in our DSDT) -> an ACPI\SAMS982B node is the
+  permanent path for a later UEFI build; the INF lists both IDs.
+- avshws (MS-PL, Windows-driver-samples/avstream/avshws) read for structure only: filter categories VIDEO + CAPTURE
+  + VIDEO_CAMERA, one capture pin (KSPIN_DATAFLOW_OUT, PIN_CATEGORY_CAPTURE, PINNAME_VIDEO_CAPTURE), KsInitializeDriver,
+  INF Include ks.inf/kscaptur.inf + Needs KS.Registration/KSCAPTUR.Registration.NT, AddInterface for the 3 categories
+  with "GLOBAL" and the proxy CLSID. Our code is written fresh (MS-PL is not GPL-compatible: no code copied).
+- Plan: one capture pin, YUY2 912 x 684 @30 (2x2 Bayer binning in kernel: no full demosaic), BT.601 limited range;
+  frames pushed by the engine's poll thread (OnFrame -> KsPinAttemptProcessing(TRUE)), pin flag
+  KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING; AE + gray-world WB in kernel from the conversion's channel sums; RUN = engine
+  StreamStart, STOP = StreamStop (a fast mutex keeps Process and teardown apart).
