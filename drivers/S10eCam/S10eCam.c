@@ -288,12 +288,16 @@ typedef struct _REPORT {
     size_t Used;
 } REPORT;
 
+#ifndef S10ECAM_ENGINE_ONLY
 static PDEVICE_OBJECT gDevice;
+#endif
 static KEVENT         gLock;       /* synchronization event: one stage at a time, the caller stays at PASSIVE_LEVEL */
 
+#ifndef S10ECAM_ENGINE_ONLY
 static DRIVER_UNLOAD   S10eCamUnload;
 static DRIVER_DISPATCH S10eCamCreateClose, S10eCamIoctl;
 DRIVER_INITIALIZE      DriverEntry;
+#endif
 
 static ULONG R32(volatile UCHAR *b, ULONG off) { return READ_REGISTER_ULONG((volatile ULONG *)(b + off)); }
 static VOID  W32(volatile UCHAR *b, ULONG off, ULONG v) { WRITE_REGISTER_ULONG((volatile ULONG *)(b + off), v); }
@@ -1457,6 +1461,8 @@ typedef struct _STREAM {
     ULONG          Coarse, AGain, AGainMin, AGainMax, CoarseMax;
     volatile LONG  Rearms, Stalls;
     volatile LONG  Src0, DmaSrc;
+    VOID         (*OnFrame)(PVOID Ctx);          /* called from the poll thread (PASSIVE) after each finished frame */
+    PVOID          OnFrameCtx;
 } STREAM;
 
 static STREAM gS;
@@ -1495,6 +1501,8 @@ static VOID StreamThread(PVOID Ctx)
             InterlockedIncrement(&gS.Seq);
             gS.Next = (i + 1) % SHOT_RING;
             lastDone = (LONG64)KeQueryInterruptTime();
+            if (gS.OnFrame != NULL)
+                gS.OnFrame(gS.OnFrameCtx);
             if (R32(gS.x.Dma, DMA0_FCNTSEQ) != 0xFFFFFFFFu) {   /* Linux re-arms per buffer: so do we */
                 W32(gS.x.Dma, DMA0_FCNTSEQ, 0xFFFFFFFFu);
                 InterlockedIncrement(&gS.Rearms);
@@ -1528,7 +1536,7 @@ static VOID StreamStop(REPORT *r)
     gS.Owner = NULL;
 }
 
-static NTSTATUS StreamStart(const S10ECAM_SHOT_IN *in, PFILE_OBJECT Owner, REPORT *r)
+static NTSTATUS StreamStart(const S10ECAM_SHOT_IN *in, PFILE_OBJECT Owner, VOID (*OnFrame)(PVOID), PVOID Ctx, REPORT *r)
 {
     NTSTATUS s;
     HANDLE   h;
@@ -1540,6 +1548,8 @@ static NTSTATUS StreamStart(const S10ECAM_SHOT_IN *in, PFILE_OBJECT Owner, REPOR
     }
     RtlZeroMemory(&gS, sizeof(gS));
     gS.Latest = -1;
+    gS.OnFrame = OnFrame;
+    gS.OnFrameCtx = Ctx;
     KeInitializeEvent(&gS.Stop, NotificationEvent, FALSE);
     s = Stage1(&gS.m, &gS.f, r);
     Log(r, "stage 1: 0x%08X\r\n", s);
@@ -1630,6 +1640,7 @@ static ULONG StreamFrame(PUCHAR Out, ULONG OutLen)
     return sizeof(*h) + S10ECAM_SHOT_BYTES;
 }
 
+#ifndef S10ECAM_ENGINE_ONLY   /* S10eCamera (AVStream) includes this file for the engine and brings its own entry */
 /* ---------------------------------------------------------------------------------------------- dispatch */
 
 static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
@@ -1666,7 +1677,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         if (start) {
             Log(&r, "S10eCam 0.6 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
-            s = StreamStart(&si, sp->FileObject, &r);
+            s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
         } else {
             if (!gS.Active)
@@ -1850,3 +1861,5 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     gDevice->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;
 }
+
+#endif /* S10ECAM_ENGINE_ONLY */
