@@ -1657,7 +1657,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     switch (sp->Parameters.DeviceIoControl.IoControlCode) {
     case IOCTL_S10ECAM_STREAM_START:
     case IOCTL_S10ECAM_STREAM_STOP: {
-        S10ECAM_SHOT_IN si;
+        S10ECAM_SHOT_IN si = { 0 };                     /* (STOP has no input; MSVC C4701 otherwise) */
         BOOLEAN         start = sp->Parameters.DeviceIoControl.IoControlCode == IOCTL_S10ECAM_STREAM_START;
 
         if ((start && sp->Parameters.DeviceIoControl.InputBufferLength < sizeof(si)) ||
