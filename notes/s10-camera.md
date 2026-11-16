@@ -545,3 +545,7 @@ Logs: notes/data/cam-s10-stream-2nc-20261116.txt, cam-s10-stream-2wc-20261116.tx
   Range Intersections in AVStream" only promises ranges that "match in major type, subformat, and specifier"; a
   wildcard specifier counts as a match there, and 0.1/0.2 returned STATUS_NO_MATCH for it). DriverVer 0.3.0.0.
 - Checks: clang vs WDK 26100 -Wextra -Wconversion -Wformat: only the existing brace/field-initializer style notes.
+- Review of 9f7d07b: the header comment had been split since 0.2 (the 0.2 settings paragraph was inserted mid-sentence,
+  so the 0.3 note ended up followed by the "Auto exposure ... KSSTATE_RUN" paragraph). Fixed in its own commit (comment
+  only). Code checks: Trace() keeps `end` even on STATUS_BUFFER_OVERFLOW truncation; the refused-format trace reads the
+  bitmap header only when FormatSize covers it; every traced callback runs at PASSIVE (KS dispatch, file write ok).

@@ -8,19 +8,19 @@
  * One filter (KSCATEGORY_VIDEO + CAPTURE + VIDEO_CAMERA), one capture pin, one format: YUY2 @30 fps, 684 x 912
  * (portrait: rotation 90 / 270) or 912 x 684 (0 / 180). A frame = the newest finished raw frame (1824 x 1368 GRBG
  * RAW10-in-16), 2 x 2 Bayer binned, black level 64 subtracted, gray-world white balance, gamma 1/2.2, rotated
- * clockwise + optionally mirrored left-right (after rotating), BT.601 limited range.
+ * clockwise + optionally mirrored left-right (after rotating), BT.601 limited range. Auto exposure (lines first, then
+ * analog gain) runs on the same sums. Frames are pushed: the engine's poll thread calls KsPinAttemptProcessing after
+ * each finished raw frame; the pin does not let AVStream initiate processing (KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING),
+ * so a frame without an empty buffer waiting is dropped (counted in KS_FRAME_INFO.DropCount).
+ * The camera runs only in KSSTATE_RUN: PAUSE -> RUN starts the engine (~1 s: the sensor setfile over I2C), RUN ->
+ * PAUSE and pin close stop it and power everything down.
  * 0.2 settings (Services\S10eCamera\Parameters, DWORDs, read at each device start; camera-s10.ps1 set):
  *   Rotation 0/90/180/270 (default 270: upright on the phone held upright, 2026-11-16), Mirror 0/1 (default 0),
  *   RingWc 0/1 (default 1: the frame ring write-combined instead of non-cached - 0.6's non-cached copy ran at
  *   ~80 MB/s, 60 ms a frame).
  * 0.3: every KS call into the driver (device start, filter create/close, data intersection, pin create / format /
  *   state / close) is traced to C:\S10Prov\camera-avs.txt with its result: the Camera app's DXGI_ERROR_UNSUPPORTED
- *   (2026-11-16) left no start report, so how far a client gets is the first thing to know. Auto exposure (lines first, then analog
- * gain) runs on the same sums. Frames are pushed: the engine's poll thread calls KsPinAttemptProcessing after each
- * finished raw frame; the pin does not let AVStream initiate processing (KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING), so a
- * frame without an empty buffer waiting is dropped (counted in KS_FRAME_INFO.DropCount).
- * The camera runs only in KSSTATE_RUN: PAUSE -> RUN starts the engine (~1 s: the sensor setfile over I2C), RUN ->
- * PAUSE and pin close stop it and power everything down.
+ *   (2026-11-16) left no start report, so how far a client gets is the first thing to know.
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
