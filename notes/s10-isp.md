@@ -241,3 +241,9 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   DT fimc_is@17190000 reg list). v1.3 uses that path. Other fimc nodes seen: 17030000/17040000/17050000/17060000/
   17090000.fimc_is_sensor, 17050000.fimc_is_sensor2, fimc-is_sensor_3j1@10 / 2l4@20 / 3m3@5A / 3p9@2D (the S10's
   four sensors: front 3J1, rear 2L4 wide, 3M3 tele, 3P9 ultra-wide - names from the sysfs entries).
+- 2026-11-17 20:17 DEVICE (user, v1.3): runtime_status file found (170e0000.fimc_is), "suspended" with the
+  camera closed, "active" with it open - the power gate works. But every value came back EMPTY: rd() passed width
+  "32" to toybox devmem, whose WIDTH is in BYTES (1/2/4/8) - invalid argument, error thrown away by 2>/dev/null.
+  Nothing was read from the hardware. dump stopped at 3AA0 +6656 because runtime_status left "active" (the camera
+  app was closed or paused - user to confirm). v1.4: no width (toybox default 4 B, busybox default 32 bit), errors
+  kept in the output, one test read before ids/dump that stops the run if it is not a 0x value.

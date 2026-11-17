@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# ispregs-s10.sh (v1.3) - Galaxy S10 on ANDROID (root): read the camera ISP's registers WHILE Samsung's camera stack
+# ispregs-s10.sh (v1.4) - Galaxy S10 on ANDROID (root): read the camera ISP's registers WHILE Samsung's camera stack
 # drives them, as ground truth for the ISP emulator and the Windows port (notes/s10-isp.md, 2026-11-17).
 # READS ONLY (32-bit loads through /dev/mem). Nothing is written to any register.
 #
@@ -20,7 +20,7 @@ MODE=${1:-check}
 OUT=/sdcard/s10cam/ispregs
 mkdir -p $OUT
 LOG=$OUT/ispregs-$MODE.txt
-echo "ispregs-s10.sh v1.3 $MODE $(date)" > $LOG
+echo "ispregs-s10.sh v1.4 $MODE $(date)" > $LOG
 say() { echo "$*"; echo "$*" >> $LOG; }
 
 DM=""
@@ -53,7 +53,17 @@ fi
 active() { [ "$(cat $ST)" = active ]; }
 if ! active; then say "the camera is not open (runtime_status $(cat $ST)): open the front camera first"; exit 1; fi
 
-rd() { $DM $1 32 2>/dev/null; }
+# v1.4: no width argument - toybox devmem takes WIDTH in BYTES (1/2/4/8, default 4), busybox in BITS (default 32);
+# v1.3 passed "32" = an invalid toybox width, every read failed silently (user 2026-11-17 20:17: empty values).
+# Errors are kept now: a value is "0x..." or the tool's own message.
+rd() { $DM $1 2>&1 | head -1; }
+
+# one test read first: stop at once if the tool cannot read at all
+if [ "$MODE" = ids ] || [ "$MODE" = dump ]; then
+  T=$(rd 0x171900f0)
+  say "test read 3AA0 +0x00f0: $T"
+  case "$T" in 0x*|0X*) ;; *) say "devmem cannot read here - stopped"; exit 1;; esac
+fi
 
 if [ "$MODE" = ids ]; then
   for blk in 3AA0:0x17190000 ISPLP:0x17430000 MCSC:0x17440000; do
