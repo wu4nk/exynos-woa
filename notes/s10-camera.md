@@ -650,3 +650,8 @@ Log: notes/data/camera-s10-status-4-20261117.txt.
   grey 464 -> Y 163 U/V 128, sums 400 each; R-only sites -> U 94 V 227 (red); B-only -> U 227 V 112 (blue);
   G-only -> Y 130 U 63 V 45 (green).
 - camera-s10 v1.4: set -SensorBin, status shows it. DriverVer 0.6.0.0 (11/17/2026).
+- Review of c54533f + 08659b1: last row pair loads row 683 and reflects row 684 -> 682 (still cached: slots 680..683);
+  gRows (4 x 3648) holds 4 binned rows (4 x 1824); the pool is reallocated at each device start with the size the
+  current SensorBin needs, and ShotStart refuses a pool smaller than the mode's buffer (falls back to its own); Stage4
+  takes the mode from the flags before ShotStart so its copy/log after ShotUnmap (which zeroes x) still has it.
+  Nothing to fix.
