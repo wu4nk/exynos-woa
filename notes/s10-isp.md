@@ -495,3 +495,25 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   platform layer); (2) prove it on AArch64 Linux user mode (qemu-aarch64 on the build machine) with fake register
   windows = the same run as front_init.py, natively compiled; (3) the Windows platform layer (UMDF 2 or service +
   kernel helper for MMIO / IRQ / contiguous DMA) - Microsoft docs first for the register / interrupt / DMA parts.
+## Stage 4 option A, step 1+2: tools/isp-host - the libraries run NATIVELY (AArch64 Linux user mode, 2026-11-17)
+- Core isphost.c (portable C) + plat_posix.c (Linux test platform) + test_front.c (= front_init.py, natively).
+  Built static with zig cc -target aarch64-linux-musl, run under qemu-aarch64 on the build machine. No emulator.
+- Loader: one RWX block (0x7000000 + 0x20000, 2 MiB aligned), DDK file at +0, RTA file at +0x520000; every 8-byte
+  aligned word in [LIB_START, LIB_START + 0x7000000) gets + (base - LIB_START): 12005 words relocated. 698 other
+  "kernel-half" words (0xffffff8..) outside the span exist (577 DDK, 121 RTA): all look like small negative numbers /
+  masks (0xffffffffffff0000, 0xfffffffe01000000 ...), left untouched.
+- x18: tramp.S (reference source; isphost.c emits the same words at run time): isp_enter saves the host x18 around
+  every call into the libraries; each host function handed in gets a 48-byte trampoline (target, context word,
+  isp_common); isp_common saves the library's x18, finds the calling thread's host x18 by stack range in a thread
+  table, calls the host function with x0..x7, restores. All library code runs on 9 core-created threads (control,
+  interrupt, timer, 6 task workers = GPL fimc_is_init_ddk_thread priorities 11..16), each registered.
+- OS services: GPL semantics, incl. two points the emulator had wrong / missing: get_usec(uint64_t *time) WRITES
+  *time (GPL :1467; the DDK passes a stack pointer, seen at ddk+0xf48d8 - the emulator returned the value instead),
+  get_binary_version(char **buf, type, hint) (DDK [91] / RTA [91]) = the 44-byte version strings carved like GPL
+  carve_binary_version (DDK "...2021/04/05 16:59:12]L12XLOD01GM", RTA "...09/26 04:52:21]L12XLOD01GM").
+- First native run (FRAMES=3, real front calibration): DDK start_up, VRA, RTA start_up, both sensor-interface
+  registrations, 3AA / ISP chain_create, set_system_config, object_create, 29 create_tune_set, apply 6, load_cal_data,
+  get_cal_data (centerX/Y 1888/1400 biquadA/B 77828/16384 = Android's numbers), set_param / set_ctrl / shot and the
+  V SYNC / CIN ROW / FRAME END (3AA) and V SYNC / FRAME END (ISP) handlers for 3 frames: every call -> 0, 17 tasks
+  run on the workers, 15 interrupts. The only crash on the way was in the test itself (a local "SHOT" shadowing the
+  enum index - now -Wshadow).
