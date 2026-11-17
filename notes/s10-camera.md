@@ -655,3 +655,25 @@ Log: notes/data/camera-s10-status-4-20261117.txt.
   current SensorBin needs, and ShotStart refuses a pool smaller than the mode's buffer (falls back to its own); Stage4
   takes the mode from the flags before ShotStart so its copy/log after ShotUnmap (which zeroes x) still has it.
   Nothing to fix.
+
+## Phone 2026-11-17 10:13: S10eCam 0.9 -Bin + S10eCamera 0.6
+Logs: notes/data/cam-s10-stream-3bin-20261117.txt, camera-s10-status-5-20261117.txt (picture: a person, not kept).
+- MODE 11 VALIDATED: read back FLL 0x0BB2 (2994), LLP 0x2318, out 912 x 684; 156 frames in ~5 s (30 fps), 0 re-arms,
+  0 stalls, INT_SRC0 01100000 (no VC1 bits, PD_NONE as configured), copy 3.9-5.9 ms (was 16-73), torn 0 on every
+  line. Picture upright with -Rotate 270, sharp enough, colours plausible (WB R x1.57 B x1.81). Coarse max 2990
+  (= FLL - 4). Dim room: AE reached again 0x200 (x16, the top of the 0x0086 range) at coarse 2990, G 43 (target 110):
+  the binned mode is not brighter per pixel than mode 8 at the same 33 ms.
+- S10eCamera 0.6 in the Camera app: RUN ok, ring 3 x 1313152 kept from device start, "6 frames delivered, 2 dropped,
+  2 torn; conversion avg 45072 us, max 49676 us"; the client again went RUN -> PAUSE ~390 ms after RUN (0.4: 357 ms),
+  then two filter opens with intersect only. The stop does not follow from a lack of frames (6 in 390 ms).
+  Hypothesis (UNVERIFIED): the app's GPU path - our Mali UMD (Mesa d3d10umd) has no D3D11 video DDI (D5 in
+  gpu-umd-d3d11.md is still a plan), and the first Camera app error on 2026-11-16 was DXGI_ERROR_UNSUPPORTED.
+- 0.7: ConvertBinFast (SensorBin 1, default): per 2x2 block colour + per-G-site luma; EmitRows replaces PutPair:
+  MapOut is linear in x so it is evaluated for x = 0, 1 and the rest is pointer stepping (all three converters).
+  SensorBin 2 = the bilinear one. Host (x86, gcc -O2, same code): bilinear 6.85 -> 5.95 ms (EmitRows), fast 2.74 ms
+  per frame; mapping test: mode 8 Convert and ConvertBinFast give TL/TR/BR/BL for 0/90/180/270, mirror flips,
+  every byte written; flat/red/blue/green patches identical to the bilinear path.
+- camprobe-s10.ps1 v1.0 (DIAGNOSIS tool): Windows.Media.Capture through the frame server, MediaFrameReader, cpu =
+  MemoryPreference Cpu (no GPU surfaces), gpu = Auto; logs init / formats / start status / frames, fps, first-frame
+  time, SoftwareBitmap vs Direct3DSurface counts, saves one frame. cpu ok + gpu failing = the GPU side. PowerShell
+  5.1 only (WinRT projection). Parse-checked only (WinRT is not available on Linux).
