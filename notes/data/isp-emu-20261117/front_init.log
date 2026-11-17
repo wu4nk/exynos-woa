@@ -22,33 +22,33 @@ register_sensor_interface -> 0
    log: [@][WRAP][0]StreamInterface: init
    log: [@][WRAP]Metadata: init
    log: [@][WRAP][S0](createObject[5652]): hwType(3AA) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
-   log: [@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0x0)
-   log: [@][WRAP](WRAP_GetProperties[586]): w(0), h(0)
+   log: [@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0xffffff80fa31dc70)
+   log: [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
    log: [@][WRAP](WRAP_GetProperties[587]): order (0)
-   log: [@][WRAP](WRAP_GetProperties[588]): exp (0, 0)
-   log: [@][WRAP](WRAP_GetProperties[589]): again (0, 0)
-   log: [@][WRAP](WRAP_GetProperties[590]): dgain (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
    log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
-   log: [@][WRAP](WRAP_GetProperties[593]): pclk(0), line_length_pck(0), frameleng(0)
-   log: [@][WRAP](WRAP_GetProperties[594]): cur w(0), h(0)
-   log: [@][WRAP](WRAP_GetProperties[598]): max fps(0), hdr by again(0)
-   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (0), initialAperture(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
    log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
    log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
    log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
    log: [@][WRAP]INFO(createObject[5696]): sensor path(OTF)
    log: WdrRgbyHist 256bins
    log: Init 200
-   log: [@][WRAP](WRAP_GetProperties[586]): w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
    log: [@][WRAP](WRAP_GetProperties[587]): order (0)
-   log: [@][WRAP](WRAP_GetProperties[588]): exp (0, 0)
-   log: [@][WRAP](WRAP_GetProperties[589]): again (0, 0)
-   log: [@][WRAP](WRAP_GetProperties[590]): dgain (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
    log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
-   log: [@][WRAP](WRAP_GetProperties[593]): pclk(0), line_length_pck(0), frameleng(0)
-   log: [@][WRAP](WRAP_GetProperties[594]): cur w(0), h(0)
-   log: [@][WRAP](WRAP_GetProperties[598]): max fps(0), hdr by again(0)
-   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (0), initialAperture(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
    log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
    log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
    log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
@@ -66,15 +66,9 @@ register_sensor_interface -> 0
    log: [CreateAwbObjectExternal] 
    log: [CreateScdObjectInternal] 
    log: [CreateAfcObjectInternal] 
-   log: ActivateAlgorithms ae1 awb1 af0 
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
-   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [CreateAutoFocusObjectExternal] 
+   log: ActivateAlgorithms ae1 awb1 af1 
+   log: Ext AF is selected!
    log: [@][WRAP][X][S0][3AA0]DICO_Object_3aa_Create 0xffffff80fb9c8a00
 3AA object = ddk+0x19e8a00
 == ISP chain_create -> 0x0  (register accesses 503, OS calls 263, interface calls 0)
@@ -87,19 +81,19 @@ register_sensor_interface -> 0
    log: [FRO] reset
    log: [FRO] reset
 == ISP object_create -> 0x0  (register accesses 0, OS calls 349, interface calls 41)
-   log: [@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
-   log: [@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+   log: [@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00261000) hwId(0), rep(0), input(1), moduleId(38)
+   log: [@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(M2M), moduleId(38), repFlag(0)
    log: [@][WRAP][INFO]m_createObject3aaForTuneSet: [S0] hwId_3aa(0)
-   log: [@][WRAP](WRAP_GetProperties[586]): w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
    log: [@][WRAP](WRAP_GetProperties[587]): order (0)
-   log: [@][WRAP](WRAP_GetProperties[588]): exp (0, 0)
-   log: [@][WRAP](WRAP_GetProperties[589]): again (0, 0)
-   log: [@][WRAP](WRAP_GetProperties[590]): dgain (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
    log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
-   log: [@][WRAP](WRAP_GetProperties[593]): pclk(0), line_length_pck(0), frameleng(0)
-   log: [@][WRAP](WRAP_GetProperties[594]): cur w(0), h(0)
-   log: [@][WRAP](WRAP_GetProperties[598]): max fps(0), hdr by again(0)
-   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (0), initialAperture(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
    log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
    log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
    log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
@@ -115,6 +109,6 @@ register_sensor_interface -> 0
    log: [CreatePrcObjectExternal] 
    log: ActivateAlgorithms[383] prc(1) 
    log: ActivateAlgorithms[399] pipeline(2) 
-   log: [@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0xffffff80fbd4d2f0
-ISP object = ddk+0x1d6d2f0
+   log: [@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0xffffff80fbd4d320
+ISP object = ddk+0x1d6d320
 interrupts registered: [(0, 0, 'ddk+0x331e34'), (1, 0, 'ddk+0x331e34'), (6, 2, 'ddk+0x331e34'), (7, 2, 'ddk+0x331e34')]

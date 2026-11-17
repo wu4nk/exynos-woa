@@ -41,9 +41,42 @@ def w32(e, p, v):
     return 0
 
 
-# the sensor answers we know so far: S5K3J1 = module id 38 (include/exynos-fimc-is-sensor.h:110), FRONT = 1
-itf = e.sensor_itf(LAYOUT, {'cis_itf_ops.get_module_id': lambda e, itf, p, *a: w32(e, p, 38),
-                            'cis_itf_ops.get_module_position': lambda e, itf, p, *a: w32(e, p, 1)})
+# The sensor's answers = what this phone's Android reported (isfw-msg-android.txt WRAP_GetProperties, 30 fps
+# preview mode; the one-frame 120 fps AE warm-up mode is deliberately not used). Signatures: GPL
+# fimc-is-interface-sensor.c (getters with u32 * outputs write them, u32 getters return the value).
+S = dict(cal=(3968, 2736), bayer=0, exp=(23, 33257), again=(1000, 16000), dgain=(1000, 128000),
+         init=(2360, 1000, 1000), timing=(807720000, 9384, 2864, 0), cur=(3648, 2736), fps=30, use_dgain=1,
+         aperture=190, module_id=38, position=1)     # module 38 = SENSOR_NAME_S5K3J1, position 1 = FRONT
+
+
+def wr(*vals):
+    def h(e, itf, *ptrs):
+        for p, v in zip(ptrs, vals):
+            w32(e, p, v)
+        return 0
+    return h
+
+
+itf = e.sensor_itf(LAYOUT, {
+    'cis_itf_ops.get_module_id': wr(S['module_id']),
+    'cis_itf_ops.get_module_position': wr(S['position']),
+    'cis_itf_ops.get_calibrated_size': wr(*S['cal']),
+    'cis_itf_ops.get_bayer_order': wr(S['bayer']),
+    'cis_itf_ops.get_min_exposure_time': lambda e, *a: S['exp'][0],
+    'cis_itf_ops.get_max_exposure_time': lambda e, *a: S['exp'][1],
+    'cis_itf_ops.get_min_analog_gain': lambda e, *a: S['again'][0],
+    'cis_itf_ops.get_max_analog_gain': lambda e, *a: S['again'][1],
+    'cis_itf_ops.get_min_digital_gain': lambda e, *a: S['dgain'][0],
+    'cis_itf_ops.get_max_digital_gain': lambda e, *a: S['dgain'][1],
+    'cis_itf_ops.get_initial_exposure_gain_of_sensor': wr(*(S['init'] * 2)),
+    'cis_itf_ops.get_sensor_frame_timing': wr(*S['timing']),
+    'cis_itf_ops.get_sensor_cur_size': wr(*S['cur']),
+    'cis_itf_ops.get_sensor_max_fps': wr(S['fps']),
+    'cis_itf_ops.get_hdr_ratio_ctl_by_again': wr(0),
+    'cis_itf_ops.get_sensor_use_dgain': wr(S['use_dgain']),
+    'cis_itf_ops.get_sensor_initial_aperture': wr(S['aperture']),
+    'cis_itf_ops.is_actuator_available': lambda e, *a: 1,      # Android: "Ext AF is selected!", AF cal 384/554
+})
 print('register_sensor_interface ->', e.call(e.DDK + 0x40, itf) & 0xffffffff)
 out = e.alloc(8)
 tabs = {}
@@ -86,7 +119,8 @@ step('3AA object_create', tabs['3AA']['object_create'], obj3, info, hw)
 print('3AA object =', e.img(e.q(obj3)))
 step('ISP chain_create', tabs['ISP']['chain_create'], 0, wi, 0, e.cb)
 obji = e.alloc(8)
-step('ISP object_create', tabs['ISP']['object_create'], obji, info, hw)
+info_isp = (38 << 16) | (1 << 12)      # Android: DICO_Object_Isp_Create (0x00261000) input(1) = M2M
+step('ISP object_create', tabs['ISP']['object_create'], obji, info_isp, hw)
 print('ISP object =', e.img(e.q(obji)))
 print('interrupts registered:', [(i['id'], i['chain'], e.img(i['handler'])) for i in e.irqs])
 with open(os.path.join(OUT, 'interface-calls.txt'), 'w') as f:

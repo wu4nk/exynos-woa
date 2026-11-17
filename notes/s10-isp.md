@@ -322,3 +322,13 @@ File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera
   8251" us, count 1) at 2653.93 s, then 3AA stopped and restarted at 30 fps ("Frame Time 33226"). Decision: the
   Windows side stays at what runs sustained on this phone - 30 fps; 120 fps is never a streaming mode for us, and
   FrameRate 60 (S10eCamera 0.9) stays unvalidated until the user's test.
+- 2026-11-17 20:55 user: "làm đi" (the 120 fps remark was a guess). front_init.py now answers the sensor interface
+  with this phone's Android values (30 fps preview mode only: cal 3968 x 2736, order 0, exp 23..33257, again
+  1000..16000, dgain 1000..128000, init 2360/1000/1000 ("init 2360 1000 1000" in the log), pclk 807720000, llp
+  9384, fll 2864, max_margin_cit 0 (GPL: cur_coarse_integration_time_step, not set by cis-3j1.c -> 0), cur
+  3648 x 2736, 30 fps, use_dgain 1, aperture 190, actuator available) and ISP object_create obj_info 0x00261000
+  (M2M) as Android. emu: stubs now see x0..x7 (get_initial_exposure_gain_of_sensor has 6 out pointers).
+  Result: "[CreateAutoFocusObjectExternal]", "ActivateAlgorithms ae1 awb1 af1", "Ext AF is selected!" as on
+  Android, and the ISP object at ddk+0x1d6d320 = 0xffffff80fbd4d320 = Android's "DICO_Object_Isp_Create
+  0xffffff80fbd4d320". Both objects now sit at Android's addresses. Left: "3aaotfmode(0)" vs Android's 1 (which
+  interface answer sets it - not found yet).

@@ -220,7 +220,7 @@ class Isp:
     def _stub(self, uc, addr, size, data):
         name, handler = self.stubs[(addr - STUB) // 4]
         x = [uc.reg_read(r) for r in (UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X2, UC_ARM64_REG_X3,
-                                       UC_ARM64_REG_X4, UC_ARM64_REG_X5)]
+                                       UC_ARM64_REG_X4, UC_ARM64_REG_X5, UC_ARM64_REG_X6, UC_ARM64_REG_X7)]
         ret = handler(self, *x) if handler else 0
         lr = uc.reg_read(UC_ARM64_REG_X30)
         self.stub_calls.append((name, lr, x, ret))
