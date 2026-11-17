@@ -1,0 +1,69 @@
+camera-s10.ps1 v1.4  status  2026-11-01T23:35:16
+device: ROOT\CAMERA\0000  status OK  class Camera  'Galaxy S10 Front Camera (S5K3J1)'
+  DEVPKEY_Device_ProblemCode = 0
+  DEVPKEY_Device_DriverInfPath = oem18.inf
+  DEVPKEY_Device_DriverVersion = 0.7.0.0
+cameras present: Galaxy S10 Front Camera (S5K3J1)
+settings: Rotation 270  Mirror 0  RingWc 1  RingKeep 1  SensorBin 1  (driver defaults when absent: 270 / 0 / 1 / 1 / 1)
+--- C:\S10Prov\camera-avs.txt (last 60 lines) ---
+[1099524 ms] pin state 0 -> 1: 0x00000000
+[1099525 ms] pin state 1 -> 2: 0x00000000
+S10eCamera 0.7 start: output 684 x 912, rotation 270, ring write-combined, sensor 912 x 684 (binned) + 2x2-block conversion
+== CMU_TOP
+  CIS_CLK1 mux 00000000 (sel 0: OSCCLK 26 MHz) div 00000000 (/1) gate 00200000 qch 00000002
+  PERIC1_BUS gate 00200000 -> on
+  PERIC1_IP mux 00000001 div 00000001 (/2) gate 00200000 -> on (the I2C ipclk source when a user mux bit 4 is 1)
+== CMU_PERIC1
+  user muxes: BUS 00000010 I2C_CAM2 00000010 USI10 00000010 (bit 4: 1 = CMU_TOP clock, 0 = OSCCLK)
+  dividers: I2C_CAM2 00000000 USI10 00000000
+  I2C_CAM2 ipclk 00200000 pclk 00200000 rst 00200000 qch 003F0002 -> on
+  USI10    ipclk 00200000 pclk 00200000 rst 00200000 qch 003F0002 -> on
+== pins
+  gpp6   CON 00000022 DAT 00000003 PUD 00001100
+  gpc0   CON 00000000 DAT 000000C3 PUD 11001111
+  gpc1   CON 00100000 DAT 00000000 PUD 11111111
+  gpg2   CON 00100001 DAT 0000000D PUD 01110111
+  gpg4   CON 00001000 DAT 00000000 PUD 00001111
+== I2C_CAM2 (sensor bus) as found: CTL 00000008 CONF 80000000 USI_CON 00000000 FS1 01FCFF00 FS2 030003F8 FS3 007D0000
+== S2MPB02 bus (USI10): mode 00000004, CTL 00000048 USI_CON 00000000 as found
+  set: mode 00000004, gpp6 CON 00000022, FS1 01FCFF00 FS2 030003F8 FS3 007D0000
+  S2MPB02 ID 0x00  B2CTRL1 0x18 (on no) B2CTRL2 0x90 (1300 mV)
+  LDO5 0x24 (1050 mV off) LDO6 0x30 (1800 mV off) LDO13 0x5E (2950 mV off) LDO16 0x58 (2800 mV off)
+  (LDO17 VDD_GRIP_3P3, never written: 0xDE)
+stage 1: 0x00000000
+== stage 4: preconditions
+  ring 0: 1313152 bytes at PA 00000000FD5DB000 (write-combined, kept from device start)
+  ring 1: 1313152 bytes at PA 00000000FD49A000 (write-combined, kept from device start)
+  ring 2: 1313152 bytes at PA 00000000FD359000 (write-combined, kept from device start)
+  found: ISPPRE_BUS div 0000000F, PMU iso 00000000, sysreg +0x500 00000000
+  ISPPRE_BUS div -> 00000000 (mux 3: 400 MHz / 1)
+== power up (fimc-is-device-module-3j1.c, BSS_V01)
+  S2MPB02 0x0D <- 0xD8 (read back 0xD8) ok
+  S2MPB02 0x2D <- 0xD8 (read back 0xD8) ok
+  S2MPB02 0x2A <- 0xDE (read back 0xDE) ok
+  S2MPB02 0x23 <- 0xB0 (read back 0xB0) ok
+  S2MPB02 0x22 <- 0xA4 (read back 0xA4) ok
+  CIS_CLK1 on: mux 00000000 div 00000000 gate 00300000 qch 00000002
+  gpc0   CON 00220000 DAT 000000F3 PUD 11001111
+  gpc1   CON 00200000 DAT 00000000 PUD 11011111
+  gpg2   CON 00100001 DAT 0000002D PUD 01110111
+  gpg4   CON 00001000 DAT 00000000 PUD 00001111
+== sensor 0x10 on I2C_CAM2
+  MODEL ID 0x30A1  REVISION 0xA101 (= DT rev_reg 0xA101: the S5K3J1)  FRAME COUNT 0xFF (not streaming, as expected)
+== sensor setfile A (fimc-is-cis-3j1-setA.h)
+  global: 227 entries in 54 I2C messages
+  mode 11 912x684 (120 fps setfile, FLL 2994 = 30 fps): 326 entries in 257 I2C messages
+  read back: coarse 0x0202 0100, again 0x0204 0020, FLL 0x0340 0BB2, LLP 0x0342 2318, out 912 x 684 (0x034C/E), pattern 0x0600 0000
+== D-PHY
+  PMU iso 00000001, sysreg +0x500 00000002; PHY SC_GNR_CON0 00000003 SD0_TIME_CON0 00000009 (before)
+  PHY SC 00000003 00001450 00000005 00000600 00000301  SD0 00000003 00000305 00000009  SD3 TIME_CON0 00000009
+== CSIS2
+== DMA (common found 00000000 00000004 00000000 00000000)
+  DMA0 CTRL 00000003 FMT 00000000 ADDR1 FD5DB000 RESOL 00000390 FCNTSEQ FFFFFFFF; common 00000006 00000006 04800480 00000000
+  CMN_CTRL 00004B01 PHY_CMN_CTRL 0000001F CONFIG0 000010AC RESOL0 02AC0390 CONFIG1 000010FD PHY_STATUS 000000F1
+== stream on
+  analog gain code range 0x0084 0020 .. 0x0086 0200; coarse 256 (max 2990), again 0020
+streaming: ring of 3, frames finish into it until STREAM_STOP or this handle closes
+start: 0x00000000
+[1099787 ms] pin state 2 -> 3: 0x00000000
+log: C:\S10Prov\camera-s10-status.txt

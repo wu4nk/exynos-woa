@@ -716,3 +716,25 @@ Logs: notes/data/camprobe-cpu-2 / camprobe-gpu-2-20261117.txt (picture: a person
   skeleton (V6a, decoder objects; profiles reported 0 unless decode works) and NO video processor yet (V6c =
   NV12 -> BGRA VideoProcessorBlt, a plan). Consistent with the preview hypothesis, not a proof. Asked: the browser
   test and the driver trace of the Settings session.
+
+## Phone 2026-11-17 10:53: Brave and Settings traces (S10eCamera 0.7)
+Logs: notes/data/camera-s10-status-8web / -9settings-20261117.txt.
+- Brave (webcamtests, "camera used by another app" = Chromium's NotReadableError text): RUN ok, 6 frames delivered in
+  ~300 ms, 0 dropped, conversion 23 ms, then RUN -> PAUSE -> STOP, pin close; filter close 5 s later.
+- Settings preview (flashes black, then grey): RUN ok at 1099787 and the trace ends there = still streaming when
+  the status was taken (no stop line): frames flow, nothing is shown.
+- So all three renderers get frames and fail after them; camprobe (MediaFrameReader, YUY2 as is) works at 30 fps.
+  Common factor (UNVERIFIED): YUY2 must be converted for each of them (display / Chromium's capture pipeline).
+
+## S10eCamera 0.8: NV12 output (offered first, YUY2 kept) - NOT built, NOT run
+- gRangeNv12 (subtype FOURCC 'NV12' GUID 3231564E-0000-0010-8000-00AA00389B71, 12 bpp, W x H x 3/2 = 935712 bytes),
+  ranges {NV12, YUY2}; FormatOk() accepts either at the configured size; gNv12 set from the connection format in
+  SetDataFormat (which AVStream calls BEFORE the create dispatch - Pin->Context NULL there, guarded) and PinCreate.
+  PinIntersect copies the matched range (SampleSize from it). Process: minimum buffer + advance by the format's size;
+  framing stays at the YUY2 size (the larger).
+- EmitRowsNv12: Y at MapOut per pixel; per source 2 x 2 block the mean U/V at the output block's top-left (min of the
+  mapped (x, 2j) and (x+1, 2j+1)) - an output 2 x 2 block is a source 2 x 2 block at even coordinates for every
+  rotation / mirror since all sizes are even. Emit() dispatches NV12 / YUY2 for all three converters.
+- Host test: 8 rotation/mirror cases: Y plane corners right, every Y and UV byte written, nothing past W*H*3/2;
+  red patch U 94 V 227 (= the YUY2 path); one coloured source block (200,100) -> exactly one UV pair, at UV row
+  (911-201)/2 = 355, column 100 (rotation 270).

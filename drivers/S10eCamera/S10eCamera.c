@@ -34,6 +34,11 @@
  * 0.7: the bilinear demosaic still took 45 ms a frame on the phone (2026-11-17 10:13). SensorBin 1 (default) is now a
  *   per-2x2-block conversion: colour (U/V) from the block's R, mean G, B; Y per pixel from the block plus each G
  *   site's own value (G carries most luma detail). SensorBin 2 = 0.6's bilinear demosaic.
+ * 0.8: a second format, NV12 (offered first; YUY2 stays). The frame server and camprobe (MediaFrameReader, CPU and
+ *   D3D surfaces) took YUY2 at 30 fps, but the Camera app, Settings' preview and Chromium each stopped ~0.3 s after
+ *   RUN with frames delivered (2026-11-17): every one of them wants frames converted for display / its pipeline, and
+ *   NV12 is the format Windows camera pipelines run on. An output 2 x 2 block is a source 2 x 2 block at even
+ *   coordinates for every rotation / mirror (all sizes even), so NV12's chroma = that block's mean.
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
@@ -52,7 +57,8 @@
 
 #define CAM_SW          (S10ECAM_SHOT_W / 2)             /* 912: the binned image, sensor orientation */
 #define CAM_SH          (S10ECAM_SHOT_H / 2)             /* 684 */
-#define CAM_BYTES       (CAM_SW * CAM_SH * 2)            /* YUY2: 2 bytes a pixel, whichever way round */
+#define CAM_BYTES       (CAM_SW * CAM_SH * 2)            /* YUY2: 2 bytes a pixel, whichever way round (the larger) */
+#define CAM_BYTES_NV12  (CAM_SW * CAM_SH * 3 / 2)        /* NV12: Y plane + half-height interleaved UV plane */
 #define CAM_INTERVAL    333333                           /* 100 ns units: 30 fps (the sensor's mode 8) */
 #define CAM_AE_TARGET   110u                             /* black-subtracted green mean (of 959): mid grey after gamma */
 #define CAM_TAG         'mCeS'
@@ -60,6 +66,8 @@
 /* YUY2 = FOURCC 'YUY2' as a media subtype GUID */
 #define STATIC_S10_SUBTYPE_YUY2 0x32595559L, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71
 #define S10_FOURCC_YUY2         0x32595559u
+#define STATIC_S10_SUBTYPE_NV12 0x3231564EL, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71
+#define S10_FOURCC_NV12         0x3231564Eu
 
 typedef struct _CAMPIN {
     LONG    LastSeq;        /* engine frame number last delivered (or dropped) */
@@ -79,6 +87,7 @@ static UCHAR      gY[2][CAM_SW], gU[2][CAM_SW], gV[2][CAM_SW];   /* 2 binned row
 static CHAR       gLog[8192];                            /* the engine's report of the last start / stop */
 static ULONG      gRot = 270, gMirror, gRingWc = 1, gRingKeep = 1, gBin = 1;   /* settings (Parameters), read at device start */
 static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
+static BOOLEAN    gNv12;                                 /* 0.8: the running pin's format is NV12 (else YUY2) */
 static WCHAR      gParamPath[260];                       /* <service key>\Parameters */
 
 /* ---------------------------------------------------------------------------------------------- the report file */
@@ -180,6 +189,37 @@ static VOID EmitRows(PUCHAR Out, ULONG j)
     }
 }
 
+/* 0.8 NV12: Y plane gOutW x gOutH, then the UV plane (gOutW bytes a row, gOutH / 2 rows; U V interleaved). Rows 2j
+   and 2j+1 of the source: every pixel's Y at MapOut; for each source 2 x 2 block (x even) the mean U / V at the output
+   block's top-left (its corners map to (x, 2j) and (x+1, 2j+1), so the minimum of the two mapped coordinates). */
+static VOID EmitRowsNv12(PUCHAR Out, ULONG j)
+{
+    ULONG  x, k, ox, oy, ox2, oy2;
+    PUCHAR uv = Out + (SIZE_T)gOutW * gOutH;
+
+    for (k = 0; k < 2; k++)
+        for (x = 0; x < CAM_SW; x++) {
+            MapOut(x, 2 * j + k, &ox, &oy);
+            Out[(SIZE_T)oy * gOutW + ox] = gY[k][x];
+        }
+    for (x = 0; x < CAM_SW; x += 2) {
+        MapOut(x, 2 * j, &ox, &oy);
+        MapOut(x + 1, 2 * j + 1, &ox2, &oy2);
+        if (ox2 < ox) ox = ox2;
+        if (oy2 < oy) oy = oy2;
+        uv[(SIZE_T)(oy / 2) * gOutW + ox] = (UCHAR)((gU[0][x] + gU[0][x + 1] + gU[1][x] + gU[1][x + 1] + 2u) / 4u);
+        uv[(SIZE_T)(oy / 2) * gOutW + ox + 1] = (UCHAR)((gV[0][x] + gV[0][x + 1] + gV[1][x] + gV[1][x + 1] + 2u) / 4u);
+    }
+}
+
+static VOID Emit(PUCHAR Out, ULONG j)
+{
+    if (gNv12)
+        EmitRowsNv12(Out, j);
+    else
+        EmitRows(Out, j);
+}
+
 /* Ring[i] (+ its saved tail) -> YUY2, 4 raw lines (= 2 binned rows) at a time. Sums of the black-subtracted channels
    for AE / WB. */
 static VOID Convert(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG64 *SumB, ULONG WbR, ULONG WbB)
@@ -216,7 +256,7 @@ static VOID Convert(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG64 *
                 gV[k][bx] = Clamp8(((112 * R - 94 * G - 18 * B + 128) >> 8) + 128);
             }
         }
-        EmitRows(Out, j);
+        Emit(Out, j);
     }
     *SumG = sg; *SumR = sr; *SumB = sb;
 }
@@ -263,7 +303,7 @@ static VOID ConvertBinFast(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, UL
             gU[0][x] = gU[0][x + 1] = gU[1][x] = gU[1][x + 1] = Clamp8(u);
             gV[0][x] = gV[0][x + 1] = gV[1][x] = gV[1][x + 1] = Clamp8(v);
         }
-        EmitRows(Out, j);
+        Emit(Out, j);
     }
     *SumG = sg; *SumR = sr; *SumB = sb;
 }
@@ -333,7 +373,7 @@ static VOID ConvertBin(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG6
                 gV[k][x] = Clamp8(((112 * R - 94 * G - 18 * B + 128) >> 8) + 128);
             }
         }
-        EmitRows(Out, j);
+        Emit(Out, j);
     }
     *SumG = sg; *SumR = sr; *SumB = sb;
 }
@@ -403,7 +443,7 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         ExReleaseFastMutex(&gCamMutex);
         return STATUS_PENDING;
     }
-    if (lead->OffsetOut.Remaining < CAM_BYTES) {         /* a buffer smaller than a frame: return it empty */
+    if (lead->OffsetOut.Remaining < (gNv12 ? CAM_BYTES_NV12 : CAM_BYTES)) {   /* smaller than a frame: return it empty */
         KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, 0, TRUE);
         c->LastSeq = seq;
         ExReleaseFastMutex(&gCamMutex);
@@ -444,7 +484,7 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         fi->PictureNumber = (LONGLONG)c->Frames;
         fi->DropCount = (LONGLONG)c->Drops;
     }
-    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, CAM_BYTES, TRUE);
+    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, gNv12 ? CAM_BYTES_NV12 : CAM_BYTES, TRUE);
 
     /* gray-world white balance (smoothed, x1/4 .. x4) and auto exposure from this frame */
     if (sr > 0 && sb > 0) {
@@ -471,7 +511,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     if (gBin)
         in.Flags |= S10ECAM_SHOT_BIN;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.7 start: output %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
+    Log(&r, "S10eCamera 0.8 start: output %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
         gBin == 2 ? "912 x 684 (binned) + bilinear demosaic" : gBin ? "912 x 684 (binned) + 2x2-block conversion" :
                     "1824 x 1368 + 2 x 2 binning");
@@ -506,7 +546,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.7 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+    Log(&r, "S10eCamera 0.8 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
         c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
@@ -516,15 +556,24 @@ static VOID CamStop(CAMPIN *c)
     WriteReport(gLog, r.Used);
 }
 
+/* A connection format we produce: VIDEOINFOHEADER, the configured size, YUY2 or NV12. */
+static BOOLEAN FormatOk(PKSPIN Pin)
+{
+    PKS_DATAFORMAT_VIDEOINFOHEADER f = (PKS_DATAFORMAT_VIDEOINFOHEADER)Pin->ConnectionFormat;
+
+    return Pin->ConnectionFormat->FormatSize >= sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) &&
+           f->VideoInfoHeader.bmiHeader.biWidth == (LONG)gOutW && f->VideoInfoHeader.bmiHeader.biHeight == (LONG)gOutH &&
+           (f->VideoInfoHeader.bmiHeader.biCompression == S10_FOURCC_YUY2 ||
+            f->VideoInfoHeader.bmiHeader.biCompression == S10_FOURCC_NV12);
+}
+
 static NTSTATUS PinCreate(PKSPIN Pin, PIRP Irp)
 {
     PKS_DATAFORMAT_VIDEOINFOHEADER f = (PKS_DATAFORMAT_VIDEOINFOHEADER)Pin->ConnectionFormat;
     CAMPIN                         *c;
 
     UNREFERENCED_PARAMETER(Irp);
-    if (Pin->ConnectionFormat->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ||
-        f->VideoInfoHeader.bmiHeader.biWidth != (LONG)gOutW || f->VideoInfoHeader.bmiHeader.biHeight != (LONG)gOutH ||
-        f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2) {
+    if (!FormatOk(Pin)) {
         Trace("pin create: format size %u, subtype %08X, %d x %d, compression %08X -> NO_MATCH\r\n",
               Pin->ConnectionFormat->FormatSize, Pin->ConnectionFormat->SubFormat.Data1,
               Pin->ConnectionFormat->FormatSize >= sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ? f->VideoInfoHeader.bmiHeader.biWidth : 0,
@@ -536,7 +585,8 @@ static NTSTATUS PinCreate(PKSPIN Pin, PIRP Irp)
     if (c == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
     Pin->Context = c;
-    Trace("pin create: YUY2 %u x %u ok\r\n", gOutW, gOutH);
+    gNv12 = f->VideoInfoHeader.bmiHeader.biCompression == S10_FOURCC_NV12;   /* one pin instance (cinstances 1) */
+    Trace("pin create: %s %u x %u ok\r\n", gNv12 ? "NV12" : "YUY2", gOutW, gOutH);
     return STATUS_SUCCESS;
 }
 
@@ -576,13 +626,15 @@ static NTSTATUS PinSetDataFormat(PKSPIN Pin, PKSDATAFORMAT OldFormat, PKSMULTIPL
     UNREFERENCED_PARAMETER(OldAttributeList);
     UNREFERENCED_PARAMETER(DataRange);
     UNREFERENCED_PARAMETER(AttributeRange);
-    if (Pin->ConnectionFormat->FormatSize < sizeof(KS_DATAFORMAT_VIDEOINFOHEADER) ||
-        f->VideoInfoHeader.bmiHeader.biWidth != (LONG)gOutW || f->VideoInfoHeader.bmiHeader.biHeight != (LONG)gOutH ||
-        f->VideoInfoHeader.bmiHeader.biCompression != S10_FOURCC_YUY2) {
+    if (!FormatOk(Pin)) {
         Trace("pin set format: refused (size %u)\r\n", Pin->ConnectionFormat->FormatSize);
         return STATUS_NO_MATCH;
     }
-    Trace("pin set format: ok\r\n");
+    /* AVStream calls this also BEFORE the pin's create dispatch (trace 2026-11-16: "set format" precedes "pin create"),
+       when Pin->Context is still NULL. A change on a created pin applies only while it is not running. */
+    if (Pin->Context == NULL || !((CAMPIN *)Pin->Context)->Running)
+        gNv12 = f->VideoInfoHeader.bmiHeader.biCompression == S10_FOURCC_NV12;
+    Trace("pin set format: %s ok\r\n", f->VideoInfoHeader.bmiHeader.biCompression == S10_FOURCC_NV12 ? "NV12" : "YUY2");
     return STATUS_SUCCESS;
 }
 
@@ -609,19 +661,41 @@ static KS_DATARANGE_VIDEO gRangeYuy2 = {
         { sizeof(KS_BITMAPINFOHEADER), CAM_SH, CAM_SW, 1, 16, S10_FOURCC_YUY2, CAM_BYTES, 0, 0, 0, 0 } }
 };
 
+static KS_DATARANGE_VIDEO gRangeNv12 = {
+    {   sizeof(KS_DATARANGE_VIDEO), 0, CAM_BYTES_NV12, 0,
+        { STATIC_KSDATAFORMAT_TYPE_VIDEO }, { STATIC_S10_SUBTYPE_NV12 }, { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO } },
+    TRUE, FALSE, KS_VIDEOSTREAM_CAPTURE, 0,
+    {   { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO },
+        KS_AnalogVideo_None,
+        { CAM_SH, CAM_SW }, { CAM_SH, CAM_SW }, { CAM_SH, CAM_SW },
+        1, 1, 1, 1,
+        { CAM_SH, CAM_SW }, { CAM_SH, CAM_SW },
+        1, 1, 0, 0, 0, 0,
+        CAM_INTERVAL, CAM_INTERVAL,
+        CAM_BYTES_NV12 * 8 * 30, CAM_BYTES_NV12 * 8 * 30 },
+    {   { 0, 0, 0, 0 }, { 0, 0, 0, 0 },
+        CAM_BYTES_NV12 * 8 * 30, 0, CAM_INTERVAL,
+        { sizeof(KS_BITMAPINFOHEADER), CAM_SH, CAM_SW, 1, 12, S10_FOURCC_NV12, CAM_BYTES_NV12, 0, 0, 0, 0 } }
+};
+
 static VOID SetRangeSize(ULONG W, ULONG H)
 {
-    KS_VIDEO_STREAM_CONFIG_CAPS *c = &gRangeYuy2.ConfigCaps;
-    SIZE                         z;
+    KS_DATARANGE_VIDEO *r[2] = { &gRangeYuy2, &gRangeNv12 };
+    SIZE                z;
+    ULONG               k;
 
     z.cx = (LONG)W;
     z.cy = (LONG)H;
-    c->InputSize = c->MinCroppingSize = c->MaxCroppingSize = c->MinOutputSize = c->MaxOutputSize = z;
-    gRangeYuy2.VideoInfoHeader.bmiHeader.biWidth = (LONG)W;
-    gRangeYuy2.VideoInfoHeader.bmiHeader.biHeight = (LONG)H;
+    for (k = 0; k < 2; k++) {
+        KS_VIDEO_STREAM_CONFIG_CAPS *c = &r[k]->ConfigCaps;
+
+        c->InputSize = c->MinCroppingSize = c->MaxCroppingSize = c->MinOutputSize = c->MaxOutputSize = z;
+        r[k]->VideoInfoHeader.bmiHeader.biWidth = (LONG)W;
+        r[k]->VideoInfoHeader.bmiHeader.biHeight = (LONG)H;
+    }
 }
 
-static const PKSDATARANGE gRanges[] = { (PKSDATARANGE)&gRangeYuy2 };
+static const PKSDATARANGE gRanges[] = { (PKSDATARANGE)&gRangeNv12, (PKSDATARANGE)&gRangeYuy2 };   /* 0.8: NV12 first */
 
 /* AVStream asks the pin to turn our (single) range into the format a client connects with: KSDATAFORMAT + header. */
 static NTSTATUS PinIntersect(PVOID Context, PIRP Irp, PKSP_PIN Pin, PKSDATARANGE DataRange, PKSDATARANGE MatchingDataRange,
@@ -638,7 +712,7 @@ static NTSTATUS PinIntersect(PVOID Context, PIRP Irp, PKSP_PIN Pin, PKSDATARANGE
        client range's own values are not needed. */
     Trace("intersect: client specifier %08X size %u, buffer %u\r\n", DataRange->Specifier.Data1, DataRange->FormatSize,
           DataBufferSize);
-    if (MatchingDataRange != (PKSDATARANGE)&gRangeYuy2 ||
+    if ((MatchingDataRange != (PKSDATARANGE)&gRangeYuy2 && MatchingDataRange != (PKSDATARANGE)&gRangeNv12) ||
         (!IsEqualGUID(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_VIDEOINFO) &&
          !IsEqualGUID(&DataRange->Specifier, &KSDATAFORMAT_SPECIFIER_WILDCARD)))
         return STATUS_NO_MATCH;
@@ -649,7 +723,7 @@ static NTSTATUS PinIntersect(PVOID Context, PIRP Irp, PKSP_PIN Pin, PKSDATARANGE
         return STATUS_BUFFER_TOO_SMALL;
     RtlCopyMemory(&f->DataFormat, &ours->DataRange, sizeof(KSDATAFORMAT));
     f->DataFormat.FormatSize = sizeof(KS_DATAFORMAT_VIDEOINFOHEADER);
-    f->DataFormat.SampleSize = CAM_BYTES;
+    f->DataFormat.SampleSize = ours->DataRange.SampleSize;
     RtlCopyMemory(&f->VideoInfoHeader, &ours->VideoInfoHeader, sizeof(KS_VIDEOINFOHEADER));
     return STATUS_SUCCESS;
 }
@@ -763,7 +837,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
         Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", rb);
-    Trace("S10eCamera 0.7 device start: YUY2 %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
+    Trace("S10eCamera 0.8 device start: YUY2 %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
           gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached", gBin ? "binned 912 x 684" : "1824 x 1368");
     return STATUS_SUCCESS;
 }
