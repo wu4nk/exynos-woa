@@ -233,3 +233,6 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   DYNAMIC_DEBUG, KPROBES + KPROBE_EVENTS, FUNCTION(_GRAPH)_TRACER) - recipe tools/android/kernel-ispdbg. Config
   check: UH/RKP not set in exynos9820_defconfig (:674 "# CONFIG_UH is not set", :642 RKP_CFP off), so kprobes /
   ftrace text patching is not blocked by a hypervisor. Not yet on the phone.
+- 2026-11-17 20:08 DEVICE (user, ispdbg1 kernel, Termux): "/dev/mem: present", "devmem tool: toybox devmem" - the
+  kernel works and /dev/mem exists. ispregs v1.1 found no /sys/devices/platform/17190000.fimc_is -> v1.2 searches
+  /sys/devices (depth 4) for a directory named *17190000* and lists the candidates / fimc nodes it sees.
