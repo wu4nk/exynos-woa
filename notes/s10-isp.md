@@ -332,3 +332,15 @@ File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera
   Android, and the ISP object at ddk+0x1d6d320 = 0xffffff80fbd4d320 = Android's "DICO_Object_Isp_Create
   0xffffff80fbd4d320". Both objects now sit at Android's addresses. Left: "3aaotfmode(0)" vs Android's 1 (which
   interface answer sets it - not found yet).
+### Setfile: tune sets created and applied (2026-11-17 21:05, front_init.py)
+- setfile_3j1.bin header (GPL hw-control.h:192 V3, magic 0x12345679): designed bits 0x798, "ISV7" "LL08", 64
+  scenarios, 6 IPs; per-IP tune-set counts [29, 1, 1, 1, 1, 2]; IP 0 = 3AA_ISP (design bit 3), entries of
+  0x21210 B each from file offset 0x74c. Scenario -> 3AA_ISP index table starts 7, 10, 14, 12, 0, 1, 25 ...
+- create_tune_set x29 (struct lib_tune_set, decrypt_flag 1 for V3 as hw-3aa.c load_setfile) -> all 0; the
+  handles equal Android's: index 0 0xffffff80fbfde2d0, index 6 0xffffff80fc0a4f90 (isfw-msg-android.txt).
+- apply_tune_set(object, 0, 6) (Android's preview index; the one-frame Fast AE index 7 skipped) -> 0:
+  "[DeserializeContext] start address : fc0a4f98, size : 135686" and "Setfile Read : SUCCESS! [135686/135686]"
+  - byte for byte Android's numbers. No register access yet: tune data is applied to hardware on the first
+  frame (to confirm with set_param / shot).
+- Not done yet (Android does them): DICO_SystemConfig for the ISP chain, VRA frame-work init + tune copy,
+  DICO_LoadCalData (EEPROM calibration at 0x1f752000 on Android - our side has no EEPROM read yet).

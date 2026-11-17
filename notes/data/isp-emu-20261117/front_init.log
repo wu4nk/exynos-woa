@@ -111,4 +111,27 @@ register_sensor_interface -> 0
    log: ActivateAlgorithms[399] pipeline(2) 
    log: [@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0xffffff80fbd4d320
 ISP object = ddk+0x1d6d320
+setfile: magic 0x12345679 designed 0x798 ISV7 LL08 scenarios 64 ips 6, 3AA_ISP tune sets 29
+create_tune_set x29 done; log lines 58 (first: ['[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(0)', '[@][WRAP][S0]newTuneSet: index( 0), tuneSetHandle(0xffffff80fbfde2d0)'])
+== 3AA apply_tune_set 6 -> 0x0  (register accesses 0, OS calls 64, interface calls 23)
+   log: [@][WRAP][E][S0]DICO_3aa_ApplyTuneSet I6
+   log: [DeserializeContext] start address : fc0a4f98, size : 135686, end address : fc0c619e
+   log: WdrRgbyHist 256bins
+   log: [TuneSetApply] ----------------------------------------
+   log: [TuneSetApply] Setfile Read : SUCCESS! [135686/135686]
+   log: [TuneSetApply] ----------------------------------------
+   log: [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+   log: [@][WRAP](WRAP_GetProperties[587]): order (0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+   log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+   log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+   log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+   log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+   log: [@][WRAP][S0]applyTuneSet: hw(0), index(6), tuneSetHandle(0xffffff80fc0a4f90)
 interrupts registered: [(0, 0, 'ddk+0x331e34'), (1, 0, 'ddk+0x331e34'), (6, 2, 'ddk+0x331e34'), (7, 2, 'ddk+0x331e34')]

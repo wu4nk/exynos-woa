@@ -122,6 +122,31 @@ obji = e.alloc(8)
 info_isp = (38 << 16) | (1 << 12)      # Android: DICO_Object_Isp_Create (0x00261000) input(1) = M2M
 step('ISP object_create', tabs['ISP']['object_create'], obji, info_isp, hw)
 print('ISP object =', e.img(e.q(obji)))
+# --- setfile (GPL hardware/fimc-is-hw-control.c parse_setfile_header / parse_setfile_info, V3 header
+# hw-control.h:192): IP 0 = 3AA_ISP (designed bit 3), 29 tune sets on this phone's setfile_3j1.bin
+SF = open(os.path.join(BIN, 'setfile_3j1.bin'), 'rb').read()
+magic, designed, ver, rev, nscen, nips, ent_off = struct.unpack_from('<II4s4sIII', SF, 0)
+num_base = 28 + nips * nscen * 4
+tab_base = num_base + nips * 4
+count0 = struct.unpack_from('<I', SF, num_base)[0]
+print('setfile: magic 0x%x designed 0x%x %s %s scenarios %d ips %d, 3AA_ISP tune sets %d' %
+      (magic, designed, ver.decode(), rev.decode(), nscen, nips, count0))
+sf_mem = e.alloc(len(SF), 4096)
+e.u.mem_write(sf_mem, SF)
+ts = e.alloc(24)
+e.logs.clear()
+for idx in range(count0):
+    off, size = struct.unpack_from('<II', SF, tab_base + 8 * idx)
+    # struct lib_tune_set {u32 index; ulong addr; u32 size; int decrypt_flag} (interface-ddk.h:181), flag = V3
+    e.u.mem_write(ts, struct.pack('<IIQII', idx, 0, sf_mem + ent_off + off, size, 1))
+    r = e.call(tabs['3AA']['create_tune_set'], e.q(obj3), 0, ts) & 0xffffffff
+    if r:
+        print('create_tune_set %d -> 0x%x' % (idx, r))
+print('create_tune_set x%d done; log lines %d (first: %s)' % (count0, len(e.logs), e.logs[:2]))
+# Android applied 3AA tune set 7 (Fast AE, one frame) then 6 for the preview (isfw-msg-android.txt :200 / :316):
+# only the preview one here
+step('3AA apply_tune_set 6', tabs['3AA']['apply_tune_set'], e.q(obj3), 0, 6)
+
 print('interrupts registered:', [(i['id'], i['chain'], e.img(i['handler'])) for i in e.irqs])
 with open(os.path.join(OUT, 'interface-calls.txt'), 'w') as f:
     for name, lr, x, ret in e.stub_calls:
