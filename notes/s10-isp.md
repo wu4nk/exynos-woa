@@ -368,3 +368,10 @@ File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera
   set B, Corex Critical set A" = the live dump's shadow/COREX state (taken mid-stream) seen at frame 1.
 - Next: ISP (M2M) set_param/shot for F1, the frame interrupts (handler ddk+0x331e34: V SYNC / CIN ROW / FRAME
   END as Android's "TransitIsrState" lines), then F2..: what the blob writes per frame vs once.
+- 2026-11-17 21:40: the calibration exists only in kernel RAM on Android (kvaddr_cal, /dev/mem refuses RAM).
+  Samsung's own debug switch DEBUG_FORCE_DUMP_ENABLE (ExtremeKernel tree vendor/mcd/fimc-is-sec-define.h:166,
+  commented out) makes fimc_is_sec_readcal_eeprom write every EEPROM read to FIMC_IS_FW_DUMP_PATH
+  "/data/vendor/camera/" as "rom<rom_id>_dump.bin" (sec-define.c:1216-1228; ROM_ID_FRONT = 1 -> rom1_dump.bin) and
+  the FROM cal to "from_cal.bin" (:1894). Building "ispdbg2" = ispdbg1 + that define (recipe updated in
+  tools/android/kernel-ispdbg). Cal data is per-module calibration of the user's phone: kept out of the repo
+  (hash only), used by the emulator from the scratch area.

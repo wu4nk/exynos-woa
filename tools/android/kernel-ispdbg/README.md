@@ -15,3 +15,9 @@ Build = that repo's build.sh steps for `--model beyond1lte --oneui 6`, plus isp-
   57 671 680 B (gpt dump before the dual-boot split) -> 1 105 920 B to spare. The function tracer makes the image
   larger: if a later build does not fit, drop FUNCTION_GRAPH_TRACER / FUNCTION_TRACER first.
 - Host packages needed besides clang/lld: cpio (kernel/gen_kheaders.sh and the ramdisk). LTO link needs ~4 GB free.
+
+## ispdbg2 (2026-11-17)
+ispdbg1 + Samsung's own debug switch in drivers/media/platform/exynos/fimc-is2/vendor/mcd/fimc-is-sec-define.h:166:
+`/* #define DEBUG_FORCE_DUMP_ENABLE */` -> `#define DEBUG_FORCE_DUMP_ENABLE`. The kernel then writes the camera
+EEPROM contents it reads to /data/vendor/camera/rom<id>_dump.bin (front = rom1_dump.bin) - the calibration the ISP
+library loads with load_cal_data. version.config: ...-6cf3bf465-ispdbg2.
