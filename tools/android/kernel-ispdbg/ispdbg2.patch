@@ -1,0 +1,35 @@
+diff --git a/arch/arm64/configs/isp-debug.config b/arch/arm64/configs/isp-debug.config
+new file mode 100644
+index 000000000..defe5952b
+--- /dev/null
++++ b/arch/arm64/configs/isp-debug.config
+@@ -0,0 +1,16 @@
++# wu4nk ISP-debug build (exynos-woa-s10 notes/s10-isp.md, 2026-11-17)
++# /dev/mem for tools/android/ispregs-s10.sh: MMIO readable even while a driver owns it
++CONFIG_DEVMEM=y
++CONFIG_STRICT_DEVMEM=y
++# CONFIG_IO_STRICT_DEVMEM is not set
++# debugfs: /sys/kernel/debug/fimc-is/isfw-msg (the ISP library's own log), tracing under /sys/kernel/debug/tracing
++CONFIG_DEBUG_FS=y
++# pr_debug of any driver switchable at run time (/sys/kernel/debug/dynamic_debug/control)
++CONFIG_DYNAMIC_DEBUG=y
++# kprobe events: log arguments of fimc-is / CSIS functions without rebuilding
++CONFIG_KPROBES=y
++CONFIG_KPROBE_EVENTS=y
++# function / function-graph tracer (who calls what in fimc-is, with timings)
++CONFIG_FUNCTION_TRACER=y
++CONFIG_FUNCTION_GRAPH_TRACER=y
++CONFIG_DYNAMIC_FTRACE=y
+diff --git a/drivers/media/platform/exynos/fimc-is2/vendor/mcd/fimc-is-sec-define.h b/drivers/media/platform/exynos/fimc-is2/vendor/mcd/fimc-is-sec-define.h
+index 2627d2eaa..6ba74379b 100644
+--- a/drivers/media/platform/exynos/fimc-is2/vendor/mcd/fimc-is-sec-define.h
++++ b/drivers/media/platform/exynos/fimc-is2/vendor/mcd/fimc-is-sec-define.h
+@@ -163,7 +163,7 @@
+ #define FROM_VERSION_V004 '4'
+ #define FROM_VERSION_V005 '5'
+ 
+-/* #define DEBUG_FORCE_DUMP_ENABLE */
++#define DEBUG_FORCE_DUMP_ENABLE /* wu4nk ispdbg2: dump EEPROM/FROM cal to /data/vendor/camera/ */
+ 
+ /* #define CONFIG_RELOAD_CAL_DATA 1 */
+ 

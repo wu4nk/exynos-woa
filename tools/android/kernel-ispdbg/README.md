@@ -21,3 +21,6 @@ ispdbg1 + Samsung's own debug switch in drivers/media/platform/exynos/fimc-is2/v
 `/* #define DEBUG_FORCE_DUMP_ENABLE */` -> `#define DEBUG_FORCE_DUMP_ENABLE`. The kernel then writes the camera
 EEPROM contents it reads to /data/vendor/camera/rom<id>_dump.bin (front = rom1_dump.bin) - the calibration the ISP
 library loads with load_cal_data. version.config: ...-6cf3bf465-ispdbg2.
+
+The exact kernel-tree change is ispdbg2.patch (git apply in the ExtremeKernel checkout @6cf3bf465). The
+upstream repo is ravindu644's: the change is kept here, never pushed there.
