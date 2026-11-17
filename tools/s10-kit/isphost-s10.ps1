@@ -1,5 +1,5 @@
 <#
-  isphost-s10.ps1 (v1.0) - Galaxy S10, WINDOWS: Stage 4 option A on the phone itself (notes/s10-isp.md).
+  isphost-s10.ps1 (v1.1) - Galaxy S10, WINDOWS: Stage 4 option A on the phone itself (notes/s10-isp.md).
   Nothing here touches the camera hardware: no driver, no registers. Two user-mode tests:
       .\isphost-s10.ps1 x18      x18test.exe: does Windows leave x18 alone while foreign code holds a value in it?
                                  16 threads (more than the 8 cores: they get preempted and moved) keep a magic value
@@ -25,7 +25,7 @@ $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $out = 'C:\S10Prov\isphost'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-Write-Host "isphost-s10 v1.0  ($Action)"
+Write-Host "isphost-s10 v1.1  ($Action)"
 foreach ($f in 'x18test.exe', 'isphost-test.exe', 'sensor_itf_layout.txt', 'dump\3AA0.txt', 'dump\ISPLP.txt') {
     if (-not (Test-Path (Join-Path $here $f))) { throw "missing $f next to this script - unpack the whole zip" }
 }
@@ -40,10 +40,11 @@ if ($Action -eq 'x18' -or $Action -eq 'all') {
     if (-not $x18ok) { Write-Host 'x18 NOT preserved: the native host cannot work this way - send the zip' -ForegroundColor Red }
 }
 
-if (($Action -eq 'host') -or ($Action -eq 'all' -and $x18ok)) {
-    foreach ($f in 'fimc_is_lib.bin', 'fimc_is_rta.bin', 'setfile_3j1.bin') {
-        if (-not (Test-Path (Join-Path $Lib $f))) { throw "missing $Lib\$f (copy it from s10cam.zip\files)" }
-    }
+$missing = @('fimc_is_lib.bin', 'fimc_is_rta.bin', 'setfile_3j1.bin') | Where-Object { -not (Test-Path (Join-Path $Lib $_)) }
+if ($missing -and ($Action -ne 'x18')) {
+    Write-Host "missing in ${Lib}: $($missing -join ', ') (copy them from s10cam.zip\files) - host test skipped" -ForegroundColor Yellow
+}
+if (-not $missing -and (($Action -eq 'host') -or ($Action -eq 'all' -and $x18ok))) {
     $hostOut = Join-Path $out 'run'
     if (Test-Path $hostOut) { Remove-Item -Recurse -Force $hostOut }
     $args2 = @($Lib, (Join-Path $here 'dump'), $hostOut, (Join-Path $here 'sensor_itf_layout.txt'))

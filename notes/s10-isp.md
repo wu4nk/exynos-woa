@@ -581,3 +581,9 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
 - tools/s10-kit/isphost-s10.ps1 v1.0 (CRLF, psparse 0 errors): x18 | host | all; results C:\S10Prov\isphost.zip.
   The libraries must be copied by the user into C:\S10Prov\isp (from s10cam.zip\files): never shipped by us.
   NOT RUN YET.
+- Review of 9492da5: (1) isphost-s10.ps1 'all' threw when the libraries were missing, before zipping the x18
+  result -> v1.1 skips the host test with a message and still zips (fixed). (2) OPEN, for the hardware version:
+  plat_win.c sleeps / timed waits use Sleep / SleepConditionVariableSRW (ms, default timer resolution ~15.6 ms) where
+  the kernel's msleep is 1-2 jiffies (4-8 ms at HZ=250) - irrelevant for the fake-window test, to be replaced
+  (high-resolution waitable timer, documented CREATE_WAITABLE_TIMER_HIGH_RESOLUTION) when real frames are timed.
+  (3) mmio_plain's model thread spins at TIME_CRITICAL on one core for the whole run (test only, 8 cores).
