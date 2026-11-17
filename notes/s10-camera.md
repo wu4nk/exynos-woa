@@ -782,3 +782,17 @@ Logs: notes/data/camera-s10-status-10web-nv12 / -11settings-nv12-20261117.txt (p
   ioctls; the 3A and ISP programming happen in the kernel-side blobs, so ftrace / the fimc-is debug log would be the
   tool there. Realistic use: an oracle for tuning numbers (sensor exposure / gain per scene, AWB gains, CCM) to
   improve our CPU pipeline.
+
+## tools/android: camtrace-s10.sh v1.0 + camhal-ioctl.js v1.0 (2026-11-17) - NOT run
+- For the Android side (root): camtrace-s10.sh copies Samsung's camera binaries from the user's own phone into
+  /sdcard/s10cam/files (fimc_is_*.bin = DDK / RTA, setfile_*.bin, libexynoscamera*.so, camera.exynos*.so,
+  libhwjpeg*.so; found with find over /vendor /system /odm /product; sha256 + size listed), turns on the kernel's
+  i2c trace events (i2c_write / read / reply / result) for N seconds while the user runs the front camera, then saves
+  the trace (sensor = "a=010", S2MPB02 = "a=059" - 0x59 as in S10eCam.c), debugfs fimc-is/isfw-msg (fimc-is-debug.c
+  DEBUG_FS_ROOT_NAME "fimc-is", DEBUG_FS_LOGFILE_NAME "isfw-msg") and dmesg. Paths from fimc-is-binary.h:18-20
+  (FIMC_IS_FW_PATH "/system/vendor/firmware/", dumps "/data/vendor/camera/") - the script finds rather than assumes.
+  Read-only for the phone; files are for study, never redistributed. sh -n clean.
+- camhal-ioctl.js (Frida): logs ioctls on /dev/video* and /dev/v4l-subdev* in the camera provider process with
+  V4L2 names; the VIDIOC values were printed by a C program from linux/videodev2.h (LP64), not typed from memory
+  (the first draft's G/S_EXT_CTRLS guess was wrong: 0xc0205647 / 0xc0205648). Decodes S_CTRL id/value, S_INPUT,
+  S_FMT size/fourcc. Syntax-checked with node only.
