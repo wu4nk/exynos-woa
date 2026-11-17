@@ -11,7 +11,10 @@ they are read from the phone at run time.
 | `isphost.h` / `isphost.c` | portable core: loader + relocation, x18 trampolines, GPL OS-service tables, task / timer / interrupt threads, DMA bookkeeping |
 | `tramp.S` | reference source of the trampoline machine code (`isphost.c` emits the same words; `check_tramp.py` proves it) |
 | `plat_posix.c` | platform layer for AArch64 Linux (build machine under qemu-aarch64, or Android itself) |
-| `mmio_trap.c` | TEST ONLY: register windows as trapped mappings (every access decoded, logged, performed on a dump) |
+| `plat_win.c` | platform layer for Windows ARM64 user mode (test version: plain-memory windows and DMA) |
+| `mmio_trap.c` | TEST ONLY (Linux): register windows as trapped mappings (every access decoded, logged, performed on a dump) |
+| `mmio_plain.c` | TEST ONLY (Windows): the same API on plain memory + a thread modelling the self-clearing registers |
+| `x18test.c` | behavioural test: does Windows ARM64 keep a foreign value in x18 across preemption / migration? |
 | `test_front.c` | the front-camera run of `tools/isp-re/front_init.py`, natively |
 | `cmp_emu.py` | compares a `test_front` run with a `front_init.py` run (returns, log lines, register accesses per step) |
 
@@ -32,5 +35,8 @@ python3 -I cmp_emu.py notes/data/isp-dump-20261117 <front_init.py out dir> <out 
 ```
 Env: `FRAMES` (3), `ISP` (1), `TRACE=1`, `QUIET=1`. Diagnosis switches that reproduce the emulator's old OS models
 (never for real use): `DIAG_EMU_USEC`, `DIAG_IN_IRQ0`, `DIAG_RANDOM0`.
+
+Windows ARM64: `sh build-win.sh <out dir>` (zig, aarch64-windows-gnu) -> `isphost-test.exe`, `x18test.exe`; on the
+phone `tools/s10-kit/isphost-s10.ps1 x18 | host | all`.
 
 Outputs: `host.log`, `interface-calls.txt`, `mmio-<step>.txt`, `regs-3AA0.txt` / `regs-ISPLP.txt`, `timing.txt`.

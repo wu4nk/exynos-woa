@@ -550,3 +550,34 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   isphost-s10.tar.gz: copies the three libraries from /vendor into /data/local/tmp/isphost, runs FRAMES=30 against
   the dump-filled fake windows (no hardware, no /dev/mem), packs out/ to /sdcard/s10cam/isphost-out.tar.gz and
   deletes the copied libraries. Gives: the host on real silicon (not qemu) + the real per-frame cost. NOT RUN YET.
+## Stage 4 option A, step 3: Windows (2026-11-17 22:20)
+- Microsoft docs first (AGENTS.md 13):
+  - WdfDeviceGetHardwareRegisterMappedAddress (learn.microsoft.com/.../wdfdevice/nf-wdfdevice-
+    wdfdevicegethardwareregistermappedaddress): "A driver calls WdfDeviceGetHardwareRegisterMappedAddress to get the
+    user-mode mapped address of the memory resource it mapped previously using WdfDeviceMapIoSpace" ... "it can
+    access the user-mode address directly" ... "you must set the UmdfRegisterAccessMode INF directive to
+    RegisterAccessUsingUserModeMapping"; "Not the recommended approach" (no UMDF validation); UMDF 2.0, PASSIVE_LEVEL.
+    -> the libraries' plain pointer accesses to registers are possible from a UMDF 2 host process.
+  - "Creating an interrupt object" (wdf/creating-an-interrupt-object): framework 1.11+ on Windows 8+ "KMDF and UMDF
+    drivers can create interrupt objects requiring passive-level handling"; UMDF supports level-triggered,
+    edge-triggered (exclusive) and MSI interrupts.
+  - "Comparing UMDF 2 Functionality to KMDF" (wdf/comparing-umdf-2-0-functionality-to-kmdf): "the following features
+    are available only to KMDF drivers ... Direct memory access (DMA)". -> the ISP's DMA buffers (3AA output, ISP
+    input, the libraries' own taaisp / tnr / medrc pools) need a kernel-mode helper whatever hosts the libraries.
+  - UNKNOWN that decides option A on Windows: whether Windows' kernel preserves a user thread's x18 when it is not
+    the TEB (preemption, interrupts, migration). Not answered by the ABI page ("Reserved platform register ... In user
+    mode, points to TEB", volatility "N/A"). Per AGENTS.md 11 no Windows binary is examined: a behavioural test
+    instead -> tools/isp-host/x18test.c (16 threads keep a magic value in x18 for 2e9 checks each, more threads than
+    cores so they are preempted and migrated; any change is reported and compared with the TEB). POSIX sanity run
+    under qemu: preserved (as expected on Linux).
+- plat_win.c (Win32, documented APIs only: VirtualAlloc RWX, FlushInstructionCache, SRW locks + condition
+  variables, CreateThread with a COMMITTED stack - the libraries are kernel code without stack probes -,
+  GetCurrentThreadStackLimits for the trampolines' thread table, NtCurrentTeb() as the host x18, QPC) + mmio_plain.c
+  (plain-memory windows + a TIME_CRITICAL thread modelling the self-clearing registers: on Windows an access fault
+  inside the libraries cannot be used for trapping, the exception dispatcher would run with the libraries' x18).
+  Cross-built with zig -target aarch64-windows-gnu (UCRT only, no extra DLLs): isphost-test.exe, x18test.exe.
+  The same plain variant on Linux/qemu: runs through, one "[ERROR][3AA]sw_reset is time-out" (the model thread lost a
+  race on 2 CPUs - the run goes on), as expected for that model.
+- tools/s10-kit/isphost-s10.ps1 v1.0 (CRLF, psparse 0 errors): x18 | host | all; results C:\S10Prov\isphost.zip.
+  The libraries must be copied by the user into C:\S10Prov\isp (from s10cam.zip\files): never shipped by us.
+  NOT RUN YET.

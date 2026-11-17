@@ -1,7 +1,9 @@
 /*
  * test_front.c - the front-camera run of tools/isp-re/front_init.py, natively: Samsung's libraries executed by
- * isphost on AArch64 Linux user mode (qemu-aarch64 on the build machine), register windows = trapped mappings
- * (mmio_trap.c) backed by this phone's live dumps, no hardware. Same order, same sensor answers, same parameter / shot structs.
+ * isphost, no hardware: on AArch64 Linux (qemu-aarch64 on the build machine, or Android on the phone) with
+ * trapped register windows (mmio_trap.c, every access logged), on Windows ARM64 with plain ones (mmio_plain.c),
+ * both backed by this phone's live register dumps. Same order, same sensor answers, same parameter / shot structs
+ * as front_init.py.
  *
  *   test_front <bin dir> <dump dir> <out dir> <sensor_itf_layout.txt> [front calibration image]
  *   env FRAMES (default 3), ISP (default 1), TRACE=1 (every OS call)
@@ -9,11 +11,17 @@
  * final contents, "offset value"), <out>/mmio-<step>.txt (every register access), <out>/timing.txt.
  */
 #define _GNU_SOURCE
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#include <malloc.h>
+#define mkdir(p, m) _mkdir(p)
+#define aligned_alloc(a, n) _aligned_malloc((n), (a))
+#else
 #include <sys/stat.h>
+#endif
 
 #include "isphost.h"
 #include "mmio_trap.h"
