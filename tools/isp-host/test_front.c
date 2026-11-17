@@ -421,8 +421,8 @@ int main(int argc, char **argv)
     dump_window(WI, "ISPLP");
     struct isp_stats st;
     isp_get_stats(H, &st);
-    snprintf(b, sizeof(b), "done: os calls %llu, tasks %llu, timers %llu, irqs %llu",
-             (unsigned long long)st.os_calls, (unsigned long long)st.tasks_run, (unsigned long long)st.timers_fired,
+    snprintf(b, sizeof(b), "done: traced OS calls %llu, tasks %llu, timers %llu, irqs %llu",
+             (unsigned long long)st.traced_calls, (unsigned long long)st.tasks_run, (unsigned long long)st.timers_fired,
              (unsigned long long)st.irqs_run);
     plat_log(b);
     fclose(timing);

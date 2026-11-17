@@ -92,7 +92,8 @@ void isp_set_log_hook(isp_host *h, void (*hook)(void *, const char *), void *arg
 /* DMA helpers for callers (same pool the libraries use) */
 int isp_dma_alloc(isp_host *h, u32 size, void **kva, u32 *dva);
 /* counters for the report */
-struct isp_stats { u64 os_calls, host_calls, tasks_run, timers_fired, irqs_run; };
+struct isp_stats { u64 traced_calls, tasks_run, timers_fired, irqs_run; };  /* traced_calls: the subset
+                                                                                         of OS calls that pass trace() */
 void isp_get_stats(isp_host *h, struct isp_stats *s);
 const char *isp_img(isp_host *h, u64 addr, char *buf, size_t n);   /* "ddk+0x..." / "rta+0x..." / "0x..." */
 

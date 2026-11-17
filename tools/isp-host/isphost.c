@@ -96,8 +96,7 @@ static isp_host *G;                /* one instance per process: the OS callbacks
 static _Thread_local struct thr_entry *tls_entry;
 static _Thread_local int tls_in_irq;
 int isp_trace;                     /* 1: log every OS call */
-int isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;  /* DIAGNOSIS: emulator models */
-int isp_diag_unused_;             /* DIAGNOSIS: get_usec as front_init.py modelled it (notes/s10-isp.md) */
+int isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;  /* DIAGNOSIS: emulator models */             /* DIAGNOSIS: get_usec as front_init.py modelled it (notes/s10-isp.md) */
 
 /* ---------------- small helpers ---------------- */
 static void logf_(const char *fmt, ...)
@@ -377,7 +376,7 @@ static void timer_thread(void *p)
 
 static void trace(const char *name, u64 a0, u64 a1, u64 a2, u64 ret)
 {
-    __atomic_add_fetch(&G->st.os_calls, 1, __ATOMIC_RELAXED);
+    __atomic_add_fetch(&G->st.traced_calls, 1, __ATOMIC_RELAXED);
     if (isp_trace) logf_("  os %-22s %llx %llx %llx -> %llx", name, (unsigned long long)a0, (unsigned long long)a1,
                          (unsigned long long)a2, (unsigned long long)ret);
 }

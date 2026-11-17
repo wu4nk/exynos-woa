@@ -95,14 +95,15 @@ static void handler(int sig, siginfo_t *si, void *ucv)
 #define XN(r) ((r) == 31 ? m->sp : x[r])             /* base register: 31 = sp */
     int rt = in & 31, rn = (in >> 5) & 31;
     lock();
-    if ((in & 0x3b000000) == 0x39000000 || (in & 0x3b200000) == 0x38000000 || (in & 0x3b200c00) == 0x38200800) {
-        /* LDR/STR (unsigned imm), LDUR/STUR / pre / post index (imm9), register offset; V = 0 only */
+    if ((in & 0x3f000000) == 0x39000000 || (in & 0x3f200000) == 0x38000000 || (in & 0x3f200c00) == 0x38200800) {
+        /* LDR/STR (unsigned imm), LDUR/STUR / pre / post index (imm9), register offset; bit 26 (V, SIMD) = 0 only */
         int size = 1 << (in >> 30), opc = (in >> 22) & 3;
+        if (size == 8 && opc == 2) { unlock(); m->pc += 4; return; }   /* PRFM: a hint, no access */
         u64 addr, base = XN(rn);
         int wb = 0;
-        if ((in & 0x3b000000) == 0x39000000) {
+        if ((in & 0x3f000000) == 0x39000000) {
             addr = base + (((in >> 10) & 0xfff) << (in >> 30));
-        } else if ((in & 0x3b200000) == 0x38000000) {
+        } else if ((in & 0x3f200000) == 0x38000000) {
             int mode = (in >> 10) & 3;
             u64 imm = sx((in >> 12) & 0x1ff, 9);
             addr = mode == 1 ? base : base + imm;    /* 1 post, 3 pre, 0 unscaled */
