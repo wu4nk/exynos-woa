@@ -478,3 +478,14 @@ x18 freely.
   grade pipeline (debayer, denoise, DRC, scaler), static tuning, no Samsung code on the phone at runtime.
 Every option needs the hardware facts first (ISP clocks / power, SysMMU bypass, 3AA DMA working under Windows),
 so the next hardware step is the same for all three.
+## Stage 4, step 1: can Windows reach the ISP? (S10eCam 0.11 / cam-s10.ps1 v1.7 "isp", 2026-11-17 22:50)
+Common to options A / B / C: the 3AA0 must answer Windows' reads. Known (notes/s10-camera.md 2026-11-16): inside
+pd-isppre Windows reads CMU_ISPPRE, CSIS2, CSIS DMA and SYSREG with the domain as sboot left it (no SMC), but the
+ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x124 P1 0x11).
+- New deep step 8 (driver 0.11): reads CMU_ISPPRE's 3AA0 aclk gate +0x201C (cmucal-sfr.c:1348) and QCH +0x3034
+  (:2380), and only if the gate and LHM_AXI_P are on, the 3AA0 (0x17190000, live DT fimc_is reg #1) ID registers
+  +0xF0 / +0xF4, compared with Android's 0x07010000 / 0x0000CC22. Two reads, no writes.
+- RISK stated to the user: if 3AA0 is protected like the SysMMU, the read aborts -> bugcheck 0x124 + reboot (no
+  other effect; WINPRAM ring + the write-through log name the step).
+- cam-s10.ps1 v1.7: action "isp" = that one step (the 3step loop stays 1..7). kcheck-wdm.sh S10eCam.c: no errors;
+  psparse cam-s10.ps1: 0 parse errors. NOT run on the phone yet.

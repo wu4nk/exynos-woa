@@ -193,6 +193,14 @@
 #define   IP_SYSMMU_ACLK      0x2060u
 #define   IP_LHM_AXI_P        0x20B4u       /* the register path into ISPPRE */
 #define   IP_SYSREG_PCLK      0x20D8u
+#define   IP_3AA0_ACLK        0x201Cu       /* 0.11: CLK_CON_GAT_GOUT_BLK_ISPPRE_UID_IS_ISPPRE_IPCLKPORT_ACLK_3AA0
+                                               (ExtremeKernel cal-if/exynos9820/cmucal-sfr.c:1348) */
+#define   IP_Q_3AA0           0x3034u       /* QCH_CON_IS_ISPPRE_QCH_3AA0 (cmucal-sfr.c:2380) */
+/* 0.11: 3AA0 of the ISP (live DT fimc_is@17190000 reg #1; the Samsung ISP library's 3AA chain). Its ID registers
+   as read on Android with the camera on (notes/s10-isp.md, ispregs v1.4 2026-11-17): +0xF0 0x07010000, +0xF4 0xcc22 */
+#define TAA0_BASE           0x17190000ULL
+#define   TAA_ID_VERSION      0x0F0u
+#define   TAA_ID_CODE         0x0F4u
 #define   IP_Q_CSIS2          0x3054u
 #define   IP_Q_CSISDMA        0x305Cu
 #define   IP_Q_PDPDMA         0x3064u
@@ -908,6 +916,25 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
         g = R32(sys, ISPPRE_PHY_RST);
         Log(r, "  SYSREG_ISPPRE +0x500 (D-PHY resets) %08X -> CSIS2 D-PHY %s\r\n", g,
             (g & (1u << 1)) ? "out of reset" : "IN reset");
+        break;
+    case 8:
+        /* 0.11: two reads of the 3AA0 ID registers, only with its aclk gate, its Q-channel and LHM_AXI_P on. RISK (written
+           in notes/s10-isp.md): the ISPPRE SysMMU's frame answered a read with an external abort (step 8 of 0.4) - 3AA0
+           may be protected the same way; an abort = bugcheck 0x124 + reboot, nothing else */
+        g = R32(cmu, IP_3AA0_ACLK);
+        Log(r, "  3AA0 aclk gate [+%04X] %08X -> %s, QCH [+%04X] %08X, LHM_AXI_P %08X\r\n", IP_3AA0_ACLK, g,
+            ClkOn(g) ? "on" : "NOT on", IP_Q_3AA0, R32(cmu, IP_Q_3AA0), R32(cmu, IP_LHM_AXI_P));
+        if (!ClkOn(g) || !ClkOn(R32(cmu, IP_LHM_AXI_P))) {
+            Log(r, "  3AA0 not read: aclk or LHM_AXI_P gated\r\n");
+            break;
+        }
+        csis = Map(TAA0_BASE, PAGE_4K);    /* the csis pointer reused for this 4 KiB mapping: unmapped at out */
+        if (!csis) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+        g = R32(csis, TAA_ID_VERSION);
+        i = R32(csis, TAA_ID_CODE);
+        Log(r, "  3AA0 +0xF0 %08X +0xF4 %08X -> %s\r\n", g, i,
+            (g == 0x07010000u && i == 0xCC22u) ? "= Android's (3AA v7.1, the library's ISP_Fimc3aaChainV7P1P0)" :
+            "NOT Android's 0x07010000 / 0x0000CC22");
         break;
     }
     Log(r, "step %u done\r\n", step);
@@ -1789,7 +1816,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.10 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.11 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1859,7 +1886,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.10 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.11 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1893,7 +1920,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.10 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.11 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);
