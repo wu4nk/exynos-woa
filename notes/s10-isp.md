@@ -461,3 +461,20 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
 - Microsoft's ARM64 ABI page (learn.microsoft.com/en-us/cpp/build/arm64-windows-abi-conventions) on x18: "Reserved
   platform register: in kernel mode, points to KPCR for the current processor; In user mode, points to TEB";
   volatility "N/A"; it does not spell out a "must not modify" rule beyond "Reserved".
+## Stage 4 decision point (2026-11-17 22:35) - how the ISP runs under Windows
+Facts now known: the libraries run their real front-camera path (init, setfile, calibration, 3AA + ISP frames)
+when given (1) register windows, (2) DMA buffers with 32-bit addresses, (3) interrupts, (4) the GPL OS services and
+(5) the GPL sensor interface; ~5 M AArch64 instructions per frame (~150 M/s at 30 fps); code is EL0-safe but uses
+x18 freely.
+- A. Native host in a user-mode process (UMDF 2 driver or a service + our kernel driver for MMIO / IRQ / DMA):
+  the blob runs at full speed; every entry into the blob and every OS callback out of it swaps x18 (blob's value
+  <-> TEB). Open points: no Windows code may run on that thread while the blob's x18 is live (no APC, no
+  exception, no profiler walk - our thunks must cover every exit), register access from user mode (UMDF user-mode
+  register mapping), interrupt latency at PASSIVE level, SysMMU state for the ISP DMA (still UNVERIFIED).
+- B. The emulator on the phone: no x18 issue, but ~150 M instructions/s to emulate - not credible on the S10 in
+  real time.
+- C. No blob at runtime: the emulator generates the register programs offline (init + per-frame set for a chosen
+  set of exposures / scenes); a Windows driver replays them and runs a small AE of its own on the sensor. Android-
+  grade pipeline (debayer, denoise, DRC, scaler), static tuning, no Samsung code on the phone at runtime.
+Every option needs the hardware facts first (ISP clocks / power, SysMMU bypass, 3AA DMA working under Windows),
+so the next hardware step is the same for all three.
