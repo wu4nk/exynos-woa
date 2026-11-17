@@ -594,3 +594,40 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   ISP M2M + scaler, sit in pd-isplp; if Windows leaves it off, running them needs power-on + the TZPC SMC like
   pd-isppre. Read-only, PMU = always-on block already read by every stage-3 call. kcheck-wdm: S10eCam.c clean,
   S10eCamera.c (includes S10eCam.c) the same 25 pre-existing warnings before and after.
+
+## Stage 4 option A, step 4: the Windows hardware path - design (2026-11-18 01:30)
+Microsoft docs read for it (AGENTS.md 13):
+- MmMapLockedPagesSpecifyCache (ddi/wdm/nf-wdm-mmmaplockedpagesspecifycache): AccessMode UserMode "returns a user
+  address that is valid in the context of the process in which the driver is running"; "Callers that specify
+  UserMode must wrap the call ... in a try/except block"; "A non-executable mapping is always created when AccessMode
+  is UserMode"; IRQL <= APC_LEVEL; buffers mapped to user space must be zeroed and page-multiple. "For mappings to
+  user space, MDLs that are built by the MmBuildMdlForNonPagedPool routine can be used."
+- MmBuildMdlForNonPagedPool (ddi/wdm/nf-wdm-mmbuildmdlfornonpagedpool): "the specified MDL must describe a buffer in
+  nonpaged system memory ... such as memory that is allocated by ... MmAllocateContiguousMemorySpecifyCache". The
+  page says nothing about I/O space -> mapping DEVICE REGISTERS into a process this way is NOT documented; contiguous
+  DMA memory IS.
+- So, documented split: registers + interrupts through UMDF 2 (WdfDeviceMapIoSpace +
+  WdfDeviceGetHardwareRegisterMappedAddress with UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping;
+  passive-level interrupt objects), DMA memory through a kernel helper (MmAllocateContiguousMemorySpecifyCache below
+  4 GiB -> MmBuildMdlForNonPagedPool -> MmMapLockedPagesSpecifyCache(UserMode) in the host process's context, i.e.
+  from its IOCTL handler; physical address = the 32-bit address the ISP DMA uses while its SysMMU is bypassed).
+- UMDF driver host (wdf/umdf-driver-host-process): Wudfhost.exe runs as LocalService; the page says nothing about
+  process mitigation policies -> whether VirtualAlloc(PAGE_EXECUTE_READWRITE) works inside Wudfhost is UNKNOWN and
+  must be tested there (a UMDF probe), as must x18 (x18test covers ordinary processes only).
+Hardware facts for it, verified:
+- Resources: DT fimc_is@17190000 (live.dts:4747) reg: CSIS_DMA 0x170E0000+0x100, 3AA0 0x17190000+0x10000, 3AA1
+  0x172A0000, ISPLP (= DEV_HW_ISP0) 0x17430000, ISPHQ 0x17730000, MCSC 0x17440000, VRA 0x17630000 (+0x10000 each),
+  STAT_DMA 0x17140000+0x100. interrupts (SPI): 0x13F 0x140 0x141 0x142 0x128 0x129 0x126 0x127 0x12B 0x12C 0x1AD;
+  K fimc-is-v7_0_0/fimc-is-hw-chain.c:1536.. (CONFIG_FIMC_IS_V7_0_0=y) maps them by index: 0/1 3AA0 INTR_HWIP1/2,
+  2/3 3AA1, 4/5 ISP0, 6/7 ISP1, 8 MCSC0, 9 MCSC1, 10 VRA. GSIV = SPI + 32: 3AA0 351 / 352, ISP0 328 / 329,
+  MCSC0 331.
+- The library registers (chain 0, id 0 / 1) for 3AA0 and (chain 2, id 6 / 7) for ISP0 (native run's log); the
+  kernel ISR (K fimc_is_isr1_ddk / isr2) only calls handler(id, ctx) between enter/exit_lib_isr: the library's
+  handler reads and clears the status itself -> a UMDF passive ISR = isp_irq_sync(chain, id). Until that runs, an
+  interrupt must NOT be connected (a level interrupt nobody clears would storm).
+Plan (each a task, each waits for the result before it):
+  1. x18test + isphost-test on Windows (sent, pending)          4. UMDF probe S10eIsp 0.1: DSDT device with the
+  2. run-isphost-s10.sh on Android (sent, pending)                 memory resources only, maps them, reads nothing;
+  3. S10eCam 0.12 isp: 3AA0 readable? pd-isplp on? (pending)       tests RWX + x18 inside Wudfhost
+  5. kernel helper: contiguous DMA buffers mapped into the host  6. host on hardware: 3AA0 only (pd-isppre is on),
+  7. pd-isplp power + TZPC SMC if needed, then ISP0 + MCSC        interrupts connected after the handler exists
