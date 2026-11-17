@@ -638,3 +638,15 @@ Log: notes/data/camera-s10-status-4-20261117.txt.
   Linux with a 912 x 684 buffer: Stats ok, rotate 270 -> 684 x 912 BMP.
 - S10eCamera: RingPoolAlloc call given SHOT_RING_BYTES (no behaviour change; its bin mode is the next task).
 - Checks: clang vs WDK 26100 -Wextra -Wconversion: only the pre-existing sign warning (S10eCam.c), S10eCamera unchanged.
+
+## S10eCamera 0.6 + camera-s10 v1.4: binned sensor mode + demosaic - NOT built, NOT run
+- Setting SensorBin (default 1): CamStart adds S10ECAM_SHOT_BIN; the device-start ring pool is 3 x (912 x 684 x 2 +
+  64 KiB) = 3 x 1.31 MB (was 3 x 5.06 MB). ConvertBin: 4-slot row cache (row & 3), each ring row read once
+  (1.25 MB uncached a frame instead of 5 MB); bilinear GRBG demosaic with reflected edges; black 64 after the
+  interpolation; same WB / gamma / BT.601 / MapOut / PutPair as 0.5. AE/WB sums per channel at its own sites,
+  n = 912 x 684 / 4. SensorBin 0 = the 0.5 path. Output size unchanged (684 x 912 for rotation 270).
+- Host test (gcc, the real ConvertBin/BinRow/MapOut/PutPair text): bright source top-left block -> TL/TR/BR/BL for
+  rotation 0/90/180/270, mirror flips left-right; every output byte written (checked with two fill values); flat
+  grey 464 -> Y 163 U/V 128, sums 400 each; R-only sites -> U 94 V 227 (red); B-only -> U 227 V 112 (blue);
+  G-only -> Y 130 U 63 V 45 (green).
+- camera-s10 v1.4: set -SensorBin, status shows it. DriverVer 0.6.0.0 (11/17/2026).

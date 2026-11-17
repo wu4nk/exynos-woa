@@ -28,6 +28,9 @@
  * 0.5: setting RingKeep (default 1; 0 = 0.3's per-start allocation) - a DIAGNOSIS switch: with 0.4 the clients closed
  *   the filter right after the data intersection, before any pin (2026-11-16 18:18), where with 0.3 they reached
  *   RUN; RingKeep 0 tells whether the 15 MiB held below 4 GB is what they missed.
+ * 0.6: setting SensorBin (default 1): the sensor's own 912 x 684 mode (S10eCam 0.9 S10ECAM_SHOT_BIN, 4 x 4 binned,
+ *   30 fps) + a bilinear demosaic here, instead of 1824 x 1368 + 2 x 2 binning: 1/4 of the uncached reads (0.4 spent
+ *   73 ms a frame converting, 2026-11-17) and a 3 x 1.3 MiB ring. Same output size either way. SensorBin 0 = 0.5.
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
@@ -68,10 +71,10 @@ typedef struct _CAMPIN {
 } CAMPIN;
 
 static FAST_MUTEX gCamMutex;                             /* Process vs start / stop (the ring must not go away) */
-static UCHAR      gRows[4 * S10ECAM_SHOT_STRIDE];        /* 4 raw lines, cached (the ring is uncached); image = nonpaged */
+static UCHAR      gRows[4 * S10ECAM_SHOT_STRIDE];        /* 4 raw lines (0.6 binned: 4 slots of 912), cached */
 static UCHAR      gY[2][CAM_SW], gU[2][CAM_SW], gV[2][CAM_SW];   /* 2 binned rows as Y, U, V (under gCamMutex) */
 static CHAR       gLog[8192];                            /* the engine's report of the last start / stop */
-static ULONG      gRot = 270, gMirror, gRingWc = 1, gRingKeep = 1;   /* settings (Parameters), read at device start */
+static ULONG      gRot = 270, gMirror, gRingWc = 1, gRingKeep = 1, gBin = 1;   /* settings (Parameters), read at device start */
 static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
 static WCHAR      gParamPath[260];                       /* <service key>\Parameters */
 
@@ -199,6 +202,83 @@ static VOID Convert(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG64 *
     *SumG = sg; *SumR = sr; *SumB = sb;
 }
 
+/* 0.6: the sensor's 912 x 684 GRBG frame (row 0: G R, row 1: B G) -> YUY2 by bilinear demosaic. Rows come from the
+   uncached ring once each into a 4-slot cache (slot = row & 3: a row pair 2j, 2j+1 needs rows 2j-1 .. 2j+2); edges
+   reflect (row -1 = row 1, column -1 = column 1, ...) so the Bayer phase stays. Sums for AE / WB: each channel at
+   its own sites (G only on the R rows), 912 x 684 / 4 samples each. */
+static PUSHORT BinRow(LONG y)
+{
+    if (y < 0) y = -y;
+    if (y >= (LONG)CAM_SH) y = 2 * (LONG)CAM_SH - 2 - y;
+    return (PUSHORT)(gRows + (ULONG)(y & 3) * S10ECAM_BIN_STRIDE);
+}
+
+static VOID ConvertBin(ULONG i, PUCHAR Out, ULONG64 *SumG, ULONG64 *SumR, ULONG64 *SumB, ULONG WbR, ULONG WbB)
+{
+    ULONG   j, k, x;
+    LONG    loaded = -1, want;
+    ULONG64 sg = 0, sr = 0, sb = 0;
+
+    for (j = 0; j < CAM_SH / 2; j++) {
+        want = (LONG)(2 * j + 2) < (LONG)CAM_SH ? (LONG)(2 * j + 2) : (LONG)CAM_SH - 1;
+        while (loaded < want) {
+            loaded++;
+            RtlCopyMemory(gRows + (ULONG)(loaded & 3) * S10ECAM_BIN_STRIDE,
+                          gS.x.Ring[i] + (SIZE_T)loaded * S10ECAM_BIN_STRIDE, S10ECAM_BIN_STRIDE);
+            if (loaded == (LONG)CAM_SH - 1)              /* the canary's 8 bytes: the frame's own values */
+                RtlCopyMemory(gRows + (ULONG)(loaded & 3) * S10ECAM_BIN_STRIDE + S10ECAM_BIN_STRIDE - 8, gS.Tail[i], 8);
+        }
+        for (k = 0; k < 2; k++) {
+            LONG    y = (LONG)(2 * j + k);
+            PUSHORT u = BinRow(y - 1), c = BinRow(y), d = BinRow(y + 1);
+
+            for (x = 0; x < CAM_SW; x++) {
+                ULONG xl = x ? x - 1 : 1, xr = x + 1 < CAM_SW ? x + 1 : CAM_SW - 2;
+                LONG  v = (LONG)(c[x] & 0x3FFu);
+                LONG  hor = (LONG)(((c[xl] & 0x3FFu) + (c[xr] & 0x3FFu)) / 2u);
+                LONG  ver = (LONG)(((u[x] & 0x3FFu) + (d[x] & 0x3FFu)) / 2u);
+                LONG  r, g, b, R, G, B;
+
+                if (k == 0 && (x & 1) == 0) {            /* G on an R row */
+                    g = v; r = hor; b = ver;
+                    sg += (ULONG)(g > 64 ? g - 64 : 0);
+                } else if (k == 0) {                     /* R */
+                    r = v; g = (hor + ver) / 2;
+                    b = (LONG)(((u[xl] & 0x3FFu) + (u[xr] & 0x3FFu) + (d[xl] & 0x3FFu) + (d[xr] & 0x3FFu)) / 4u);
+                    sr += (ULONG)(r > 64 ? r - 64 : 0);
+                } else if ((x & 1) == 0) {               /* B */
+                    b = v; g = (hor + ver) / 2;
+                    r = (LONG)(((u[xl] & 0x3FFu) + (u[xr] & 0x3FFu) + (d[xl] & 0x3FFu) + (d[xr] & 0x3FFu)) / 4u);
+                    sb += (ULONG)(b > 64 ? b - 64 : 0);
+                } else {                                 /* G on a B row */
+                    g = v; b = hor; r = ver;
+                }
+                r -= 64; g -= 64; b -= 64;               /* black level */
+                if (r < 0) r = 0;
+                if (g < 0) g = 0;
+                if (b < 0) b = 0;
+                r = (LONG)(((ULONG)r * WbR) >> 8);
+                b = (LONG)(((ULONG)b * WbB) >> 8);
+                R = gGamma[r > 1023 ? 1023 : r];
+                G = gGamma[g > 1023 ? 1023 : g];
+                B = gGamma[b > 1023 ? 1023 : b];
+                gY[k][x] = Clamp8(((66 * R + 129 * G + 25 * B + 128) >> 8) + 16);      /* BT.601, limited range */
+                gU[k][x] = Clamp8(((-38 * R - 74 * G + 112 * B + 128) >> 8) + 128);
+                gV[k][x] = Clamp8(((112 * R - 94 * G - 18 * B + 128) >> 8) + 128);
+            }
+        }
+        if (gRot == 90 || gRot == 270) {
+            for (x = 0; x < CAM_SW; x++)
+                PutPair(Out, x, 2 * j, 0, x, 2 * j + 1, 1);
+        } else {
+            for (k = 0; k < 2; k++)
+                for (x = 0; x < CAM_SW; x += 2)
+                    PutPair(Out, x, 2 * j + k, k, x + 1, 2 * j + k, k);
+        }
+    }
+    *SumG = sg; *SumR = sr; *SumB = sb;
+}
+
 /* E = lines x gain / 32 toward CAM_AE_TARGET (factor clamped 1/4 .. 4); lines up to the maximum first, then gain. */
 static VOID AutoExposure(CAMPIN *c, ULONG MeanG)
 {
@@ -242,7 +322,7 @@ static NTSTATUS PinProcess(PKSPIN Pin)
     PKSSTREAM_HEADER   hdr;
     PIKSREFERENCECLOCK clock;
     LONG               seq, i;
-    ULONG64            sg, sr, sb, n = (ULONG64)CAM_SW * CAM_SH;
+    ULONG64            sg, sr, sb, n = gBin ? (ULONG64)CAM_SW * CAM_SH / 4 : (ULONG64)CAM_SW * CAM_SH;
     LARGE_INTEGER      t0, t1, fq;
     ULONG              us;
 
@@ -271,7 +351,10 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         return STATUS_PENDING;
     }
     t0 = KeQueryPerformanceCounter(&fq);
-    Convert((ULONG)i, (PUCHAR)lead->OffsetOut.Data, &sg, &sr, &sb, c->WbR, c->WbB);
+    if (gBin)
+        ConvertBin((ULONG)i, (PUCHAR)lead->OffsetOut.Data, &sg, &sr, &sb, c->WbR, c->WbB);
+    else
+        Convert((ULONG)i, (PUCHAR)lead->OffsetOut.Data, &sg, &sr, &sb, c->WbR, c->WbB);
     t1 = KeQueryPerformanceCounter(NULL);
     us = (ULONG)((t1.QuadPart - t0.QuadPart) * 1000000 / fq.QuadPart);
     c->ConvUs += us;
@@ -324,9 +407,12 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     RtlZeroMemory(&in, sizeof(in));                      /* setfile exposure, ISPPRE 400 MHz (the defaults) */
     if (gRingWc)
         in.Flags |= S10ECAM_SHOT_WC;
+    if (gBin)
+        in.Flags |= S10ECAM_SHOT_BIN;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.5 start: output %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
-        gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
+    Log(&r, "S10eCamera 0.6 start: output %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
+        gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
+        gBin ? "912 x 684 (binned) + demosaic" : "1824 x 1368 + 2 x 2 binning");
     ExAcquireFastMutex(&gCamMutex);
     c->LastSeq = 0;
     c->Frames = c->Drops = c->Torn = c->ConvUs = 0;
@@ -358,7 +444,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.5 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+    Log(&r, "S10eCamera 0.6 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
         c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
@@ -582,7 +668,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     UNICODE_STRING    p;
     OBJECT_ATTRIBUTES oa;
     HANDLE            h = NULL;
-    ULONG             rot;
+    ULONG             rot, rb;
 
     UNREFERENCED_PARAMETER(Device);
     UNREFERENCED_PARAMETER(Irp);
@@ -597,6 +683,8 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gMirror = RegDword(h, L"Mirror", 0) ? 1u : 0u;
     gRingWc = RegDword(h, L"RingWc", 1) ? 1u : 0u;
     gRingKeep = RegDword(h, L"RingKeep", 1) ? 1u : 0u;
+    gBin = RegDword(h, L"SensorBin", 1) ? 1u : 0u;
+    rb = gBin ? S10ECAM_BIN_BYTES + 0x10000u : SHOT_RING_BYTES;
     if (h != NULL)
         ZwClose(h);
     gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
@@ -605,14 +693,14 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     if (!gRingKeep) {
         RingPoolFree();
         Trace("frame ring: not kept (RingKeep 0): each start allocates its own\r\n");
-    } else if (RingPoolAlloc(gRingWc ? TRUE : FALSE, SHOT_RING_BYTES))
-        Trace("frame ring kept for the device's lifetime: 3 x %u bytes at PA %08X %08X %08X (%s)\r\n", SHOT_RING_BYTES,
+    } else if (RingPoolAlloc(gRingWc ? TRUE : FALSE, rb))
+        Trace("frame ring kept for the device's lifetime: 3 x %u bytes at PA %08X %08X %08X (%s)\r\n", rb,
               (ULONG)gPool.Pa[0].QuadPart, (ULONG)gPool.Pa[1].QuadPart, (ULONG)gPool.Pa[2].QuadPart,
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
-        Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", SHOT_RING_BYTES);
-    Trace("S10eCamera 0.5 device start: YUY2 %u x %u, rotation %u%s, ring %s\r\n", gOutW, gOutH, gRot,
-          gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached");
+        Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", rb);
+    Trace("S10eCamera 0.6 device start: YUY2 %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
+          gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached", gBin ? "binned 912 x 684" : "1824 x 1368");
     return STATUS_SUCCESS;
 }
 
