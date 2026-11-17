@@ -375,3 +375,18 @@ File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera
   the FROM cal to "from_cal.bin" (:1894). Building "ispdbg2" = ispdbg1 + that define (recipe updated in
   tools/android/kernel-ispdbg). Cal data is per-module calibration of the user's phone: kept out of the repo
   (hash only), used by the emulator from the scratch area.
+### 3AA0 interrupt bits, named by the DDK itself (2026-11-17 21:50, front_init.py IRQ_SCAN=1, DIAGNOSIS run)
+The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and +0x11c for interrupt 1
+(assembly ddk+0x2f2bd4). One bit set at a time after shot F1 (log: notes/data/isp-emu-20261117/irq-scan-3aa.txt):
+- +0x10c: bit 0 -> "TransitIsrState ... --(V SYNC)-->" (frame start); bit 1 -> "--(FRAME END)-->"; bit 2 ->
+  "--(CIN ROW)-->" (line interrupt; 126 register accesses = the per-frame update); bit 3 ISR_IrqCorruptedIntr;
+  bit 4 "COREX ERROR"; bits 22..29 ISR_CinFifoCoutFifoErrorIntr: 22 COUTFIFO_SIZE, 23 COUTFIFO_LINE, 24 COUTFIFO_COL,
+  25 COUTFIFO_OVERFLOW, 26 CINFIFO_TOTAL_SIZE, 27 CINFIFO_LINES, 28 CINFIFO_COLUMNS, 29 CINFIFO_STREAM_OVERFLOW_SIG;
+  bit 30 ISR_FimcStartBeforeFrameEndIntr; bit 31 ISR_DmaClientsErrorIrq (dumps registers). Bits 5, 7..19: no
+  handler registered (the emulator jumps to NULL = these must stay masked); 6, 20, 21: no action.
+- +0x11c: bits 15..24 ISR_AutoFocusInterruptHandler (AF windows, af1stIntId 15); 25 queues a task; others no
+  handler.
+- Android's order per frame: V SYNC (bit 0) -> CIN ROW (bit 2) -> FRAME END (bit 1) ("ISR V SYNC / CIN ROW /
+  FRAME END F7 ..." lines). The error checks compare the configured size with pixel counters (bit 22: "configured
+  imagesize (w3648 x h2736 /2) != pixelCount (w1014 x h1483)" - the counters come from the live dump).
+- Direct use for Windows: the same register / bit meaning applies whoever drives the 3AA.

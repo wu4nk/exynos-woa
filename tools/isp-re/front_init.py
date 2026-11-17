@@ -198,6 +198,28 @@ step('3AA set_param', tabs['3AA']['set_param'], e.q(obj3), P)
 step('3AA set_ctrl F1', tabs['3AA']['set_ctrl'], e.q(obj3), 0, 1, SHOT)
 step('3AA shot F1', tabs['3AA']['shot'], e.q(obj3), P, SHOT, 1)
 
+# --- frame interrupts: Android's ISR order per 3AA frame is V SYNC -> CIN ROW -> FRAME END (isfw-msg-android.txt
+# "TransitIsrState"). The handler gets (interrupt id, ctx) (GPL struct hwip_intr_handler / fimc_is_register_interrupt);
+# which status bits mean which event is not known yet: the handler reads them from the (live-dump) registers.
+for irq in [i for i in e.irqs if i['chain'] == 0]:
+    step('3AA irq %d' % irq['id'], irq['handler'], irq['id'], irq['ctx'])
+# status registers read by the handler (assembly ddk+0x2f2bd4): 3AA +0x10c (irq 0), +0x11c (irq 1). Discovery: set
+# one bit at a time and record what the DDK does with it (logs + register accesses) - DIAGNOSIS ONLY
+if os.environ.get('IRQ_SCAN'):
+    for irq in [i for i in e.irqs if i['chain'] == 0]:
+        st = 0x10c if irq['id'] == 0 else 0x11c
+        for bit in range(32):
+            e.u.mem_write(w3 + st, struct.pack('<I', 1 << bit))
+            e.logs.clear()
+            n0 = len(e.mmio)
+            try:
+                e.call(irq['handler'], irq['id'], irq['ctx'])
+                r = 'ok'
+            except RuntimeError as x:
+                r = 'EXC ' + str(x)[:80]
+            acc = [a for a in e.mmio[n0:] if not (a[0] == 'R' and a[2] == st)]
+            print('IRQ%d bit %2d: %s, %d other accesses; %s' % (irq['id'], bit, r, len(acc),
+                  ' | '.join(l for l in e.logs if 'null interrupt' not in l)[:300]))
 print('interrupts registered:', [(i['id'], i['chain'], e.img(i['handler'])) for i in e.irqs])
 with open(os.path.join(OUT, 'interface-calls.txt'), 'w') as f:
     for name, lr, x, ret in e.stub_calls:
