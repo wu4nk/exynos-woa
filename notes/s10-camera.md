@@ -762,3 +762,23 @@ Logs: notes/data/camera-s10-status-10web-nv12 / -11settings-nv12-20261117.txt (p
 - Lag while recording: not measured yet (asked: the driver's stop line - frames / drops / conversion - after a short
   recording, Task Manager CPU while recording). Unverified suspects: the conversion (~20 ms a frame, single thread),
   and H.264 encoding in software (no hardware encoder: the MFC driver here decodes only).
+
+## 2026-11-17 11:21 user questions: "S10 tops at UHD60, no 120", and RE (Frida etc.) of the Android camera stack
+- 120 fps: the FRONT sensor's own module table says it: fimc-is-device-module-3j1.c mode 11 "912 x 684 @120.4fps,
+  MIPI lane 4, 1807" and setfile A sensor_3j1_setfile_A_912x684_120fps (FLL 0x2EA). UHD60 is the rear camera's
+  video spec. Our 60 fps uses that mode with a longer frame (FLL 1497), well inside it.
+- Where the vendor's camera quality lives (GPL fimc-is2 source, k9820-full): the ISP chain (3AA / ISP / MCSC / VRA)
+  is run by two Samsung binaries loaded by the kernel: vendor/mcd/fimc-is-sec-define.h:101-102 FIMC_IS_DDK
+  "fimc_is_lib.bin", FIMC_IS_RTA "fimc_is_rta.bin" (3A); entry points at fixed offsets
+  (interface/fimc-is-interface-library.h:105-107 DDK_/RTA_SHUT_DOWN_FUNC_ADDR = LIB_ADDR + 0x100,
+  interface-ddk.h:188 LIB_ISP_ADDR, sensor/.../fimc-is-interface-sensor.h:75 SENSOR_REGISTER_FUNC_ADDR = DDK + 0x40);
+  the OS services they call are a function table the GPL kernel fills (fimc-is-interface-library.c). So the blob
+  boundary is specified by GPL source - no Frida needed to find it. Porting = load the user's own copies of the two
+  binaries in a Windows driver and implement that table; blockers: the ISP DMAs go through SysMMU (we never touch
+  the SysMMU - reading it aborts; a SysMMU driver would be a project of its own), DDK memory layout / reserved
+  regions, and the HAL-side per-frame metadata (shot structs). Large; not started. Blobs would be pulled from the
+  phone at install time like the WiFi firmware, never redistributed.
+- Frida (user space, needs root - the phone runs LineageOS + KernelSU on Android) only sees libexynoscamera3 / HAL
+  ioctls; the 3A and ISP programming happen in the kernel-side blobs, so ftrace / the fimc-is debug log would be the
+  tool there. Realistic use: an oracle for tuning numbers (sensor exposure / gain per scene, AWB gains, CCM) to
+  improve our CPU pipeline.
