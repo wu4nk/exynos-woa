@@ -1362,8 +1362,13 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     s = SenTable(m, S10eCam3j1Global, RTL_NUMBER_OF(S10eCam3j1Global), "global", r);
     if (NT_SUCCESS(s))
         s = SenTable(m, x.Mode->Tab, x.Mode->TabN, x.Mode->Name, r);
-    if (NT_SUCCESS(s) && x.Mode->Fll)
-        s = SenW16(m, 0x0340, x.Mode->Fll);              /* frame length (not streaming yet: no group hold needed) */
+    if (NT_SUCCESS(s) && x.Mode->Fll) {
+        /* frame length (not streaming yet: no group hold needed). 0.10: S10ECAM_SHOT_FPS60 on mode 11 = the same
+           sensor_3j1_cis_set_frame_duration formula for 16667 us: 807 x 16667 / 8984 = 1497 (>= the setfile's 746) */
+        ULONG fll = (x.Mode == &gModes[1] && (in->Flags & S10ECAM_SHOT_FPS60)) ? 1497u : x.Mode->Fll;
+        s = SenW16(m, 0x0340, fll);
+        Log(r, "  frame length 0x0340 <- %u (%s)\r\n", fll, fll == 1497u ? "60 fps" : "30 fps");
+    }
     if (NT_SUCCESS(s) && in->Coarse)
         s = SenW16(m, 0x0202, in->Coarse & 0xFFFFu);
     if (NT_SUCCESS(s) && in->AGain)
@@ -1784,7 +1789,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.9 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.10 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1854,7 +1859,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.9 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.10 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1888,7 +1893,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.9 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.10 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

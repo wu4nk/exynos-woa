@@ -1,5 +1,5 @@
 <#
-  camera-s10.ps1 (v1.4) - Galaxy S10: the front camera as a Windows camera (S10eCamera.sys, AVStream;
+  camera-s10.ps1 (v1.5) - Galaxy S10: the front camera as a Windows camera (S10eCamera.sys, AVStream;
   notes/s10-camera.md). Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eCamera\ from
   build-s10.cmd v1.18+):
       .\camera-s10.ps1 install   install the driver package (pnputil) and create the device it binds to: a
@@ -8,7 +8,7 @@
                                  SwDeviceCreate failed with 0x8007007E on the phone. Then open the Camera app.
       .\camera-s10.ps1 status    the device, its driver and problem code, its settings (rotation / mirror / ring) and
                                  the driver's last start/stop report (C:\S10Prov\camera-avs.txt)
-      .\camera-s10.ps1 set -Rotation 270 -Mirror 0 -RingWc 1 -RingKeep 1 -SensorBin 1
+      .\camera-s10.ps1 set -Rotation 270 -Mirror 1 -RingWc 1 -RingKeep 1 -SensorBin 1 -FrameRate 30
                                  change the driver's settings (S10eCamera 0.2+, registry Services\S10eCamera\
                                  Parameters) and restart the device so they apply. Only the ones given change.
       .\camera-s10.ps1 remove    remove the device and the driver package
@@ -18,7 +18,7 @@
 param([Parameter(Position = 0)][ValidateSet('install', 'status', 'set', 'remove')][string]$Action = 'status',
       [ValidateSet(-1, 0, 90, 180, 270)][int]$Rotation = -1, [ValidateSet(-1, 0, 1)][int]$Mirror = -1,
       [ValidateSet(-1, 0, 1)][int]$RingWc = -1, [ValidateSet(-1, 0, 1)][int]$RingKeep = -1,
-      [ValidateSet(-1, 0, 1)][int]$SensorBin = -1)
+      [ValidateSet(-1, 0, 1, 2)][int]$SensorBin = -1, [ValidateSet(-1, 30, 60)][int]$FrameRate = -1)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\camera-s10-$Action.txt"
 $HwId = 'ROOT\S10eCamera'
@@ -26,7 +26,7 @@ $Params = 'HKLM:\SYSTEM\CurrentControlSet\Services\S10eCamera\Parameters'
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "camera-s10.ps1 v1.4  $Action  $(Get-Date -Format s)"
+W "camera-s10.ps1 v1.5  $Action  $(Get-Date -Format s)"
 
 if (-not ('S10RootDev11' -as [type])) {
 Add-Type -TypeDefinition @'
@@ -98,7 +98,7 @@ function Show-Status {
   $cams = Get-PnpDevice -Class Camera -PresentOnly -ErrorAction SilentlyContinue
   W ("cameras present: " + (($cams | ForEach-Object { $_.FriendlyName }) -join ', '))
   $pv = Get-ItemProperty $Params -ErrorAction SilentlyContinue
-  if ($pv) { W ("settings: Rotation {0}  Mirror {1}  RingWc {2}  RingKeep {3}  SensorBin {4}  (driver defaults when absent: 270 / 1 / 1 / 1 / 1)" -f $pv.Rotation, $pv.Mirror, $pv.RingWc, $pv.RingKeep, $pv.SensorBin) }
+  if ($pv) { W ("settings: Rotation {0}  Mirror {1}  RingWc {2}  RingKeep {3}  SensorBin {4}  FrameRate {5}  (driver defaults when absent: 270 / 1 / 1 / 1 / 1 / 30)" -f $pv.Rotation, $pv.Mirror, $pv.RingWc, $pv.RingKeep, $pv.SensorBin, $pv.FrameRate) }
   if (Test-Path 'C:\S10Prov\camera-avs.txt') {
     W '--- C:\S10Prov\camera-avs.txt (last 60 lines) ---'
     Get-Content 'C:\S10Prov\camera-avs.txt' -Tail 60 | ForEach-Object { W $_ }
@@ -137,6 +137,7 @@ switch ($Action) {
     if ($RingWc -ge 0) { Set-ItemProperty $Params RingWc $RingWc -Type DWord }
     if ($RingKeep -ge 0) { Set-ItemProperty $Params RingKeep $RingKeep -Type DWord }   # v1.2, S10eCamera 0.5+
     if ($SensorBin -ge 0) { Set-ItemProperty $Params SensorBin $SensorBin -Type DWord }  # v1.4, S10eCamera 0.6+
+    if ($FrameRate -ge 0) { Set-ItemProperty $Params FrameRate $FrameRate -Type DWord }  # v1.5, S10eCamera 0.9+
     W 'restarting the camera device so the driver reads them (close the Camera app first)'
     Restart-Cam
     Show-Status

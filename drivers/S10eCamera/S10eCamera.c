@@ -40,6 +40,9 @@
  *   RUN with frames delivered (2026-11-17): every one of them wants frames converted for display / its pipeline, and
  *   NV12 is the format Windows camera pipelines run on. An output 2 x 2 block is a source 2 x 2 block at even
  *   coordinates for every rotation / mirror (all sizes even), so NV12's chroma = that block's mean.
+ * 0.9: setting FrameRate (30 default, 60 = S10eCam 0.10 S10ECAM_SHOT_FPS60 on the binned mode: half the longest
+ *   exposure, so darker in dim rooms); the ranges advertise the configured rate only. NV12 output by pointer stepping
+ *   like EmitRows (0.8 called MapOut for every pixel).
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
@@ -60,7 +63,7 @@
 #define CAM_SH          (S10ECAM_SHOT_H / 2)             /* 684 */
 #define CAM_BYTES       (CAM_SW * CAM_SH * 2)            /* YUY2: 2 bytes a pixel, whichever way round (the larger) */
 #define CAM_BYTES_NV12  (CAM_SW * CAM_SH * 3 / 2)        /* NV12: Y plane + half-height interleaved UV plane */
-#define CAM_INTERVAL    333333                           /* 100 ns units: 30 fps (the sensor's mode 8) */
+#define CAM_INTERVAL    333333                           /* 100 ns units: 30 fps (the ranges' built-in value) */
 #define CAM_AE_TARGET   110u                             /* black-subtracted green mean (of 959): mid grey after gamma */
 #define CAM_TAG         'mCeS'
 
@@ -89,6 +92,8 @@ static CHAR       gLog[8192];                            /* the engine's report 
 static ULONG      gRot = 270, gMirror, gRingWc = 1, gRingKeep = 1, gBin = 1;   /* settings (Parameters), read at device start */
 static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
 static BOOLEAN    gNv12;                                 /* 0.8: the running pin's format is NV12 (else YUY2) */
+static ULONG      gFps = 30;                             /* 0.9: FrameRate setting (30 / 60), read at device start */
+static LONGLONG   gInterval = CAM_INTERVAL;              /* its frame time, 100 ns units */
 static WCHAR      gParamPath[260];                       /* <service key>\Parameters */
 
 /* ---------------------------------------------------------------------------------------------- the report file */
@@ -195,21 +200,32 @@ static VOID EmitRows(PUCHAR Out, ULONG j)
    block's top-left (its corners map to (x, 2j) and (x+1, 2j+1), so the minimum of the two mapped coordinates). */
 static VOID EmitRowsNv12(PUCHAR Out, ULONG j)
 {
-    ULONG  x, k, ox, oy, ox2, oy2;
-    PUCHAR uv = Out + (SIZE_T)gOutW * gOutH;
+    ULONG    x, k, ox0, oy0, ox1, oy1, bx0, by0, bx1, by1;
+    LONG_PTR step;
+    PUCHAR   p, uv = Out + (SIZE_T)gOutW * gOutH;
 
-    for (k = 0; k < 2; k++)
-        for (x = 0; x < CAM_SW; x++) {
-            MapOut(x, 2 * j + k, &ox, &oy);
-            Out[(SIZE_T)oy * gOutW + ox] = gY[k][x];
-        }
-    for (x = 0; x < CAM_SW; x += 2) {
-        MapOut(x, 2 * j, &ox, &oy);
-        MapOut(x + 1, 2 * j + 1, &ox2, &oy2);
-        if (ox2 < ox) ox = ox2;
-        if (oy2 < oy) oy = oy2;
-        uv[(SIZE_T)(oy / 2) * gOutW + ox] = (UCHAR)((gU[0][x] + gU[0][x + 1] + gU[1][x] + gU[1][x + 1] + 2u) / 4u);
-        uv[(SIZE_T)(oy / 2) * gOutW + ox + 1] = (UCHAR)((gV[0][x] + gV[0][x + 1] + gV[1][x] + gV[1][x + 1] + 2u) / 4u);
+    for (k = 0; k < 2; k++) {                            /* Y: MapOut is linear in x - evaluate x = 0, 1, then step */
+        MapOut(0, 2 * j + k, &ox0, &oy0);
+        MapOut(1, 2 * j + k, &ox1, &oy1);
+        step = ((LONG_PTR)oy1 - (LONG_PTR)oy0) * (LONG_PTR)gOutW + ((LONG_PTR)ox1 - (LONG_PTR)ox0);
+        p = Out + (SIZE_T)oy0 * gOutW + ox0;
+        for (x = 0; x < CAM_SW; x++, p += step)
+            *p = gY[k][x];
+    }
+    /* UV: block x's top-left = min of MapOut(x, 2j) and MapOut(x+1, 2j+1); linear in x too (blocks 0 and 2) */
+    MapOut(0, 2 * j, &ox0, &oy0);
+    MapOut(1, 2 * j + 1, &ox1, &oy1);
+    bx0 = ox0 < ox1 ? ox0 : ox1;
+    by0 = oy0 < oy1 ? oy0 : oy1;
+    MapOut(2, 2 * j, &ox0, &oy0);
+    MapOut(3, 2 * j + 1, &ox1, &oy1);
+    bx1 = ox0 < ox1 ? ox0 : ox1;
+    by1 = oy0 < oy1 ? oy0 : oy1;
+    step = (((LONG_PTR)by1 - (LONG_PTR)by0) / 2) * (LONG_PTR)gOutW + ((LONG_PTR)bx1 - (LONG_PTR)bx0);
+    p = uv + (SIZE_T)(by0 / 2) * gOutW + bx0;
+    for (x = 0; x < CAM_SW; x += 2, p += step) {
+        p[0] = (UCHAR)((gU[0][x] + gU[0][x + 1] + gU[1][x] + gU[1][x + 1] + 2u) / 4u);
+        p[1] = (UCHAR)((gV[0][x] + gV[0][x + 1] + gV[1][x] + gV[1][x + 1] + 2u) / 4u);
     }
 }
 
@@ -470,7 +486,7 @@ static NTSTATUS PinProcess(PKSPIN Pin)
     c->Frames++;
 
     hdr = lead->StreamHeader;
-    hdr->Duration = CAM_INTERVAL;
+    hdr->Duration = gInterval;
     hdr->OptionsFlags |= KSSTREAM_HEADER_OPTIONSF_DURATIONVALID;
     if (NT_SUCCESS(KsPinGetReferenceClockInterface(Pin, &clock))) {
         hdr->PresentationTime.Time = clock->lpVtbl->GetTime(clock);
@@ -511,8 +527,11 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
         in.Flags |= S10ECAM_SHOT_WC;
     if (gBin)
         in.Flags |= S10ECAM_SHOT_BIN;
+    if (gBin && gFps == 60)
+        in.Flags |= S10ECAM_SHOT_FPS60;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.8 start: output %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
+    Log(&r, "S10eCamera 0.9 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
+        gOutW, gOutH, gFps, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
         gBin == 2 ? "912 x 684 (binned) + bilinear demosaic" : gBin ? "912 x 684 (binned) + 2x2-block conversion" :
                     "1824 x 1368 + 2 x 2 binning");
@@ -547,7 +566,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.8 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
+    Log(&r, "S10eCamera 0.9 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
         c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
@@ -679,7 +698,7 @@ static KS_DATARANGE_VIDEO gRangeNv12 = {
         { sizeof(KS_BITMAPINFOHEADER), CAM_SH, CAM_SW, 1, 12, S10_FOURCC_NV12, CAM_BYTES_NV12, 0, 0, 0, 0 } }
 };
 
-static VOID SetRangeSize(ULONG W, ULONG H)
+static VOID SetRangeSize(ULONG W, ULONG H, LONGLONG Interval)
 {
     KS_DATARANGE_VIDEO *r[2] = { &gRangeYuy2, &gRangeNv12 };
     SIZE                z;
@@ -693,6 +712,11 @@ static VOID SetRangeSize(ULONG W, ULONG H)
         c->InputSize = c->MinCroppingSize = c->MaxCroppingSize = c->MinOutputSize = c->MaxOutputSize = z;
         r[k]->VideoInfoHeader.bmiHeader.biWidth = (LONG)W;
         r[k]->VideoInfoHeader.bmiHeader.biHeight = (LONG)H;
+        c->MinFrameInterval = c->MaxFrameInterval = Interval;          /* 0.9: one rate, the configured one */
+        r[k]->VideoInfoHeader.AvgTimePerFrame = Interval;
+        c->MinBitsPerSecond = c->MaxBitsPerSecond = (LONG)((ULONGLONG)r[k]->DataRange.SampleSize * 8u * 10000000u /
+                                                           (ULONGLONG)Interval);
+        r[k]->VideoInfoHeader.dwBitRate = (DWORD)c->MaxBitsPerSecond;
     }
 }
 
@@ -820,6 +844,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gMirror = RegDword(h, L"Mirror", 1) ? 1u : 0u;
     gRingWc = RegDword(h, L"RingWc", 1) ? 1u : 0u;
     gRingKeep = RegDword(h, L"RingKeep", 1) ? 1u : 0u;
+    gFps = RegDword(h, L"FrameRate", 30) == 60 ? 60u : 30u;
     gBin = RegDword(h, L"SensorBin", 1);
     if (gBin > 2)
         gBin = 1;
@@ -828,7 +853,10 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
         ZwClose(h);
     gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
     gOutH = (gRot == 90 || gRot == 270) ? CAM_SW : CAM_SH;
-    SetRangeSize(gOutW, gOutH);
+    if (!gBin)
+        gFps = 30;                                       /* mode 8 runs 30 fps only */
+    gInterval = gFps == 60 ? 166667 : CAM_INTERVAL;
+    SetRangeSize(gOutW, gOutH, gInterval);
     if (!gRingKeep) {
         RingPoolFree();
         Trace("frame ring: not kept (RingKeep 0): each start allocates its own\r\n");
@@ -838,7 +866,8 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
         Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", rb);
-    Trace("S10eCamera 0.8 device start: YUY2 %u x %u, rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH, gRot,
+    Trace("S10eCamera 0.9 device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH,
+          gFps, gRot,
           gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached", gBin ? "binned 912 x 684" : "1824 x 1368");
     return STATUS_SUCCESS;
 }

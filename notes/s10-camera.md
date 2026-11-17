@@ -750,3 +750,15 @@ Logs: notes/data/camera-s10-status-10web-nv12 / -11settings-nv12-20261117.txt (p
 - User: "lật lại gương" - flip the mirror: the picture of his own room reads the wrong way round with Mirror 0.
   0.8.1: Mirror default 1 (driver default + INF AddReg, which is NOCLOBBER: an existing install keeps 0 until
   camera-s10.ps1 set -Mirror 1). camera-s10 status line shows the new default. DriverVer 0.8.1.0.
+
+## 2026-11-17 11:14 user: the Camera app works now; wants a higher frame rate, video recording lags
+- S10eCam 0.10: S10ECAM_SHOT_FPS60 (0x8): on mode 11 the frame length is 807 x 16667 / 8984 = 1497 (same
+  set_frame_duration formula; >= the setfile's 746) -> 60 fps; logged. Longest exposure halves (coarse max 1493).
+- S10eCamera 0.9 (NOT built, NOT run): setting FrameRate 30 (default) / 60; the ranges advertise the configured rate
+  only (Min/MaxFrameInterval, AvgTimePerFrame, bit rates from SampleSize); Duration = that interval; mode 8 forces
+  30. EmitRowsNv12 by pointer stepping (Y: x = 0, 1; UV: blocks 0 and 2), host test as before (8 cases, every byte,
+  nothing past the frame, one block -> one UV pair at row 355 col 100) and 3.0 ms/frame on the host.
+  camera-s10 v1.5: set -FrameRate 30|60 (and -SensorBin 2), status shows it.
+- Lag while recording: not measured yet (asked: the driver's stop line - frames / drops / conversion - after a short
+  recording, Task Manager CPU while recording). Unverified suspects: the conversion (~20 ms a frame, single thread),
+  and H.264 encoding in software (no hardware encoder: the MFC driver here decodes only).

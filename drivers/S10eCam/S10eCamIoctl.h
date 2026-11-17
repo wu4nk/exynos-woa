@@ -51,6 +51,7 @@ typedef struct _S10ECAM_SHOT_IN {
 #define S10ECAM_SHOT_PHASE(f) (((f) >> 8) & 0xFu)   /* 0 = everything; 1 sensor, 2 + D-PHY, 3 + CSIS2, 4 + DMA: then stop */
 #define S10ECAM_SHOT_BIN      0x4u   /* 0.9: sensor mode 11 = 912 x 684 (the sensor's own 4 x 4 binning; setfile A
                                        912x684_120fps, its frame length set to 30 fps): 1/4 of the data a frame */
+#define S10ECAM_SHOT_FPS60    0x8u   /* 0.10: with S10ECAM_SHOT_BIN: frame length for 60 fps (FLL 1497) instead of 30 */
 #define S10ECAM_BIN_W         912u
 #define S10ECAM_BIN_H         684u
 #define S10ECAM_BIN_STRIDE    (S10ECAM_BIN_W * 2u)
