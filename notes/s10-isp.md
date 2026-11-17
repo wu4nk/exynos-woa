@@ -212,3 +212,9 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   built against the running kernel's exact source + config (vermagic / modversions) - same reads; (c) read only
   the ID registers from Windows (3AA0 sits in ISPPRE with CSIS, which S10eCam already uses; ISPLP is another
   power domain: its PMU status must be read first) - IDs only, no live configuration. Waiting for the user's pick.
+- 2026-11-17 user's pick: route (a), an Android kernel with /dev/mem. Config for the user's build (Linux 4.14
+  drivers/char/Kconfig, general knowledge - not read in this tree, the sparse clone has no drivers/char):
+  CONFIG_DEVMEM=y; CONFIG_STRICT_DEVMEM may stay y (on arm64 it refuses System RAM only); CONFIG_IO_STRICT_DEVMEM
+  must be OFF - it also refuses ranges a driver has claimed, which the ISP windows are while fimc_is runs.
+  Kernel = the OneUI one in use (ExtremeKernel 4.14.356) rebuilt with these lines; Samsung-specific blocks on
+  /dev/mem (RKP/uH) UNVERIFIED - "check" + "ids" show at once whether reads work.
