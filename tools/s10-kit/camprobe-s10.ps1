@@ -1,5 +1,5 @@
 <#
-  camprobe-s10.ps1 (v1.0) - is it the camera or the app? Opens "Galaxy S10 Front Camera" the way apps do
+  camprobe-s10.ps1 (v1.1) - is it the camera or the app? Opens "Galaxy S10 Front Camera" the way apps do
   (Windows.Media.Capture, through the Windows camera frame server) and reads frames for a few seconds, then saves one.
   Run ON THE PHONE in Windows PowerShell (5.1; no admin needed), with every camera app closed:
       .\camprobe-s10.ps1 cpu      frames in system memory (MemoryPreference Cpu): no GPU in the path
@@ -14,7 +14,7 @@ $Bmp = "C:\S10Prov\camprobe-$Mode.bmp"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out, $Bmp -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "camprobe-s10.ps1 v1.0  $Mode  $(Get-Date -Format s)  PowerShell $($PSVersionTable.PSVersion)"
+W "camprobe-s10.ps1 v1.1  $Mode  $(Get-Date -Format s)  PowerShell $($PSVersionTable.PSVersion)"
 if ($PSVersionTable.PSVersion.Major -gt 5) { W 'run it in Windows PowerShell 5.1 (powershell.exe): WinRT types are not reachable from PowerShell 7'; exit 1 }
 
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -49,8 +49,17 @@ try {
   try { AwaitAction ($mc.InitializeAsync($set)); W 'MediaCapture.InitializeAsync: ok' }
   catch { W ('MediaCapture.InitializeAsync FAILED: ' + (Err $_)); exit 1 }
 
-  $src = $mc.FrameSources.Values | Where-Object { $_.Info.SourceKind -eq [Windows.Media.Capture.Frames.MediaFrameSourceKind]::Color } | Select-Object -First 1
-  if (-not $src) { W 'no colour frame source'; exit 1 }
+  # v1.1: v1.0 found "no colour frame source" (2026-11-17) - list what is there (enumerating the map's pairs, not
+  # .Values, which may not project in PowerShell 5.1) and take a Color source, else the first video one
+  $all = @()
+  foreach ($kv in $mc.FrameSources) { $all += $kv.Value }
+  W ("frame sources: {0}" -f $all.Count)
+  foreach ($x in $all) {
+    W ("  '{0}' kind {1}, stream {2}, formats {3}" -f $x.Info.Id, $x.Info.SourceKind, $x.Info.MediaStreamType, $x.SupportedFormats.Count)
+  }
+  $src = $all | Where-Object { $_.Info.SourceKind -eq [Windows.Media.Capture.Frames.MediaFrameSourceKind]::Color } | Select-Object -First 1
+  if (-not $src) { $src = $all | Select-Object -First 1; if ($src) { W '  (no Color source: taking the first one)' } }
+  if (-not $src) { W 'no frame source at all'; exit 1 }
   foreach ($f in $src.SupportedFormats) { W ("  format: {0} {1} x {2} @ {3}/{4}" -f $f.Subtype, $f.VideoFormat.Width, $f.VideoFormat.Height, $f.FrameRate.Numerator, $f.FrameRate.Denominator) }
   $cf = $src.CurrentFormat
   W ("current: {0} {1} x {2}" -f $cf.Subtype, $cf.VideoFormat.Width, $cf.VideoFormat.Height)

@@ -1,0 +1,15 @@
+charge-s10.ps1 v1.1  watch   2026-11-01T23:37:03
+driver: Galaxy S10e Battery (MAX77705 fuel gauge) 1.0.0.10
+ChargeTune setting: 1
+time      ac  state        type       ILIM   CC     batt mA  SOC    temp   tune(target ILIM/CC hot writes)  CHG_DTLS
+23:37:06* yes fast CC      wall chg  1800  2100     1284   49.9  38.6C  1(1800/2100 0 0)  1
+23:37:09  yes fast CC      wall chg  1800  2100     1284   49.9  38.6C  1(1800/2100 0 0)  1
+23:37:11  yes fast CC      wall chg  1800  2100     1284   49.9  38.6C  1(1800/2100 0 0)  1
+23:37:14  yes fast CC      wall chg  1800  2100     1284   49.9  38.6C  1(1800/2100 0 0)  1
+23:37:17* no  off          none      1800  2100     1204   50.1  38.6C  1(0/0 0 0)  8
+23:37:19  no  off          none      1800  2100     1204   50.1  38.6C  1(0/0 0 0)  8
+23:37:22  no  off          none      1800  2100     1204   50.1  38.6C  1(0/0 0 0)  8
+23:37:24* yes fast CC      wall chg  1800  2100      479   50.1  38.6C  1(1800/2100 0 0)  1
+23:37:27  yes fast CC      wall chg  1800  2100      479   50.1  38.6C  1(1800/2100 0 0)  1
+23:37:30  yes fast CC      wall chg  1800  2100      479   50.1  38.6C  1(1800/2100 0 0)  1
+23:37:32  yes fast CC      wall chg  1800  2100      479   50.1  38.6C  1(1800/2100 0 0)  1

@@ -682,3 +682,18 @@ Logs: notes/data/cam-s10-stream-3bin-20261117.txt, camera-s10-status-5-20261117.
   the pointer is advanced once past the last write and never used then; the removed `k` in ConvertBinFast would have
   been MSVC C4101 under /WX. ConvertBinFast reads only rows 2j, 2j+1 (no neighbours) and patches the canary tail on the
   last pair. Nothing to fix.
+
+## Phone 2026-11-17 10:26: S10eCamera 0.7 + camprobe v1.0
+Logs: notes/data/camprobe-cpu-1-20261117.txt, camera-s10-status-6cpu / -7gpu-20261117.txt.
+- Conversion now avg 20.3 / 22.3 ms (max 21.3 / 22.9) = under the 33 ms frame time (0.6: 45 ms, 0.4: 73 ms); torn 0.
+- camprobe cpu and gpu: source group 'Galaxy S10 Front Camera' (interface \\?\ROOT#CAMERA#0000#{e5323777...}\
+  {9b365890...} = KSCATEGORY_VIDEO_CAMERA on the KSNAME_Filter reference string), MediaCapture.InitializeAsync ok
+  in both, then "no colour frame source". During each InitializeAsync the driver saw a full PAUSE -> RUN -> stop
+  session (1.4 s / 0.26 s, 8 / 5 frames delivered): initialisation itself starts and stops the stream, so the Camera
+  app's "stop after ~0.4 s" may be the same initialisation, after which its preview never starts (black, no error).
+- MF docs (MF_DEVICESTREAM_ATTRIBUTE_FRAMESOURCE_TYPES, learn.microsoft.com/windows/win32/medfound/
+  mf-devicestream-attribute-framesource-types): "when this attribute is not defined for a media type, it is assumed to
+  have the value MFFrameSourceTypes::Color" - so the pin should be Color; v1.0 took FrameSources.Values, which may not
+  project in PowerShell 5.1. camprobe v1.1 enumerates the map's pairs, lists every source (id, kind, stream type,
+  format count) and falls back to the first source.
+- The Camera app shows "GALAXY-S10" in the middle of a black preview (screenshot) - not explained yet.

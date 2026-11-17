@@ -279,3 +279,18 @@ free.
   promised). Fixed in the next commit: TuneArmed grants the 10 fast ticks once per plug-in (cleared when CHGIN goes
   invalid). Also checked: the timer now runs at 2 s from D0Entry (same macro), the work item stays single-queued,
   Vibra shares BusLock, CNFG_06 update touches bits 3:2 only (as the vendor), registry is read outside BusLock.
+
+### 2026-11-17 10:26 phone run: S10eBattery 1.0.0.10 + charge-s10 v1.1 watch, wall charger
+Logs: notes/data/bc064d82-charge-s10-watch-off-20261117.txt (ChargeTune absent), 93a3a69b-charge-s10-watch-20261117.txt (1).
+- VALIDATED: plug / unplug show up in the next 2-3 s line (full reading '*' right after the CHGIN_DTLS change);
+  1.0.0.9 needed up to 20 s.
+- With ChargeTune OFF the chip already had CHGIN_ILIM 1800 mA / CHG_CC 2100 mA on the wall charger: BC1.2 type 3
+  (DCP), CHG_DTLS 1 (fast CC). So the USB-C firmware's AutoIBUS (or the charger's own BC1.2 path) sets the vendor TA
+  values by itself; ChargeTune 1 decided the same 1800 / 2100 and wrote nothing (TuneWrites 0). The "500 mA whatever
+  the cable" line of 10-16 was a PC port (SDP), not a wall charger. ChargeTune stays opt-in (default 0): no case
+  seen yet where it changes anything; it remains for SDP / CDP / the hot guard.
+- Battery current (fuel gauge AvgCurrent, averaged, so it lags plug changes) +479..+1300 mA while plugged; SOC 47.7
+  -> 48.5 % in ~1 min, 49.9 -> 50.1 in the second run: it charges. TempMilliC read 38.6 C on every line for 3 min
+  (not checked whether the gauge's temperature register updates).
+- So the user's "slow, noticed late, % drops while plugged": "noticed late" = the 20 s poll (fixed); the drop /
+  slowness was not reproduced with this wall charger at 5 V (~9 W max, no 9 V AFC under Windows).
