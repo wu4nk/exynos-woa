@@ -49,6 +49,12 @@ typedef struct _S10ECAM_SHOT_IN {
 #define S10ECAM_SHOT_WC       0x2u   /* 0.7: frame buffers mapped write-combined (MmWriteCombined) instead of
                                        MmNonCached: both uncached for the CPU; measuring which one reads faster */
 #define S10ECAM_SHOT_PHASE(f) (((f) >> 8) & 0xFu)   /* 0 = everything; 1 sensor, 2 + D-PHY, 3 + CSIS2, 4 + DMA: then stop */
+#define S10ECAM_SHOT_BIN      0x4u   /* 0.9: sensor mode 11 = 912 x 684 (the sensor's own 4 x 4 binning; setfile A
+                                       912x684_120fps, its frame length set to 30 fps): 1/4 of the data a frame */
+#define S10ECAM_BIN_W         912u
+#define S10ECAM_BIN_H         684u
+#define S10ECAM_BIN_STRIDE    (S10ECAM_BIN_W * 2u)
+#define S10ECAM_BIN_BYTES     (S10ECAM_BIN_STRIDE * S10ECAM_BIN_H)
 #define S10ECAM_SHOT_W        1824u
 #define S10ECAM_SHOT_H        1368u
 #define S10ECAM_SHOT_STRIDE   (S10ECAM_SHOT_W * 2u)
@@ -69,7 +75,7 @@ typedef struct _S10ECAM_EXPOSURE_IN {
 } S10ECAM_EXPOSURE_IN;
 
 #define S10ECAM_FRAME_MAGIC  0x46303153u    /* 'S10F' */
-typedef struct _S10ECAM_FRAME_HDR {         /* 64 bytes, then S10ECAM_SHOT_BYTES of frame when Seq != 0 */
+typedef struct _S10ECAM_FRAME_HDR {         /* 64 bytes, then W x H x 2 bytes of frame when Seq != 0 */
     unsigned int Magic;
     unsigned int Seq;       /* frames finished since stream start; 0 = none yet (no frame follows) */
     unsigned int Ring;      /* which ring buffer it came from */
@@ -81,6 +87,6 @@ typedef struct _S10ECAM_FRAME_HDR {         /* 64 bytes, then S10ECAM_SHOT_BYTES
     unsigned int DmaIntSrc; /* VC0 DMA common INT_SRC bits seen since the last FRAME call */
     unsigned int CopyUs;    /* the copy's duration */
     unsigned int Torn;      /* 1 = 2+ frames finished during the copy: may be torn */
-    unsigned int Reserved;
+    unsigned int WxH;       /* 0.9: the frame's width | height << 16 (0 before 0.9 = 1824 x 1368) */
 } S10ECAM_FRAME_HDR;
 

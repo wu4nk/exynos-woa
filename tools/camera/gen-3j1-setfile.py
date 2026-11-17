@@ -8,12 +8,13 @@ drivers/S10eCam/S10eCam3j1.h for S10eCam's stage 4.
 Each kernel entry is {addr, data, size}. size 2 -> {addr, data} (16-bit write); I2C_MODE_DELAY -> {0xFFFF, us};
 I2C_MODE_BURST_ADDR {0x6F12} + I2C_MODE_BURST_DATA {word} -> {0x6F12, word} each (a burst is one I2C message to
 0x6F12, whose indirect pointer auto-increments per word - the same as single writes; S10eCam re-batches consecutive
-0x6F12 words into FIFO-sized messages). Any other size (8-bit writes) is refused: the two tables used have none.
+0x6F12 words into FIFO-sized messages). Any other size (8-bit writes) is refused: the tables used have none.
 """
 import re, sys
 
 TABLES = [('S10eCam3j1Global', 'sensor_3j1_setfile_A_Global'),
-          ('S10eCam3j1Mode1824', 'sensor_3j1_setfile_A_1824x1368_30fps')]
+          ('S10eCam3j1Mode1824', 'sensor_3j1_setfile_A_1824x1368_30fps'),
+          ('S10eCam3j1Mode912', 'sensor_3j1_setfile_A_912x684_120fps')]     # mode 11 (2026-11-17)
 
 src = open(sys.argv[1]).read()
 

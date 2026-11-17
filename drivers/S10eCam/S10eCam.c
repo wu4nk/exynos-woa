@@ -274,7 +274,7 @@
 #define SHOT_ALLOC              (16u * 1024u * 1024u)   /* width is fixed by DMA0_RESOL, lines are not: room for 4599 */
 #define SHOT_FILL               0xEEu
 #define SHOT_RING               3u          /* stream: frame n -> Ring[n % 3]; a finished frame stays 2 frames */
-#define SHOT_RING_BYTES         (S10ECAM_SHOT_BYTES + 0x10000u)
+#define SHOT_RING_BYTES         (S10ECAM_SHOT_BYTES + 0x10000u)   /* mode 8; a ring buffer = its mode's Bytes + 64 KiB */
 #define SHOT_CANARY             0xEEEEEEEEu /* the last 8 bytes of a frame: no 10-bit pixel is 0xEEEE */
 
 /* ---------------------------------------------------------------------------------------------- state */
@@ -1031,6 +1031,26 @@ static VOID CsisConfigVc(volatile UCHAR *c, ULONG Vc, ULONG Fmt, ULONG PixelMode
     W32(c, CSIS_ISP_RESOL_CH0 + CSIS_CH_STRIDE * Vc, (H << 16) | W);
 }
 
+/* 0.9: the two sensor modes. Mode 11 (S10ECAM_SHOT_BIN): fimc-is-device-module-3j1.c cfg "912 x 684 @120.4fps MIPI
+   lane: 4, MIPI data rate 1807" = the same lanes and rate as mode 8 (so the same D-PHY settle 9), VC0 RAW10 912 x 684
+   and no PDAF VC (PD_NONE); pllinfo pclk 201810000 x 4, LLP 0x2318. Its 120 fps frame length (FLL 0x02EA) is set to
+   30 fps the way sensor_3j1_cis_set_frame_duration does: FLL = 807 MHz x 33333 us / 8984 = 2994. */
+typedef struct _SHOT_MODE {
+    ULONG             W, H, Stride, Bytes;
+    const S10E_REG16 *Tab;
+    ULONG             TabN;
+    PCSTR             Name;
+    ULONG             Fll;                               /* 0 = the setfile's */
+    ULONG             PdafLines;                         /* VC1 (PD_MOD3) lines, 0 = no PDAF VC */
+} SHOT_MODE;
+
+static const SHOT_MODE gModes[2] = {
+    { S10ECAM_SHOT_W, S10ECAM_SHOT_H, S10ECAM_SHOT_STRIDE, S10ECAM_SHOT_BYTES, S10eCam3j1Mode1824,
+      RTL_NUMBER_OF(S10eCam3j1Mode1824), "mode 8 1824x1368@30", 0, 342 },
+    { S10ECAM_BIN_W, S10ECAM_BIN_H, S10ECAM_BIN_STRIDE, S10ECAM_BIN_BYTES, S10eCam3j1Mode912,
+      RTL_NUMBER_OF(S10eCam3j1Mode912), "mode 11 912x684 (120 fps setfile, FLL 2994 = 30 fps)", 2994, 0 },
+};
+
 /* 0.8: a frame ring allocated ONCE by a long-lived owner and lent to every stream. S10eCamera (0.4) fills it at
    device start (boot): 3 x 4.8 MiB physically contiguous below 4 GB was no longer to be had ~75 min after boot
    (2026-11-16 15:57, "no contiguous 5056000 bytes below 4 GB"). S10eCam itself never fills it (Ok stays FALSE). */
@@ -1038,6 +1058,7 @@ typedef struct _RINGPOOL {
     PUCHAR              Ring[SHOT_RING];
     PHYSICAL_ADDRESS    Pa[SHOT_RING];
     MEMORY_CACHING_TYPE Cache;
+    ULONG               Bytes;                           /* 0.9: each buffer's size (its mode's Bytes + 64 KiB) */
     BOOLEAN             Ok;
 } RINGPOOL;
 
@@ -1052,6 +1073,8 @@ typedef struct _SHOT {
     ULONG           NBuf;
     MEMORY_CACHING_TYPE Cache;                           /* the buffers' mapping (0.7: MmNonCached or MmWriteCombined) */
     BOOLEAN         Borrowed;                            /* 0.8: Ring[] is gPool's (kept by its owner, not freed here) */
+    const SHOT_MODE *Mode;                               /* 0.9: gModes[0] (mode 8) or gModes[1] (mode 11) */
+    ULONG           RingBytes;                           /* 0.9: each Ring[] buffer's size */
     ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1, CsisCmn;
     BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming;
 } SHOT;
@@ -1067,7 +1090,7 @@ static VOID ShotUnmap(SHOT *x)
     if (x->Pmu)  MmUnmapIoSpace((PVOID)x->Pmu, PMU_SIZE);
     if (x->Buf)  MmFreeContiguousMemorySpecifyCache(x->Buf, SHOT_ALLOC, x->Cache);
     for (ULONG i = 0; i < SHOT_RING; i++)
-        if (x->Ring[i] && !x->Borrowed) MmFreeContiguousMemorySpecifyCache(x->Ring[i], SHOT_RING_BYTES, x->Cache);
+        if (x->Ring[i] && !x->Borrowed) MmFreeContiguousMemorySpecifyCache(x->Ring[i], x->RingBytes, x->Cache);
     RtlZeroMemory(x, sizeof(*x));
 }
 
@@ -1132,12 +1155,13 @@ static VOID ShotAnalyse(SHOT *x, REPORT *r)
 {
     ULONG   y, xx, firstRow = 0xFFFFFFFFu, lastRow = 0, rowsTouched = 0, over = 0, hi = 0, px = 0;
     ULONG64 sum = 0;
-    ULONG   maxRows = SHOT_ALLOC / S10ECAM_SHOT_STRIDE;
+    const SHOT_MODE *md = x->Mode;
+    ULONG   maxRows = SHOT_ALLOC / md->Stride;
 
     for (y = 0; y < maxRows; y++) {
-        PUCHAR row = x->Buf + (SIZE_T)y * S10ECAM_SHOT_STRIDE;
+        PUCHAR row = x->Buf + (SIZE_T)y * md->Stride;
         BOOLEAN touched = FALSE;
-        for (xx = 0; xx < S10ECAM_SHOT_STRIDE; xx += 64) {
+        for (xx = 0; xx < md->Stride; xx += 64) {
             if ((ULONG)row[xx] != SHOT_FILL || (ULONG)row[xx + 1] != SHOT_FILL) { touched = TRUE; break; }
         }
         if (!touched)
@@ -1145,10 +1169,10 @@ static VOID ShotAnalyse(SHOT *x, REPORT *r)
         rowsTouched++;
         if (firstRow == 0xFFFFFFFFu) firstRow = y;
         lastRow = y;
-        if (y >= S10ECAM_SHOT_H)
+        if (y >= md->H)
             over++;
         else if ((y & 15) == 0) {
-            for (xx = 0; xx < S10ECAM_SHOT_W; xx += 8) {
+            for (xx = 0; xx < md->W; xx += 8) {
                 USHORT v = ((PUSHORT)row)[xx];
                 if (v > 0x3FF) hi++;
                 sum += (v & 0x3FFu);
@@ -1161,13 +1185,13 @@ static VOID ShotAnalyse(SHOT *x, REPORT *r)
             if (*(volatile ULONG *)(x->Buf + xx) != SHOT_FILL * 0x01010101u) break;
         if (xx < y) break;
     }
-    Log(r, "  DMA extent: %u bytes from the buffer start (a full frame = %u)\r\n", y, S10ECAM_SHOT_BYTES);
+    Log(r, "  DMA extent: %u bytes from the buffer start (a full frame = %u)\r\n", y, md->Bytes);
     if (rowsTouched == 0) {
         Log(r, "  buffer: NOTHING written (every sampled byte still 0x%02X)\r\n", SHOT_FILL);
         return;
     }
     Log(r, "  buffer: %u rows written (first %u, last %u), %u past row %u; sampled %u px: mean %u / 1023, %u above 0x3FF\r\n",
-        rowsTouched, firstRow, lastRow, over, S10ECAM_SHOT_H - 1, px, px ? (ULONG)(sum / px) : 0, hi);
+        rowsTouched, firstRow, lastRow, over, md->H - 1, px, px ? (ULONG)(sum / px) : 0, hi);
     Log(r, "  row 0: %04X %04X %04X %04X %04X %04X %04X %04X\r\n", ((PUSHORT)x->Buf)[0], ((PUSHORT)x->Buf)[1],
         ((PUSHORT)x->Buf)[2], ((PUSHORT)x->Buf)[3], ((PUSHORT)x->Buf)[4], ((PUSHORT)x->Buf)[5], ((PUSHORT)x->Buf)[6],
         ((PUSHORT)x->Buf)[7]);
@@ -1180,12 +1204,13 @@ static VOID RingPoolFree(VOID)
 
     for (i = 0; i < SHOT_RING; i++)
         if (gPool.Ring[i] != NULL)
-            MmFreeContiguousMemorySpecifyCache(gPool.Ring[i], SHOT_RING_BYTES, gPool.Cache);
+            MmFreeContiguousMemorySpecifyCache(gPool.Ring[i], gPool.Bytes, gPool.Cache);
     RtlZeroMemory(&gPool, sizeof(gPool));
 }
 
-/* 3 x SHOT_RING_BYTES contiguous below 4 GB; write-combined if asked, non-cached if that (or WC) fails. TRUE = Ok. */
-static BOOLEAN RingPoolAlloc(BOOLEAN Wc)
+/* 3 x Bytes contiguous below 4 GB; write-combined if asked, non-cached if that (or WC) fails. TRUE = Ok.
+   Bytes: a mode's Bytes + 64 KiB (SHOT_RING_BYTES for mode 8; S10ECAM_BIN_BYTES + 0x10000 for mode 11). */
+static BOOLEAN RingPoolAlloc(BOOLEAN Wc, ULONG Bytes)
 {
     PHYSICAL_ADDRESS lo, hi, bnd;
     ULONG            i, pass;
@@ -1196,8 +1221,9 @@ static BOOLEAN RingPoolAlloc(BOOLEAN Wc)
     bnd.QuadPart = 0;
     for (pass = Wc ? 0u : 1u; pass < 2; pass++) {
         gPool.Cache = pass == 0 ? MmWriteCombined : MmNonCached;
+        gPool.Bytes = Bytes;
         for (i = 0; i < SHOT_RING; i++) {
-            gPool.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_RING_BYTES, lo, hi, bnd, gPool.Cache);
+            gPool.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(Bytes, lo, hi, bnd, gPool.Cache);
             if (gPool.Ring[i] == NULL)
                 break;
             gPool.Pa[i] = MmGetPhysicalAddress(gPool.Ring[i]);
@@ -1224,6 +1250,8 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
 
     RtlZeroMemory(&x, sizeof(x));
     x.NBuf = nbuf;
+    x.Mode = (in->Flags & S10ECAM_SHOT_BIN) ? &gModes[1] : &gModes[0];
+    x.RingBytes = x.Mode->Bytes + 0x10000u;
 
     /* --- preconditions: the domain and the clocks stage 3 saw, mapped */
     x.Pmu = Map(PMU_BASE, PMU_SIZE);
@@ -1275,27 +1303,28 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
         RtlFillMemory(x.Buf, SHOT_ALLOC, SHOT_FILL);
         Log(r, "  buffer %u MiB at PA %08X%08X (%s)\r\n", SHOT_ALLOC >> 20, (ULONG)(x.Pa.QuadPart >> 32), (ULONG)x.Pa.QuadPart,
             x.Cache == MmWriteCombined ? "write-combined" : "non-cached");
-    } else if (gPool.Ok) {                               /* 0.8: the owner's ring, allocated at its start */
+    } else if (gPool.Ok && gPool.Bytes >= x.RingBytes) { /* 0.8: the owner's ring, allocated at its start */
         x.Borrowed = TRUE;
         x.Cache = gPool.Cache;
+        x.RingBytes = gPool.Bytes;
         for (i = 0; i < SHOT_RING; i++) {
             x.Ring[i] = gPool.Ring[i];
             x.RingPa[i] = gPool.Pa[i];
-            RtlFillMemory(x.Ring[i], SHOT_RING_BYTES, SHOT_FILL);
-            Log(r, "  ring %u: %u bytes at PA %08X%08X (%s, kept from device start)\r\n", i, SHOT_RING_BYTES,
+            RtlFillMemory(x.Ring[i], x.RingBytes, SHOT_FILL);
+            Log(r, "  ring %u: %u bytes at PA %08X%08X (%s, kept from device start)\r\n", i, x.RingBytes,
                 (ULONG)(x.RingPa[i].QuadPart >> 32), (ULONG)x.RingPa[i].QuadPart,
                 x.Cache == MmWriteCombined ? "write-combined" : "non-cached");
         }
     } else {
         for (i = 0; i < SHOT_RING; i++) {
-            x.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_RING_BYTES, lo, hi, bnd, x.Cache);
+            x.Ring[i] = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(x.RingBytes, lo, hi, bnd, x.Cache);
             if (x.Ring[i] == NULL) {
-                Log(r, "  no contiguous %u bytes below 4 GB for ring buffer %u\r\n", SHOT_RING_BYTES, i);
+                Log(r, "  no contiguous %u bytes below 4 GB for ring buffer %u\r\n", x.RingBytes, i);
                 return STATUS_INSUFFICIENT_RESOURCES;
             }
             x.RingPa[i] = MmGetPhysicalAddress(x.Ring[i]);
-            RtlFillMemory(x.Ring[i], SHOT_RING_BYTES, SHOT_FILL);
-            Log(r, "  ring %u: %u bytes at PA %08X%08X (%s)\r\n", i, SHOT_RING_BYTES, (ULONG)(x.RingPa[i].QuadPart >> 32),
+            RtlFillMemory(x.Ring[i], x.RingBytes, SHOT_FILL);
+            Log(r, "  ring %u: %u bytes at PA %08X%08X (%s)\r\n", i, x.RingBytes, (ULONG)(x.RingPa[i].QuadPart >> 32),
                 (ULONG)x.RingPa[i].QuadPart, x.Cache == MmWriteCombined ? "write-combined" : "non-cached");
         }
     }
@@ -1332,7 +1361,9 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     Log(r, "== sensor setfile A (fimc-is-cis-3j1-setA.h)\r\n");
     s = SenTable(m, S10eCam3j1Global, RTL_NUMBER_OF(S10eCam3j1Global), "global", r);
     if (NT_SUCCESS(s))
-        s = SenTable(m, S10eCam3j1Mode1824, RTL_NUMBER_OF(S10eCam3j1Mode1824), "mode 8 1824x1368@30", r);
+        s = SenTable(m, x.Mode->Tab, x.Mode->TabN, x.Mode->Name, r);
+    if (NT_SUCCESS(s) && x.Mode->Fll)
+        s = SenW16(m, 0x0340, x.Mode->Fll);              /* frame length (not streaming yet: no group hold needed) */
     if (NT_SUCCESS(s) && in->Coarse)
         s = SenW16(m, 0x0202, in->Coarse & 0xFFFFu);
     if (NT_SUCCESS(s) && in->AGain)
@@ -1346,8 +1377,8 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     Log(r, "  read back: coarse 0x0202 %04X, again 0x0204 %04X, FLL 0x0340 %04X, LLP 0x0342 %04X, out %u x %u (0x034C/E), pattern 0x0600 %04X\r\n",
         SenR16(m, 0x0202), SenR16(m, 0x0204), SenR16(m, 0x0340), SenR16(m, 0x0342), ow, oh, SenR16(m, 0x0600));
     /* DMA0_RESOL bounds the width only: a sensor still in another mode (3648 x 2736) would write past the buffer. */
-    if (ow != S10ECAM_SHOT_W || oh != S10ECAM_SHOT_H) {
-        Log(r, "  refused: the sensor's output size is not %u x %u - no DMA\r\n", S10ECAM_SHOT_W, S10ECAM_SHOT_H);
+    if (ow != x.Mode->W || oh != x.Mode->H) {
+        Log(r, "  refused: the sensor's output size is not %u x %u - no DMA\r\n", x.Mode->W, x.Mode->H);
         s = STATUS_DEVICE_CONFIGURATION_ERROR;
         return s;
     }
@@ -1384,8 +1415,11 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     RmwField(x.Csis, CSIS_PHY_CMN_CTRL, CSIS_PHY_EN_DAT_SHIFT, 4, 0xF);
     RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_ILV_SHIFT, 2, CSIS_MODE_VC_ONLY);
     W32(x.Csis, CSIS_DEBUG_OPTION, 1);                                     /* PIXEL_ALIGN_MODE */
-    CsisConfigVc(x.Csis, 0, HW_FORMAT_RAW10, CSIS_PIXEL_DUAL, S10ECAM_SHOT_W, S10ECAM_SHOT_H);
-    CsisConfigVc(x.Csis, 1, HW_FORMAT_RAW10, CSIS_PIXEL_QUAD, S10ECAM_SHOT_W, 342);   /* PD_MOD3 PDAF lines */
+    CsisConfigVc(x.Csis, 0, HW_FORMAT_RAW10, CSIS_PIXEL_DUAL, x.Mode->W, x.Mode->H);
+    if (x.Mode->PdafLines)
+        CsisConfigVc(x.Csis, 1, HW_FORMAT_RAW10, CSIS_PIXEL_QUAD, x.Mode->W, x.Mode->PdafLines);   /* PD_MOD3 PDAF */
+    else
+        CsisConfigVc(x.Csis, 1, HW_FORMAT_UNKNOWN, CSIS_PIXEL_DUAL, 0, 0);                         /* PD_NONE */
     CsisConfigVc(x.Csis, 2, HW_FORMAT_UNKNOWN, CSIS_PIXEL_DUAL, 0, 0);
     CsisConfigVc(x.Csis, 3, HW_FORMAT_UNKNOWN, CSIS_PIXEL_DUAL, 0, 0);
     W32(x.Csis, CSIS_INT_MSK0, CSIS_IRQ_MASK0_DBG);
@@ -1409,7 +1443,7 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     W32(x.Cdma, CDMA_MATRIX, x.CdmaSaved[3] & ~0x1Fu);
     x.DmaOn = TRUE;
     W32(x.Dma, DMA0_FMT, R32(x.Dma, DMA0_FMT) & ~0x3Fu);                   /* RAW10, NORMAL, legacy, 2D */
-    W32(x.Dma, DMA0_RESOL, (R32(x.Dma, DMA0_RESOL) & ~DMA0_RESOL_MASK) | S10ECAM_SHOT_W);
+    W32(x.Dma, DMA0_RESOL, (R32(x.Dma, DMA0_RESOL) & ~DMA0_RESOL_MASK) | x.Mode->W);
     W32(x.Dma, DMA0_FCNTSEQ, 0);
     W32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT, R32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT) & ~0x3u);
     W32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL, R32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL) & ~0x1u);   /* input path OTF */
@@ -1461,6 +1495,7 @@ static NTSTATUS Stage4(MAPS *m, FOUND *f, REPORT *r, const S10ECAM_SHOT_IN *in, 
     SHOT     x;
     NTSTATUS s;
     ULONG    frames, fc = 0, fc0, src0 = 0, src1 = 0, dsrc = 0, t = 0, tFirst = 0, tLast = 0, v;
+    const SHOT_MODE *md = (in->Flags & S10ECAM_SHOT_BIN) ? &gModes[1] : &gModes[0];
 
     *FrameOut = 0;
     frames = in->Frames ? in->Frames : 4;
@@ -1501,14 +1536,14 @@ out:
         ShotTeardown(m, f, &x, r);
     if (x.Buf != NULL) {
         ShotAnalyse(&x, r);
-        if (Frame != NULL && FrameCap >= S10ECAM_SHOT_BYTES) {
-            RtlCopyMemory(Frame, x.Buf, S10ECAM_SHOT_BYTES);
-            *FrameOut = S10ECAM_SHOT_BYTES;
+        if (Frame != NULL && FrameCap >= md->Bytes) {
+            RtlCopyMemory(Frame, x.Buf, md->Bytes);
+            *FrameOut = md->Bytes;
         }
     }
     ShotUnmap(&x);
-    Log(r, "FRAME %u x %u RAW10-in-16 stride %u bytes %u Bayer GRBG returned %u\r\n", S10ECAM_SHOT_W, S10ECAM_SHOT_H,
-        S10ECAM_SHOT_STRIDE, S10ECAM_SHOT_BYTES, *FrameOut);
+    Log(r, "FRAME %u x %u RAW10-in-16 stride %u bytes %u Bayer GRBG returned %u\r\n", md->W, md->H, md->Stride,
+        md->Bytes, *FrameOut);
     return s;
 }
 
@@ -1538,7 +1573,7 @@ static STREAM gS;
 
 static ULONG volatile *Canary(ULONG i)
 {
-    return (ULONG volatile *)(gS.x.Ring[i] + S10ECAM_SHOT_BYTES - 8);
+    return (ULONG volatile *)(gS.x.Ring[i] + gS.x.Mode->Bytes - 8);
 }
 
 /* Polls (1 ms timer resolution while it runs): interrupt sources (accumulated + cleared), finished frames by their
@@ -1685,6 +1720,7 @@ static ULONG StreamFrame(PUCHAR Out, ULONG OutLen)
     S10ECAM_FRAME_HDR *h = (S10ECAM_FRAME_HDR *)Out;
     LONG               i, seq;
     LARGE_INTEGER      t0, t1, fq;
+    ULONG              n;
 
     RtlZeroMemory(h, sizeof(*h));
     h->Magic = S10ECAM_FRAME_MAGIC;
@@ -1695,18 +1731,22 @@ static ULONG StreamFrame(PUCHAR Out, ULONG OutLen)
     h->DmaIntSrc = (ULONG)InterlockedExchange(&gS.DmaSrc, 0);
     i = gS.Latest;
     seq = gS.Seq;
-    if (!gS.Active || i < 0 || OutLen < sizeof(*h) + S10ECAM_SHOT_BYTES)
+    if (!gS.Active || i < 0)
+        return sizeof(*h);
+    n = gS.x.Mode->Bytes;
+    h->WxH = gS.x.Mode->W | (gS.x.Mode->H << 16);
+    if (OutLen < sizeof(*h) + n)
         return sizeof(*h);
     h->Seq = (ULONG)seq;
     h->Ring = (ULONG)i;
     h->AgeMs = (ULONG)(((LONG64)KeQueryInterruptTime() - gS.LatestTime) / 10000);
     t0 = KeQueryPerformanceCounter(&fq);
-    RtlCopyMemory(Out + sizeof(*h), gS.x.Ring[i], S10ECAM_SHOT_BYTES - 8);
-    RtlCopyMemory(Out + sizeof(*h) + S10ECAM_SHOT_BYTES - 8, gS.Tail[i], 8);
+    RtlCopyMemory(Out + sizeof(*h), gS.x.Ring[i], n - 8);
+    RtlCopyMemory(Out + sizeof(*h) + n - 8, gS.Tail[i], 8);
     t1 = KeQueryPerformanceCounter(NULL);
     h->CopyUs = (ULONG)((t1.QuadPart - t0.QuadPart) * 1000000 / fq.QuadPart);
     h->Torn = (gS.Seq - seq >= 2) ? 1u : 0u;             /* the copied buffer started over meanwhile */
-    return sizeof(*h) + S10ECAM_SHOT_BYTES;
+    return sizeof(*h) + n;
 }
 
 #ifndef S10ECAM_ENGINE_ONLY   /* S10eCamera (AVStream) includes this file for the engine and brings its own entry */
@@ -1744,7 +1784,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.8 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.9 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1814,7 +1854,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.8 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.9 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1848,7 +1888,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.8 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.9 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

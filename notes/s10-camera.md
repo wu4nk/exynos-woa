@@ -621,3 +621,20 @@ Log: notes/data/camera-s10-status-4-20261117.txt.
   here). The same line was in charge-s10 v1.0 'tune', where the key is a KMDF driver's Services\S10eBattery\
   Parameters with its Wdf subkey (KMDF binding) - fixed before it ever ran: camera-s10 v1.3 / charge-s10 v1.1 create
   the key only when absent.
+
+## S10eCam 0.9 + cam-s10 v1.6: sensor mode 11 (912 x 684, 4x4 binned) - NOT built, NOT run
+- gen-3j1-setfile.py also emits S10eCam3j1Mode912 (sensor_3j1_setfile_A_912x684_120fps, 326 writes); the two old
+  tables come out byte-identical. Mode 11 vs 8 differ in (16-bit writes): 0x0114 0301->0300, PLL 0x0304 4->3 /
+  0x0306 0xD9->0xA3, FLL 0x0340 0x597->0x2EA, LLP 0x0342 0x4940->0x2318, y start/end 0x0346/0x034A, out 0x034C/E
+  0x720/0x558 -> 0x390/0x2AC (912/684), 0x0350, 0x0386 3->7 (y odd inc), 0x0404 0x1000->0x2000 (scaling), 0x0900
+  0x0122->0x0244 (binning 4x4), 0x0B02/0x0B04/0x0B80. The MIPI PLL registers are the same (pllinfo 1807 Mbps both).
+- Engine: SHOT_MODE {W, H, Stride, Bytes, table, name, Fll, PdafLines}; gModes[0] = mode 8 (PDAF VC1 342 lines),
+  gModes[1] = mode 11 (Fll 2994 written to 0x0340 after the setfile, before stream-on; PD_NONE -> VC1 UNKNOWN).
+  S10ECAM_SHOT_BIN (0x4) picks it for shot and stream. Guard 0x034C/E vs the mode; CSIS VC0 + DMA0_RESOL from the
+  mode; ring buffers = mode Bytes + 64 KiB (RingBytes; the pool records its Bytes and is used only if big enough;
+  RingPoolAlloc takes the size); canary at Bytes - 8; FRAME_HDR.Reserved -> WxH (W | H << 16, 0 = old = 1824 x
+  1368); StreamFrame copies the mode's Bytes. CoarseMax already comes from the FLL read back (2994 - 4 = 2990).
+- cam-s10 v1.6 (type S10Cam16): -Bin; W/H follow the mode (Frame() takes WxH from the header); Develop checked on
+  Linux with a 912 x 684 buffer: Stats ok, rotate 270 -> 684 x 912 BMP.
+- S10eCamera: RingPoolAlloc call given SHOT_RING_BYTES (no behaviour change; its bin mode is the next task).
+- Checks: clang vs WDK 26100 -Wextra -Wconversion: only the pre-existing sign warning (S10eCam.c), S10eCamera unchanged.

@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.5) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.6) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -32,6 +32,8 @@
          270 = upright, found 2026-11-16) -Mirror (v1.5: flip the SAVED PICTURE left-right after rotating; whether the
          sensor's readout is mirrored is not verified yet - hold up some text) -Wc (S10eCam 0.7: the frame ring
          write-combined instead of non-cached - compare the "copy ... us" column with and without it)
+         -Bin (v1.6, S10eCam 0.9: the sensor's own 912 x 684 mode, 4 x 4 binned, at 30 fps - 1/4 of the data; for
+         shot and stream)
       .\cam-s10.ps1 remove      unregister the driver
   Writes C:\S10Prov\cam-s10-<action>.txt (e.g. cam-s10-shot.txt) - send it back, with cam-shot.bmp for 'shot'.
   Touches nothing of touch / USB / display / storage. Run the stages in order and send each log before the next.
@@ -40,7 +42,7 @@ param([Parameter(Position = 0)][ValidateSet('install', 'remove', '1', '2', '3', 
       [Parameter(Position = 1)][string]$Opt = '',
       [int]$Coarse = 0, [int]$AGain = 0, [int]$IspDiv = 0, [int]$Frames = 0, [ValidateRange(0, 4)][int]$Phase = 0,
       [ValidateRange(1, 60)][int]$Seconds = 4, [ValidateSet(0, 90, 180, 270)][int]$Rotate = 0, [switch]$Mirror,
-      [switch]$Wc)
+      [switch]$Wc, [switch]$Bin)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\cam-s10-$Action.txt"
 $Dir = 'C:\S10Prov\cam'
@@ -60,7 +62,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.5  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.6  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {
@@ -85,20 +87,25 @@ switch ($Action) {
 
 $stage = if ($Action -in 'shot', 'stream') { 4 } else { [int]$Action.Substring(0, 1) }
 sc.exe start S10eCam 2>&1 | Out-Null
-# v1.3+: a new type name per version (S10Cam15): a window that loaded an older one keeps that old type.
-if (-not ('S10Cam15' -as [type])) {
+# v1.3+: a new type name per version (S10Cam16): a window that loaded an older one keeps that old type.
+if (-not ('S10Cam16' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-public static class S10Cam15 {
+public static class S10Cam16 {
   [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint c, uint f, IntPtr t);
   [DllImport("kernel32.dll", SetLastError = true)] static extern bool DeviceIoControl(IntPtr h, uint code, byte[] i, int il, byte[] o, int ol, out int got, IntPtr ov);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
   const uint IOCTL_STAGE = (0x8A54u << 16) | (0x801u << 2);        // CTL_CODE(0x8A54, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
   const uint IOCTL_SHOT = (0x8A54u << 16) | (0x802u << 2) | 2u;    // CTL_CODE(0x8A54, 0x802, METHOD_OUT_DIRECT, FILE_ANY_ACCESS)
-  public const int W = 1824, H = 1368, STRIDE = W * 2, BYTES = STRIDE * H, HDR = 16384;
+  // v1.6: the frame size follows the mode (S10eCam 0.9 -Bin = 912 x 684); buffers are sized for the big one
+  public static int W = 1824, H = 1368;
+  public static int STRIDE { get { return W * 2; } }
+  public static int BYTES { get { return STRIDE * H; } }
+  public const int MAXBYTES = 1824 * 2 * 1368, HDR = 16384;
+  public static void SetMode(bool bin) { W = bin ? 912 : 1824; H = bin ? 684 : 1368; }
   static IntPtr Open() { return CreateFileW(@"\\.\S10eCam", 0xC0000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero); }
   static string Text(byte[] b, int max) { int n = Array.IndexOf(b, (byte)0); if (n < 0 || n > max) n = max; return Encoding.ASCII.GetString(b, 0, n); }
   public static string Run(int stage, int flags) {
@@ -118,6 +125,7 @@ public static class S10Cam15 {
     byte[] inb = new byte[20];
     BitConverter.GetBytes(flags).CopyTo(inb, 0); BitConverter.GetBytes(coarse).CopyTo(inb, 4); BitConverter.GetBytes(again).CopyTo(inb, 8);
     BitConverter.GetBytes(ispdiv).CopyTo(inb, 12); BitConverter.GetBytes(frames).CopyTo(inb, 16);
+    SetMode((flags & 4) != 0);
     byte[] outb = new byte[HDR + BYTES]; int got;
     bool ok = DeviceIoControl(h, IOCTL_SHOT, inb, inb.Length, outb, outb.Length, out got, IntPtr.Zero);
     int err = Marshal.GetLastWin32Error(); CloseHandle(h);
@@ -164,7 +172,8 @@ public static class S10Cam15 {
     if (!DeviceIoControl(sh, IOCTL_FRAME, null, 0, buf, buf.Length, out got, IntPtr.Zero)) return null;
     uint[] h = new uint[16];
     for (int i = 0; i < 16; i++) h[i] = BitConverter.ToUInt32(buf, 4 * i);
-    return h;   // Magic Seq Ring AgeMs Coarse AGain AGainMin AGainMax CoarseMax Rearms Stalls IntSrc0 DmaIntSrc CopyUs Torn -
+    if (h[15] != 0) { W = (int)(h[15] & 0xFFFF); H = (int)(h[15] >> 16); }   // S10eCam 0.9+: WxH
+    return h;   // Magic Seq Ring AgeMs Coarse AGain AGainMin AGainMax CoarseMax Rearms Stalls IntSrc0 DmaIntSrc CopyUs Torn WxH
   }
   // black-subtracted channel means over a sparse grid + the share of clipped pixels: {G, R, B, clipped %}
   public static double[] Stats(byte[] b, int off) {
@@ -258,14 +267,15 @@ public static class S10Cam15 {
 $svc = (sc.exe query S10eCam | Out-String)
 W ("driver: " + $(if ($svc -match 'RUNNING') { 'running' } else { "NOT running:`n$svc" }))
 if ($Action -eq 'shot') {
-  $rep = [S10Cam15]::Shot($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor ($Phase -shl 8), $Coarse, $AGain, $IspDiv, $Frames,
+  $rep = [S10Cam16]::Shot($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor $(if ($Bin) { 4 } else { 0 }) -bor ($Phase -shl 8), $Coarse, $AGain, $IspDiv, $Frames,
                           'C:\S10Prov\cam-shot.raw', 'C:\S10Prov\cam-shot.bmp')
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
   if (Test-Path 'C:\S10Prov\cam-shot.bmp') { W 'open C:\S10Prov\cam-shot.bmp to look at it' }
 } elseif ($Action -eq 'stream') {
-  $rep = [S10Cam15]::StreamStart($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }), $Coarse, $AGain, $IspDiv)
+  [S10Cam16]::SetMode($Bin.IsPresent)
+  $rep = [S10Cam16]::StreamStart($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor $(if ($Bin) { 4 } else { 0 }), $Coarse, $AGain, $IspDiv)
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
-  $buf = New-Object byte[] ([S10Cam15]::FHDR + [S10Cam15]::BYTES)
+  $buf = New-Object byte[] ([S10Cam16]::FHDR + [S10Cam16]::MAXBYTES)
   $last = $null; $lastSeq = 0; $applied = 0; $settled = $false
   $target = 110.0                                   # black-subtracted green mean (of 959) ~ mid-grey after gamma
   try {
@@ -273,10 +283,10 @@ if ($Action -eq 'shot') {
     $t0 = Get-Date
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
       Start-Sleep -Milliseconds 120
-      $h = [S10Cam15]::Frame($buf)
+      $h = [S10Cam16]::Frame($buf)
       if ($null -eq $h) { W 'frame ioctl failed'; break }
       if ($h[1] -eq 0) { W ('  no frame yet  (re-arms {0}, stalls {1}, INT_SRC0 {2:X8}, DMA {3:X8})' -f $h[9], $h[10], $h[11], $h[12]); continue }
-      $st = [S10Cam15]::Stats($buf, [S10Cam15]::FHDR)
+      $st = [S10Cam16]::Stats($buf, [S10Cam16]::FHDR)
       W ('  seq {0,4} ring {1} age {2,3} ms copy {3,5} us torn {4}  coarse {5,4} again 0x{6:X3} ({7:X}-{8:X})  G {9,6:0.0} R {10,6:0.0} B {11,6:0.0} clip {12,4:0.0}%  INT {13:X8} DMA {14:X8} rearm {15} stall {16}' -f `
         $h[1], $h[2], $h[3], $h[13], $h[14], $h[4], $h[5], $h[6], $h[7], $st[0], $st[1], $st[2], $st[3], $h[11], $h[12], $h[9], $h[10])
       $last = $st; $lastSeq = $h[1]
@@ -289,29 +299,29 @@ if ($Action -eq 'shot') {
       $e2 = $e * $ratio
       $c2 = [int][Math]::Max(2, [Math]::Min([double]$h[8], $e2))
       $g2 = [int][Math]::Round([Math]::Max([double]$h[6], [Math]::Min([double]$h[7], $e2 / $c2 * 32.0)))
-      if ([S10Cam15]::Exposure($c2, $g2)) { $applied = $h[1] } else { W '  exposure ioctl failed' }
+      if ([S10Cam16]::Exposure($c2, $g2)) { $applied = $h[1] } else { W '  exposure ioctl failed' }
     }
     if ($lastSeq -gt 0) {
-      $fs = [IO.File]::Create('C:\S10Prov\cam-stream.raw'); $fs.Write($buf, [S10Cam15]::FHDR, [S10Cam15]::BYTES); $fs.Dispose()
+      $fs = [IO.File]::Create('C:\S10Prov\cam-stream.raw'); $fs.Write($buf, [S10Cam16]::FHDR, [S10Cam16]::BYTES); $fs.Dispose()
       $wbR = $(if ($Opt -eq 'bars' -or $last[1] -lt 1) { 1.0 } else { [Math]::Min(4.0, [Math]::Max(0.25, $last[0] / $last[1])) })
       $wbB = $(if ($Opt -eq 'bars' -or $last[2] -lt 1) { 1.0 } else { [Math]::Min(4.0, [Math]::Max(0.25, $last[0] / $last[2])) })
-      W ([S10Cam15]::Develop($buf, [S10Cam15]::FHDR, $wbR, $wbB, $Rotate, $Mirror.IsPresent, 'C:\S10Prov\cam-stream.bmp')).Trim()
+      W ([S10Cam16]::Develop($buf, [S10Cam16]::FHDR, $wbR, $wbB, $Rotate, $Mirror.IsPresent, 'C:\S10Prov\cam-stream.bmp')).Trim()
       W 'open C:\S10Prov\cam-stream.bmp to look at it'
     }
   } catch { W "stopped: $_" }
   finally {
-    $rep = [S10Cam15]::StreamStop()
+    $rep = [S10Cam16]::StreamStop()
     $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
   }
 } elseif ($Action -ne '3step') {
-  $rep = [S10Cam15]::Run($stage, 0)
+  $rep = [S10Cam16]::Run($stage, 0)
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
 } else {
   $names = @('', 'CMU_ISPPRE mux/divider', 'CMU_ISPPRE clock gates', 'Q-channels CSIS2/DMA', 'Q-channels LHM/SYSREG/SYSMMU',
              'CSIS2 registers', 'CSIS DMA registers', 'SYSREG_ISPPRE')   # v1.2.1: step 8 (SysMMU) aborts - removed
   foreach ($n in $From..7) {
     W "step $n ($($names[$n])): calling the driver ..."
-    $rep = [S10Cam15]::Run(3, 1 -bor ($n -shl 8))   # S10ECAM_FLAG_DEEP | step << 8
+    $rep = [S10Cam16]::Run(3, 1 -bor ($n -shl 8))   # S10ECAM_FLAG_DEEP | step << 8
     $lines = @($rep -split "`r?`n" | Where-Object { $_ })
     $start = 0
     if ($n -ne $From) { for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -like '== deep step*') { $start = $i; break } } }

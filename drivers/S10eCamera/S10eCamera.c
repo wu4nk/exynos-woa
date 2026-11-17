@@ -605,7 +605,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     if (!gRingKeep) {
         RingPoolFree();
         Trace("frame ring: not kept (RingKeep 0): each start allocates its own\r\n");
-    } else if (RingPoolAlloc(gRingWc ? TRUE : FALSE))
+    } else if (RingPoolAlloc(gRingWc ? TRUE : FALSE, SHOT_RING_BYTES))
         Trace("frame ring kept for the device's lifetime: 3 x %u bytes at PA %08X %08X %08X (%s)\r\n", SHOT_RING_BYTES,
               (ULONG)gPool.Pa[0].QuadPart, (ULONG)gPool.Pa[1].QuadPart, (ULONG)gPool.Pa[2].QuadPart,
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
