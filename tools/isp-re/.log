@@ -1,4 +1,4 @@
-  File "/home/claude/exynos-woa-s10/tools/isp-re/front_init.py", line 150
+  File "/home/claude/exynos-woa-s10/tools/isp-re/front_init.py", line 186
     print('interrupts registered:, [(i['id'], i['chain'], e.img(i['handler'])) for i in e.irqs])
                                                                           ^
-SyntaxError: unterminated string literal (detected at line 150)
+SyntaxError: unterminated string literal (detected at line 186)

@@ -344,3 +344,27 @@ File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera
   frame (to confirm with set_param / shot).
 - Not done yet (Android does them): DICO_SystemConfig for the ISP chain, VRA frame-work init + tune copy,
   DICO_LoadCalData (EEPROM calibration at 0x1f752000 on Android - our side has no EEPROM read yet).
+### FIRST FRAME: 3AA shot F1 runs and programs the hardware (2026-11-17 21:30, front_init.py)
+- Struct layouts: tools/isp-re/param_layouts.txt (taa_param_set 1776 B, isp_param_set 1136 B, camera2_shot
+  36592 B, clang record layout of the ExtremeKernel tree's v7_0_0 fimc-is-param.h + interface-ddk.h +
+  fimc-is-metadata.h). Filled with Android's preview numbers (isfw-msg-android.txt :318-322); format / bitwidth /
+  msb encodings inferred from enum names - UNVERIFIED. shot: magic 0x23456789, aa.mode AUTO(2), scene 1,
+  capture intent PREVIEW, fps 7..30, frameDuration 33.3 ms.
+- Two more registrations Android does that the run needed: the sensor interface is ALSO registered with the RTA
+  (RTA_LIB_ADDR + 0x40, GPL fimc-is-device-sensor_v2.c:2934) - without it the RTA asserts "GetSensorIF() != NULL";
+  csi_itf_ops.get_vc_dma_buf_info answers Android's PDAF buffer infos (type 1: 500/102/1756x1, type 3:
+  501/102/39424x1, others INVALID).
+- Calibration: Android loads the module EEPROM data (kvaddr_cal[FRONT]); we have none -> load_cal_data with a ZERO
+  64 KiB buffer (PLACEHOLDER): "FROM CAL. DATA LOAD: FAIL! (0x600f)", get_cal_data type 2 gives centre 1584/1208
+  (Android 1888/1400). Everything calibration-dependent below is not Android's.
+- set_param -> 0; set_ctrl F1 -> 0; **shot F1 -> 0** with 5003 register accesses (4977 writes to 1564 distinct
+  3AA0 registers, half of them in the upper 32 KiB = the second shadow set, CHAIN_REGISTER_MODE_SHADOW). RTA ran
+  AE "CmlAeBeforeStreamOn ... start fps(7,30) end Ev=0B88 Tv=089F Sv=0400", AF boot init, PDAF config
+  (pd 456 x 342 as Android), "InitFrameElement FrameElementForME (0xFBB84530)" = Android's address again.
+- Check against the phone: of the 1564 registers the emulated F1 wrote, the final value of 1124 (72 %) equals the
+  value read on the phone while Android previewed (notes/data/isp-dump-20261117/3AA0.txt). The rest is expected
+  to differ: the phone's dump is a later frame with live AE/AWB and real calibration.
+- Log: notes/data/isp-emu-20261117/mmio-3AA_shot_F1.txt. Remaining "[ERROR]CheckInputCritical DDK set B Shadow
+  set B, Corex Critical set A" = the live dump's shadow/COREX state (taken mid-stream) seen at frame 1.
+- Next: ISP (M2M) set_param/shot for F1, the frame interrupts (handler ddk+0x331e34: V SYNC / CIN ROW / FRAME
+  END as Android's "TransitIsrState" lines), then F2..: what the blob writes per frame vs once.

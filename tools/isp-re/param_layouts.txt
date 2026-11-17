@@ -1,0 +1,961 @@
+         0 | struct taa_param_set
+         0 |   struct param_sensor_config sensor_config
+         0 |     u32 frametime
+         4 |     u32 min_target_fps
+         8 |     u32 max_target_fps
+        12 |     u32 width
+        16 |     u32 height
+        20 |     u32 sensor_binning_ratio_x
+        24 |     u32 sensor_binning_ratio_y
+        28 |     u32 bns_binning_ratio_x
+        32 |     u32 bns_binning_ratio_y
+        36 |     u32 bns_margin_left
+        40 |     u32 bns_margin_top
+        44 |     u32 bns_output_width
+        48 |     u32 bns_output_height
+        52 |     u32 calibrated_width
+        56 |     u32 calibrated_height
+        60 |     u32 early_config_lock
+        64 |     u32[15] reserved
+       124 |     u32 err
+       128 |   struct param_otf_input otf_input
+       128 |     u32 cmd
+       132 |     u32 format
+       136 |     u32 bitwidth
+       140 |     u32 order
+       144 |     u32 width
+       148 |     u32 height
+       152 |     u32 bayer_crop_offset_x
+       156 |     u32 bayer_crop_offset_y
+       160 |     u32 bayer_crop_width
+       164 |     u32 bayer_crop_height
+       168 |     u32[21] reserved
+       252 |     u32 err
+       256 |   struct param_dma_input dma_input
+       256 |     u32 cmd
+       260 |     u32 format
+       264 |     u32 bitwidth
+       268 |     u32 order
+       272 |     u32 plane
+       276 |     u32 width
+       280 |     u32 height
+       284 |     u32 dma_crop_offset
+       288 |     u32 dma_crop_width
+       292 |     u32 dma_crop_height
+       296 |     u32 bayer_crop_offset_x
+       300 |     u32 bayer_crop_offset_y
+       304 |     u32 bayer_crop_width
+       308 |     u32 bayer_crop_height
+       312 |     u32 scene_mode
+       316 |     u32 msb
+       320 |     u32 v_otf_enable
+       324 |     u32 v_otf_token_line
+       328 |     u32[13] reserved
+       380 |     u32 err
+       384 |   struct param_dma_input ddma_input
+       384 |     u32 cmd
+       388 |     u32 format
+       392 |     u32 bitwidth
+       396 |     u32 order
+       400 |     u32 plane
+       404 |     u32 width
+       408 |     u32 height
+       412 |     u32 dma_crop_offset
+       416 |     u32 dma_crop_width
+       420 |     u32 dma_crop_height
+       424 |     u32 bayer_crop_offset_x
+       428 |     u32 bayer_crop_offset_y
+       432 |     u32 bayer_crop_width
+       436 |     u32 bayer_crop_height
+       440 |     u32 scene_mode
+       444 |     u32 msb
+       448 |     u32 v_otf_enable
+       452 |     u32 v_otf_token_line
+       456 |     u32[13] reserved
+       508 |     u32 err
+       512 |   struct param_otf_output otf_output
+       512 |     u32 cmd
+       516 |     u32 format
+       520 |     u32 bitwidth
+       524 |     u32 order
+       528 |     u32 width
+       532 |     u32 height
+       536 |     u32 crop_offset_x
+       540 |     u32 crop_offset_y
+       544 |     u32 crop_width
+       548 |     u32 crop_height
+       552 |     u32 crop_enable
+       556 |     u32[20] reserved
+       636 |     u32 err
+       640 |   struct param_dma_output dma_output_before_bds
+       640 |     u32 cmd
+       644 |     u32 format
+       648 |     u32 bitwidth
+       652 |     u32 order
+       656 |     u32 plane
+       660 |     u32 width
+       664 |     u32 height
+       668 |     u32 dma_crop_offset_x
+       672 |     u32 dma_crop_offset_y
+       676 |     u32 dma_crop_width
+       680 |     u32 dma_crop_height
+       684 |     u32 crop_enable
+       688 |     u32 msb
+       692 |     u32 v_otf_enable
+       696 |     u32 v_otf_dst_ip
+       700 |     u32 v_otf_dst_axi_id
+       704 |     u32 v_otf_token_line
+       708 |     u32[14] reserved
+       764 |     u32 err
+       768 |   struct param_dma_output dma_output_after_bds
+       768 |     u32 cmd
+       772 |     u32 format
+       776 |     u32 bitwidth
+       780 |     u32 order
+       784 |     u32 plane
+       788 |     u32 width
+       792 |     u32 height
+       796 |     u32 dma_crop_offset_x
+       800 |     u32 dma_crop_offset_y
+       804 |     u32 dma_crop_width
+       808 |     u32 dma_crop_height
+       812 |     u32 crop_enable
+       816 |     u32 msb
+       820 |     u32 v_otf_enable
+       824 |     u32 v_otf_dst_ip
+       828 |     u32 v_otf_dst_axi_id
+       832 |     u32 v_otf_token_line
+       836 |     u32[14] reserved
+       892 |     u32 err
+       896 |   struct param_dma_output dma_output_mrg
+       896 |     u32 cmd
+       900 |     u32 format
+       904 |     u32 bitwidth
+       908 |     u32 order
+       912 |     u32 plane
+       916 |     u32 width
+       920 |     u32 height
+       924 |     u32 dma_crop_offset_x
+       928 |     u32 dma_crop_offset_y
+       932 |     u32 dma_crop_width
+       936 |     u32 dma_crop_height
+       940 |     u32 crop_enable
+       944 |     u32 msb
+       948 |     u32 v_otf_enable
+       952 |     u32 v_otf_dst_ip
+       956 |     u32 v_otf_dst_axi_id
+       960 |     u32 v_otf_token_line
+       964 |     u32[14] reserved
+      1020 |     u32 err
+      1024 |   struct param_dma_output dma_output_efd
+      1024 |     u32 cmd
+      1028 |     u32 format
+      1032 |     u32 bitwidth
+      1036 |     u32 order
+      1040 |     u32 plane
+      1044 |     u32 width
+      1048 |     u32 height
+      1052 |     u32 dma_crop_offset_x
+      1056 |     u32 dma_crop_offset_y
+      1060 |     u32 dma_crop_width
+      1064 |     u32 dma_crop_height
+      1068 |     u32 crop_enable
+      1072 |     u32 msb
+      1076 |     u32 v_otf_enable
+      1080 |     u32 v_otf_dst_ip
+      1084 |     u32 v_otf_dst_axi_id
+      1088 |     u32 v_otf_token_line
+      1092 |     u32[14] reserved
+      1148 |     u32 err
+      1152 |   struct param_dma_output ddma_output
+      1152 |     u32 cmd
+      1156 |     u32 format
+      1160 |     u32 bitwidth
+      1164 |     u32 order
+      1168 |     u32 plane
+      1172 |     u32 width
+      1176 |     u32 height
+      1180 |     u32 dma_crop_offset_x
+      1184 |     u32 dma_crop_offset_y
+      1188 |     u32 dma_crop_width
+      1192 |     u32 dma_crop_height
+      1196 |     u32 crop_enable
+      1200 |     u32 msb
+      1204 |     u32 v_otf_enable
+      1208 |     u32 v_otf_dst_ip
+      1212 |     u32 v_otf_dst_axi_id
+      1216 |     u32 v_otf_token_line
+      1220 |     u32[14] reserved
+      1276 |     u32 err
+      1280 |   u32[17] input_dva
+      1348 |   u32[17] output_dva_before_bds
+      1416 |   u32[17] output_dva_after_bds
+      1484 |   u32[17] output_dva_mrg
+      1552 |   u32[17] output_dva_efd
+      1624 |   uint64_t[17] output_kva_me
+      1760 |   u32 instance_id
+      1764 |   u32 fcount
+      1768 |   bool reprocessing
+           | [sizeof=1776, align=8]
+
+         0 | struct isp_param_set
+         0 |   struct taa_param_set * taa_param
+         8 |   struct param_otf_input otf_input
+         8 |     u32 cmd
+        12 |     u32 format
+        16 |     u32 bitwidth
+        20 |     u32 order
+        24 |     u32 width
+        28 |     u32 height
+        32 |     u32 bayer_crop_offset_x
+        36 |     u32 bayer_crop_offset_y
+        40 |     u32 bayer_crop_width
+        44 |     u32 bayer_crop_height
+        48 |     u32[21] reserved
+       132 |     u32 err
+       136 |   struct param_dma_input dma_input
+       136 |     u32 cmd
+       140 |     u32 format
+       144 |     u32 bitwidth
+       148 |     u32 order
+       152 |     u32 plane
+       156 |     u32 width
+       160 |     u32 height
+       164 |     u32 dma_crop_offset
+       168 |     u32 dma_crop_width
+       172 |     u32 dma_crop_height
+       176 |     u32 bayer_crop_offset_x
+       180 |     u32 bayer_crop_offset_y
+       184 |     u32 bayer_crop_width
+       188 |     u32 bayer_crop_height
+       192 |     u32 scene_mode
+       196 |     u32 msb
+       200 |     u32 v_otf_enable
+       204 |     u32 v_otf_token_line
+       208 |     u32[13] reserved
+       260 |     u32 err
+       264 |   struct param_dma_input vdma3_input
+       264 |     u32 cmd
+       268 |     u32 format
+       272 |     u32 bitwidth
+       276 |     u32 order
+       280 |     u32 plane
+       284 |     u32 width
+       288 |     u32 height
+       292 |     u32 dma_crop_offset
+       296 |     u32 dma_crop_width
+       300 |     u32 dma_crop_height
+       304 |     u32 bayer_crop_offset_x
+       308 |     u32 bayer_crop_offset_y
+       312 |     u32 bayer_crop_width
+       316 |     u32 bayer_crop_height
+       320 |     u32 scene_mode
+       324 |     u32 msb
+       328 |     u32 v_otf_enable
+       332 |     u32 v_otf_token_line
+       336 |     u32[13] reserved
+       388 |     u32 err
+       392 |   struct param_otf_output otf_output
+       392 |     u32 cmd
+       396 |     u32 format
+       400 |     u32 bitwidth
+       404 |     u32 order
+       408 |     u32 width
+       412 |     u32 height
+       416 |     u32 crop_offset_x
+       420 |     u32 crop_offset_y
+       424 |     u32 crop_width
+       428 |     u32 crop_height
+       432 |     u32 crop_enable
+       436 |     u32[20] reserved
+       516 |     u32 err
+       520 |   struct param_dma_output dma_output_chunk
+       520 |     u32 cmd
+       524 |     u32 format
+       528 |     u32 bitwidth
+       532 |     u32 order
+       536 |     u32 plane
+       540 |     u32 width
+       544 |     u32 height
+       548 |     u32 dma_crop_offset_x
+       552 |     u32 dma_crop_offset_y
+       556 |     u32 dma_crop_width
+       560 |     u32 dma_crop_height
+       564 |     u32 crop_enable
+       568 |     u32 msb
+       572 |     u32 v_otf_enable
+       576 |     u32 v_otf_dst_ip
+       580 |     u32 v_otf_dst_axi_id
+       584 |     u32 v_otf_token_line
+       588 |     u32[14] reserved
+       644 |     u32 err
+       648 |   struct param_dma_output dma_output_yuv
+       648 |     u32 cmd
+       652 |     u32 format
+       656 |     u32 bitwidth
+       660 |     u32 order
+       664 |     u32 plane
+       668 |     u32 width
+       672 |     u32 height
+       676 |     u32 dma_crop_offset_x
+       680 |     u32 dma_crop_offset_y
+       684 |     u32 dma_crop_width
+       688 |     u32 dma_crop_height
+       692 |     u32 crop_enable
+       696 |     u32 msb
+       700 |     u32 v_otf_enable
+       704 |     u32 v_otf_dst_ip
+       708 |     u32 v_otf_dst_axi_id
+       712 |     u32 v_otf_token_line
+       716 |     u32[14] reserved
+       772 |     u32 err
+       776 |   u32[17] input_dva
+       844 |   u32[17] output_dva_chunk
+       912 |   u32[17] output_dva_yuv
+       984 |   uint64_t[17] output_kva_me
+      1120 |   u32 instance_id
+      1124 |   u32 fcount
+      1128 |   bool reprocessing
+           | [sizeof=1136, align=8]
+
+         0 | struct camera2_shot
+         0 |   struct camera2_ctl ctl
+         0 |     struct camera2_colorcorrection_ctl color
+         0 |       enum colorcorrection_mode mode
+         4 |       struct rational[9] transform
+        76 |       float[4] gains
+        92 |       enum processing_mode aberrationCorrectionMode
+        96 |       uint32_t vendor_hue
+       100 |       uint32_t vendor_saturation
+       104 |       uint32_t vendor_brightness
+       108 |       uint32_t vendor_contrast
+       112 |     struct camera2_aa_ctl aa
+       112 |       enum aa_ae_antibanding_mode aeAntibandingMode
+       116 |       int32_t aeExpCompensation
+       120 |       enum aa_ae_lock aeLock
+       124 |       enum aa_aemode aeMode
+       128 |       uint32_t[5] aeRegions
+       148 |       uint32_t[2] aeTargetFpsRange
+       156 |       enum aa_ae_precapture_trigger aePrecaptureTrigger
+       160 |       enum aa_afmode afMode
+       164 |       uint32_t[5] afRegions
+       184 |       enum aa_af_trigger afTrigger
+       188 |       enum aa_awb_lock awbLock
+       192 |       enum aa_awbmode awbMode
+       196 |       uint32_t[5] awbRegions
+       216 |       enum aa_capture_intent captureIntent
+       220 |       enum aa_effect_mode effectMode
+       224 |       enum aa_mode mode
+       228 |       enum aa_scene_mode sceneMode
+       232 |       enum aa_videostabilization_mode videoStabilizationMode
+       236 |       float vendor_aeExpCompensationStep
+       240 |       uint32_t vendor_afmode_option
+       244 |       enum aa_afmode_ext vendor_afmode_ext
+       248 |       enum aa_ae_flashmode vendor_aeflashMode
+       252 |       enum aa_isomode vendor_isoMode
+       256 |       uint32_t vendor_isoValue
+       260 |       int32_t vendor_awbValue
+       264 |       enum aa_cameraid vendor_cameraId
+       268 |       enum aa_videomode vendor_videoMode
+       272 |       enum aa_ae_facemode vendor_aeFaceMode
+       276 |       enum aa_afstate vendor_afState
+       280 |       int32_t vendor_exposureValue
+       284 |       uint32_t vendor_touchAeDone
+       288 |       uint32_t vendor_touchBvChange
+       292 |       uint32_t vendor_captureCount
+       296 |       uint32_t vendor_captureExposureTime
+       300 |       float vendor_objectDistanceCm
+       304 |       int32_t vendor_colorTempKelvin
+       308 |       enum aa_enable_dynamicshot vendor_enableDynamicShotDm
+       312 |       float[15] vendor_expBracketing
+       372 |       float vendor_expBracketingCapture
+       376 |       enum aa_supernightmode vendor_superNightShotMode
+       380 |       struct camera2_video_output_size vendor_videoOutputSize
+       380 |         uint16_t width
+       382 |         uint16_t height
+       384 |       enum aa_night_timelaps_mode vendor_nightTimelapsMode
+       388 |       uint32_t vendor_personalPresetIndex
+       392 |       uint32_t vendor_captureHint
+       396 |       int32_t vendor_captureEV
+       400 |       uint32_t vendor_ssrmHint
+       404 |       uint32_t[10] vendor_reserved
+       444 |     struct camera2_demosaic_ctl demosaic
+       444 |       enum demosaic_processing_mode mode
+       448 |     struct camera2_edge_ctl edge
+       448 |       enum processing_mode mode
+       452 |       uint8_t strength
+       456 |     struct camera2_flash_ctl flash
+       456 |       uint32_t firingPower
+       464 |       uint64_t firingTime
+       472 |       enum flash_mode flashMode
+       480 |     struct camera2_hotpixel_ctl hotpixel
+       480 |       enum processing_mode mode
+       488 |     struct camera2_jpeg_ctl jpeg
+       488 |       uint8_t gpsLocation
+       496 |       double[3] gpsCoordinates
+       520 |       uint8_t[33] gpsProcessingMethod
+       560 |       uint64_t gpsTimestamp
+       568 |       uint32_t orientation
+       572 |       uint8_t quality
+       573 |       uint8_t thumbnailQuality
+       576 |       uint32_t[2] thumbnailSize
+       584 |     struct camera2_lens_ctl lens
+       584 |       int32_t aperture
+       588 |       float filterDensity
+       592 |       float focalLength
+       596 |       float focusDistance
+       600 |       enum optical_stabilization_mode opticalStabilizationMode
+       604 |     struct camera2_noisereduction_ctl noise
+       604 |       enum processing_mode mode
+       608 |       uint8_t strength
+       612 |     struct camera2_request_ctl request
+       612 |       uint32_t frameCount
+       616 |       uint32_t id
+       620 |       enum metadata_mode metadataMode
+       624 |       uint32_t vendor_frameCount
+       628 |     struct camera2_scaler_ctl scaler
+       628 |       uint32_t[4] cropRegion
+       648 |     struct camera2_sensor_ctl sensor
+       648 |       uint64_t exposureTime
+       656 |       uint64_t frameDuration
+       664 |       uint32_t sensitivity
+       668 |       int32_t[4] testPatternData
+       684 |       enum sensor_test_pattern_mode testPatternMode
+       688 |     struct camera2_shading_ctl shading
+       688 |       enum processing_mode mode
+       692 |       uint8_t strength
+       696 |     struct camera2_stats_ctl stats
+       696 |       enum facedetect_mode faceDetectMode
+       700 |       enum stats_mode histogramMode
+       704 |       enum stats_mode sharpnessMapMode
+       708 |       enum stats_mode hotPixelMapMode
+       712 |       enum stats_mode lensShadingMapMode
+       716 |     struct camera2_tonemap_ctl tonemap
+       716 |       float[64] curveBlue
+       972 |       float[64] curveGreen
+      1228 |       float[64] curveRed
+      1484 |       float curve
+      1488 |       enum tonemap_mode mode
+      1492 |       float gamma
+      1496 |       enum tonemap_presetCurve presetCurve
+      1500 |     struct camera2_led_ctl led
+      1500 |       enum led_transmit transmit
+      1504 |     struct camera2_blacklevel_ctl blacklevel
+      1504 |       enum blacklevel_lock lock
+      1512 |     struct camera2_sync_ctl sync
+      1512 |       int64_t frameNumber
+      1520 |     struct camera2_reprocess_ctl reprocess
+      1520 |       float effectiveExposureFactor
+      1524 |     struct camera2_entry_ctl vendor_entry
+      1524 |       uint32_t lowIndexParam
+      1528 |       uint32_t highIndexParam
+      1532 |       uint32_t[2048] parameter
+      9728 |   struct camera2_dm dm
+      9728 |     struct camera2_colorcorrection_dm color
+      9728 |       enum colorcorrection_mode mode
+      9732 |       struct rational[9] transform
+      9804 |       float[4] gains
+      9820 |       enum processing_mode aberrationCorrectionMode
+      9824 |       uint32_t vendor_hue
+      9828 |       uint32_t vendor_saturation
+      9832 |       uint32_t vendor_brightness
+      9836 |       uint32_t vendor_contrast
+      9840 |     struct camera2_aa_dm aa
+      9840 |       enum aa_ae_antibanding_mode aeAntibandingMode
+      9844 |       int32_t aeExpCompensation
+      9848 |       enum aa_ae_lock aeLock
+      9852 |       enum aa_aemode aeMode
+      9856 |       uint32_t[5] aeRegions
+      9876 |       uint32_t[2] aeTargetFpsRange
+      9884 |       enum aa_ae_precapture_trigger aePrecaptureTrigger
+      9888 |       enum ae_state aeState
+      9892 |       enum aa_afmode afMode
+      9896 |       uint32_t[5] afRegions
+      9916 |       enum aa_af_trigger afTrigger
+      9920 |       enum aa_afstate afState
+      9924 |       enum aa_awb_lock awbLock
+      9928 |       enum aa_awbmode awbMode
+      9932 |       uint32_t[5] awbRegions
+      9952 |       enum aa_capture_intent captureIntent
+      9956 |       enum awb_state awbState
+      9960 |       enum aa_effect_mode effectMode
+      9964 |       enum aa_mode mode
+      9968 |       enum aa_scene_mode sceneMode
+      9972 |       enum aa_videostabilization_mode videoStabilizationMode
+      9976 |       enum aa_af_scene_change afSceneChange
+      9980 |       float vendor_aeExpCompensationStep
+      9984 |       uint32_t vendor_afmode_option
+      9988 |       enum aa_afmode_ext vendor_afmode_ext
+      9992 |       enum aa_ae_flashmode vendor_aeflashMode
+      9996 |       enum aa_isomode vendor_isoMode
+     10000 |       uint32_t vendor_isoValue
+     10004 |       int32_t vendor_awbValue
+     10008 |       enum aa_cameraid vendor_cameraId
+     10012 |       enum aa_videomode vendor_videoMode
+     10016 |       enum aa_ae_facemode vendor_aeFaceMode
+     10020 |       enum aa_afstate vendor_afState
+     10024 |       int32_t vendor_exposureValue
+     10028 |       uint32_t vendor_touchAeDone
+     10032 |       uint32_t vendor_touchBvChange
+     10036 |       uint32_t vendor_captureCount
+     10040 |       uint32_t vendor_captureExposureTime
+     10044 |       float vendor_objectDistanceCm
+     10048 |       int32_t vendor_colorTempKelvin
+     10052 |       float[15] vendor_expBracketing
+     10112 |       float vendor_expBracketingCapture
+     10116 |       int32_t[3] vendor_dynamicShotValue
+     10128 |       int32_t vendor_lightConditionValue
+     10132 |       int32_t vendor_dynamicShotExtraInfo
+     10136 |       struct aa_apexInfo vendor_apexInfo
+     10136 |         int32_t av
+     10140 |         int32_t sv
+     10144 |         int32_t tv
+     10148 |         int32_t ev
+     10152 |         int32_t bv
+     10160 |       struct osdInfo vendor_osdInfo
+     10160 |         struct sensorInfo sensorInfo
+     10160 |           uint32_t analogGain
+     10164 |           uint32_t digitalGain
+     10168 |           uint64_t longExposureTime
+     10176 |           uint64_t midExposureTime
+     10184 |           uint64_t shortExposureTime
+     10192 |           uint32_t longAnalogGain
+     10196 |           uint32_t midAnalogGain
+     10200 |           uint32_t shortAnalogGain
+     10204 |           uint32_t longDigitalGain
+     10208 |           uint32_t midDigitalGain
+     10212 |           uint32_t shortDigitalGain
+     10216 |         uint32_t[10] reserved
+     10256 |       int32_t vendor_drcRatio
+     10260 |       uint32_t vendor_colorTempIndex
+     10264 |       uint32_t vendor_luxIndex
+     10268 |       uint32_t vendor_luxStandard
+     10272 |       int32_t[8] vendor_aeStats4VO
+     10304 |       int32_t vendor_multiFrameEv
+     10308 |       int32_t vendor_faceToneWeight
+     10312 |       float vendor_noiseIndex
+     10316 |       int32_t vendor_dynamicShotCaptureDuration
+     10320 |       uint32_t[6] vendor_reserved
+     10344 |       uint32_t vendor_wideTeleConvEv
+     10348 |       uint32_t vendor_teleSync
+     10352 |       uint32_t vendor_fusionCaptureAeInfo
+     10356 |       uint32_t vendor_fusionCaptureAfInfo
+     10360 |       uint32_t[9] vendor_reserved_dual
+     10400 |     struct camera2_demosaic_dm demosaic
+     10400 |       enum demosaic_processing_mode mode
+     10404 |     struct camera2_edge_dm edge
+     10404 |       enum processing_mode mode
+     10408 |       uint8_t strength
+     10416 |     struct camera2_flash_dm flash
+     10416 |       uint32_t firingPower
+     10424 |       uint64_t firingTime
+     10432 |       enum flash_mode flashMode
+     10436 |       enum flash_state flashState
+     10440 |       uint32_t vendor_firingStable
+     10444 |       uint32_t vendor_decision
+     10448 |       uint32_t vendor_flashReady
+     10452 |       uint32_t vendor_flashOffReady
+     10456 |     struct camera2_hotpixel_dm hotpixel
+     10456 |       enum processing_mode mode
+     10464 |     struct camera2_jpeg_dm jpeg
+     10464 |       uint8_t gpsLocation
+     10472 |       double[3] gpsCoordinates
+     10496 |       uint8_t[33] gpsProcessingMethod
+     10536 |       uint64_t gpsTimestamp
+     10544 |       uint32_t orientation
+     10548 |       uint8_t quality
+     10552 |       uint32_t size
+     10556 |       uint8_t thumbnailQuality
+     10560 |       uint32_t[2] thumbnailSize
+     10568 |     struct camera2_lens_dm lens
+     10568 |       int32_t aperture
+     10572 |       float filterDensity
+     10576 |       float focalLength
+     10580 |       float focusDistance
+     10584 |       float[2] focusRange
+     10592 |       enum optical_stabilization_mode opticalStabilizationMode
+     10596 |       enum lens_state state
+     10600 |       float[4] poseRotation
+     10616 |       float[3] poseTranslation
+     10628 |       float[5] intrinsicCalibration
+     10648 |       float[6] radialDistortion
+     10672 |     struct camera2_noisereduction_dm noise
+     10672 |       enum processing_mode mode
+     10676 |       uint8_t strength
+     10680 |     struct camera2_request_dm request
+     10680 |       uint32_t frameCount
+     10684 |       uint32_t id
+     10688 |       enum metadata_mode metadataMode
+     10692 |       uint8_t pipelineDepth
+     10696 |       uint32_t vendor_frameCount
+     10700 |     struct camera2_scaler_dm scaler
+     10700 |       uint32_t[4] cropRegion
+     10720 |     struct camera2_sensor_dm sensor
+     10720 |       uint64_t exposureTime
+     10728 |       uint64_t frameDuration
+     10736 |       uint32_t sensitivity
+     10744 |       uint64_t timeStamp
+     10752 |       float temperature
+     10756 |       struct rational[3] neutralColorPoint
+     10784 |       double[4][2] noiseProfile
+     10848 |       float[2][2][2][3] profileHueSatMap
+     10944 |       float[32][2] profileToneCurve
+     11200 |       float greenSplit
+     11204 |       int32_t[4] testPatternData
+     11220 |       enum sensor_test_pattern_mode testPatternMode
+     11224 |       uint64_t rollingShutterSkew
+     11232 |     struct camera2_shading_dm shading
+     11232 |       enum processing_mode mode
+     11236 |       uint8_t strength
+     11240 |     struct camera2_stats_dm stats
+     11240 |       enum facedetect_mode faceDetectMode
+     11244 |       uint32_t[16] faceIds
+     11308 |       uint32_t[16][6] faceLandmarks
+     11692 |       uint32_t[16][4] faceRectangles
+     11948 |       uint8_t[16] faceScores
+     11964 |       uint32_t[2] faceSrcImageSize
+     11972 |       uint32_t[14] faces
+     12028 |       uint32_t[768] histogram
+     15100 |       enum stats_mode histogramMode
+     15104 |       int32_t[2][2][3] sharpnessMap
+     15152 |       enum stats_mode sharpnessMapMode
+     15156 |       uint8_t lensShadingCorrectionMap
+     15160 |       float[2][2][4] lensShadingMap
+     15224 |       enum stats_scene_flicker sceneFlicker
+     15228 |       enum stats_mode hotPixelMapMode
+     15232 |       int32_t[21][2] hotPixelMap
+     15400 |       enum stats_mode lensShadingMapMode
+     15404 |       uint32_t vendor_lls_tuning_set_index
+     15408 |       uint32_t vendor_lls_brightness_index
+     15412 |       enum stats_wdrAutoState vendor_wdrAutoState
+     15416 |       uint32_t[2][4] vendor_rgbAvgSamples
+     15448 |     struct camera2_tonemap_dm tonemap
+     15448 |       float[64] curveBlue
+     15704 |       float[64] curveGreen
+     15960 |       float[64] curveRed
+     16216 |       float curve
+     16220 |       enum tonemap_mode mode
+     16224 |       float gamma
+     16228 |       enum tonemap_presetCurve presetCurve
+     16232 |     struct camera2_led_dm led
+     16232 |       enum led_transmit transmit
+     16236 |     struct camera2_blacklevel_dm blacklevel
+     16236 |       enum blacklevel_lock lock
+     16240 |     struct camera2_sync_dm sync
+     16240 |       int32_t maxLatency
+     16244 |     struct camera2_reprocess_dm reprocess
+     16244 |       float effectiveExposureFactor
+     16248 |     struct camera2_entry_dm vendor_entry
+     16248 |       uint32_t lowIndexParam
+     16252 |       uint32_t highIndexParam
+     16256 |   struct camera2_uctl uctl
+     16256 |     uint32_t uUpdateBitMap
+     16260 |     uint32_t uFrameNumber
+     16264 |     struct camera2_aa_uctl aaUd
+     16264 |       struct camera2_obj_af_info af_data
+     16264 |         int32_t focusState
+     16268 |         int32_t focusROILeft
+     16272 |         int32_t focusROIRight
+     16276 |         int32_t focusROITop
+     16280 |         int32_t focusROIBottom
+     16284 |         int32_t focusWeight
+     16288 |         int32_t w_movement
+     16292 |         int32_t h_movement
+     16296 |         int32_t w_velocity
+     16300 |         int32_t h_velocity
+     16304 |       struct camera2_hrm_sensor_info hrmInfo
+     16304 |         uint32_t visible_data
+     16308 |         uint32_t ir_data
+     16312 |         int32_t flicker_data
+     16316 |         int32_t status
+     16320 |         uint32_t visible_cdata
+     16324 |         uint32_t visible_rdata
+     16328 |         uint32_t visible_gdata
+     16332 |         uint32_t visible_bdata
+     16336 |         uint32_t ir_gain
+     16340 |         uint32_t ir_exptime
+     16344 |       struct camera2_illuminaion_sensor_info illuminationInfo
+     16344 |         uint16_t visible_cdata
+     16346 |         uint16_t visible_rdata
+     16348 |         uint16_t visible_gdata
+     16350 |         uint16_t visible_bdata
+     16352 |         uint16_t visible_gain
+     16354 |         uint16_t visible_exptime
+     16356 |         uint16_t ir_north
+     16358 |         uint16_t ir_south
+     16360 |         uint16_t ir_east
+     16362 |         uint16_t ir_west
+     16364 |         uint16_t ir_gain
+     16366 |         uint16_t ir_exptime
+     16368 |       struct camera2_gyro_sensor_info gyroInfo
+     16368 |         float x
+     16372 |         float y
+     16376 |         float z
+     16380 |         enum sensor_state state
+     16384 |       struct camera2_accelerometer_sensor_info accInfo
+     16384 |         float x
+     16388 |         float y
+     16392 |         float z
+     16396 |       struct camera2_proximity_sensor_info proximityInfo
+     16396 |         int32_t flicker_data
+     16400 |       struct camera2_temperature_info temperatureInfo
+     16400 |         int32_t usb_thermal
+     16404 |     struct camera2_af_uctl af
+     16404 |       uint32_t vs2Length
+     16408 |       uint32_t[400] vendorSpecific2
+     18008 |     struct camera2_lens_uctl lensUd
+     18008 |       uint32_t pos
+     18012 |       uint32_t posSize
+     18016 |       uint32_t direction
+     18020 |       uint32_t slewRate
+     18024 |       uint32_t oisCoefVal
+     18032 |     struct camera2_sensor_uctl sensorUd
+     18032 |       uint64_t dynamicFrameDuration
+     18040 |       uint32_t analogGain
+     18044 |       uint32_t digitalGain
+     18048 |       uint64_t longExposureTime
+     18056 |       uint64_t midExposureTime
+     18064 |       uint64_t shortExposureTime
+     18072 |       uint32_t longAnalogGain
+     18076 |       uint32_t midAnalogGain
+     18080 |       uint32_t shortAnalogGain
+     18084 |       uint32_t longDigitalGain
+     18088 |       uint32_t midDigitalGain
+     18092 |       uint32_t shortDigitalGain
+     18096 |       uint64_t exposureTime
+     18104 |       uint32_t frameDuration
+     18108 |       uint32_t sensitivity
+     18112 |       uint32_t CtrlFrameDuration
+     18120 |     struct camera2_flash_uctl flashUd
+     18120 |       uint32_t firingPower
+     18128 |       uint64_t firingTime
+     18136 |       enum flash_mode flashMode
+     18144 |     struct camera2_scaler_uctl scalerUd
+     18144 |       uint32_t orientation
+     18148 |       enum mcsc_port[2] mcsc_sub_blk_port
+     18156 |     struct camera2_is_mode_uctl isModeUd
+     18156 |       enum camera2_wdr_mode wdr_mode
+     18160 |       enum camera2_paf_mode paf_mode
+     18164 |       enum camera2_disparity_mode disparity_mode
+     18168 |     struct camera2_fd_uctl fdUd
+     18168 |       enum facedetect_mode faceDetectMode
+     18172 |       uint32_t[16] faceIds
+     18236 |       uint32_t[16][6] faceLandmarks
+     18620 |       uint32_t[16][4] faceRectangles
+     18876 |       uint8_t[16] faceScores
+     18892 |       uint32_t[16] faces
+     18956 |       uint32_t[32] vendorSpecific
+     19084 |     struct camera2_drc_uctl drcUd
+     19084 |       enum camera2_drc_mode uDrcEn
+     19088 |     struct camera2_dcp_uctl dcpUd
+     19088 |       struct camera2_dcp_homo_matrix wide_gdc_grid_value
+     19088 |         int32_t[7][9] dx
+     19340 |         int32_t[7][9] dy
+     19592 |       struct camera2_dcp_homo_matrix tele_gdc_grid_value
+     19592 |         int32_t[7][9] dx
+     19844 |         int32_t[7][9] dy
+     20096 |       struct camera2_area wide_gdc_upscale_size
+     20096 |         int32_t x
+     20100 |         int32_t y
+     20104 |         int32_t w
+     20108 |         int32_t h
+     20112 |       struct camera2_area tele_gdc_upscale_size
+     20112 |         int32_t x
+     20116 |         int32_t y
+     20120 |         int32_t w
+     20124 |         int32_t h
+     20128 |       struct camera2_dcp_rgb_gamma_lut wide_gamma_LUT
+     20128 |         enum camera2_dcp_process_mode mode
+     20132 |         uint32_t[32] x_LUT
+     20260 |         uint32_t[32] r_LUT
+     20388 |         uint32_t[32] g_LUT
+     20516 |         uint32_t[32] b_LUT
+     20644 |       struct camera2_dcp_rgb_gamma_lut tele_gamma_LUT
+     20644 |         enum camera2_dcp_process_mode mode
+     20648 |         uint32_t[32] x_LUT
+     20776 |         uint32_t[32] r_LUT
+     20904 |         uint32_t[32] g_LUT
+     21032 |         uint32_t[32] b_LUT
+     21160 |     struct camera2_scene_detect_uctl sceneDetectInfoUd
+     21160 |       uint64_t timeStamp
+     21168 |       enum camera2_scene_index scene_index
+     21172 |       uint32_t confidence_score
+     21176 |       uint32_t[4] object_roi
+     21192 |     enum camera_vt_mode vtMode
+     21196 |     float zoomRatio
+     21200 |     enum camera_flash_mode flashMode
+     21204 |     enum camera_op_mode opMode
+     21208 |     struct camera2_is_hw_lls_uctl hwLls_mode
+     21208 |       enum camera2_is_hw_lls_mode hwLlsMode
+     21212 |       enum camera2_is_hw_lls_progress hwLlsProgress
+     21216 |     uint32_t[4] statsRoi
+     21232 |     enum aa_cameraMode cameraMode
+     21236 |     enum aa_sensorPlace masterCamera
+     21240 |     struct camera2_gmv_uctl gmvUd
+     21240 |       int16_t gmX
+     21242 |       int16_t gmY
+     21244 |     int32_t productColorInfo
+     21248 |     uint8_t[4] countryCode
+     21252 |     enum camera_motion_state motionState
+     21256 |     enum camera_client_index cameraClientIndex
+     21260 |     int32_t remosaicResolutionMode
+     21264 |     uint32_t[6] reserved
+     21288 |   struct camera2_udm udm
+     21288 |     struct camera2_aa_udm aa
+     21288 |       struct camera2_obj_af_info af_data
+     21288 |         int32_t focusState
+     21292 |         int32_t focusROILeft
+     21296 |         int32_t focusROIRight
+     21300 |         int32_t focusROITop
+     21304 |         int32_t focusROIBottom
+     21308 |         int32_t focusWeight
+     21312 |         int32_t w_movement
+     21316 |         int32_t h_movement
+     21320 |         int32_t w_velocity
+     21324 |         int32_t h_velocity
+     21328 |       struct camera2_hrm_sensor_info hrmInfo
+     21328 |         uint32_t visible_data
+     21332 |         uint32_t ir_data
+     21336 |         int32_t flicker_data
+     21340 |         int32_t status
+     21344 |         uint32_t visible_cdata
+     21348 |         uint32_t visible_rdata
+     21352 |         uint32_t visible_gdata
+     21356 |         uint32_t visible_bdata
+     21360 |         uint32_t ir_gain
+     21364 |         uint32_t ir_exptime
+     21368 |       struct camera2_illuminaion_sensor_info illuminationInfo
+     21368 |         uint16_t visible_cdata
+     21370 |         uint16_t visible_rdata
+     21372 |         uint16_t visible_gdata
+     21374 |         uint16_t visible_bdata
+     21376 |         uint16_t visible_gain
+     21378 |         uint16_t visible_exptime
+     21380 |         uint16_t ir_north
+     21382 |         uint16_t ir_south
+     21384 |         uint16_t ir_east
+     21386 |         uint16_t ir_west
+     21388 |         uint16_t ir_gain
+     21390 |         uint16_t ir_exptime
+     21392 |       struct camera2_gyro_sensor_info gyroInfo
+     21392 |         float x
+     21396 |         float y
+     21400 |         float z
+     21404 |         enum sensor_state state
+     21408 |       struct camera2_accelerometer_sensor_info accInfo
+     21408 |         float x
+     21412 |         float y
+     21416 |         float z
+     21420 |       struct camera2_proximity_sensor_info proximityInfo
+     21420 |         int32_t flicker_data
+     21424 |       struct camera2_temperature_info temperatureInfo
+     21424 |         int32_t usb_thermal
+     21428 |     struct camera2_lens_udm lens
+     21428 |       uint32_t pos
+     21432 |       uint32_t posSize
+     21436 |       uint32_t direction
+     21440 |       uint32_t slewRate
+     21444 |       uint32_t oisCoefVal
+     21448 |     struct camera2_sensor_udm sensor
+     21448 |       uint64_t dynamicFrameDuration
+     21456 |       uint32_t analogGain
+     21460 |       uint32_t digitalGain
+     21464 |       uint64_t longExposureTime
+     21472 |       uint64_t midExposureTime
+     21480 |       uint64_t shortExposureTime
+     21488 |       uint32_t longAnalogGain
+     21492 |       uint32_t midAnalogGain
+     21496 |       uint32_t shortAnalogGain
+     21500 |       uint32_t longDigitalGain
+     21504 |       uint32_t midDigitalGain
+     21508 |       uint32_t shortDigitalGain
+     21512 |       uint32_t shortWdrExposureTime
+     21516 |       uint32_t longWdrExposureTime
+     21520 |       uint32_t shortWdrSensitivity
+     21524 |       uint32_t longWdrSensitivity
+     21528 |       uint64_t timeStampBoot
+     21536 |       uint32_t[9] multiLuminances
+     21576 |     struct camera2_flash_udm flash
+     21576 |       uint32_t firingPower
+     21584 |       uint64_t firingTime
+     21592 |       enum flash_mode flashMode
+     21600 |     struct camera2_ae_udm ae
+     21600 |       uint32_t vsLength
+     21604 |       uint32_t[400] vendorSpecific
+     23204 |       uint32_t vs2Length
+     23208 |       uint32_t[32] vendorSpecific2
+     23336 |     struct camera2_awb_udm awb
+     23336 |       uint32_t vsLength
+     23340 |       uint32_t[415] vendorSpecific
+     25000 |       uint32_t vs2Length
+     25004 |       uint32_t[32] vendorSpecific2
+     25132 |     struct camera2_af_udm af
+     25132 |       uint32_t vsLength
+     25136 |       uint32_t[400] vendorSpecific
+     26736 |       int32_t lensPositionInfinity
+     26740 |       int32_t lensPositionMacro
+     26744 |       int32_t lensPositionCurrent
+     26748 |       uint32_t vs2Length
+     26752 |       uint32_t[32] vendorSpecific2
+     26880 |     struct camera2_as_udm as
+     26880 |       uint32_t vsLength
+     26884 |       uint32_t[400] vendorSpecific
+     28484 |     struct camera2_ipc_udm ipc
+     28484 |       uint32_t vsLength
+     28488 |       uint32_t[1086] vendorSpecific
+     32832 |     struct camera2_rta_udm rta
+     32832 |       uint32_t vsLength
+     32836 |       uint32_t[90] vendorSpecific
+     33196 |       uint32_t vs2Length
+     33200 |       uint32_t[48] vendorSpecific2
+     33392 |     struct camera2_internal_udm internal
+     33392 |       uint32_t ProcessedFrameInfo
+     33396 |       uint32_t[4] vendorSpecific
+     33412 |     struct camera2_scaler_udm scaler
+     33412 |       struct ysum_data ysumdata
+     33412 |         uint32_t lower_ysum_value
+     33416 |         uint32_t higher_ysum_value
+     33420 |     struct camera2_is_mode_udm isMode
+     33420 |       enum camera2_wdr_mode wdr_mode
+     33424 |       enum camera2_paf_mode paf_mode
+     33428 |       enum camera2_disparity_mode disparity_mode
+     33432 |     struct camera2_pdaf_udm pdaf
+     33432 |       uint16_t numCol
+     33434 |       uint16_t numRow
+     33436 |       struct camera2_pdaf_multi_result[9][13] multiResult
+     34372 |       struct camera2_pdaf_single_result singleResult
+     34372 |         uint16_t mode
+     34374 |         uint16_t goalPos
+     34376 |         uint16_t reliability
+     34378 |         uint16_t currentPos
+     34380 |       uint16_t lensPosResolution
+     34384 |     struct camera2_fd_udm fd
+     34384 |       uint32_t faceCount
+     34388 |       uint32_t[32] vendorSpecific
+     34516 |     struct camera2_me_udm me
+     34516 |       uint32_t[200] motion_vector
+     35316 |       uint32_t[200] current_patch
+     36116 |     enum camera_vt_mode vtMode
+     36120 |     float zoomRatio
+     36124 |     enum camera_flash_mode flashMode
+     36128 |     enum camera_op_mode opMode
+     36132 |     struct camera2_ni_udm ni
+     36132 |       uint32_t currentFrameNoiseIndex
+     36136 |       uint32_t nextFrameNoiseIndex
+     36140 |       uint32_t nextNextFrameNoiseIndex
+     36144 |     struct camera2_drc_udm drc
+     36144 |       uint16_t[32] globalToneMap
+     36208 |     struct camera2_rgbGamma_udm rgbGamma
+     36208 |       uint16_t[32] xTable
+     36272 |       uint16_t[96] yTable
+     36464 |     struct camera2_ccm_udm ccm
+     36464 |       int16_t[27] ccmVectors9
+     36520 |     enum aa_cameraMode cameraMode
+     36524 |     enum aa_sensorPlace masterCamera
+     36528 |     enum aa_fallback fallback
+     36532 |     uint32_t frame_id
+     36536 |     enum camera2_scene_index scene_index
+     36540 |     uint32_t[10] reserved
+     36584 |   uint32_t magicNumber
+           | [sizeof=36592, align=8]
+

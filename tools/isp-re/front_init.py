@@ -76,8 +76,14 @@ itf = e.sensor_itf(LAYOUT, {
     'cis_itf_ops.get_sensor_use_dgain': wr(S['use_dgain']),
     'cis_itf_ops.get_sensor_initial_aperture': wr(S['aperture']),
     'cis_itf_ops.is_actuator_available': lambda e, *a: 1,      # Android: "Ext AF is selected!", AF cal 384/554
+    # struct vc_buf_info_t {stat_type, sensor_mode, width, height, element_size} (interface-sensor.h:149); values
+    # = Android's preview "[IspObject_InitPdafLib] requestType ..." lines; other types INVALID (-1) as GPL memset+:2732
+    'csi_itf_ops.get_vc_dma_buf_info': lambda e, itf, t, p, *a: (e.u.mem_write(p, struct.pack(
+        '<iiIII', *({1: (500, 102, 1756, 1, 1), 3: (501, 102, 39424, 1, 1)}.get(t, (-1, -1, 0, 0, 0))))), 0)[1],
 })
 print('register_sensor_interface ->', e.call(e.DDK + 0x40, itf) & 0xffffffff)
+# the same interface is also registered with the RTA (GPL fimc-is-device-sensor_v2.c:2934, RTA_LIB_ADDR + 0x40)
+print('register_sensor_interface (RTA) ->', e.call(e.RTA + 0x40, itf) & 0xffffffff)
 out = e.alloc(8)
 tabs = {}
 for t, n in ((1, '3AA'), (2, 'ISP')):
@@ -146,6 +152,51 @@ print('create_tune_set x%d done; log lines %d (first: %s)' % (count0, len(e.logs
 # Android applied 3AA tune set 7 (Fast AE, one frame) then 6 for the preview (isfw-msg-android.txt :200 / :316):
 # only the preview one here
 step('3AA apply_tune_set 6', tabs['3AA']['apply_tune_set'], e.q(obj3), 0, 6)
+# Android then loads the module calibration (EEPROM, kernel kvaddr_cal[FRONT]; hw-3aa.c apply_setfile) and reads
+# the LSC centre back (isfw-msg-android.txt: "DICO_LoadCalData addr:0x1f752000", "GetCalibrationData ... type(2)
+# centerX/Y(1888/1400)"). We do not have this phone's front EEPROM contents yet: a ZERO buffer stands in -
+# PLACEHOLDER, every calibration-dependent result after this point is not Android's.
+CAL = e.alloc(64 * 1024, 4096)
+step('3AA load_cal_data (zeros)', tabs['3AA']['load_cal_data'], e.q(obj3), 0, CAL)
+CI = e.alloc(64)
+step('3AA get_cal_data type 2', tabs['3AA']['get_cal_data'], e.q(obj3), 0, CI, 2)
+print('cal_info data[0..3]:', [e.d(CI + 4 * k) for k in range(4)])
+
+# --- first preview frame: set_param / set_ctrl / shot for the 3AA (GPL hw-3aa.c shot path: lib set_param when
+# params change, lib set_ctrl(object, instance, fcount, shot), lib shot(object, param_set, shot, num_buffers)).
+# Struct layouts: param_layouts.txt (clang record layout of the GPL v7_0_0 headers). Values = Android's own log of
+# this phone's preview (isfw-msg-android.txt :318-322): otf input 3648 x 2736 (calibrated 3968 x 2736, crop 160),
+# bayer crop (352, 264) 2944 x 2208, DMA out before BDS 2944 x 2208 "11/12bits", after BDS 2432 x 1824, 7..30 fps.
+# The ENCODING of format / bitwidth / msb is inferred from the enum names (fimc-is-param.h) - UNVERIFIED.
+P = e.alloc(1776)
+
+
+def put(off, *vals):
+    e.u.mem_write(P + off, struct.pack('<%dI' % len(vals), *vals))
+
+
+put(0, 33333, 7, 30, 3648, 2736, 1000, 1000, 1000, 1000, 0, 0, 3648, 2736, 3968, 2736)   # sensor_config
+put(128, 1, 0, 10, 0, 3648, 2736, 352, 264, 2944, 2208)        # otf_input: cmd, format, bitwidth, order, w, h, crop
+put(640, 1, 0, 12, 0, 1, 2944, 2208, 0, 0, 2944, 2208, 0, 11)  # dma_output_before_bds .. crop_enable, msb
+put(768, 1, 0, 12, 0, 1, 2432, 1824, 0, 0, 2432, 1824, 0, 11)  # dma_output_after_bds
+bufs = {}
+for name, size, off in (('before_bds', 2944 * 2208 * 2, 1348), ('after_bds', 2432 * 1824 * 2, 1416)):
+    k = e.handlers[68](e, size)                                  # fake DMA pool, dva = 0x8xxxxxxx
+    dv = e.alloc(4)
+    e.handlers[65](e, k, dv)
+    bufs[name] = (k, e.d(dv))
+    put(off, e.d(dv))
+put(1760, 0, 1)                                                 # instance_id 0, fcount 1
+SHOT = e.alloc(36592)
+e.u.mem_write(SHOT + 36584, struct.pack('<I', 0x23456789))     # magicNumber (SHOT_MAGIC_NUMBER)
+e.u.mem_write(SHOT + 148, struct.pack('<II', 7, 30))           # ctl.aa.aeTargetFpsRange
+e.u.mem_write(SHOT + 216, struct.pack('<I', 1))                # ctl.aa.captureIntent PREVIEW
+e.u.mem_write(SHOT + 224, struct.pack('<II', 2, 1))            # ctl.aa.mode AUTO, sceneMode DISABLED (Android 2 / 1)
+e.u.mem_write(SHOT + 648, struct.pack('<QQ', 33333000, 33333333))  # ctl.sensor exposureTime, frameDuration (ns)
+print('DMA buffers (kva, dva):', {k: (hex(a), hex(b)) for k, (a, b) in bufs.items()})
+step('3AA set_param', tabs['3AA']['set_param'], e.q(obj3), P)
+step('3AA set_ctrl F1', tabs['3AA']['set_ctrl'], e.q(obj3), 0, 1, SHOT)
+step('3AA shot F1', tabs['3AA']['shot'], e.q(obj3), P, SHOT, 1)
 
 print('interrupts registered:', [(i['id'], i['chain'], e.img(i['handler'])) for i in e.irqs])
 with open(os.path.join(OUT, 'interface-calls.txt'), 'w') as f:
