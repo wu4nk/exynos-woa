@@ -218,3 +218,14 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   must be OFF - it also refuses ranges a driver has claimed, which the ISP windows are while fimc_is runs.
   Kernel = the OneUI one in use (ExtremeKernel 4.14.356) rebuilt with these lines; Samsung-specific blocks on
   /dev/mem (RKP/uH) UNVERIFIED - "check" + "ids" show at once whether reads work.
+### RTA (fimc_is_rta.bin) first look (2026-11-17)
+- Entries (assembly): 0x0 start_up(NULL, table) -> bl 0x25a60 with x0 = table; 0x40 -> bl 0x287cc; 0x80 ->
+  bl 0x248b0 (a table getter like the DDK's +0x80 - not run yet); 0x100 -> bl 0x24cc0 (shut-down).
+- Emulated start_up with the marker table: returns 0 after three OS calls, RTA table index 80 (spin lock), 0
+  (log, string in a stack buffer) and 81 (spin unlock) - the RTA layout of set_os_system_funcs_for_rta.
+- How the DDK finds the RTA: image 0x2f33f4 "adrp x0, 0x520000; add x0, #0x80; ret" - a PC-relative pointer to
+  RTA + 0x80 (the only DDK adrp into 0x520000..0x900000 besides one at 0x5aae4 in the VRA part). So the RTA must
+  sit exactly 0x520000 after the DDK file start, as on Android: the pair moves together, never apart.
+- The DDK's own section log (".data" size 12519312 ending 0xffffff80fb000000) spans the RTA's area
+  (0xffffff80fa500000..): that "data" is a linker span up to the heap, not 12 MB of DDK data - the 76 MiB
+  footprint from LIB_START holds DDK + RTA + DDK heap; the RTA heap is separate (HEAP_RTA_START, Stage 0).

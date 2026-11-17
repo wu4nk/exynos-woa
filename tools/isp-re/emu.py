@@ -99,8 +99,8 @@ class Isp:
     def d(self, a): return struct.unpack('<I', self.u.mem_read(a, 4))[0]
     def s(self, a, n=256): return bytes(self.u.mem_read(a, n)).split(b'\0')[0].decode('latin1')
     def img(self, a):
+        if RTA <= a < RTA + 0x800000: return 'rta+0x%x' % (a - RTA)    # first: it lies inside the DDK span
         if LIB_START <= a < LIB_START + DDK_SPAN: return 'ddk+0x%x' % (a - LIB_START)
-        if RTA <= a < RTA + 0x800000: return 'rta+0x%x' % (a - RTA)
         return '0x%x' % a
 
     # --- OS calls
