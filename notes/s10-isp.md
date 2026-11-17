@@ -68,5 +68,74 @@ Index: 0 log_write_console, 3 assert, 4-7 sema init/finish/up/down, 8-12 mutex i
 3. Stage 3: Android oracle (tools/android/camtrace-s10.sh, camhal-ioctl.js): what the vendor stack does per frame.
 4. Stage 4: only then a Windows loader (user-mode harness first if Q2 allows nothing better), SysMMU question settled.
 
+## Stage 1 - static triage of the user's binaries (2026-11-17, s10cam.zip from camtrace-s10.sh v1.0)
+Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binaries stay out of the repo.
+
+### Identity
+- fimc_is_lib.bin 4432944 B (0x43a430), version string "[S5E9820 10705-2021/04/05 16:59:12]L12XLOD01GM";
+  fimc_is_rta.bin 3986368 B (0x3cd3c0), "[S5E9820 b18e67877-09/26 04:52:21]L12XLOD01GM"; setfile_3j1.bin ends with
+  "210402_3J1 2021/04/02/16:23 E9820". (strings; the pull also has fimc_is_fw_mcu.bin and the other setfiles.)
+
+### Layout (confirmed in assembly)
+- DDK file = CDH (0..0x20000) + VRA (0x20000..0xE0000) + DDK (0xE0000..). start_up at 0xE0000: adrp/add
+  x1 = 0xE0040, x2 = 0xE0080, then bl 0xf25b8 (the real init); 0xE0040 -> bl 0xf6514, 0xE0080 -> bl 0xf1af4,
+  0xE0100 -> bl 0xf29cc. RTA file starts with its entry: 0x0 "mov x0, x1; bl 0x25a60" (start_up(NULL, table) ->
+  table), 0x100 -> bl 0x24cc0 (shut-down) - matches the GPL calls of Stage 0.
+
+### Q1 position dependence - ANSWERED
+- Load base, by prologue votes (basefind.py): DDK file offset 0 = 0xffffff80f9fe0000 (4277 votes; the next
+  candidate 303). With it ALL 11394 VA-looking words of the file land inside the file (basecheck.py: 0 outside;
+  4277 on prologues, 1016 on string starts). RTA file offset 0 = 0xffffff80fa500000: all 610 words inside.
+- This is exactly Stage 0's arithmetic with VMALLOC_START = 0xffffff8008000000 (VA_BITS 39): LIB_OFFSET =
+  0xffffff80f6000000, LIB_START = 0xffffff80f9fe0000, DDK_LIB_ADDR = LIB_START + 0xC0000 + 0x20000 =
+  0xffffff80fa0c0000 (file 0xE0000), RTA = DDK_LIB_ADDR + 0x440000 = 0xffffff80fa500000.
+  (The 0xffffff8101fe0000 in an earlier scratch computation was a wrong VMALLOC_START.)
+- Where the absolute words are: DDK file 279 in the VRA part (first 0x42920), 10159 in 0xE0000..0x420000 (code
+  area = .text + .rodata: tables), 956 after 0x420000 (first 0x42f870); RTA 174 below 0x340000, 436 above.
+- Code itself is PC-relative (adrp/add, bl). So a loader elsewhere = copy + add (new base - old base) to those
+  words. A relocation list is not in the file: the list must be the scan, which can misfire on a data value that
+  only looks like a pointer - UNVERIFIED that none does; movz/movk-built absolute addresses not searched yet.
+- The DDK's own memory map (its start_up log, observed in emulation, Stage 2 below): .text 2463408 B ends
+  0xffffff80fa3197f0, .rodata 747432 B ends 0xffffff80fa3cff98, .bss 63600 B ends 0xffffff80fa40f870, ".data"
+  12519312 B ends 0xffffff80fb000000, heap 62914560 B (60 MiB) ends 0xffffff80fec00000.
+- The heap is the DDK's own (newlib-style _sbrk at 0xf4114, called through _sbrk_r 0xe31e8): start =
+  adrp image + 0x1020000 (= 0xffffff80fb000000), limit adrp image + 0x4c20000; over the limit it calls os[3]
+  (assert). PC-relative: it follows the image. => the DDK needs 0x4c20000 B (76 MiB) of contiguous RW VA from
+  LIB_START; the RTA its own area (heap at HEAP_RTA_START per Stage 0 - not yet looked at in its code).
+
+### Q2 x18 - ANSWERED: used as an ordinary register
+- stage1.py over 0xE0000..0x420000: 664 instructions read x18, 666 write it (first: 0xe9ae0 "mov w18, #0x20",
+  0xf1bb8 "adrp x18", 0xf2618 "ldr x18, [x3, #0x30]" in the OS-table copy). Built without -ffixed-x18.
+- Windows ARM64 reserves x18 (Microsoft ARM64 ABI: kernel mode -> KPCR, user mode -> TEB; must not be changed).
+  So the blob cannot be CALLED directly from a Windows driver: an interrupt or a callout seeing the blob's x18
+  breaks Windows. Options: (a) an emulator (Stage 2 tool, slow - NEON heavy), (b) a user-mode host where every
+  entry and every OS callback saves/restores x18 - still unsafe if Windows itself reads x18 between (exceptions,
+  APCs: UNVERIFIED how Windows user mode reacts), (c) patch-free: a dedicated core/thread is not possible from
+  Windows' scheduler. Decision deferred to Stage 4; everything before stays on the build machine.
+
+### Q4 privileged state - none
+- No msr/mrs of EL1 registers, no eret/hvc/smc; only brk, mrs fpsr/fpcr/dczid_el0, dc zva: EL0-safe code.
+- 21324 NEON/FP instructions in the DDK code (fpsimd_get/put of the GPL loader confirmed needed).
+
+### Q6 SysMMU on Android
+- dmesg-camera.txt: DMA_TAAISP "dva 0x11400000" = an IOVA, so on Android the ISP SysMMUs TRANSLATE. Whether the
+  ISP blocks can DMA with SysMMU in bypass under Windows (as CSIS does) is still UNVERIFIED.
+- dmesg also: ISP register VAs 3AA0 0xffffff801f5a0000, ISP0 0xffffff801f9f0000, ISP1 0xffffff801fa10000
+  (ioremap VAs: meaningless for Windows; the physical bases come from the DT/GPL), and AE starting at fps(120,120).
+
+### OS table use (Unicorn, osmap.py - this is the first Stage 2 run)
+- 0xf25b8 copies table indices 0..50 and 60..69 (61 entries) into globals at image 0x420xxx (os[3] -> 0x420278,
+  os[29] -> 0x4203e8, os[36] -> 0x420470, os[46] -> 0x420390, os[47] -> 0x4203b8 ...). 51..59 and 70..99
+  (incl. 91 get_binary_version and 99 event_write) are NOT taken: we never need to implement them for the DDK.
+- With every OS function = "ret, x0 = 0", the start_up path from 0xf25b8 runs to its ret: 528 OS calls -
+  os[36] spin_lock_init 173, os[42]/[43] spin lock irqsave/irqrestore 161 each, os[24]/[25] svc spin lock
+  save/restore 12 each, os[29] log_write 8, os[26] get_random_int 1. No register access, no DMA, no IRQ yet.
+- os[29] gets ONE argument, a finished string in a DDK buffer (image 0x420288): the DDK formats with its own
+  vsnprintf, so Q5 (variadic va_list) is moot for the log path (the 8 lines: "start_up_ddk", the section map
+  above). Other variadic entries (os[0]) not seen yet.
+
 ## Progress log
 - 2026-11-17: Stage 0 written from the GPL source (above). Asked the user for the three binaries.
+- 2026-11-17: Stage 1 (above) from s10cam.zip: base found, x18 used, EL0-safe, heap self-managed; start_up emulated.
+  Next: emulate the +0x80 ISP table getter (0xf1af4) and +0x40 sensor register (0xf6514) to list the function
+  tables they return; same OS-table copy for the RTA; i2c-trace.txt (address 0x10) vs our 3J1 setfile.
