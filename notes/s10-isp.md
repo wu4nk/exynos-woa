@@ -236,3 +236,8 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
 - 2026-11-17 20:08 DEVICE (user, ispdbg1 kernel, Termux): "/dev/mem: present", "devmem tool: toybox devmem" - the
   kernel works and /dev/mem exists. ispregs v1.1 found no /sys/devices/platform/17190000.fimc_is -> v1.2 searches
   /sys/devices (depth 4) for a directory named *17190000* and lists the candidates / fimc nodes it sees.
+- 2026-11-17 20:11 DEVICE (user, v1.2 check): no *17190000* directory; the ISP node is
+  /sys/devices/platform/170e0000.fimc_is - Linux names it after the node's first reg (CSIS_DMA 0x170E0000, live
+  DT fimc_is@17190000 reg list). v1.3 uses that path. Other fimc nodes seen: 17030000/17040000/17050000/17060000/
+  17090000.fimc_is_sensor, 17050000.fimc_is_sensor2, fimc-is_sensor_3j1@10 / 2l4@20 / 3m3@5A / 3p9@2D (the S10's
+  four sensors: front 3J1, rear 2L4 wide, 3M3 tele, 3P9 ultra-wide - names from the sysfs entries).
