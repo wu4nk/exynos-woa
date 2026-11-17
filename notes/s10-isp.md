@@ -390,3 +390,12 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
   FRAME END F7 ..." lines). The error checks compare the configured size with pixel counters (bit 22: "configured
   imagesize (w3648 x h2736 /2) != pixelCount (w1014 x h1483)" - the counters come from the live dump).
 - Direct use for Windows: the same register / bit meaning applies whoever drives the 3AA.
+- 2026-11-17 21:15 DEVICE (user, ispdbg2): only rom0_dump.bin came out (16384 B, sha256 579e7ec72a0b90fe..., strings
+  "L16XLLD01CM", "V010180809V001BEYND0XS") = ROM_ID_REAR (include/fimc-is-vender.h:50) - the REAR module, not the
+  front one. Why no rom1: the front EEPROM is read once per boot (FIMC_IS_ROM_STATE_CAL_READ_DONE, sec-define.c:
+  3207-3224), apparently before /data/vendor/camera is writable. Samsung's other switches: fimc_is_sec_cal_dump
+  (key file 1q2w3e4r.key + dump/ folder) is compiled out by CONFIG_SAMSUNG_PRODUCT_SHIP=y (sec-define.c:3141);
+  the RELOAD key /data/vendor/camera/reload/r1e2l3o4a5d.key (sec-define.c:870-877) sets force_caldata_dump = true,
+  so the next fw_sel re-reads the EEPROM (-> DEBUG_FORCE_DUMP_ENABLE writes rom1_dump.bin) - it is checked once
+  per ROM per boot when the dump path exists (sec-define.c:3128-3137): key file + reboot + open the front camera.
+  It also sets suspend_resume_disable: remove the key afterwards.
