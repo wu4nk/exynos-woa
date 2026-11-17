@@ -157,7 +157,13 @@ step('3AA apply_tune_set 6', tabs['3AA']['apply_tune_set'], e.q(obj3), 0, 6)
 # centerX/Y(1888/1400)"). We do not have this phone's front EEPROM contents yet: a ZERO buffer stands in -
 # PLACEHOLDER, every calibration-dependent result after this point is not Android's.
 CAL = e.alloc(64 * 1024, 4096)
-step('3AA load_cal_data (zeros)', tabs['3AA']['load_cal_data'], e.q(obj3), 0, CAL)
+# The real one when given: env CAL = the front module's EEPROM image (16384 B, read on the phone with
+# tools/android/calgrab - the driver's own buffer, which fimc_is_ischain_loadcalb memcpy's unchanged into
+# kvaddr_cal[FRONT], vendor/mcd/fimc-is-vender.c:1562). Per-module data of the user's phone: never in the repo.
+if os.environ.get('CAL'):
+    e.u.mem_write(CAL, open(os.environ['CAL'], 'rb').read())
+    print('calibration: %s' % os.environ['CAL'])
+step('3AA load_cal_data', tabs['3AA']['load_cal_data'], e.q(obj3), 0, CAL)
 CI = e.alloc(64)
 step('3AA get_cal_data type 2', tabs['3AA']['get_cal_data'], e.q(obj3), 0, CI, 2)
 print('cal_info data[0..3]:', [e.d(CI + 4 * k) for k in range(4)])

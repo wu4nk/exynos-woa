@@ -135,20 +135,25 @@ create_tune_set x29 done; log lines 58 (first: ['[@][WRAP][E][S0]DICO_CreateTune
    log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
    log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
    log: [@][WRAP][S0]applyTuneSet: hw(0), index(6), tuneSetHandle(0xffffff80fc0a4f90)
-== 3AA load_cal_data (zeros) -> 0x0  (register accesses 0, OS calls 35, interface calls 1)
+calibration: /tmp/claude-0/-home-claude/1aa4dac1-98f4-5aa0-bef5-fa4b4ca22317/scratchpad/cal/rom1_cal.bin
+== 3AA load_cal_data -> 0x0  (register accesses 0, OS calls 45, interface calls 1)
    log: [@][WRAP][E][S0]DICO_LoadCalData addr:0x204cd000
-   log: [RecognizeProject] Not Supported by new Version.
-   log: [RecognizeProject] Not Supported by new Version.
-   log: [FROM DATA, STREAM ID:0] M2M START!Cal Base - AF(0x204cd000), AWB(0x204cd000), AS(0x204cd000), PDAF(0x204cd000)
-   log: [UpdateTuneSet_Legacy] AF cal loading error 
-   log: [UpdateTuneSet_Legacy] AWB cal loading error 
-   log: [UpdateTuneSet_Legacy] AS cal loading error 
-   log: [UpdateTuneSet_Legacy] Load AS data from setfile.
-   log: [FROM DATA, STREAM ID:0] FROM CAL. DATA LOAD: FAIL! (ERROR NO.:0x600f)
+   log: [RecognizeProject] PROJECT_TANGO_BEYONDF(0)
+   log: [FROM HEADER, STREAM ID:0] CRC error check: SUCCESS!
+   log: [FROM DATA, STREAM ID:0] M2M START!Cal Base - AF(0x204cd200), AWB(0x204cd200), AS(0x204cea70), PDAF(0x204cd200)
+   log: [FROM DATA, STREAM ID:0] CRC error check: SUCCESS!
+   log: [AS CAL, STREAM ID:0] A(77828), K4(16384), I0(1888), J0(1400), Scale(5)
+   log: [AF CAL, STREAM ID:0] * calSize: 9, calDirection: 0, algSize: 10, algDirection: 0
+   log: [AF CAL, STREAM ID:0] PanFocusPosition:      384 (ROM: 0x000000c0)
+   log: [AF CAL, STREAM ID:0] MacroPosition:         554 (ROM: 0x00000115)
+   log: [AF CAL, STREAM ID:0] Pan focus position is valid
+   log: [AF CAL, STREAM ID:0] Macro position is valid
+   log: [AF CAL, STREAM ID:0] No PDAF calibration
+   log: [FROM DATA, STREAM ID:0] FROM CAL. DATA LOAD: SUCCESS!
 == 3AA get_cal_data type 2 -> 0x0  (register accesses 0, OS calls 6, interface calls 0)
    log: [@][WRAP][E][S0]DICO_GetCalData type:2
-   log: [@][WRAP]SIRCSDK_GetCalibrationData: status(0) type(2) centerX/Y(1584/1208) biquadA/B(91383/16384)
-cal_info data[0..3]: [1584, 1208, 91383, 16384]
+   log: [@][WRAP]SIRCSDK_GetCalibrationData: status(0) type(2) centerX/Y(1888/1400) biquadA/B(77828/16384)
+cal_info data[0..3]: [1888, 1400, 77828, 16384]
 DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds': ('0x5372a000', '0x8372a000')}
 == 3AA set_param -> 0x0  (register accesses 0, OS calls 0, interface calls 0)
 == 3AA set_ctrl F1 -> 0x0  (register accesses 0, OS calls 84, interface calls 5)
@@ -175,7 +180,7 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
    log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
    log: [SetCameraClientIndex] Camera ClientIndex 0
-== 3AA shot F1 -> 0x0  (register accesses 5003, OS calls 330, interface calls 162)
+== 3AA shot F1 -> 0x0  (register accesses 5003, OS calls 330, interface calls 177)
    log: [@][WRAP][S0][F1] m_configureMotionEstimation Enable ME (2944x2208)
    log: [@][WRAP][S0][F1] m_configureMotionEstimation ME dummyFrames(2)
    log: [@][WRAP][S0][F1][3AA0][Configure3aaInput] full(1)-otf(1) fro(1) sensorArea(3968 x 2736) binnedSensorArea(3968 x 2736), calibratedCrop(160, 0 / 3648 x 2736), imageArea(352, 264 / 2944 x 2208)
@@ -188,19 +193,17 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: [IspObject_InitPdafLib] requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
    log: [RTA] RTA_AE front: CmlAeInit, sensorPlace=1, flag(0, 0)
    log: [RTA] RTA_AE front: CmlAeInit, (sensorPlace=1) AE Init Start 
-   log: [RTA] jh Cal data  front  72 151 33      =   256
+   log: [RTA] jh Cal data  front  73 151 32      =   256
    log: [RTA] RTA_AE front: CmlAeInit, (sensorPlace=1) AE Init End 
    log: [RTA] CmlAwb_SetCreate 
    log: [RTA] Init
    log: [RTA] Init memset done
-   log: [RTA] [CMG_AF] LoadModuleAfCalData - Rear[0] Sensor_Revision = 0 (a5xx = EVT0.3, a4,a3xx = 0.2, a2xx = 0.1, a1,a0xx = 0.0)
-   log: [RTA] [CMG_AF] NearFarDataCheck - Camera0  Pan Position Error 0 -> 150
-   log: [RTA] [CMG_AF] NearFarDataCheck - Camera0  Macro Position Error 0 -> 350
+   log: [RTA] [CMG_AF] LoadModuleAfCalData - Rear[0] Sensor_Revision = ffff (a5xx = EVT0.3, a4,a3xx = 0.2, a2xx = 0.1, a1,a0xx = 0.0)
    log: [RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 94) : Front Version = 0xf680 Chip Type = 0 (0:LSI, 1:QC) 
-   log: [RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 278) : af cal data far: 0, middle: 0, near: 0, add_80: 0, add_50: 0, plus_offset: 0, minus_offset: 0 *af_cal->zoom_rate(x1000) 0
-   log: [RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 302) : paf_cal_data_info = 0 paf_cal_errcheck 0x00000000
+   log: [RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 278) : af cal data far: 192, middle: 65535, near: 277, add_80: 65535, add_50: 65535, plus_offset: 32767, minus_offset: 32767 *af_cal->zoom_rate(x1000) 0
+   log: [RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 302) : paf_cal_data_info = 20181204 paf_cal_errcheck 0x00000000
    log: [RTA] [CMG_AF] EventFunc_Init - AF Lib Initial Camera0 Ver 0xF680
-   log: [RTA] [VQ_RG_G] EventFunc_Init - FRONT AF Ver 0xF680    Far 150  0 Near 350 0   Face 0 extmode = 0 
+   log: [RTA] [VQ_RG_G] EventFunc_Init - FRONT AF Ver 0xF680    Far 192  192 Near 277 277   Face 222 extmode = 0 
    log: init 2360 1000 1000
    log: [DBG][LTR_Init]streamId 0 init:2360, Exp: 2360, AGain: 256, DGain: 256
    log: [Thumbnail][SetGeometry] 3AA CellResolution: 46 x 34, CellGridResolution: 64 x 64
@@ -246,4 +249,10 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: InitFrameElement FrameElementForME (0xFBB84568)
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== 3AA irq 0 -> 0x0  (register accesses 1, OS calls 9, interface calls 0)
+   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000010c 0
+   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000010c 0
+== 3AA irq 1 -> 0x0  (register accesses 1, OS calls 9, interface calls 0)
+   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000011c 1
+   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000011c 1
 interrupts registered: [(0, 0, 'ddk+0x331e34'), (1, 0, 'ddk+0x331e34'), (6, 2, 'ddk+0x331e34'), (7, 2, 'ddk+0x331e34')]

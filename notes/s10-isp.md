@@ -414,3 +414,14 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
   kernel) that calls the driver's own fimc_is_sec_get_cal_buf(&buf, rom_id) (sec-define.c:74, found with
   kallsyms_lookup_name) and exposes that buffer as /sys/kernel/debug/calgrab/rom<id> (debugfs blob). No hardware
   access. Build: make -C <kernel out> M=tools/android/calgrab modules (same flags as the kernel).
+### Real front calibration in the emulator (2026-11-17 21:35)
+- DEVICE 21:30 (user, calgrab.ko rom_id=1 size=16384 on ispdbg2): rom1_cal.bin, 16384 B, sha256 d19d531f15087cb8...,
+  header strings "X10LLLB00AM", "V004V001", "BEYND0LF" (map V004 = dmesg's front map). Kept in the scratch area
+  only (per-module data). calgrab works: the module route is the reliable one for kernel-RAM data.
+- front_init.py takes it as env CAL (copied unchanged, as fimc_is_ischain_loadcalb memcpy's the buffer).
+  Every calibration line now equals Android's: "FROM CAL. DATA LOAD: SUCCESS!", AF cal PanFocusPosition 384 (ROM
+  0xc0), MacroPosition 554 (ROM 0x115), "No PDAF calibration", GetCalibrationData centreX/Y 1888/1400 biquadA/B
+  77828/16384, RTA front AF "far: 192 ... near: 277" - all identical to isfw-msg-android.txt / dmesg.
+- 3AA shot F1 with it: 1564 registers written, 1128 (72.1 %) equal to the phone's live values (zeros: 1124) - the
+  first frame's register program hardly depends on calibration; the gap is frame / AE state (to check frame by
+  frame next).
