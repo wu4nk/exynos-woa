@@ -399,3 +399,11 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
   so the next fw_sel re-reads the EEPROM (-> DEBUG_FORCE_DUMP_ENABLE writes rom1_dump.bin) - it is checked once
   per ROM per boot when the dump path exists (sec-define.c:3128-3137): key file + reboot + open the front camera.
   It also sets suspend_resume_disable: remove the key afterwards.
+- 2026-11-17 21:25 DEVICE (user, reload key + reboot): dmesg shows the reload worked ("forced caldata dump!!"), the
+  REAR EEPROM read (rom_id 0, cal_size 65536, map V010) and the FRONT one (rom_id 1, cal_size 16384, map V004, crc
+  ok, "the dumped Cal. data was applied", 3AA0 "load cal data, position: 1, addr 0xffffff801f73e000", Android AF cal
+  "far: 192 ... near: 277"). But /data/vendor/camera holds only rom0_dump.bin, 16384 B although rear cal_size is
+  65536 - the write path (write_data_to_file, sec-define.c:484: sys_open O_CREAT|O_TRUNC|O_SYNC from the camera
+  process' context) reports errors only as "open file error" / "fail to write", which the user's grep did not
+  include. Asked for those lines.
+- Android's front AF calibration (useful as a check later): far 192, near 277 (FrontAfLib_BootingInit line 278).
