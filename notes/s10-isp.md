@@ -291,3 +291,28 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   (fimc-is-debug.c:733), set by fimc_is_debug_open from fimc-is-resourcemgr.c:1595 when the camera resources are
   taken and cleared at :1819 when they are released -> the file is readable only WHILE the camera is open; the DDK
   log_write fills that ring (interface-library.c:41-86). Also Android 14 may not mount debugfs: mount it first.
+### Android's own ISP log = the oracle (2026-11-17 20:43, DEVICE, isfw-msg read with the camera open)
+File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera, ispdbg1 kernel).
+- The emulator matches it line for line up to object_create: same banner, same section map, "createChain"
+  sequence, interrupt ids 0/1 (chain 0) and 6/7 (chain 2), "ISP_Fimc3aaChainV7P1P0::SwReset", the RTA FRONT Gamma
+  0x070B1023 / DRC 0x070B0451 lines - and the SAME 3AA object address: Android "DICO_Object_3aa_Create
+  0xffffff80fb9c8a00" = emulator ddk+0x19e8a00 (0xffffff80f9fe0000 + 0x19e8a00). The DDK heap is deterministic
+  and the emulation follows the real allocation order.
+- Differences = what the emulator still answers wrong:
+  * sensor properties (WRAP_GetProperties): calibrated w 3968 h 2736, bayer order 0, exposure 23..33257 us
+    (first mode 22..8260), again 1000..16000, dgain 1000..128000, use_sensor_dgain 1, initialAperture 190,
+    3aaotfmode 1; mode 1: pclk 807240000, line_length_pck 8984, frame length 746, cur 912 x 684, max fps 120;
+    mode 2: pclk 807720000, llp 9384, fll 2864/2866, cur 3648 x 2736, max fps 30. Emulator: all 0.
+  * ISP object_create obj_info 0x00261000 = input(1) M2M (emulator used 0x260000 OTF); a second ISP chain
+    "ISP1" (ISPHQ, 0xffffff801fc80000, ISP_FimcIspChainV7P1P0, interrupts 9/10, obj_info 0x00261111 rep 1) is
+    created later for reprocessing (photo).
+  * Android: "[CreateAutoFocusObjectExternal]", "ActivateAlgorithms ae1 awb1 af1", "Ext AF is selected!" (the
+    actuator is available); emulator af0 + "ActivateAlgorithms object is NULL, sink id(6)" x8 = the missing AF.
+- What Android does after object_create (the sequence to emulate next): VRA init ("Makalu VRA V2.0 Revision 9641"),
+  DICO_CreateTuneSet index 0..28 (= the setfile, setfile_3j1.bin), FROM calibration load (AF cal pan 384 /
+  macro 554), DICO_GetCalData, DICO_ApplyTuneSet, sensor mode 912 x 684 @120 "Fast AE" (TuneSetIndex 7), first
+  3AA frame: ISR V SYNC -> CIN ROW -> FRAME END, "Valid Time 7613 / Frame Time 8251"; then 3aa stop, ApplyTuneSet
+  I6, preview mode: sensor 3968 x 2736 calibratedCrop 3648 x 2736, 3AA bayer DMA out 2944 x 2208 (11/12 bit) ->
+  BDS 2432 x 1824 -> ISP0 M2M input 2432 x 1824, 30 fps (minFps 7), PDAF stats (2PD mode3 456 x 342), TNR, DRC.
+- So on Android the front preview is NOT the 912 x 684 mode: 3AA crops the 10 MP frame to 2944 x 2208 (4:3
+  centre), scales to 2432 x 1824, ISP processes it, MCSC (GPL) makes the app's sizes.

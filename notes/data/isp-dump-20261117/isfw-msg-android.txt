@@ -1,0 +1,602 @@
+[ 2653.775249] [7] [@][WRAP]start_up_ddk:
+[ 2653.775252] [7] [@][WRAP]register_sensor_interface(0x0xffffff80fa0c0040), register_sdk(0x0xffffff80fa0c0080)
+[ 2653.775254] [7] [@][WRAP].text size: 2463408 B, text_end addr: 0xffffff80fa3197f0
+[ 2653.775255] [7] [@][WRAP].rodata size: 747432 B, ro_end addr:   0xffffff80fa3cff98
+[ 2653.775256] [7] [@][WRAP]remained space between rodata and bss: 196712 B
+[ 2653.775257] [7] [@][WRAP].bss size: 63600 B, bss_end addr:  0xffffff80fa40f870
+[ 2653.775258] [7] [@][WRAP].data size: 12519312 B, data_end addr: 0xffffff80fb000000
+[ 2653.775259] [7] [@][WRAP]heap size: 62914560 B, heap_end addr: 0xffffff80fec00000
+[ 2653.778415] [7] [RTA]OS service was registered
+[ 2653.788903] [4] [@][WRAP][E][1]register_isp_sdk
+[ 2653.788909] [4] [@][WRAP]###########################################################
+[ 2653.788910] [4] [@][WRAP]#####      FIMC-ISP LIBRARY 
+[ 2653.788912] [4] [@][WRAP]#####      Samsung System LSI
+[ 2653.788913] [4] [@][WRAP]#####      DDK revision: 10705
+[ 2653.788914] [4] [@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[ 2653.788915] [4] [@][WRAP]###########################################################
+[ 2653.788930] [4] [@][WRAP][E][3AA0]DICO_Chain_3aa_Create
+[ 2653.788933] [4] [@][WRAP]createChain: hwType(0) hwId(0) addr(0xffffff801f810000)
+[ 2653.789107] [4] [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(0) !!!
+[ 2653.789111] [4] [@][DRV]Register interrupt:ID(0), handler(0000000040f88c24)
+[ 2653.789114] [4] [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(1) !!!
+[ 2653.789115] [4] [@][DRV]Register interrupt:ID(1), handler(0000000040f88c24)
+[ 2653.789120] [4] ISP_Fimc3aaChainV7P1P0::SwReset
+[ 2653.789158] [4] [@][WRAP][INFO]setOsCallback: mCameraCb(0xffffff8009058c80), cameraCb(0xffffff8009058c80)
+[ 2653.789159] [4] [@][WRAP][INFO]setOsCallback: mIoCb(0xffffff8009059350), ioCb(0xffffff8009059350)
+[ 2653.789166] [4] [WRAP][E] DICO_SystemConfig
+[ 2653.789171] [4] [WRAP]setOverflowControl: (recovery:1)
+[ 2653.789185] [4] [@][WRAP][E][S0]DICO_Object_3aa_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
+[ 2653.789191] [4] [@][WRAP]Metadata: new
+[ 2653.789192] [4] [@][WRAP]StreamInterface: new
+[ 2653.789201] [4] [@][WRAP][0]StreamInterface: init
+[ 2653.789220] [4] [@][WRAP]Metadata: init
+[ 2653.789226] [4] [@][WRAP][S0](createObject[5652]): hwType(3AA) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+[ 2653.789231] [4] [@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0xffffff80fa31dc70)
+[ 2653.875398] [3] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2653.875404] [3] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2653.875407] [3] [@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[ 2653.875409] [3] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2653.875412] [3] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2653.875415] [3] [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2653.875418] [3] [@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(746)
+[ 2653.875420] [3] [@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[ 2653.875464] [3] [@][WRAP](WRAP_GetProperties[598]): max fps(120), hdr by again(0)
+[ 2653.875468] [3] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2653.875470] [3] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2653.875472] [3] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2653.875474] [3] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2653.875480] [3] [@][WRAP]INFO(createObject[5696]): sensor path(OTF)
+[ 2653.876070] [3] WdrRgbyHist 256bins
+[ 2653.876314] [3] Init 200
+[ 2653.876941] [1] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2653.876945] [1] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2653.876948] [1] [@][WRAP](WRAP_GetProperties[588]): exp (22, 8260)
+[ 2653.876950] [1] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2653.876953] [1] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2653.876956] [1] [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2653.876959] [1] [@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(746)
+[ 2653.876961] [1] [@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[ 2653.876963] [1] [@][WRAP](WRAP_GetProperties[598]): max fps(120), hdr by again(0)
+[ 2653.876966] [1] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2653.876968] [1] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2653.876970] [1] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2653.876972] [1] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2653.877191] [1] [VRALIB] register_vra_isp_interface.
+[ 2653.877206] [1] RegisterRtaInterface sensorID = 1, sensor = 0xffffff80fa7abf68 
+[ 2653.877210] [1] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0xffffff80fa7abf68 
+[ 2653.877215] [1] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[ 2653.877218] [1] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[ 2653.877246] [1] [CreateCommonObjectExternal] 
+[ 2653.877250] [1] [CreateAeObjectExternal] 
+[ 2653.877253] [1] [CreateAwbObjectExternal] 
+[ 2653.877255] [1] [CreateScdObjectInternal] 
+[ 2653.877258] [1] [CreateAfcObjectInternal] 
+[ 2653.877260] [1] [CreateAutoFocusObjectExternal] 
+[ 2653.877265] [1] ActivateAlgorithms ae1 awb1 af1 
+[ 2653.877275] [1] Ext AF is selected!
+[ 2653.877297] [1] [@][WRAP][X][S0][3AA0]DICO_Object_3aa_Create 0xffffff80fb9c8a00
+[ 2653.877700] [1] [@][WRAP][E][2]register_isp_sdk
+[ 2653.877703] [1] [@][WRAP]###########################################################
+[ 2653.877705] [1] [@][WRAP]#####      FIMC-ISP LIBRARY 
+[ 2653.877707] [1] [@][WRAP]#####      Samsung System LSI
+[ 2653.877709] [1] [@][WRAP]#####      DDK revision: 10705
+[ 2653.877711] [1] [@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[ 2653.877713] [1] [@][WRAP]###########################################################
+[ 2653.877725] [1] [@][WRAP][E][ISP0]DICO_Chain_Isp_Create
+[ 2653.877728] [1] [@][WRAP]createChain: hwType(1) hwId(0) addr(0xffffff801fc60000)
+[ 2653.877746] [1] ISP_FimcIspChainV7P11P0::ISP_FimcIspChainV7P11P0(const SIRC_IspObjectConfig*) CHAIN_REGISTER_MODE_SHADOW
+[ 2653.878050] [1] [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(6) !!!
+[ 2653.878056] [1] [@][DRV]Register interrupt:ID(6), handler(0000000040f88c24)
+[ 2653.878059] [1] [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(7) !!!
+[ 2653.878062] [1] [@][DRV]Register interrupt:ID(7), handler(0000000040f88c24)
+[ 2653.878071] [1] ISP_FimcIspChainV7P11P0::SwReset
+[ 2653.878092] [1] [FRO] reset
+[ 2653.878113] [1] [FRO] reset
+[ 2653.878144] [1] [WRAP][E] DICO_SystemConfig
+[ 2653.878152] [1] [WRAP]setOverflowControl: (recovery:1)
+[ 2653.878175] [1] [@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00261000) hwId(0), rep(0), input(1), moduleId(38)
+[ 2653.878180] [1] [@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(M2M), moduleId(38), repFlag(0)
+[ 2653.878184] [1] [@][WRAP][INFO]m_createObject3aaForTuneSet: [S0] hwId_3aa(0)
+[ 2653.882196] [3] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2653.882202] [3] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2653.882204] [3] [@][WRAP](WRAP_GetProperties[588]): exp (22, 8260)
+[ 2653.882207] [3] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2653.882209] [3] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2653.882212] [3] [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2653.882215] [3] [@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(746)
+[ 2653.882217] [3] [@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[ 2653.882219] [3] [@][WRAP](WRAP_GetProperties[598]): max fps(120), hdr by again(0)
+[ 2653.882222] [3] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2653.882224] [3] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2653.882226] [3] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2653.882228] [3] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2653.882241] [3] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0xffffff80fa7abf68 
+[ 2653.882245] [3] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[ 2653.882248] [3] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[ 2653.882283] [3] [CreateGammaObjectExternal] 
+[ 2653.882286] [3] ActivateAlgorithms[351] gamma(1) 
+[ 2653.882289] [3] ActivateAlgorithms[367] drc(2) 
+[ 2653.882291] [3] [CreatePrcObjectExternal] 
+[ 2653.882293] [3] ActivateAlgorithms[383] prc(1) 
+[ 2653.882295] [3] ActivateAlgorithms[399] pipeline(2) 
+[ 2653.882320] [3] [@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0xffffff80fbd4d320
+[ 2653.884373] [5] [VRALIB] DICO_ExGetMemorySizes success!(FrWorkRamSize:947716, SensorRamSize:12208, DmaRamSize:3474400)/MaxSensors(9)
+[ 2653.884715] [5] [VRALIB] ============================================
+[ 2653.884718] [5] [VRALIB] Makalu VRA V2.0
+[ 2653.884722] [5] [VRALIB] Revision: 9641
+[ 2653.884725] [5] [VRALIB] Date: 2020-04-01 17:13:36
+[ 2653.884728] [5] [VRALIB] DICO API VERSION: 114
+[ 2653.884731] [5] [VRALIB] ============================================
+[ 2653.884735] [5] [VRALIB] DmaRamInfoPtr ffffff801eaf4000 IsCached 1
+[ 2653.884739] [5] VRA_SPINLOCK_Init
+[ 2653.884966] [5] [VRALIB] DICO_VraFrameWorkInit success!
+[ 2653.885590] [3] [VRALIB] DICO_VraSensorInit(0)
+[ 2653.891842] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(0)
+[ 2653.891918] [5] [@][WRAP][S0]newTuneSet: index( 0), tuneSetHandle(0xffffff80fbfde2d0)
+[ 2653.891924] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(1)
+[ 2653.891943] [5] [@][WRAP][S0]newTuneSet: index( 1), tuneSetHandle(0xffffff80fbfff4f0)
+[ 2653.891948] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(2)
+[ 2653.891968] [5] [@][WRAP][S0]newTuneSet: index( 2), tuneSetHandle(0xffffff80fc020710)
+[ 2653.891972] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(3)
+[ 2653.892013] [5] [@][WRAP][S0]newTuneSet: index( 3), tuneSetHandle(0xffffff80fc041930)
+[ 2653.892019] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(4)
+[ 2653.892039] [5] [@][WRAP][S0]newTuneSet: index( 4), tuneSetHandle(0xffffff80fc062b50)
+[ 2653.892043] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(5)
+[ 2653.892064] [5] [@][WRAP][S0]newTuneSet: index( 5), tuneSetHandle(0xffffff80fc083d70)
+[ 2653.892068] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(6)
+[ 2653.892088] [5] [@][WRAP][S0]newTuneSet: index( 6), tuneSetHandle(0xffffff80fc0a4f90)
+[ 2653.892092] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(7)
+[ 2653.892113] [5] [@][WRAP][S0]newTuneSet: index( 7), tuneSetHandle(0xffffff80fc0c61b0)
+[ 2653.892117] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(8)
+[ 2653.892137] [5] [@][WRAP][S0]newTuneSet: index( 8), tuneSetHandle(0xffffff80fc0e73d0)
+[ 2653.892141] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(9)
+[ 2653.892162] [5] [@][WRAP][S0]newTuneSet: index( 9), tuneSetHandle(0xffffff80fc1085f0)
+[ 2653.892166] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(10)
+[ 2653.892185] [5] [@][WRAP][S0]newTuneSet: index(10), tuneSetHandle(0xffffff80fc129810)
+[ 2653.892189] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(11)
+[ 2653.892208] [5] [@][WRAP][S0]newTuneSet: index(11), tuneSetHandle(0xffffff80fc14aa30)
+[ 2653.892213] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(12)
+[ 2653.892233] [5] [@][WRAP][S0]newTuneSet: index(12), tuneSetHandle(0xffffff80fc16bc50)
+[ 2653.892237] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(13)
+[ 2653.892257] [5] [@][WRAP][S0]newTuneSet: index(13), tuneSetHandle(0xffffff80fc18ce70)
+[ 2653.892261] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(14)
+[ 2653.892281] [5] [@][WRAP][S0]newTuneSet: index(14), tuneSetHandle(0xffffff80fc1ae090)
+[ 2653.892285] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(15)
+[ 2653.892305] [5] [@][WRAP][S0]newTuneSet: index(15), tuneSetHandle(0xffffff80fc1cf2b0)
+[ 2653.892309] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(16)
+[ 2653.892330] [5] [@][WRAP][S0]newTuneSet: index(16), tuneSetHandle(0xffffff80fc1f04d0)
+[ 2653.892334] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(17)
+[ 2653.892353] [5] [@][WRAP][S0]newTuneSet: index(17), tuneSetHandle(0xffffff80fc2116f0)
+[ 2653.892357] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(18)
+[ 2653.892376] [5] [@][WRAP][S0]newTuneSet: index(18), tuneSetHandle(0xffffff80fc232910)
+[ 2653.892380] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(19)
+[ 2653.892398] [5] [@][WRAP][S0]newTuneSet: index(19), tuneSetHandle(0xffffff80fc253b30)
+[ 2653.892403] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(20)
+[ 2653.892423] [5] [@][WRAP][S0]newTuneSet: index(20), tuneSetHandle(0xffffff80fc274d50)
+[ 2653.892427] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(21)
+[ 2653.892448] [5] [@][WRAP][S0]newTuneSet: index(21), tuneSetHandle(0xffffff80fc295f70)
+[ 2653.892452] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(22)
+[ 2653.892472] [5] [@][WRAP][S0]newTuneSet: index(22), tuneSetHandle(0xffffff80fc2b7190)
+[ 2653.892476] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(23)
+[ 2653.892495] [5] [@][WRAP][S0]newTuneSet: index(23), tuneSetHandle(0xffffff80fc2d83b0)
+[ 2653.892499] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(24)
+[ 2653.892518] [5] [@][WRAP][S0]newTuneSet: index(24), tuneSetHandle(0xffffff80fc2f95d0)
+[ 2653.892521] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(25)
+[ 2653.892539] [5] [@][WRAP][S0]newTuneSet: index(25), tuneSetHandle(0xffffff80fc31a7f0)
+[ 2653.892543] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(26)
+[ 2653.892562] [5] [@][WRAP][S0]newTuneSet: index(26), tuneSetHandle(0xffffff80fc33ba10)
+[ 2653.892566] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(27)
+[ 2653.892584] [5] [@][WRAP][S0]newTuneSet: index(27), tuneSetHandle(0xffffff80fc35cc30)
+[ 2653.892588] [5] [@][WRAP][E][S0]DICO_CreateTuneSet[745] index(28)
+[ 2653.892607] [5] [@][WRAP][S0]newTuneSet: index(28), tuneSetHandle(0xffffff80fc37de50)
+[ 2653.892628] [5] [VRALIB] DICO_CopyTuneSet S(0) index(0) addr(1f6b7f40)
+[ 2653.892632] [5] [VRALIB] ============================================
+[ 2653.892635] [5] [VRALIB] VRA Setfile Version: 2
+[ 2653.892638] [5] [VRALIB] ============================================
+[ 2653.892645] [5] [VRALIB] DICO_CopyTuneSet S(0) index(1) addr(1f6b7f7c)
+[ 2653.892648] [5] [VRALIB] ============================================
+[ 2653.892651] [5] [VRALIB] VRA Setfile Version: 2
+[ 2653.892654] [5] [VRALIB] ============================================
+[ 2653.894847] [1] [@][WRAP][E][S0]DICO_3aa_ApplyTuneSet I7
+[ 2653.894871] [1] [DeserializeContext] start address : fc0c61b8, size : 135686, end address : fc0e73be
+[ 2653.895035] [1] WdrRgbyHist 256bins
+[ 2653.895054] [1] [TuneSetApply] ----------------------------------------
+[ 2653.895057] [1] [TuneSetApply] Setfile Read : SUCCESS! [135686/135686]
+[ 2653.895059] [1] [TuneSetApply] ----------------------------------------
+[ 2653.895623] [2] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2653.895627] [2] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2653.895629] [2] [@][WRAP](WRAP_GetProperties[588]): exp (22, 8260)
+[ 2653.895632] [2] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2653.895634] [2] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2653.895637] [2] [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2653.895640] [2] [@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(746)
+[ 2653.895642] [2] [@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[ 2653.895644] [2] [@][WRAP](WRAP_GetProperties[598]): max fps(120), hdr by again(0)
+[ 2653.895647] [2] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2653.895649] [2] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2653.895651] [2] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2653.895653] [2] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2653.895659] [2] [@][WRAP][S0]applyTuneSet: hw(0), index(7), tuneSetHandle(0xffffff80fc0c61b0)
+[ 2653.895693] [2] [@][WRAP][E][S0]DICO_LoadCalData addr:0x1f752000
+[ 2653.895701] [2] [RecognizeProject] PROJECT_TANGO_BEYONDF(0)
+[ 2653.895706] [2] [FROM HEADER, STREAM ID:0] CRC error check: SUCCESS!
+[ 2653.895713] [2] [FROM DATA, STREAM ID:0] M2M START!Cal Base - AF(0x1f752200), AWB(0x1f752200), AS(0x1f753a70), PDAF(0x1f752200)
+[ 2653.895715] [2] [FROM DATA, STREAM ID:0] CRC error check: SUCCESS!
+[ 2653.895745] [2] [AS CAL, STREAM ID:0] A(77828), K4(16384), I0(1888), J0(1400), Scale(5)
+[ 2653.895750] [2] [AF CAL, STREAM ID:0] * calSize: 9, calDirection: 0, algSize: 10, algDirection: 0
+[ 2653.895753] [2] [AF CAL, STREAM ID:0] PanFocusPosition:      384 (ROM: 0x000000c0)
+[ 2653.895756] [2] [AF CAL, STREAM ID:0] MacroPosition:         554 (ROM: 0x00000115)
+[ 2653.895758] [2] [AF CAL, STREAM ID:0] Pan focus position is valid
+[ 2653.895760] [2] [AF CAL, STREAM ID:0] Macro position is valid
+[ 2653.895762] [2] [AF CAL, STREAM ID:0] No PDAF calibration
+[ 2653.895764] [2] [FROM DATA, STREAM ID:0] FROM CAL. DATA LOAD: SUCCESS!
+[ 2653.895767] [2] [@][WRAP][E][S0]DICO_GetCalData type:2
+[ 2653.895771] [2] [@][WRAP]SIRCSDK_GetCalibrationData: status(0) type(2) centerX/Y(1888/1400) biquadA/B(77828/16384)
+[ 2653.895804] [2] [VRALIB] DICO_ApplyTuneSet S(0) index(0)
+[ 2653.895815] [2] [VRALIB] selfie mode enabled (710)
+[ 2653.895861] [2] [WRAP] Invalid iso mode: 0
+[ 2653.895884] [2] [@][WRAP][SDK_WRAP] SetFrameTime(): Error in ConfigureInput() = 4007
+[ 2653.895895] [2] [META] aamode(3), sceneMode(136) > newSceneMode(136), enableDynamicShotDm(0)
+[ 2653.895897] [2] SetLeiTranslationMode 136
+[ 2653.895918] [2] [DDK][S0][F000001] [<-] afMode: OFF, afTrigger: CANCEL, aa.mode: USE_SCENE_MODE, afState: 0(OS), 0(cur)
+[ 2653.895928] [2] [DDK][S0][F000001] [<-] afRegions: (0, 0) ~ (0, 0), weight: 0
+[ 2653.895937] [2] [DDK][S0][F000001] [<-] afmode_option: 0x00000000, afmode_ext: 0, pafMode: OFF, aeFlashMode: OFF
+[ 2653.895946] [2] [DDK][S0][F000001] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[ 2653.895960] [2] [WRAP][S0][HW0] Invalid edge mode 0
+[ 2653.895963] [2] [SetAperture] aperture 0 
+[ 2653.895971] [2] [WRAP][S0][HW0] Invalid noiseReduction mode 0
+[ 2653.895978] [2] [@][WRAP]SetOperationMode: opMode(3)
+[ 2653.895985] [2] [SetCameraClientIndex] Camera ClientIndex 0
+[ 2653.896010] [2] [@][WRAP][S0][F1][3AA0][Configure3aaInput] full(1)-otf(1) fro(1) sensorArea(3968 x 2736) binnedSensorArea(992 x 684), calibratedCrop(40, 0 / 912 x 684), imageArea(0, 0 / 912 x 684)
+[ 2653.896014] [2] [@][WRAP][S0][F1][3AA0][Configure3aaInput] receivedStatRoi(0, 0 / 0 x 0), bayerCrop(912 x 684), statRoi(0, 0 / 912 x 684)
+[ 2653.896021] [2] [@][WRAP][0][m_configureOutput3aa] line(2649) pBayerDmaOutputBeforeBds(OFF 2560x1920 0/8bits) =(BDS)=> 912x684 =(crop)=> chainDestinationArea(0,0 912x684) pOtfOutput(OFF) pBayerDmaOutputAfterBds(OFF 0/12bits), 
+[ 2653.896039] [2] [IspObject_InitPdafLib] chainCropedSourceArea 0 0 912 684
+[ 2653.896051] [2] [IspObject_InitPdafLib] requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[ 2653.896060] [2] [IspObject_InitPdafLib] requestType: 1, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[ 2653.896068] [2] [IspObject_InitPdafLib] requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[ 2653.896076] [2] [IspObject_InitPdafLib] requestType: 3, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[ 2653.896290] [2] jh Cal data  front  73 151 32      =   256
+[ 2653.899360] [1] init 2360 1000 1000
+[ 2653.899366] [1] [DBG][LTR_Init]streamId 0 init:2360, Exp: 2360, AGain: 256, DGain: 256
+[ 2653.899428] [1] [Thumbnail][SetGeometry] 3AA CellResolution: 56 x 42, CellGridResolution: 16 x 16
+[ 2653.899431] [1] [Thumbnail][SetGeometry]statRoi: (0, 0) 912 x 684
+[ 2653.899433] [1] [Thumbnail][SetGeometry]HW: (8, 6) 896 x 672
+[ 2653.899436] [1] [SetGeometry]normalizeShift = 8
+[ 2653.899438] [1] [SetGeometry]uThreshClipCnt_ = 294(128)
+[ 2653.899453] [1] [S0][3AA0] SetIsrScheduleType 0 @ 120.000 fps earlyConfigLock 0
+[ 2653.899461] [1] minFps 120.000 maxFps 120.000 scenemode 136
+[ 2653.899468] [1] [IdleStateOnActivate] sceneType: 136, AA_SCENE_MODE_FAST_AE
+[ 2653.899470] [1] !!!!Fast AE Mode!!!! TuneSetIndex: 7
+[ 2653.899473] [1] SetNumOfFramePerOneRta 120.000 1
+[ 2653.899477] [1] SetNumOfFramePerOneRta rta 1 af 4 @ 120.000fps
+[ 2653.899635] [1] [DBG][IdleStateOnActivate] cmlExp: 2539, cmlAGain: 256, cmlDGain: 256, cmlExpLong: 2539, cmlLongAGain: 256, cmlLongDGain: 256
+[ 2653.899640] [1] Error!!! nextFrameLei(0), nextFrameAnalogGain(256), nextFrameDigitalGain(256), shortMicrosExp(2539)
+[ 2653.899684] [1] [ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ 2653.899689] [1] [ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ 2653.899736] [1] [ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ 2653.899768] [1] [ERROR][CalcExposureDataWithRound] exposure is zero (s 1024.000000, l 1024.000000)
+[ 2653.900924] [7] [@][WRAP][E][S0]DICO_SensorInfoModeChange
+[ 2653.900932] [7] (SIRCSDK_ConvSensSettiBetwSceneModes[796]): fps(120.000/120.000), sceneMode(136), flickerMode(0)
+[ 2653.921220] [3] [S0][F1][3AA0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+[ 2653.921229] [3] PrintIsrTime
+[ 2653.926527] [0] [S0][F1][3AA0] TransitIsrState I1 V SYNC    --(CIN ROW  )--> CIN ROW  
+[ 2653.926573] [0] [WRAP] Invalid iso mode: 0
+[ 2653.926611] [0] [WRAP][S0][HW0] Invalid edge mode 0
+[ 2653.926619] [0] [WRAP][S0][HW0] Invalid noiseReduction mode 0
+[ 2653.928831] [2] [S0][F1][3AA0] TransitIsrState I2 CIN ROW   --(FRAME END)--> FRAME END
+[ 2653.929495] [3] PrintIsrTime
+[ 2653.929505] [3] [S0][3AA0] Valid Time 7613 / Frame Time 8251 
+[ 2653.929513] [3] [S0][3AA0] ISR V SYNC    F1 2653921232~2653921244 (12 us)
+[ 2653.929521] [3] [S0][3AA0] ISR CIN ROW   F1 2653926532~2653926806 (274 us)
+[ 2653.929528] [3] [S0][3AA0] ISR FRAME END F1 2653928837~2653928989 (152 us)
+[ 2653.934877] [1] [WRAP] Invalid iso mode: 0
+[ 2653.934939] [1] [WRAP][S0][HW0] Invalid edge mode 0
+[ 2653.934948] [1] [WRAP][S0][HW0] Invalid noiseReduction mode 0
+[ 2653.937230] [2] [DDK][S0][F000002] AF Output State: INACTIVE
+[ 2653.943157] [3] [WRAP] Invalid iso mode: 0
+[ 2653.943195] [3] [WRAP][S0][HW0] Invalid edge mode 0
+[ 2653.943203] [3] [WRAP][S0][HW0] Invalid noiseReduction mode 0
+[ 2653.947076] [1] AE Lib ver : 0x92b80428
+[ 2653.951538] [0] [WRAP] Invalid iso mode: 0
+[ 2653.951589] [0] [WRAP][S0][HW0] Invalid edge mode 0
+[ 2653.951598] [0] [WRAP][S0][HW0] Invalid noiseReduction mode 0
+[ 2653.959876] [0] [WRAP] Invalid iso mode: 0
+[ 2653.959917] [0] [WRAP][S0][HW0] Invalid edge mode 0
+[ 2653.959925] [0] [WRAP][S0][HW0] Invalid noiseReduction mode 0
+[ 2653.968215] [0] [@][DRV][0]3aa_shot [T:1][R:0][F:7][IN:0x0] [0][C:0x0] [0][P:0x0] [0][F:0x0] [0][G:0x0]
+[ 2653.982263] [7] [@][WRAP][E][S0]DICO_3aa_Stop
+[ 2653.982267] [7] [@][WRAP][S0]stopObject(3AA)
+[ 2653.982581] [7] [@][WRAP][E][S0]DICO_Isp_Stop
+[ 2653.982582] [7] [@][WRAP][S0]stopObject(ISP)
+[ 2653.982771] [7] [VRALIB] OnAbortRequest bCh1Active(0) bHwCnnActive(0)
+[ 2653.982774] [7] [VRALIB] DbgCntr new_fr 0, ch1_end 0, out_ready 0
+[ 2653.982777] [7] [VRALIB] HOST_VRAFwAlgsTaskSetEvent
+[ 2653.982827] [7] [VRALIB] FRALG_OnFwAlgsTaskEvent
+[ 2653.982830] [7] [VRALIB] InvokeControlTask bAlgsAbort
+[ 2654.020813] [7] [@][WRAP][E][S0]DICO_3aa_ApplyTuneSet I6
+[ 2654.020822] [7] [DeserializeContext] start address : fc0a4f98, size : 135686, end address : fc0c619e
+[ 2654.020931] [7] WdrRgbyHist 256bins
+[ 2654.020943] [7] [TuneSetApply] ----------------------------------------
+[ 2654.020944] [7] [TuneSetApply] Setfile Read : SUCCESS! [135686/135686]
+[ 2654.020945] [7] [TuneSetApply] ----------------------------------------
+[ 2654.126581] [1] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2654.126586] [1] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2654.126588] [1] [@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[ 2654.126591] [1] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2654.126593] [1] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2654.126596] [1] [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2654.126599] [1] [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[ 2654.126602] [1] [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[ 2654.126604] [1] [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[ 2654.126606] [1] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2654.126608] [1] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2654.126611] [1] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2654.126613] [1] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2654.126620] [1] [@][WRAP][S0]applyTuneSet: hw(0), index(6), tuneSetHandle(0xffffff80fc0a4f90)
+[ 2654.126642] [1] [@][WRAP][E][S0]DICO_LoadCalData addr:0x1f752000
+[ 2654.126651] [1] [RecognizeProject] PROJECT_TANGO_BEYONDF(0)
+[ 2654.126656] [1] [FROM HEADER, STREAM ID:0] CRC error check: SUCCESS!
+[ 2654.126663] [1] [FROM DATA, STREAM ID:0] M2M START!Cal Base - AF(0x1f752200), AWB(0x1f752200), AS(0x1f753a70), PDAF(0x1f752200)
+[ 2654.126665] [1] [FROM DATA, STREAM ID:0] CRC error check: SUCCESS!
+[ 2654.126695] [1] [AS CAL, STREAM ID:0] A(77828), K4(16384), I0(1888), J0(1400), Scale(5)
+[ 2654.126699] [1] [AF CAL, STREAM ID:0] * calSize: 9, calDirection: 0, algSize: 10, algDirection: 0
+[ 2654.126703] [1] [AF CAL, STREAM ID:0] PanFocusPosition:      384 (ROM: 0x000000c0)
+[ 2654.126705] [1] [AF CAL, STREAM ID:0] MacroPosition:         554 (ROM: 0x00000115)
+[ 2654.126707] [1] [AF CAL, STREAM ID:0] Pan focus position is valid
+[ 2654.126709] [1] [AF CAL, STREAM ID:0] Macro position is valid
+[ 2654.126711] [1] [AF CAL, STREAM ID:0] No PDAF calibration
+[ 2654.126714] [1] [FROM DATA, STREAM ID:0] FROM CAL. DATA LOAD: SUCCESS!
+[ 2654.126716] [1] [@][WRAP][E][S0]DICO_GetCalData type:2
+[ 2654.126721] [1] [@][WRAP]SIRCSDK_GetCalibrationData: status(0) type(2) centerX/Y(1888/1400) biquadA/B(77828/16384)
+[ 2654.126748] [1] [VRALIB] DICO_ApplyTuneSet S(0) index(0)
+[ 2654.126759] [1] [VRALIB] selfie mode enabled (710)
+[ 2654.126839] [1] [META] aamode(2), sceneMode(1) > newSceneMode(1), enableDynamicShotDm(1)
+[ 2654.126842] [1] SetLeiTranslationMode 1
+[ 2654.126861] [1] [DDK][S0][F000007] [<-] afMode: CONTINUOUS_PICTURE, afTrigger: IDLE, aa.mode: AUTO, afState: INACTIVE(OS), INACTIVE(cur)
+[ 2654.126870] [1] [DDK][S0][F000007] [<-] afRegions: (0, 0) ~ (0, 0), weight: 1000
+[ 2654.126879] [1] [DDK][S0][F000007] [<-] afmode_option: 0x00000004, afmode_ext: OFF, pafMode: ON, aeFlashMode: OFF
+[ 2654.126889] [1] [DDK][S0][F000007] [<-] afmode_option: video(0), macro(0), face(1), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[ 2654.126894] [1] [ERROR][S0][F000007] [<-] afRegions: Because all coordinates are 0, weight is set as 0 forcedly.
+[ 2654.126951] [1] [S0][F000007] SetParam_AF : Start/Continuous/Normal/Face ON/Preview/0,0,0.000000/0:(0, 0)-(0, 0)
+[ 2654.127038] [1] [@][WRAP][S0][F7][HW0][SetEdgeEnhancement] last strength = 0, strength = 5
+[ 2654.127056] [1] [SetAperture] aperture 190 
+[ 2654.127058] [1] [@][WRAP][S0][F7][HW0][SetNoiseReduction] last strength = 0, strength = 5
+[ 2654.127069] [1] [@][WRAP]WDR_AUTO
+[ 2654.127075] [1] [S0] SetMasterInformation cameraMode 1 masterCamera 1
+[ 2654.127087] [1] [@][WRAP][S0][F7] m_configureMotionEstimation Enable ME (2944x2208)
+[ 2654.127090] [1] [@][WRAP][S0][F7] m_configureMotionEstimation ME dummyFrames(2)
+[ 2654.127102] [1] [@][WRAP][S0][F7][3AA0][Configure3aaInput] full(1)-otf(1) fro(1) sensorArea(3968 x 2736) binnedSensorArea(3968 x 2736), calibratedCrop(160, 0 / 3648 x 2736), imageArea(352, 264 / 2944 x 2208)
+[ 2654.127106] [1] [@][WRAP][S0][F7][3AA0][Configure3aaInput] receivedStatRoi(352, 264 / 2944 x 2208), bayerCrop(2944 x 2208), statRoi(0, 0 / 2944 x 2208)
+[ 2654.127113] [1] [@][WRAP][0][m_configureOutput3aa] line(2649) pBayerDmaOutputBeforeBds(ON 2944x2208 11/12bits) =(BDS)=> 2432x1824 =(crop)=> chainDestinationArea(0,0 2432x1824) pOtfOutput(OFF) pBayerDmaOutputAfterBds(ON 11/12bits), 
+[ 2654.127179] [1] [Thumbnail][SetGeometry] 3AA CellResolution: 46 x 34, CellGridResolution: 64 x 64
+[ 2654.127183] [1] [Thumbnail][SetGeometry]statRoi: (0, 0) 2944 x 2208
+[ 2654.127185] [1] [Thumbnail][SetGeometry]HW: (0, 16) 2944 x 2176
+[ 2654.127188] [1] [SetGeometry]normalizeShift = 7
+[ 2654.127190] [1] [SetGeometry]uThreshClipCnt_ = 195(128)
+[ 2654.127199] [1] [S0][3AA0] SetIsrScheduleType 0 @ 30.000 fps earlyConfigLock 0
+[ 2654.127207] [1] minFps 7.000 maxFps 30.000 scenemode 1
+[ 2654.127212] [1] [SuspendStateOnExit] sceneType: 1
+[ 2654.127217] [1] SetNumOfFramePerOneRta rta 1 af 1 @ 30.000fps
+[ 2654.127222] [1] [IspObject_InitPdafLib] chainCropedSourceArea 352 264 2944 2208
+[ 2654.127235] [1] [IspObject_InitPdafLib] requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[ 2654.127239] [1] [IspObject_InitPdafLib] requestType: 1, bufInfo.statType: 500, bufInfo.sensorMode: 102, bufInfo.width: 1756, bufInfo.height: 1, bufInfo.elementSize: 1
+[ 2654.127251] [1] [IspObject_InitPdafLib] requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[ 2654.127255] [1] [IspObject_InitPdafLib] requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[ 2654.127521] [1] [RTA]AF_BoforeStreamOn[F:6][1] sceneMode = 1
+[ 2654.127524] [1] [RTA]AF_BoforeStreamOn[F:6] 
+[ 2654.127527] [1] [Ext AF] InitialCafConfig. afStatType: 1
+[ 2654.127829] [1] [RTA]AF_BoforeStreamOn[F:   6][1]num_of_skip_frame  rta = 1, af = 1 
+[ 2654.127858] [1] [CalcPdWidthHeight] VC_SENSOR_MODE_2PD_MODE3 - input w : 3648, h : 2736 -> pd w : 456, h : 342
+[ 2654.127886] [1] [CalcPdWidthHeight] VC_SENSOR_MODE_2PD_MODE3 - input w : 3648, h : 2736 -> pd w : 456, h : 342
+[ 2654.128109] [1] InitFrameElement FrameElementForME (0xFBB84530)
+[ 2654.128115] [1] InitFrameElement FrameElementForME (0xFBB84568)
+[ 2654.128455] [7] [@][WRAP][E][S0]DICO_SensorInfoModeChange
+[ 2654.128463] [7] (SIRCSDK_ConvSensSettiBetwSceneModes[796]): fps(7.000/30.000), sceneMode(1), flickerMode(100)
+[ 2654.172413] [0] [S0][F7][3AA0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+[ 2654.172423] [0] PrintIsrTime
+[ 2654.183556] [5] [@][WRAP][E][2]register_isp_sdk
+[ 2654.183558] [5] [@][WRAP]###########################################################
+[ 2654.183559] [5] [@][WRAP]#####      FIMC-ISP LIBRARY 
+[ 2654.183561] [5] [@][WRAP]#####      Samsung System LSI
+[ 2654.183562] [5] [@][WRAP]#####      DDK revision: 10705
+[ 2654.183563] [5] [@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[ 2654.183564] [5] [@][WRAP]###########################################################
+[ 2654.183572] [5] [@][WRAP][E][ISP1]DICO_Chain_Isp_Create
+[ 2654.183574] [5] [@][WRAP]createChain: hwType(1) hwId(1) addr(0xffffff801fc80000)
+[ 2654.183590] [5] ISP_FimcIspChainV7P1P0::ISP_FimcIspChainV7P1P0(const SIRC_IspObjectConfig*) CHAIN_REGISTER_MODE_SHADOW
+[ 2654.183874] [5] [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(3) int_num(9) !!!
+[ 2654.183878] [5] [@][DRV]Register interrupt:ID(9), handler(0000000040f88c24)
+[ 2654.183880] [5] [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(3) int_num(10) !!!
+[ 2654.183882] [5] [@][DRV]Register interrupt:ID(10), handler(0000000040f88c24)
+[ 2654.183887] [5] ISP_FimcIspChainV7P1P0::SwReset
+[ 2654.183992] [5] [WRAP][E] DICO_SystemConfig
+[ 2654.183996] [5] [WRAP]setOverflowControl: (recovery:1)
+[ 2654.184008] [5] [@][WRAP][E][S1]DICO_Object_Isp_Create: (0x00261111) hwId(1), rep(1), input(1), moduleId(38)
+[ 2654.184014] [5] [@][WRAP]Metadata: new
+[ 2654.184015] [5] [@][WRAP]StreamInterface: new
+[ 2654.184020] [5] [@][WRAP][1]StreamInterface: init
+[ 2654.184040] [5] [@][WRAP]Metadata: init
+[ 2654.184045] [5] [@][WRAP][S1](createObject[5652]): hwType(ISP) hwId(1), inputType(M2M), moduleId(38), repFlag(1)
+[ 2654.184049] [5] [@][WRAP][1]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0x0)
+[ 2654.184569] [2] [@][WRAP](WRAP_GetProperties[417]): properties are changed senId(0 -> 1), strmId(0 -> 1)
+[ 2654.184579] [2] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2654.184582] [2] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2654.184584] [2] [@][WRAP](WRAP_GetProperties[588]): exp (23, 33280)
+[ 2654.184587] [2] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2654.184589] [2] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2654.184592] [2] [@][WRAP](WRAP_GetProperties[592]): sensorId (1), streamId(1), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2654.184595] [2] [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2866)
+[ 2654.184597] [2] [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[ 2654.184599] [2] [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[ 2654.184601] [2] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2654.184604] [2] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2654.184606] [2] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2654.184608] [2] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2654.184612] [2] [@][WRAP][INFO]m_createObject3aaForTuneSet: [S1] hwId_3aa(0)
+[ 2654.184615] [2] [@][WRAP][S1]m_createObject3aaForTuneSet: create 3aaObject for tuneset hwId_3aa[0]
+[ 2654.185010] [2] WdrRgbyHist 256bins
+[ 2654.185673] [7] [@][WRAP](WRAP_GetProperties[417]): properties are changed senId(0 -> 1), strmId(0 -> 1)
+[ 2654.185678] [7] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2654.185679] [7] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2654.185681] [7] [@][WRAP](WRAP_GetProperties[588]): exp (23, 33280)
+[ 2654.185682] [7] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2654.185683] [7] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2654.185685] [7] [@][WRAP](WRAP_GetProperties[592]): sensorId (1), streamId(1), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2654.185686] [7] [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2866)
+[ 2654.185688] [7] [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[ 2654.185689] [7] [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[ 2654.185690] [7] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2654.185691] [7] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2654.185691] [7] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2654.185692] [7] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2654.185774] [7] [@][WRAP][S1]m_createObject3aaForTuneSet: create 3aaObject for tuneset hwId_3aa[0] done
+[ 2654.186559] [7] [@][WRAP](WRAP_GetProperties[417]): properties are changed senId(0 -> 1), strmId(0 -> 1)
+[ 2654.186561] [7] [@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[ 2654.186562] [7] [@][WRAP](WRAP_GetProperties[587]): order (0)
+[ 2654.186563] [7] [@][WRAP](WRAP_GetProperties[588]): exp (23, 33280)
+[ 2654.186564] [7] [@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[ 2654.186565] [7] [@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[ 2654.186566] [7] [@][WRAP](WRAP_GetProperties[592]): sensorId (1), streamId(1), moduleId(38) sensorPlace(1) 3aaotfmode(1)
+[ 2654.186567] [7] [@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2866)
+[ 2654.186568] [7] [@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[ 2654.186569] [7] [@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[ 2654.186570] [7] [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[ 2654.186571] [7] [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[ 2654.186572] [7] [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[ 2654.186573] [7] [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[ 2654.186577] [7] [@][WRAP][X][S1][ISP1]DICO_Object_Isp_Create 0xffffff80fc674cb0
+[ 2654.187712] [7] [VRALIB] DICO_VraSensorInit(1)
+[ 2654.190474] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(0)
+[ 2654.190621] [7] [@][WRAP][S1]newTuneSet: index( 0), tuneSetHandle(0xffffff80fc769f70)
+[ 2654.190626] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(1)
+[ 2654.190647] [7] [@][WRAP][S1]newTuneSet: index( 1), tuneSetHandle(0xffffff80fc78b190)
+[ 2654.190650] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(2)
+[ 2654.190669] [7] [@][WRAP][S1]newTuneSet: index( 2), tuneSetHandle(0xffffff80fc7ac3b0)
+[ 2654.190672] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(3)
+[ 2654.190692] [7] [@][WRAP][S1]newTuneSet: index( 3), tuneSetHandle(0xffffff80fc7cd5d0)
+[ 2654.190695] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(4)
+[ 2654.190713] [7] [@][WRAP][S1]newTuneSet: index( 4), tuneSetHandle(0xffffff80fc7ee7f0)
+[ 2654.190716] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(5)
+[ 2654.190735] [7] [@][WRAP][S1]newTuneSet: index( 5), tuneSetHandle(0xffffff80fc80fa10)
+[ 2654.190738] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(6)
+[ 2654.190756] [7] [@][WRAP][S1]newTuneSet: index( 6), tuneSetHandle(0xffffff80fc830c30)
+[ 2654.190759] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(7)
+[ 2654.190777] [7] [@][WRAP][S1]newTuneSet: index( 7), tuneSetHandle(0xffffff80fc851e50)
+[ 2654.190780] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(8)
+[ 2654.190798] [7] [@][WRAP][S1]newTuneSet: index( 8), tuneSetHandle(0xffffff80fc873070)
+[ 2654.190801] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(9)
+[ 2654.190820] [7] [@][WRAP][S1]newTuneSet: index( 9), tuneSetHandle(0xffffff80fc894290)
+[ 2654.190823] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(10)
+[ 2654.190841] [7] [@][WRAP][S1]newTuneSet: index(10), tuneSetHandle(0xffffff80fc8b54b0)
+[ 2654.190844] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(11)
+[ 2654.190863] [7] [@][WRAP][S1]newTuneSet: index(11), tuneSetHandle(0xffffff80fc8d66d0)
+[ 2654.190866] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(12)
+[ 2654.190884] [7] [@][WRAP][S1]newTuneSet: index(12), tuneSetHandle(0xffffff80fc8f78f0)
+[ 2654.190887] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(13)
+[ 2654.190907] [7] [@][WRAP][S1]newTuneSet: index(13), tuneSetHandle(0xffffff80fc918b10)
+[ 2654.190910] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(14)
+[ 2654.190928] [7] [@][WRAP][S1]newTuneSet: index(14), tuneSetHandle(0xffffff80fc939d30)
+[ 2654.190931] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(15)
+[ 2654.190950] [7] [@][WRAP][S1]newTuneSet: index(15), tuneSetHandle(0xffffff80fc95af50)
+[ 2654.190953] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(16)
+[ 2654.190972] [7] [@][WRAP][S1]newTuneSet: index(16), tuneSetHandle(0xffffff80fc97c170)
+[ 2654.190975] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(17)
+[ 2654.190992] [7] [@][WRAP][S1]newTuneSet: index(17), tuneSetHandle(0xffffff80fc99d390)
+[ 2654.190995] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(18)
+[ 2654.191016] [7] [@][WRAP][S1]newTuneSet: index(18), tuneSetHandle(0xffffff80fc9be5b0)
+[ 2654.191019] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(19)
+[ 2654.191039] [7] [@][WRAP][S1]newTuneSet: index(19), tuneSetHandle(0xffffff80fc9df7d0)
+[ 2654.191042] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(20)
+[ 2654.191061] [7] [@][WRAP][S1]newTuneSet: index(20), tuneSetHandle(0xffffff80fca009f0)
+[ 2654.191064] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(21)
+[ 2654.191084] [7] [@][WRAP][S1]newTuneSet: index(21), tuneSetHandle(0xffffff80fca21c10)
+[ 2654.191087] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(22)
+[ 2654.191105] [7] [@][WRAP][S1]newTuneSet: index(22), tuneSetHandle(0xffffff80fca42e30)
+[ 2654.191108] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(23)
+[ 2654.191128] [7] [@][WRAP][S1]newTuneSet: index(23), tuneSetHandle(0xffffff80fca64050)
+[ 2654.191132] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(24)
+[ 2654.191153] [7] [@][WRAP][S1]newTuneSet: index(24), tuneSetHandle(0xffffff80fca85270)
+[ 2654.191156] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(25)
+[ 2654.191177] [7] [@][WRAP][S1]newTuneSet: index(25), tuneSetHandle(0xffffff80fcaa6490)
+[ 2654.191180] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(26)
+[ 2654.191201] [7] [@][WRAP][S1]newTuneSet: index(26), tuneSetHandle(0xffffff80fcac76b0)
+[ 2654.191204] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(27)
+[ 2654.191226] [7] [@][WRAP][S1]newTuneSet: index(27), tuneSetHandle(0xffffff80fcae88d0)
+[ 2654.191229] [7] [@][WRAP][E][S1]DICO_CreateTuneSet[745] index(28)
+[ 2654.191252] [7] [@][WRAP][S1]newTuneSet: index(28), tuneSetHandle(0xffffff80fcb09af0)
+[ 2654.191269] [7] [VRALIB] DICO_CopyTuneSet S(1) index(0) addr(1f6b7f40)
+[ 2654.191273] [7] [VRALIB] ============================================
+[ 2654.191276] [7] [VRALIB] VRA Setfile Version: 2
+[ 2654.191278] [7] [VRALIB] ============================================
+[ 2654.191285] [7] [VRALIB] DICO_CopyTuneSet S(1) index(1) addr(1f6b7f7c)
+[ 2654.191287] [7] [VRALIB] ============================================
+[ 2654.191290] [7] [VRALIB] VRA Setfile Version: 2
+[ 2654.191293] [7] [VRALIB] ============================================
+[ 2654.194645] [2] [S0][F7][3AA0] TransitIsrState I1 V SYNC    --(CIN ROW  )--> CIN ROW  
+[ 2654.194807] [2] [F0] UpdateMeBlockParams delete FrameElement
+[ 2654.194812] [2] ReleaseMeBuffer frameDescriptor is null
+[ 2654.204204] [1] [S0][F7][3AA0] TransitIsrState I2 CIN ROW   --(FRAME END)--> FRAME END
+[ 2654.205671] [1] PrintIsrTime
+[ 2654.205681] [1] [S0][3AA0] Valid Time 31792 / Frame Time 33226 
+[ 2654.205690] [1] [S0][3AA0] ISR V SYNC    F7 2654172425~2654172470 (45 us)
+[ 2654.205697] [1] [S0][3AA0] ISR CIN ROW   F7 2654194652~2654195139 (487 us)
+[ 2654.205705] [1] [S0][3AA0] ISR FRAME END F7 2654204208~2654204427 (219 us)
+[ 2654.209252] [7] [@][WRAP][S0][F7][HW1][SetEdgeEnhancement] last strength = 0, strength = 5
+[ 2654.209255] [7] [@][WRAP][S0][F7][HW1][SetNoiseReduction] last strength = 0, strength = 5
+[ 2654.209268] [7] [@][WRAP][S0][F7][ISP0][ConfigureISPInput]: fro(1) inputImageArea(0,0 / 2432x1824 12/12bits)
+[ 2654.209307] [7] [Thumbnail][SetGeometry] ISP CellResolution: 38 x 28, CellGridResolution: 64 x 64
+[ 2654.209308] [7] [Thumbnail][SetGeometry]statRoi: (0, 0) 2432 x 1824
+[ 2654.209309] [7] [Thumbnail][SetGeometry]HW: (0, 16) 2432 x 1792
+[ 2654.209311] [7] [SetGeometry]normalizeShift = 9
+[ 2654.209312] [7] [SetGeometry]uThreshClipCnt_ = 532(128)
+[ 2654.209315] [7] [S0][ISP0] SetIsrScheduleType 3 @ 0.000 fps earlyConfigLock 0
+[ 2654.209356] [7] [DRC][TMC][DbgMsg_StateAndExtInfo]DrcMode change Prev:0 -> Cur:3
+[ 2654.209473] [7] TNR mode init. by mode change: TNR_MODE_BYPASS
+[ 2654.209480] [7] TNR mode change: TNR_MODE_BYPASS -> TNR_MODE_FIRST_RUN
+[ 2654.209486] [7] ISP_FimcIspChainV7P11P0 ControlClock clock 1 -> 1
+[ 2654.209741] [7] [ISP] EOTF gamma disabled
+[ 2654.209894] [0] [S0][F7][ISP0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+[ 2654.209910] [0] PrintIsrTime
+[ 2654.220517] [3] [S0][F7][ISP0] TransitIsrState I1 V SYNC    --(FRAME END)--> FRAME END
+[ 2654.244940] [2] TNR mode change: TNR_MODE_FIRST_RUN -> TNR_MODE_NORMAL
+[ 2654.245206] [2] [ISP] EOTF gamma disabled
+[ 2654.245467] [3] PrintIsrTime
+[ 2654.245478] [3] [S0][ISP0] Valid Time 10626 / Frame Time 35543 
+[ 2654.245487] [3] [S0][ISP0] ISR V SYNC    F7 2654209912~2654209921 (9 us)
+[ 2654.245495] [3] [S0][ISP0] ISR FRAME END F7 2654220523~2654220532 (9 us)
+[ 2654.245503] [3] [S0][ISP0] TASK V SYNC    2654209940~2654209943 (3 us)
+[ 2654.245510] [3] [S0][ISP0] TASK CIN ROW   2654220540~2654220596 (56 us)
+[ 2654.245517] [3] [S0][ISP0] TASK FRAME END 2654220596~2654220677 (81 us)
+[ 2654.427653] [1] [INFO][S0][F000014] [SIRC AF] Window config changed.(win 0)
+[ 2654.427810] [1] [S0][F000014] [UpdateAfResult] AF: Search
+[ 2654.437389] [2] [DDK][S0][F000014] AF Output State: PASSIVE_SCAN
+[ 2654.627568] [1] [S0][F000020] [UpdateAfResult] AF: In Focus
+[ 2654.637123] [2] [DDK][S0][F000020] AF Output State: PASSIVE_FOCUSED
+[ 2654.861198] [1] [S0][F000027] [UpdateAfResult] AF: Ready
+[ 2668.544699] [1] [INFO][S0][F000438] [SIRC AF] Window config changed.(win 0)
+[ 2668.545154] [1] [S0][F000438] [UpdateAfResult] AF: Search
+[ 2668.555037] [1] [DDK][S0][F000438] AF Output State: PASSIVE_SCAN
+[ 2668.677974] [1] [S0][F000442] [UpdateAfResult] AF: In Focus
+[ 2668.688166] [1] [DDK][S0][F000442] AF Output State: PASSIVE_FOCUSED
+[ 2668.811793] [3] [DDK][S0][F000447] [<-] afMode: AUTO, afTrigger: START, aa.mode: AUTO, afState: INACTIVE(OS), PASSIVE_FOCUSED(cur)
+[ 2668.811808] [3] [DDK][S0][F000447] [<-] afRegions: (1365, 60) ~ (1990, 686), weight: 1000
+[ 2668.811823] [3] [S0][F000447] SetParam_AF : Start/Single/Normal/Face OFF/Preview/0,0,0.000000/1:(15193, 890)-(22150, 10181)
+[ 2668.811831] [3] [S0][F000446] [UpdateAfResult] AF: Search
+[ 2668.845101] [0] [DDK][S0][F000448] [<-] afMode: AUTO, afTrigger: IDLE, aa.mode: AUTO, afState: INACTIVE(OS), ACTIVE_SCAN(cur)
+[ 2668.845120] [0] [DDK][S0][F000448] [<-] afRegions: (1365, 60) ~ (1990, 686), weight: 1000
+[ 2668.854738] [0] [DDK][S0][F000447] AF Output State: ACTIVE_SCAN
+[ 2668.867285] [1] [INFO][S0][F000448] [SIRC AF] Window config changed.(win 0)
+[ 2669.633236] [1] [S0][F000471] [UpdateAfResult] AF: In Focus
+[ 2669.653832] [2] [DDK][S0][F000471] AF Output State: FOCUSED_LOCKED
+[ 2671.908344] [3] [DDK][S0][F000540] [<-] afMode: CONTINUOUS_PICTURE, afTrigger: IDLE, aa.mode: AUTO, afState: INACTIVE(OS), FOCUSED_LOCKED(cur)
+[ 2671.908354] [3] [DDK][S0][F000540] [<-] afRegions: (0, 0) ~ (0, 0), weight: 0
+[ 2671.908365] [3] [S0][F000540] SetParam_AF : Start/Continuous/Normal/Face ON/Preview/0,0,0.000000/0:(0, 0)-(0, 0)
+[ 2671.908371] [3] [S0][F000539] [UpdateAfResult] AF: Ready
+[ 2671.930525] [1] [S0][F000540] [UpdateAfResult] AF: In Focus
+[ 2671.951246] [2] [DDK][S0][F000540] AF Output State: PASSIVE_FOCUSED
+[ 2671.972492] [1] [INFO][S0][F000541] [SIRC AF] Window config changed.(win 0)
+[ 2672.105088] [1] [INFO][S0][F000545] [SIRC AF] Window config changed.(win 0)
+[ 2672.105495] [1] [S0][F000545] [UpdateAfResult] AF: Search
+[ 2672.117744] [2] [DDK][S0][F000545] AF Output State: PASSIVE_SCAN
+[ 2672.238376] [1] [S0][F000549] [UpdateAfResult] AF: In Focus
+[ 2672.250936] [1] [DDK][S0][F000549] AF Output State: PASSIVE_FOCUSED
