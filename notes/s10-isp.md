@@ -110,12 +110,19 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   So the blob cannot be CALLED directly from a Windows driver: an interrupt or a callout seeing the blob's x18
   breaks Windows. Options: (a) an emulator (Stage 2 tool, slow - NEON heavy), (b) a user-mode host where every
   entry and every OS callback saves/restores x18 - still unsafe if Windows itself reads x18 between (exceptions,
-  APCs: UNVERIFIED how Windows user mode reacts), (c) patch-free: a dedicated core/thread is not possible from
-  Windows' scheduler. Decision deferred to Stage 4; everything before stays on the build machine.
+  APCs: UNVERIFIED how Windows user mode reacts). Decision deferred to Stage 4; until then nothing runs on the phone.
+- Same in the other parts (review fix, linear sweep): VRA 0x20000..0xE0000 170 reads / 140 writes (first
+  0x2006c), RTA 0..0x340000 718 / 667 (first 0x5c4c).
 
-### Q4 privileged state - none
-- No msr/mrs of EL1 registers, no eret/hvc/smc; only brk, mrs fpsr/fpcr/dczid_el0, dc zva: EL0-safe code.
-- 21324 NEON/FP instructions in the DDK code (fpsimd_get/put of the GPL loader confirmed needed).
+### Q4 privileged state - none found in the code paths
+- DDK 0xE0000..0x420000: no msr/mrs of EL1 registers, no eret/hvc/smc; only brk, mrs fpsr/fpcr/dczid_el0,
+  dc zva: EL0-safe. 21324 NEON/FP instructions (fpsimd_get/put of the GPL loader confirmed needed).
+- VRA part and RTA (review fix): linear sweep shows single hits of implementation-defined msr/mrs encodings
+  (s2_*/s3_* ...), 25 hlt in the VRA part and one svc in the RTA. The sweep also reports 40143 / 47499
+  undecodable words = data inside those areas, so these single hits are most likely data decoded as code -
+  UNVERIFIED until a reachability pass (follow branches from the entries) confirms none is executed.
+- Function names in this file (_sbrk, _sbrk_r, spin lock ...) are inferred from code shape and the GPL table
+  order, not from symbols (the binaries are stripped of a symbol table: none seen).
 
 ### Q6 SysMMU on Android
 - dmesg-camera.txt: DMA_TAAISP "dva 0x11400000" = an IOVA, so on Android the ISP SysMMUs TRANSLATE. Whether the
@@ -130,12 +137,17 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
 - With every OS function = "ret, x0 = 0", the start_up path from 0xf25b8 runs to its ret: 528 OS calls -
   os[36] spin_lock_init 173, os[42]/[43] spin lock irqsave/irqrestore 161 each, os[24]/[25] svc spin lock
   save/restore 12 each, os[29] log_write 8, os[26] get_random_int 1. No register access, no DMA, no IRQ yet.
-- os[29] gets ONE argument, a finished string in a DDK buffer (image 0x420288): the DDK formats with its own
-  vsnprintf, so Q5 (variadic va_list) is moot for the log path (the 8 lines: "start_up_ddk", the section map
-  above). Other variadic entries (os[0]) not seen yet.
+- os[29] receives in x0 a finished string in a DDK buffer (image 0x420288): the DDK formats with its own
+  formatter (the 8 lines: "start_up_ddk", the section map above). Whether x1.. carry anything is not checked,
+  so Q5 is only likely moot for this call site (0xf22d0). Other variadic entries (os[0]) not seen yet.
+- Caveat of the method: at an OS call the hook logs x0, and some call sites load the function pointer into x0
+  itself (os[24]/[26] show their own marker value): those calls take no argument in x0.
 
 ## Progress log
 - 2026-11-17: Stage 0 written from the GPL source (above). Asked the user for the three binaries.
 - 2026-11-17: Stage 1 (above) from s10cam.zip: base found, x18 used, EL0-safe, heap self-managed; start_up emulated.
   Next: emulate the +0x80 ISP table getter (0xf1af4) and +0x40 sensor register (0xf6514) to list the function
   tables they return; same OS-table copy for the RTA; i2c-trace.txt (address 0x10) vs our 3J1 setfile.
+- 2026-11-17 review of 6023f5e: the x18 / system-register scan covered only the DDK part -> VRA and RTA added
+  with the linear-sweep caveat; "os[29] takes one argument" weakened to what was observed (x0); the hook's x0
+  caveat recorded; the dropped "(c)" option was not an option.
