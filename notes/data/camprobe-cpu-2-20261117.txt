@@ -1,0 +1,11 @@
+camprobe-s10.ps1 v1.1  cpu  2026-11-01T23:47:11  PowerShell 5.1.22621.963
+source group: 'Galaxy S10 Front Camera'  \\?\ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\{9b365890-165f-11d0-a195-0020afd156e4}
+MediaCapture.InitializeAsync: ok
+frame sources: 1
+  'Source#0@\\?\ROOT#CAMERA#0000#{e5323777-f976-4f5b-9b55-b94699c46e44}\{9b365890-165f-11d0-a195-0020afd156e4}' kind Color, stream VideoRecord, formats 1
+  format: YUY2 684 x 912 @ 30/1
+current: YUY2 684 x 912
+MediaFrameReader.StartAsync: Success
+saved C:\S10Prov\camprobe-cpu.bmp (684 x 912, frame 5)
+frames: 138 in 5 s = 27.6 fps; first after 60 ms; SoftwareBitmap 138, Direct3DSurface 0
+log: C:\S10Prov\camprobe-cpu.txt

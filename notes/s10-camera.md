@@ -697,3 +697,16 @@ Logs: notes/data/camprobe-cpu-1-20261117.txt, camera-s10-status-6cpu / -7gpu-202
   project in PowerShell 5.1. camprobe v1.1 enumerates the map's pairs, lists every source (id, kind, stream type,
   format count) and falls back to the first source.
 - The Camera app shows "GALAXY-S10" in the middle of a black preview (screenshot) - not explained yet.
+
+## Phone 2026-11-17 10:31: camprobe v1.1 - THE CAMERA WORKS THROUGH THE WINDOWS FRAME SERVER
+Logs: notes/data/camprobe-cpu-2 / camprobe-gpu-2-20261117.txt (picture: a person, not kept).
+- One frame source: kind Color, stream VideoRecord, one format YUY2 684 x 912 @ 30/1 (so v1.0's "no colour source"
+  was the script's .Values enumeration, as suspected).
+- cpu (MemoryPreference Cpu): MediaFrameReader Success, 138 frames in 5 s = 27.6 fps, first after 60 ms, all
+  SoftwareBitmap; frame 5 saved: upright, correct colours, dark (AE had not converged yet at frame 5).
+- gpu (Auto): 150 frames in 5 s = 30.0 fps, first after 24 ms, all Direct3DSurface (YUY2 textures on the Mali
+  adapter work).
+- So S10eCamera 0.7 + the frame server deliver 30 fps to apps, CPU and GPU memory. The Camera app's black preview is
+  past the frame source: its preview path. Hypothesis (UNVERIFIED): rendering YUY2 for display needs a D3D11 video
+  processor (colour conversion / scaling), which our Mali UMD does not implement (gpu-umd-d3d11.md D5 = plan). Next
+  checks: a browser (getUserMedia: Chromium converts in its own GPU process) and Settings > Cameras preview.
