@@ -316,3 +316,9 @@ File: notes/data/isp-dump-20261117/isfw-msg-android.txt (602 lines, front camera
   BDS 2432 x 1824 -> ISP0 M2M input 2432 x 1824, 30 fps (minFps 7), PDAF stats (2PD mode3 456 x 342), TNR, DRC.
 - So on Android the front preview is NOT the 912 x 684 mode: 3AA crops the 10 MP frame to 2944 x 2208 (4:3
   centre), scales to 2432 x 1824, ISP processes it, MCSC (GPL) makes the app's sizes.
+- 2026-11-17 20:49 user: "chạy 120fps nó nổ máy" (running 120 fps blows the phone up / crashes it - context not
+  given) and asks to keep only what was checked on this S10. Facts from the phone's own log (isfw-msg-android.txt):
+  the 120 fps "Fast AE" mode (912 x 684, scene 136, TuneSetIndex 7) ran for exactly ONE frame (F1, "Frame Time
+  8251" us, count 1) at 2653.93 s, then 3AA stopped and restarted at 30 fps ("Frame Time 33226"). Decision: the
+  Windows side stays at what runs sustained on this phone - 30 fps; 120 fps is never a streaming mode for us, and
+  FrameRate 60 (S10eCamera 0.9) stays unvalidated until the user's test.
