@@ -677,3 +677,8 @@ Logs: notes/data/cam-s10-stream-3bin-20261117.txt, camera-s10-status-5-20261117.
   MemoryPreference Cpu (no GPU surfaces), gpu = Auto; logs init / formats / start status / frames, fps, first-frame
   time, SoftwareBitmap vs Direct3DSurface counts, saves one frame. cpu ok + gpu failing = the GPU side. PowerShell
   5.1 only (WinRT projection). Parse-checked only (WinRT is not available on Linux).
+- Review of 342e503: EmitRows steps (oy1 - oy0) rows (= +-1) for 90/270 and (ox1 - ox0) x 4 bytes per pair for
+  0/180, the mirror is inside MapOut, so the x = 0/1 evaluation already carries it (host test covers all 8 cases);
+  the pointer is advanced once past the last write and never used then; the removed `k` in ConvertBinFast would have
+  been MSVC C4101 under /WX. ConvertBinFast reads only rows 2j, 2j+1 (no neighbours) and patches the canary tail on the
+  last pair. Nothing to fix.
