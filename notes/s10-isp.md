@@ -229,3 +229,7 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
 - The DDK's own section log (".data" size 12519312 ending 0xffffff80fb000000) spans the RTA's area
   (0xffffff80fa500000..): that "data" is a linker span up to the heap, not 12 MB of DDK data - the 76 MiB
   footprint from LIB_START holds DDK + RTA + DDK heap; the RTA heap is separate (HEAP_RTA_START, Stage 0).
+- 2026-11-17 19:48: built ExtremeKernel OneUI 6 beyond1lte "ispdbg1" (DEVMEM, IO_STRICT_DEVMEM off, DEBUG_FS,
+  DYNAMIC_DEBUG, KPROBES + KPROBE_EVENTS, FUNCTION(_GRAPH)_TRACER) - recipe tools/android/kernel-ispdbg. Config
+  check: UH/RKP not set in exynos9820_defconfig (:674 "# CONFIG_UH is not set", :642 RKP_CFP off), so kprobes /
+  ftrace text patching is not blocked by a hypervisor. Not yet on the phone.
