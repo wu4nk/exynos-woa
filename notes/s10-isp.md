@@ -407,3 +407,10 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
   process' context) reports errors only as "open file error" / "fail to write", which the user's grep did not
   include. Asked for those lines.
 - Android's front AF calibration (useful as a check later): far 192, near 277 (FrontAfLib_BootingInit line 278).
+- 2026-11-17 21:27 DEVICE: no "open file error" / "fail to write" / avc lines; /data/vendor/camera again holds only
+  rom0_dump.bin (16384 B, rewritten 21:27, content = rear map "V010" at 0x50). The DEBUG_FORCE_DUMP path is not
+  giving the front data - not chased further.
+- tools/android/calgrab (v1.0): a READ-ONLY module built against the ispdbg2 tree (vermagic matches the running
+  kernel) that calls the driver's own fimc_is_sec_get_cal_buf(&buf, rom_id) (sec-define.c:74, found with
+  kallsyms_lookup_name) and exposes that buffer as /sys/kernel/debug/calgrab/rom<id> (debugfs blob). No hardware
+  access. Build: make -C <kernel out> M=tools/android/calgrab modules (same flags as the kernel).
