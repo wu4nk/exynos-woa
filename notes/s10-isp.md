@@ -489,3 +489,9 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   other effect; WINPRAM ring + the write-through log name the step).
 - cam-s10.ps1 v1.7: action "isp" = that one step (the 3step loop stays 1..7). kcheck-wdm.sh S10eCam.c: no errors;
   psparse cam-s10.ps1: 0 parse errors. NOT run on the phone yet.
+- 2026-11-17 22:55 DECISION (user): option A - run the real libraries natively in a user-mode host on Windows,
+  swapping x18 at every entry into / exit from them. Plan: (1) a portable host core in C (loader + pointer
+  relocation, the GPL OS-service table, sensor interface, task threads, DMA / register / interrupt through a
+  platform layer); (2) prove it on AArch64 Linux user mode (qemu-aarch64 on the build machine) with fake register
+  windows = the same run as front_init.py, natively compiled; (3) the Windows platform layer (UMDF 2 or service +
+  kernel helper for MMIO / IRQ / contiguous DMA) - Microsoft docs first for the register / interrupt / DMA parts.
