@@ -12,6 +12,7 @@ Run Python on them with `-I`, from outside the directory that holds the binaries
 | basecheck.py FILE BASE | with a base: how many pointer words land in the file, on prologues, on strings |
 | disasm.py FILE OFF[,..] [N] | disassembles N instructions at file offsets |
 | front_init.py BIN DUMP OUT | the front-camera init path end to end in the emulator (start_up, VRA, RTA, sensor interface, 3AA + ISP chain_create with the phone's register dump, object_create); writes mmio-*.txt, interface-calls.txt |
+| cmp_dump.py OUT DUMP WINDOW [N] | emulator vs phone: last written value per register against the live dump |
 | osmap.py FILE [STOP] | Unicorn: runs the DDK start_up path from 0xf25b8 at its Android VA with marker OS functions (each a `ret`); prints where each OS-table index is stored, every OS call, and the DDK's log lines |
 | emu.py | Stage 2 harness (import it): DDK/RTA at their Android VAs in Unicorn, OS table of logging markers with GPL-semantics defaults (DMA pools, get_usec, get_reg_addr, irq/timer registration), fake register windows (every access logged), sensor-interface stubs |
 | param_layouts.txt | clang record layouts of struct taa_param_set, isp_param_set, camera2_shot (GPL v7_0_0 headers of the ExtremeKernel tree) |

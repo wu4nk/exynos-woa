@@ -425,3 +425,17 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
 - 3AA shot F1 with it: 1564 registers written, 1128 (72.1 %) equal to the phone's live values (zeros: 1124) - the
   first frame's register program hardly depends on calibration; the gap is frame / AE state (to check frame by
   frame next).
+### Frames F1..F3 with interrupts (2026-11-17 22:00, FRAMES=3)
+- emu: add_task (DDK os[27], RTA table[40]) queues work, drain() runs it after each top-level call like the
+  library's kthread workers (GPL interface-library.c:1600 lib_task_trigger). Per frame: set_ctrl + shot (F2/F3:
+  0 register accesses - shot only queues), then 3AA irq 0 with +0x10c bit 0 (V SYNC), bit 2 (CIN ROW), bit 1
+  (FRAME END) in Android's order. All return 0; V SYNC runs tasks ddk+0x1d4b58 / 0x1d2d90, FRAME END ddk+0x1ce714;
+  the per-frame register update happens at CIN ROW (128 / 259 / 245 accesses for F1 / F2 / F3).
+- DMA format found: the phone's 3AA output strides are 12-bit PACKED (+0x410 = 0x1140 = 2944 x 1.5, +0x460 =
+  0xe40 = 2432 x 1.5) -> taa dma_output format 5 = DMA_OUTPUT_FORMAT_BAYER_PACKED (format 0 gave x 2 strides).
+- Match (tools/isp-re/cmp_dump.py, excluding 0xdeadc0de and DMA addresses): 1562 comparable registers, 1183
+  equal = 75.7 %. What still differs: 0x29xx / 0x37xx-0x39xx / 0x40xx and their 0x8000 shadow copies -
+  thresholds about 0.6 x ours (AE / AWB dependent: the emulator has no image statistics, the phone had a lit
+  scene); +0x18fc, 0x19fc ... low byte equal (0x37), upper bits = hardware counters; frame / config-lock state
+  (0x0c, 0x28, 0xc8, 0x118). Remaining log noise: "ISP_IoCallback_3aa: CONFIG_LOCK_DELAY" each frame and frame
+  number "F0" in the ISR lines (the ISR reads the frame counter from a register: live-dump value).

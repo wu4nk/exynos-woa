@@ -105,6 +105,10 @@ def step(label, fn, *a):
         r = '0x%x' % (e.call(fn, *a) & 0xffffffff)
     except RuntimeError as x:
         r = 'EXC ' + str(x)
+    t0 = len(e.task_log)
+    e.drain()
+    if len(e.task_log) > t0:
+        r += '  [tasks run: %s]' % ', '.join('%s->%s' % (f, rr) for p, f, rr in e.task_log[t0:])[:400]
     acc = e.mmio[n0:]
     with open(os.path.join(OUT, 'mmio-%s.txt' % label.replace(' ', '_')), 'w') as f:
         for rw, w, off, v, sz, pc in acc:
@@ -183,8 +187,10 @@ def put(off, *vals):
 
 put(0, 33333, 7, 30, 3648, 2736, 1000, 1000, 1000, 1000, 0, 0, 3648, 2736, 3968, 2736)   # sensor_config
 put(128, 1, 0, 10, 0, 3648, 2736, 352, 264, 2944, 2208)        # otf_input: cmd, format, bitwidth, order, w, h, crop
-put(640, 1, 0, 12, 0, 1, 2944, 2208, 0, 0, 2944, 2208, 0, 11)  # dma_output_before_bds .. crop_enable, msb
-put(768, 1, 0, 12, 0, 1, 2432, 1824, 0, 0, 2432, 1824, 0, 11)  # dma_output_after_bds
+put(640, 1, 5, 12, 0, 1, 2944, 2208, 0, 0, 2944, 2208, 0, 11)  # dma_output_before_bds .. crop_enable, msb
+put(768, 1, 5, 12, 0, 1, 2432, 1824, 0, 0, 2432, 1824, 0, 11)  # dma_output_after_bds
+# format 5 = DMA_OUTPUT_FORMAT_BAYER_PACKED (fimc-is-param.h): the phone's 3AA DMA strides are 12-bit packed
+# (+0x410 0x1140 = 2944 x 1.5, +0x460 0xe40 = 2432 x 1.5); format 0 gave 2944 x 2 / 2432 x 2
 bufs = {}
 for name, size, off in (('before_bds', 2944 * 2208 * 2, 1348), ('after_bds', 2432 * 1824 * 2, 1416)):
     k = e.handlers[68](e, size)                                  # fake DMA pool, dva = 0x8xxxxxxx
@@ -207,8 +213,25 @@ step('3AA shot F1', tabs['3AA']['shot'], e.q(obj3), P, SHOT, 1)
 # --- frame interrupts: Android's ISR order per 3AA frame is V SYNC -> CIN ROW -> FRAME END (isfw-msg-android.txt
 # "TransitIsrState"). The handler gets (interrupt id, ctx) (GPL struct hwip_intr_handler / fimc_is_register_interrupt);
 # which status bits mean which event is not known yet: the handler reads them from the (live-dump) registers.
-for irq in [i for i in e.irqs if i['chain'] == 0]:
-    step('3AA irq %d' % irq['id'], irq['handler'], irq['id'], irq['ctx'])
+IRQ0 = [i for i in e.irqs if i['chain'] == 0 and i['id'] == 0][0]
+
+
+def fire(label, bit):
+    # 3AA +0x10c bit: 0 V SYNC, 2 CIN ROW, 1 FRAME END (named by the DDK, irq-scan-3aa.txt)
+    e.u.mem_write(w3 + 0x10c, struct.pack('<I', 1 << bit))
+    step(label, IRQ0['handler'], IRQ0['id'], IRQ0['ctx'])
+    e.u.mem_write(w3 + 0x10c, struct.pack('<I', 0))
+
+
+NFRAMES = int(os.environ.get('FRAMES', '3'))
+for fc in range(1, NFRAMES + 1):
+    if fc > 1:
+        put(1764, fc)                                           # taa_param_set.fcount
+        step('3AA set_ctrl F%d' % fc, tabs['3AA']['set_ctrl'], e.q(obj3), 0, fc, SHOT)
+        step('3AA shot F%d' % fc, tabs['3AA']['shot'], e.q(obj3), P, SHOT, 1)
+    fire('F%d irq V SYNC' % fc, 0)
+    fire('F%d irq CIN ROW' % fc, 2)
+    fire('F%d irq FRAME END' % fc, 1)
 # status registers read by the handler (assembly ddk+0x2f2bd4): 3AA +0x10c (irq 0), +0x11c (irq 1). Discovery: set
 # one bit at a time and record what the DDK does with it (logs + register accesses) - DIAGNOSIS ONLY
 if os.environ.get('IRQ_SCAN'):

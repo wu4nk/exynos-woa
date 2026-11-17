@@ -249,10 +249,74 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: InitFrameElement FrameElementForME (0xFBB84568)
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
-== 3AA irq 0 -> 0x0  (register accesses 1, OS calls 9, interface calls 0)
-   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000010c 0
-   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000010c 0
-== 3AA irq 1 -> 0x0  (register accesses 1, OS calls 9, interface calls 0)
-   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000011c 1
-   log: [WRN][DispatchInterrupt] has null interrupt status 0x4000011c 1
+== F1 irq V SYNC -> 0x0  [tasks run: ddk+0x1d2d90->0]  (register accesses 8, OS calls 35, interface calls 13)
+   log: [S0][F0][3AA0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+   log: PrintIsrTime
+   log: PrintIsrTime
+== F1 irq CIN ROW -> 0x0  (register accesses 128, OS calls 157, interface calls 4)
+   log: [S0][F0][3AA0] TransitIsrState I1 V SYNC    --(CIN ROW  )--> CIN ROW  
+   log: [ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+   log: ReleaseMeBuffer frameDescriptor is null
+   log: ReleaseMeBuffer frameDescriptor is null
+   log: InitFrameElement FrameElementForME (0xFBB845D8)
+   log: InitFrameElement FrameElementForME (0xFBB84610)
+   log: [SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDma->buffer is null.
+   log: [SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDmaBeforeBdsproperties->buffer is null.
+== F1 irq FRAME END -> 0x0  [tasks run: ddk+0x1ce714->0]  (register accesses 7, OS calls 94, interface calls 5)
+   log: [S0][F0][3AA0] TransitIsrState I2 CIN ROW   --(FRAME END)--> FRAME END
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+   log: [@][WRAP][ERROR][S0][F1][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== 3AA set_ctrl F2 -> 0x0  (register accesses 0, OS calls 13, interface calls 4)
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA shot F2 -> 0x0  (register accesses 0, OS calls 4, interface calls 0)
+== F2 irq V SYNC -> 0x0  [tasks run: ddk+0x1d4b58->0, ddk+0x1d2d90->0]  (register accesses 12, OS calls 123, interface calls 38)
+   log: PrintIsrTime
+   log: PrintIsrTime
+   log: [S0][3AA0] ISR V SYNC    F0 0~0 (0 us)
+   log: [S0][3AA0] ISR V SYNC    F0 0~0 (0 us)
+   log: [S0][3AA0] ISR CIN ROW   F0 0~0 (0 us)
+   log: [S0][3AA0] ISR CIN ROW   F0 0~0 (0 us)
+   log: [S0][3AA0] ISR FRAME END F0 0~0 (0 us)
+   log: [S0][3AA0] ISR FRAME END F0 0~0 (0 us)
+   log: [RTA] [External AE Command] AeLock 0,isWdr 1, ExposureValue 0, ExposureValueStep 0, ISO 0, MeteringMode 3, FlashMode 0,minFps 7, maxFps 30
+   log: [RTA] simulation 0, ismanual 0, mgain 0, mExp 0, mTgain 0
+   log: [RTA] SCENEMODE 0, videomode 0, cameraEntrance 0, vtMode 0, aeMode 2, operationMode 0, awbMode 3, zoomRatio 0
+   log: [RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 0, senVerBinningRatio 0, touchEnable 0
+   log: [RTA] enableDynamicShotDm 0, cameraClientIndex 0
+   log: [RTA] [VQ_RD_G] EventFunc_OnVsync - Camera0 F | Stream[1] Vsync[0] | PDEN 1 | Mode RTA[ 3] pRTA[ 7] IN[11] | Scene 0 | Input 3648 x 2736 | 1 342 FT 0 | 
+== F2 irq CIN ROW -> 0x0  (register accesses 259, OS calls 100, interface calls 4)
+   log: [ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F2 irq FRAME END -> 0x0  [tasks run: ddk+0x1ce714->0]  (register accesses 7, OS calls 91, interface calls 5)
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+   log: [@][WRAP][ERROR][S0][F2][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== 3AA set_ctrl F3 -> 0x0  (register accesses 0, OS calls 13, interface calls 4)
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA shot F3 -> 0x0  (register accesses 0, OS calls 4, interface calls 0)
+== F3 irq V SYNC -> 0x0  [tasks run: ddk+0x1d4b58->0, ddk+0x1d2d90->0]  (register accesses 4, OS calls 103, interface calls 34)
+   log: [RTA] [External AE Command] AeLock 0,isWdr 1, ExposureValue 0, ExposureValueStep 0, ISO 0, MeteringMode 3, FlashMode 0,minFps 7, maxFps 30
+   log: [RTA] simulation 0, ismanual 0, mgain 0, mExp 0, mTgain 0
+   log: [RTA] SCENEMODE 0, videomode 0, cameraEntrance 0, vtMode 0, aeMode 2, operationMode 0, awbMode 3, zoomRatio 0
+   log: [RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 1000, senVerBinningRatio 1000, touchEnable 0
+   log: [RTA] enableDynamicShotDm 0, cameraClientIndex 0
+== F3 irq CIN ROW -> 0x0  (register accesses 245, OS calls 119, interface calls 4)
+   log: [ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F3 irq FRAME END -> 0x0  [tasks run: ddk+0x1ce714->0]  (register accesses 7, OS calls 103, interface calls 5)
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+   log: [@][WRAP][ERROR][S0][F3][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
 interrupts registered: [(0, 0, 'ddk+0x331e34'), (1, 0, 'ddk+0x331e34'), (6, 2, 'ddk+0x331e34'), (7, 2, 'ddk+0x331e34')]

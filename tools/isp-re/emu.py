@@ -201,6 +201,12 @@ class Isp:
             self.timers.append(dict(ptimer=ptimer, expires=expires, func=func, data=data))
             h = self.alloc(64); self.u.mem_write(ptimer, struct.pack('<Q', h)); return 0
         self.handlers[13] = timer_create
+        # add_task(priority, func, param) queues work for a kernel thread (GPL interface-library.c:1600,
+        # lib_task_trigger); here: a FIFO run by drain() after the top-level call returns
+        self.tasks, self.task_log = [], []
+        def add_task(e, prio, func, param, *a):
+            self.tasks.append((prio & 0xffffffff, func, param)); return 1
+        self.handlers[27] = add_task
         # sema_init(void **, count) / mutex_init(void **) / spin_lock_init(void **) allocate a handle and store it
         # (GPL interface-library.c:821 / :877 / :1358)
         def handle_init(e, pp, *a):
@@ -272,12 +278,27 @@ class Isp:
             self.usec = getattr(self, 'usec', 1_000_000) + 10; return self.usec
         def tcreate(e, pt, *a):
             return hinit(e, pt)
-        hs = {0: log, 1: log, 60: hinit, 50: tcreate, 90: usec}
+        def add_task_rta(e, prio, func, param, *a):          # same queue as the DDK's (GPL :1610)
+            self.tasks.append((prio & 0xffffffff, func, param)); return 1
+        hs = {0: log, 1: log, 60: hinit, 50: tcreate, 90: usec, 40: add_task_rta}
         t = self.alloc(8 * 100)
         for k, n in names.items():
             self.u.mem_write(t + 8 * k, struct.pack('<Q', self.stub('rta.' + n, hs.get(k))))
         self.rta_table = t
         return self.call(RTA, 0, t) & 0xffffffff
+
+    def drain(self, limit=200):
+        """Run queued add_task work items (and the ones they queue) like the library's kthread workers would."""
+        n = 0
+        while self.tasks and n < limit:
+            prio, func, param = self.tasks.pop(0)
+            try:
+                r = self.call(func, param) & 0xffffffff
+            except RuntimeError as x:
+                r = 'EXC ' + str(x)[:120]
+            self.task_log.append((prio, self.img(func), r))
+            n += 1
+        return n
 
     def start_up(self):
         return self.call(DDK, self.table) & 0xffffffff
