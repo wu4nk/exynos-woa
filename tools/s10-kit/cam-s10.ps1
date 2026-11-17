@@ -13,7 +13,7 @@
                                 first). Before each step the log line "step N ... calling" goes to disk write-through,
                                 so if the phone blue-screens, the log names the step that did it. Writes nothing.
       .\cam-s10.ps1 3step N     the same, starting at step N (after a blue screen at step N-1)
-      .\cam-s10.ps1 isp         (v1.7, S10eCam 0.11) READ the ISP's 3AA0 ID registers (+0xF0/+0xF4), only if its clock gate
+      .\cam-s10.ps1 isp         (v1.7, S10eCam 0.11; 0.12 also prints pd-isplp / pd-isphq) READ the ISP's 3AA0 ID registers (+0xF0/+0xF4), only if its clock gate
                                 is on - is the Samsung ISP block reachable from Windows? Android's values: 0x07010000 /
                                 0x0000CC22. A blue screen here (bugcheck 0x124) = the block refuses Windows' reads (as
                                 the ISPPRE SysMMU did): send WINPRAM / the log. Writes nothing.

@@ -178,6 +178,13 @@
 #define   PMU_DPU_STAT        0x1E04u
 #define   PMU_ISPPRE_CONF     0x2500u
 #define   PMU_ISPPRE_STAT     0x2504u
+/* 0.12: the other ISP domains (K cal-if/exynos9820/flexpmu_cal_local_exynos9820.h isphq_on :703 / isplp_on :757; DT
+   pd-isphq@15862400, pd-isplp@15862480 need_smc 0x17410204). ISPLP holds the ISP0 (0x17430000) + MCSC the libraries
+   drive for the front camera. Read only, like the other PMU registers. */
+#define   PMU_ISPHQ_CONF      0x2400u
+#define   PMU_ISPHQ_STAT      0x2404u
+#define   PMU_ISPLP_CONF      0x2480u
+#define   PMU_ISPLP_STAT      0x2484u
 #define   PD_ON               0x1u
 #define   TOP_ISPPRE_BUS_MUX  (0x1094u - 0x1000u)
 #define   TOP_ISPPRE_BUS_DIV  (0x1884u - 0x1000u)
@@ -816,6 +823,10 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
     iso = R32(pmu, PMU_MIPI_ISO_CSIS2);
     Log(r, "  pd-dpu    CONF %08X STATUS %08X -> %s\r\n", R32(pmu, PMU_DPU_CONF), dpuSt, (dpuSt & PD_ON) ? "ON" : "off");
     Log(r, "  pd-isppre CONF %08X STATUS %08X -> %s\r\n", R32(pmu, PMU_ISPPRE_CONF), ispSt, (ispSt & PD_ON) ? "ON" : "off");
+    g = R32(pmu, PMU_ISPLP_STAT);
+    Log(r, "  pd-isplp  CONF %08X STATUS %08X -> %s\r\n", R32(pmu, PMU_ISPLP_CONF), g, (g & PD_ON) ? "ON" : "off");
+    g = R32(pmu, PMU_ISPHQ_STAT);
+    Log(r, "  pd-isphq  CONF %08X STATUS %08X -> %s\r\n", R32(pmu, PMU_ISPHQ_CONF), g, (g & PD_ON) ? "ON" : "off");
     Log(r, "  CSIS2 D-PHY isolation (PMU +0x730) %08X -> %s\r\n", iso,
         (iso & 1) ? "bypassed (PHY usable)" : "isolated (PHY not powered for use)");
 
@@ -1816,7 +1827,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.11 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.12 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1886,7 +1897,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.11 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.12 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1920,7 +1931,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.11 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.12 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

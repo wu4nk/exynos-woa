@@ -587,3 +587,10 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   the kernel's msleep is 1-2 jiffies (4-8 ms at HZ=250) - irrelevant for the fake-window test, to be replaced
   (high-resolution waitable timer, documented CREATE_WAITABLE_TIMER_HIGH_RESOLUTION) when real frames are timed.
   (3) mmio_plain's model thread spins at TIME_CRITICAL on one core for the whole run (test only, 8 cores).
+- S10eCam 0.12 (2026-11-18): every stage-3 call (3, 3step, isp) also prints PMU pd-isplp (CONF +0x2480 / STATUS
+  +0x2484) and pd-isphq (+0x2400 / +0x2404) - K cal-if/exynos9820/flexpmu_cal_local_exynos9820.h isphq_on :703,
+  isplp_on :757 (exynos9820, not _evt0: CONFIG_SOC_EXYNOS9820_EVT0 is not set in the phone's kernel .config); DT
+  pd-isplp@15862480 need_smc 0x17410204. Why: ISP0 (0x17430000) and MCSC (0x17440000), the libraries' front-camera
+  ISP M2M + scaler, sit in pd-isplp; if Windows leaves it off, running them needs power-on + the TZPC SMC like
+  pd-isppre. Read-only, PMU = always-on block already read by every stage-3 call. kcheck-wdm: S10eCam.c clean,
+  S10eCamera.c (includes S10eCam.c) the same 25 pre-existing warnings before and after.
