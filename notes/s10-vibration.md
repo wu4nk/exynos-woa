@@ -86,3 +86,19 @@ sim, vân tay, gps". Vibration first (feasibility below).
 - Pins after: GPP3 CON 0x00003320 (gpp3-1 = 2 TOUT1), PUD 0x10; GPG1 CON 0x10000001 (gpg1-7 output), DAT 0xD7 (bit 7).
 - PMIC: MAINCTRL1 0x81 (BIASEN already set by the bootloader), MCONFIG 0x82 -> 0xC2 (LRA | DIV128 was there, EN set).
 - Next for vibration: a Windows-facing interface (none yet; IOCTL only).
+
+## 2026-11-17 user: "it vibrates with the test script, never in normal use" - why (MS docs)
+- Expected, not a bug: the motor is reachable only through IOCTL_S10E_VIBRATE; Windows has no device that tells it
+  a vibration motor exists.
+- MS Learn "Input Device Haptics Implementation Guide" (windows-hardware/design/component-guidelines/
+  input-haptics-implementation-guide): Windows 11 drives haptics for two input classes only, Haptic Touchpad (a
+  SimpleHapticsController collection, Haptics page 0x0E, as a CHILD of the Precision Touchpad collection) and Haptic
+  Mouse (top-level, sibling of the mouse collection); pens have their own guide. Host-initiated triggers only
+  (Manual Trigger 0x21 + Intensity 0x23; Auto Trigger 0x20/0x22 "not supported by the host"); mandatory waveforms
+  None/Stop/Hover/Collide/Align/Step/Grow. Nothing about touch screens, the touch keyboard, notifications or a phone
+  vibration motor.
+- WinRT VibrationDevice (Windows.Devices.Haptics, "a device that supports vibration notifications only"): the page
+  does not say which driver interface it enumerates - UNVERIFIED; it is an API apps call, Windows itself does not.
+- So a HID haptics interface would not make the shell vibrate. Vibration in daily use has to come from our side:
+  e.g. a small service (notifications via the documented UserNotificationListener API, charger plug, low battery)
+  calling the IOCTL. Waiting for the user's choice.
