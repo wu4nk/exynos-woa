@@ -15,7 +15,8 @@
  * The camera runs only in KSSTATE_RUN: PAUSE -> RUN starts the engine (~1 s: the sensor setfile over I2C), RUN ->
  * PAUSE and pin close stop it and power everything down.
  * 0.2 settings (Services\S10eCamera\Parameters, DWORDs, read at each device start; camera-s10.ps1 set):
- *   Rotation 0/90/180/270 (default 270: upright on the phone held upright, 2026-11-16), Mirror 0/1 (default 0),
+ *   Rotation 0/90/180/270 (default 270: upright on the phone held upright, 2026-11-16), Mirror 0/1 (default 1 since
+ *   0.8.1: the user, looking at his own room in the first browser / Settings pictures, asked for it flipped),
  *   RingWc 0/1 (default 1: the frame ring write-combined instead of non-cached - 0.6's non-cached copy ran at
  *   ~80 MB/s, 60 ms a frame).
  * 0.3: every KS call into the driver (device start, filter create/close, data intersection, pin create / format /
@@ -816,7 +817,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
         h = NULL;
     rot = RegDword(h, L"Rotation", 270);
     gRot = (rot == 0 || rot == 90 || rot == 180 || rot == 270) ? rot : 270;
-    gMirror = RegDword(h, L"Mirror", 0) ? 1u : 0u;
+    gMirror = RegDword(h, L"Mirror", 1) ? 1u : 0u;
     gRingWc = RegDword(h, L"RingWc", 1) ? 1u : 0u;
     gRingKeep = RegDword(h, L"RingKeep", 1) ? 1u : 0u;
     gBin = RegDword(h, L"SensorBin", 1);

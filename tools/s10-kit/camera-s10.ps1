@@ -98,7 +98,7 @@ function Show-Status {
   $cams = Get-PnpDevice -Class Camera -PresentOnly -ErrorAction SilentlyContinue
   W ("cameras present: " + (($cams | ForEach-Object { $_.FriendlyName }) -join ', '))
   $pv = Get-ItemProperty $Params -ErrorAction SilentlyContinue
-  if ($pv) { W ("settings: Rotation {0}  Mirror {1}  RingWc {2}  RingKeep {3}  SensorBin {4}  (driver defaults when absent: 270 / 0 / 1 / 1 / 1)" -f $pv.Rotation, $pv.Mirror, $pv.RingWc, $pv.RingKeep, $pv.SensorBin) }
+  if ($pv) { W ("settings: Rotation {0}  Mirror {1}  RingWc {2}  RingKeep {3}  SensorBin {4}  (driver defaults when absent: 270 / 1 / 1 / 1 / 1)" -f $pv.Rotation, $pv.Mirror, $pv.RingWc, $pv.RingKeep, $pv.SensorBin) }
   if (Test-Path 'C:\S10Prov\camera-avs.txt') {
     W '--- C:\S10Prov\camera-avs.txt (last 60 lines) ---'
     Get-Content 'C:\S10Prov\camera-avs.txt' -Tail 60 | ForEach-Object { W $_ }

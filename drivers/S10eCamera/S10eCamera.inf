@@ -8,7 +8,7 @@ Class       = Camera
 ClassGuid   = {ca3e7ab9-b4c3-4ae6-8251-579ef933890f}
 Provider    = %ProviderName%
 CatalogFile = S10eCamera.cat
-DriverVer   = 11/17/2026,0.8.0.0
+DriverVer   = 11/17/2026,0.8.1.0
 PnpLockdown = 1
 
 [SourceDisksNames]
@@ -60,10 +60,10 @@ ServiceBinary = %13%\S10eCamera.sys
 AddReg        = S10eCamera.Params.AddReg
 
 ; HKR here = the service key. 0x00010003 = DWORD + NOCLOBBER: settings changed with camera-s10.ps1 set survive a
-; driver update. Rotation 270 = upright (2026-11-16); RingWc 1 = write-combined frame ring.
+; driver update. Rotation 270 = upright (2026-11-16); Mirror 1 (2026-11-17, user); RingWc 1 = write-combined ring.
 [S10eCamera.Params.AddReg]
 HKR,Parameters,Rotation,0x00010003,270
-HKR,Parameters,Mirror,0x00010003,0
+HKR,Parameters,Mirror,0x00010003,1
 HKR,Parameters,RingWc,0x00010003,1
 
 [Strings]

@@ -738,3 +738,15 @@ Logs: notes/data/camera-s10-status-8web / -9settings-20261117.txt.
 - Host test: 8 rotation/mirror cases: Y plane corners right, every Y and UV byte written, nothing past W*H*3/2;
   red patch U 94 V 227 (= the YUY2 path); one coloured source block (200,100) -> exactly one UV pair, at UV row
   (911-201)/2 = 355, column 100 (rotation 270).
+
+## Phone 2026-11-17 11:10: S10eCamera 0.8 (NV12 first) - BROWSER AND SETTINGS SHOW THE CAMERA
+Logs: notes/data/camera-s10-status-10web-nv12 / -11settings-nv12-20261117.txt (pictures: the user, not kept).
+- Brave webcamtests.com: live picture; the site reports "Galaxy S10 Front Camera", 684 x 912, 30 FPS, 0.62 MP;
+  its snapshot is upright, sharp, plausible colours. Trace: RUN and still streaming at the status time.
+- Settings > Cameras > Galaxy S10 Front Camera: live preview (was grey with YUY2 only). Trace: RUN, streaming.
+- So offering NV12 was the fix for both (the YUY2-only consumers failed after the first frames); the D3D video
+  processor hypothesis is not needed to explain it any more (NV12 is presumably used without a conversion, not
+  verified which path each consumer takes). Camera app: not reported in this run.
+- User: "lật lại gương" - flip the mirror: the picture of his own room reads the wrong way round with Mirror 0.
+  0.8.1: Mirror default 1 (driver default + INF AddReg, which is NOCLOBBER: an existing install keeps 0 until
+  camera-s10.ps1 set -Mirror 1). camera-s10 status line shows the new default. DriverVer 0.8.1.0.
