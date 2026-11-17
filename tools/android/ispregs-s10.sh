@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# ispregs-s10.sh (v1.0) - Galaxy S10 on ANDROID (root): read the camera ISP's registers WHILE Samsung's camera stack
+# ispregs-s10.sh (v1.1) - Galaxy S10 on ANDROID (root): read the camera ISP's registers WHILE Samsung's camera stack
 # drives them, as ground truth for the ISP emulator and the Windows port (notes/s10-isp.md, 2026-11-17).
 # READS ONLY (32-bit loads through /dev/mem). Nothing is written to any register.
 #
@@ -20,7 +20,7 @@ MODE=${1:-check}
 OUT=/sdcard/s10cam/ispregs
 mkdir -p $OUT
 LOG=$OUT/ispregs-$MODE.txt
-echo "ispregs-s10.sh v1.0 $MODE $(date)" > $LOG
+echo "ispregs-s10.sh v1.1 $MODE $(date)" > $LOG
 say() { echo "$*"; echo "$*" >> $LOG; }
 
 DM=""
@@ -34,8 +34,10 @@ if [ -z "$DM" ]; then
 fi
 say "devmem tool: ${DM:-none}"
 
+# v1.1: the ISP device itself (DT fimc_is@17190000). v1.0's glob took 17030000.fimc_is_sensor (a sensor/CSIS
+# node, another power state) on the user's phone - never use that one.
 ST=""
-for d in /sys/devices/platform/*fimc_is* /sys/devices/platform/*/*fimc_is*; do
+for d in /sys/devices/platform/17190000.fimc_is /sys/devices/platform/*/17190000.fimc_is; do
   [ -r $d/power/runtime_status ] && ST=$d/power/runtime_status && break
 done
 say "fimc_is runtime_status file: ${ST:-not found}"

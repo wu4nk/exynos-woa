@@ -203,3 +203,12 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   as one; ispregs-s10.sh found devmem by grepping a usage text (wording varies) -> applet lists now, and the power
   check runs every 64 registers instead of every 1024 (a camera closed mid-dump = a read of a powered-off block =
   a phone reset; the window between checks is now ~64 reads). Residual risk stated in the script header.
+- 2026-11-17 15:54 DEVICE (user, ispregs-s10 v1.0 check/ids/dump): "/dev/mem: MISSING (kernel built without
+  CONFIG_DEVMEM)" on the running ExtremeKernel 4.14.356 (OneUI 6.1); toybox devmem exists. Nothing was read.
+  Script bug found: the runtime_status glob matched /sys/devices/platform/17030000.fimc_is_sensor (another device);
+  v1.1 looks only at 17190000.fimc_is (the ISP node, DT fimc_is@17190000).
+- Routes to the real register values: (a) an Android kernel with CONFIG_DEVMEM=y (the user builds S10 kernels),
+  then ispregs-s10 v1.1 unchanged - gives the full live configuration, not only IDs; (b) a small kernel module
+  built against the running kernel's exact source + config (vermagic / modversions) - same reads; (c) read only
+  the ID registers from Windows (3AA0 sits in ISPPRE with CSIS, which S10eCam already uses; ISPLP is another
+  power domain: its PMU status must be read first) - IDs only, no live configuration. Waiting for the user's pick.
