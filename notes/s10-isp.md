@@ -151,3 +151,50 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
 - 2026-11-17 review of 6023f5e: the x18 / system-register scan covered only the DDK part -> VRA and RTA added
   with the linear-sweep caveat; "os[29] takes one argument" weakened to what was observed (x0); the hook's x0
   caveat recorded; the dropped "(c)" option was not an option.
+
+## Stage 2 - the DDK in the emulator (2026-11-17, tools/isp-re/emu.py; user: "dịch ngược, được đến đâu thì đến")
+### Function tables (observed in emulation)
+- get_lib_func (+0x80, register_lib_isp(type, &table)) returns tables of 20 entries = GPL struct lib_interface_func
+  order (interface-ddk.h:206): type 1 3AA -> image 0x420048, 2 ISP -> 0x4200e8, 3 TPU -> 0x420188; 4 VRA / 5 DCP
+  -> NULL (this build has no DCP; VRA goes through its own path). 3AA: chain_create 0xf0378, object_create 0xf0788,
+  set_param 0xf0e38, set_ctrl 0xf0ed4, shot 0xf0f88, get_meta 0xf1060, create/apply/delete_tune_set 0xf1204/
+  0xf1284/0xf13c8, set_system_config 0xf1590 (all image offsets). Each call prints the banner "FIMC-ISP LIBRARY,
+  DDK revision: 10705, DDK date: 2021-04-05 16:57:46".
+- register_sensor_interface (+0x40) with a struct fimc_is_sensor_interface (layout: tools/isp-re/
+  sensor_itf_layout.txt, 5704 B, from the GPL header with the beyond1 defines) returns 0; it calls
+  cis_itf_ops.get_module_position.
+### Which camera blocks the front camera uses on Android (dmesg-camera.txt)
+- 3AA0 + ISP0 (= ISPLP) + MCSC0, chain 0: "[HW:3AA0] chain_create done [reg_base:0xffffff801f5a0000]", "[HW:ISP0]
+  ... 0xffffff801f9f0000", "[HW:MCS0] mcsc_open". DT fimc_is@17190000 reg list in the GPL order
+  (fimc-is-v7_0_0/fimc-is-hw-chain.h:140 IORESOURCE_*): CSIS_DMA 0x170E0000, 3AA0 0x17190000, 3AA1 0x172A0000,
+  ISPLP 0x17430000, ISPHQ 0x17730000, MCSC 0x17440000, VRA 0x17630000, STAT_DMA 0x17140000.
+- module id: front sensor S5K3J1 = SENSOR_NAME_S5K3J1 38 (include/exynos-fimc-is-sensor.h:110); the DDK echoes
+  "moduleId(38) sensorPlace(1)" when the sensor interface answers get_module_id 38 / position 1. (That the kernel
+  passes module_id = sensor_id is INFERENCE from the log shape, not read in the GPL call chain.)
+### chain_create probes the hardware version (read in assembly + emulation)
+- The chain factory reads +0xF4 (and +0xF0) of the block and compares against 17 candidates (image 0x20f6a8 ..
+  0x23a5ac), e.g. 0x20f6a8: F4 == 0xdbc4 && F0 == 0x06000000. With F0/F4 = 0 every candidate fails and the
+  DDK asserts "IpChainObject (SIRC_IspChainFactory.cpp:93)".
+- HYPOTHESIS used in the emulator only (UNVERIFIED on hardware): 3AA0 F0 0x07000000 / F4 0xcc12 (candidate at
+  0x216d10) and ISPLP F0 0x07000000 / F4 0xd874 (0x22b524). With them the DDK picks classes named
+  "ISP_Fimc3aaChainV7P0P0" and "ISP_FimcIspChainV7P0P0" - the same 7.0.0 generation as the GPL kernel's
+  fimc-is-v7_0_0 for the 9820, which supports (does not prove) the guess.
+- Next wall: every sub-block of the chain checks its own ID registers too ("Identify()", e.g. 3AA0 +0x14f4/+0x14f8,
+  ISPLP +0x07d8/+0x07dc ... via ISP_DmaClientWithDescriptorV04.hpp:23), then the chain/objects are NULL.
+  Guessing hundreds of IDs is not the way: the real values come from the phone -> tools/android/ispregs-s10.sh.
+### object_create learns the sensor from the interface (observed)
+- DICO_Object_3aa_Create asks the sensor interface: get_module_id, is_flash/actuator/companion/ois/aperture_
+  available, get_calibrated_size, get_bayer_order, min/max exposure and analog/digital gain, get_initial_exposure_
+  gain_of_sensor, get_sensor_frame_timing, get_sensor_cur_size, get_sensor_max_fps, get_hdr_ratio_ctl_by_again,
+  get_sensor_use_dgain, get_sensor_initial_aperture, set_sensor_3a_mode = the sensor facts our Windows side must
+  answer (all are GPL fimc-is-interface-sensor.c functions backed by the CIS driver - portable).
+- OS services it uses so far: DMA medrc pool (os 68 alloc 10048 B x n, 65 dva), mutex_init, assert.
+### Android's front-camera sensor sequence (i2c-trace.txt, bus i2c-2 address 0x10, 8640 register writes)
+- Three sensor modes in one session: 1701.101 912 x 684 (X_OUT 0x390 / Y_OUT 0x2ac, binning 0x0900 = 0x244,
+  LLP 0x2318) = our mode 11 (setfile 120 fps, the DDK's AE warm-up: dmesg "Frame Time 8245" us); 1701.285
+  3648 x 2736 (0xe40 / 0xab0, binning 0x11 = none) = full 12 MP for preview/photo; 1711.951 3968 x 2232 (0xf80 /
+  0x8b8) for the 16:9 video. dmesg RTA_AE "start fps(60,60)" at video start.
+- Per frame the DDK/RTA rewrites FLL 0x0340, CIT 0x0202, AGAIN 0x0204, DGAIN 0x020E (1326 x each over ~22 s) =
+  the 3A loop runs on the sensor every frame.
+- Meaning for Windows: Android never streams 912 x 684 to the user - the full sensor output goes through the ISP
+  (debayer, scaling, 3A). A CPU path at 3648 x 2736 is ~16x the pixels of today's binned mode.
