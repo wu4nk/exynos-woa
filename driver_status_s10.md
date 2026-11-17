@@ -10,15 +10,15 @@ Every 🟢 / 🟡 line has a device result in the notes; anything only built is 
 | Device | Status | In short | Source |
 |---|---|---|---|
 | Booting Windows | 🟡 | boots in dual boot; after a shutdown / crash the next boot goes to TWRP once (fix stay-s10.ps1 written, not run) | beyond1-port.md 2026-11-15, 11-16 |
-| Dual boot with Android | 🟡 | Windows reinstalled in slot B and boots; Android bootloop after a Windows boot: UFS fence for the dual layout (board 3) written, whether it fixed the bootloop not confirmed | beyond1-port.md 2026-11-15 17:12 |
+| Dual boot with Android | 🟢 | Android (slot A) and Windows (slot B) both boot (UFS fence for the dual layout, board 3) | user 2026-11-17 |
 | CPU | 🟡 | 6 of 8 cores (the 2 M4 cores fail to start, as on the S10e); clock raise (CpuOc) confirmed | beyond1-port.md Round 4, 2026-11-15 |
 | Storage (UFS) | 🟢 | the user's own build of the driver | 2026-11-11 19:35 |
 | Display + brightness | 🟢 | own display driver; brightness slider works (S6E3HA9 panel curve) | 2026-11-12 15:47 |
 | GPU | 🟡 | Mali G76 renders the desktop and apps; "tạm ổn". MSAA fix (UMD 0222-s10.6) not confirmed on the phone | 2026-11-11, 11-15 |
 | Touch | 🟢 | smooth (S10Touch 1.1.0) | Round 8 |
 | On-screen keyboard | 🟡 | hangs after a short use (user 2026-11-11); S10e workaround UseSWRender = 1 not tried on the S10 | touch-keyboard.md |
-| Screenshot (Win+Shift+S) | 🔴 | does not work (user 2026-11-11), not looked at | - |
-| Buttons | 🟡 | keys + Reboot to TWRP work; power-button screen off on the S10 not confirmed | Round 8, 2026-11-12 |
+| Screenshots | 🟢 | Win+Shift+S and Win+PrtScr work (did not on 2026-11-11) | user 2026-11-17 |
+| Buttons | 🟢 | hardware keys work; Reboot to TWRP | user 2026-11-17 |
 | Battery / charging | 🟢 | plug seen in 2-3 s, wall charger 1800 / 2100 mA, % rises while plugged (S10eBattery 1.0.0.10) | battery-driver.md 2026-11-17 |
 | Battery life | 🟡 | ~2 W idle floor (no SoC idle states yet) | 2026-11-15 |
 | Vibration | 🟢 | MAX77705 haptic (S10eBattery 1.0.0.9) | s10-vibration.md 2026-11-16 |
@@ -38,6 +38,5 @@ Every 🟢 / 🟡 line has a device result in the notes; anything only built is 
 ## Open items in order
 1. Camera: run S10eCam 0.10 + S10eCamera 0.9 (60 fps, mirror) and measure the recording lag.
 2. Boot: run stay-s10.ps1 on; next UEFI build with BEYOND0LTE_WINDOWS_WATCHDOG=0 for Beyond1.
-3. Android after a Windows boot: confirm the board-3 UFS fence ended the bootloop.
-4. On-screen keyboard / Win+Shift+S (composition frame completion on the Mali path - S10e touch-keyboard.md).
-5. ISP Stage 2 (emulator) - weeks.
+3. On-screen keyboard hang (composition frame completion on the Mali path - S10e touch-keyboard.md).
+4. ISP Stage 2 (emulator) - weeks.
