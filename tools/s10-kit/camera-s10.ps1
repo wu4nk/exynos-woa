@@ -1,5 +1,5 @@
 <#
-  camera-s10.ps1 (v1.2) - Galaxy S10: the front camera as a Windows camera (S10eCamera.sys, AVStream;
+  camera-s10.ps1 (v1.3) - Galaxy S10: the front camera as a Windows camera (S10eCamera.sys, AVStream;
   notes/s10-camera.md). Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eCamera\ from
   build-s10.cmd v1.18+):
       .\camera-s10.ps1 install   install the driver package (pnputil) and create the device it binds to: a
@@ -25,7 +25,7 @@ $Params = 'HKLM:\SYSTEM\CurrentControlSet\Services\S10eCamera\Parameters'
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "camera-s10.ps1 v1.2  $Action  $(Get-Date -Format s)"
+W "camera-s10.ps1 v1.3  $Action  $(Get-Date -Format s)"
 
 if (-not ('S10RootDev11' -as [type])) {
 Add-Type -TypeDefinition @'
@@ -128,7 +128,9 @@ switch ($Action) {
   }
   'status' { Show-Status }
   'set' {
-    New-Item -Path $Params -Force -ErrorAction SilentlyContinue | Out-Null
+    # never New-Item -Force on an existing key: it REPLACES the key (values and subkeys, e.g. a KMDF driver's
+    # Parameters\Wdf) - camera-s10 v1.2 wiped S10eCamera's Rotation / Mirror / RingWc that way (2026-11-17)
+    if (-not (Test-Path $Params)) { New-Item -Path $Params -ErrorAction SilentlyContinue | Out-Null }
     if ($Rotation -ge 0) { Set-ItemProperty $Params Rotation $Rotation -Type DWord }
     if ($Mirror -ge 0) { Set-ItemProperty $Params Mirror $Mirror -Type DWord }
     if ($RingWc -ge 0) { Set-ItemProperty $Params RingWc $RingWc -Type DWord }

@@ -601,3 +601,23 @@ DDI 11.3, feature levels up to 11_0, driver 1.0.72.2, Windows 11 22621).
   tables addressable to the GPU's PA bits.
 - 0.5 / camera-s10 v1.2: diagnosis switch Parameters\RingKeep (default 1; 0 = per-start allocation as 0.3) to
   separate (b) from (a). Not a fix - recorded as a diagnosis tool (AGENTS rule 12).
+
+## Phone 2026-11-17 08:35: FIRST AVSTREAM FRAMES (driver 0.4, ring kept from boot)
+Log: notes/data/camera-s10-status-4-20261117.txt.
+- The Camera app's pin went PAUSE -> RUN = 0x00000000: engine started (ring "kept from device start"), 7 raw frames,
+  "3 frames delivered, 2 dropped, 3 torn; conversion avg 72742 us, max 75965 us"; the client went RUN -> PAUSE
+  357 ms after RUN returned, closed the pin, then opened the filter once more, intersected and closed it (no pin).
+  The app showed a black preview, no error (user screenshot 08:10 of an earlier session; what this session showed
+  is not known).
+- Conversion 73 ms a frame (> 33 ms): the 5 MB uncached read (16 ms on a fast core, ~50 ms on a slow one, 2026-11-16)
+  plus the binning / YUV / rotation math. Every delivered frame torn. Fix to make: less data - the sensor's own
+  912x684 mode (setfile A index 11 sensor_3j1_setfile_A_912x684_120fps; pllinfo: same 1807 Mbps lane rate as mode 8
+  -> same D-PHY settle, pclk 201810000 x 4, FLL 0x02EA, LLP 0x2318 (120 fps); the kernel's set_frame_duration gives
+  FLL = 807 * 33333 / 8984 = 2994 (0x0BB2) for 30 fps, coarse max = FLL - 4).
+- Why the client stopped after 357 ms is not known (no error code; candidates: its own start/stop sequence, frame
+  timing). To be re-checked once frames come in under 33 ms.
+- camera-s10 v1.2 'set' bug: New-Item -Force on the existing Parameters key REPLACED the key - Rotation / Mirror /
+  RingWc were gone (status line printed them empty; the driver fell back to its defaults 270 / 0 / 1, so no harm
+  here). The same line was in charge-s10 v1.0 'tune', where the key is a KMDF driver's Services\S10eBattery\
+  Parameters with its Wdf subkey (KMDF binding) - fixed before it ever ran: camera-s10 v1.3 / charge-s10 v1.1 create
+  the key only when absent.

@@ -1,5 +1,5 @@
 <#
-  charge-s10.ps1 (v1.0) - Galaxy S10 charging under Windows (S10eBattery 1.0.0.10+, notes/battery-driver.md).
+  charge-s10.ps1 (v1.1) - Galaxy S10 charging under Windows (S10eBattery 1.0.0.10+, notes/battery-driver.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder:
       .\charge-s10.ps1 install          put out\S10eBattery (1.0.0.10) in place of the running battery driver
       .\charge-s10.ps1 watch            every 2 s for -Seconds (default 90): charger present / charging, the charger
@@ -20,7 +20,7 @@ $Out = "C:\S10Prov\charge-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "charge-s10.ps1 v1.0  $Action $Opt  $(Get-Date -Format s)"
+W "charge-s10.ps1 v1.1  $Action $Opt  $(Get-Date -Format s)"
 $Params = 'HKLM:\SYSTEM\CurrentControlSet\Services\S10eBattery\Parameters'
 
 function Get-DevParams {
@@ -47,7 +47,9 @@ switch ($Action) {
   }
   'tune' {
     if ($Opt -eq '') { W 'say on or off: .\charge-s10.ps1 tune on'; exit 1 }
-    New-Item -Path $Params -Force -ErrorAction SilentlyContinue | Out-Null
+    # never New-Item -Force on an existing key: it REPLACES the key (values and subkeys, e.g. a KMDF driver's
+    # Parameters\Wdf) - camera-s10 v1.2 wiped S10eCamera's Rotation / Mirror / RingWc that way (2026-11-17)
+    if (-not (Test-Path $Params)) { New-Item -Path $Params -ErrorAction SilentlyContinue | Out-Null }
     Set-ItemProperty $Params ChargeTune $(if ($Opt -eq 'on') { 1 } else { 0 }) -Type DWord
     Show-Driver
     W 'the driver reads it at its next full reading (<= 20 s)'
