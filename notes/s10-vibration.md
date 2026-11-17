@@ -101,4 +101,6 @@ sim, vân tay, gps". Vibration first (feasibility below).
   does not say which driver interface it enumerates - UNVERIFIED; it is an API apps call, Windows itself does not.
 - So a HID haptics interface would not make the shell vibrate. Vibration in daily use has to come from our side:
   e.g. a small service (notifications via the documented UserNotificationListener API, charger plug, low battery)
-  calling the IOCTL. Waiting for the user's choice.
+  calling the IOCTL.
+- DECISION (user 2026-11-17 15:29): dropped - Windows never asks for vibration, a service for it is not wanted.
+  Vibration stays IOCTL-only (vibra-s10.ps1 test).
