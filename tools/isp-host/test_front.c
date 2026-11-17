@@ -166,6 +166,8 @@ static void dump_window(volatile u32 *w, const char *name)
 
 /* ---------------- steps ---------------- */
 static FILE *timing;
+static double trap_cost_us;
+static u64 frame_us, frame_acc;
 static u64 FN3[20], FNI[20];
 enum { CHAIN_CREATE, OBJECT_CREATE, CHAIN_DESTROY, OBJECT_DESTROY, STOP, RECOVERY, SET_PARAM, SET_CTRL, SHOT, GET_META,
        CREATE_TUNE_SET, APPLY_TUNE_SET, DELETE_TUNE_SET, SET_FLASH, SET_AF, LOAD_CAL, GET_CAL, MODE_CHG, UPDATE_CTL,
@@ -197,6 +199,7 @@ static u64 step(const char *label, u64 fn, int n, const u64 *a)
     isp_drain(H);
     mmio_close(mf);
     u64 dt = plat_usec() - t0;
+    frame_us += dt;
     snprintf(b, sizeof(b), "== %s -> 0x%x", label, (u32)r);
     plat_log(b);
     fprintf(timing, "%-28s %10.1f ms\n", label, dt / 1000.0);
@@ -215,6 +218,7 @@ static u64 fire(const char *label, volatile u32 *w, u32 reg, int bit, u32 chain,
     isp_drain(H);
     w[reg / 4] = 0;
     mmio_close(mf);
+    frame_us += plat_usec() - t0;
     snprintf(b, sizeof(b), "== %s -> 0x%x", label, (u32)r);
     plat_log(b);
     fprintf(timing, "%-28s %10.1f ms\n", label, (plat_usec() - t0) / 1000.0);
@@ -272,6 +276,15 @@ int main(int argc, char **argv)
     WI = window(DUMP, "ISPLP");
     /* the libraries get trapped windows (mmio_trap.c): every access logged, performed on W3 / WI */
     void *T3 = trap_window("3AA0", W3, B), *TI = trap_window("ISP0", WI, B);
+    {   /* cost of one trapped access on this machine (to subtract from the step times) */
+        volatile u32 *probe = trap_window("PROBE", zalloc(0x10000), B);
+        u64 t0 = plat_usec();
+        u32 sum = 0;
+        for (int i = 0; i < 2000; i++) sum += probe[i & 0xff];
+        trap_cost_us = (double)(plat_usec() - t0) / 2000.0;
+        snprintf(b, sizeof(b), "trapped register access: %.2f us each (2000 reads, sum %u)", trap_cost_us, sum);
+        plat_log(b);
+    }
     plat_posix_set_window(0, T3);                           /* ID_3AA_0 */
     plat_posix_set_window(2, TI);                           /* ID_ISP_0 */
     /* self-clearing registers the DDK polls (assembly, notes/s10-isp.md; = front_init.py done_after): 3AA / ISP
@@ -394,8 +407,11 @@ int main(int argc, char **argv)
 
     int frames = getenv("FRAMES") ? atoi(getenv("FRAMES")) : 3;
     int use_isp = getenv("ISP") ? atoi(getenv("ISP")) : 1;
+    u64 sum_us = 0, sum_acc = 0, nsum = 0;
     for (u32 fc = 1; fc <= (u32)frames; fc++) {
         char l[64];
+        frame_us = 0;
+        frame_acc = trap_count();
         if (fc > 1) {
             PUT(P, 1764, fc);
             snprintf(l, sizeof(l), "3AA set_ctrl F%u", fc);
@@ -416,6 +432,18 @@ int main(int argc, char **argv)
         STEP(l, FNI[SHOT], r64(obji), (u64)(uintptr_t)PI, SHP, 1);
         snprintf(l, sizeof(l), "F%u ISP irq V SYNC", fc);   fire(l, WI, 0x10c, 0, 2, isp_irq_id);
         snprintf(l, sizeof(l), "F%u ISP irq FRAME END", fc); fire(l, WI, 0x10c, 1, 2, isp_irq_id);
+        u64 acc = trap_count() - frame_acc;
+        fprintf(timing, "FRAME %-3u %10.1f ms, %llu register accesses (~%.1f ms of it trapping)\n", fc,
+                frame_us / 1000.0, (unsigned long long)acc, acc * trap_cost_us / 1000.0);
+        if (fc >= 3) { sum_us += frame_us; sum_acc += acc; nsum++; }
+    }
+    if (nsum) {
+        snprintf(b, sizeof(b), "steady frames 3..%d: %.2f ms per frame wall (3AA + ISP calls, interrupts, tasks), "
+                 "%llu register accesses = ~%.2f ms trapping -> ~%.2f ms without the test's trapping", frames,
+                 sum_us / 1000.0 / nsum, (unsigned long long)(sum_acc / nsum), sum_acc * trap_cost_us / 1000.0 / nsum,
+                 (sum_us - sum_acc * trap_cost_us) / 1000.0 / nsum);
+        plat_log(b);
+        fprintf(timing, "%s\n", b);
     }
     dump_window(W3, "3AA0");
     dump_window(WI, "ISPLP");

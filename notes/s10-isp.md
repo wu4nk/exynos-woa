@@ -537,3 +537,16 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   shadow, logs it like the emulator and models the polled self-clearing registers deterministically (a first try with
   a polling thread lost the race on the 2-CPU build machine: "[COREX]sw_reset is time-out", its poll limit is 1001
   reads). No undecoded instruction was hit in the whole run. Test-only diagnosis tool.
+- Review of 916de6f / 14fda9d (fixed in ff7f0c5): mmio_trap's load/store masks did not test bit 26 (V) - a SIMD
+  access would have been decoded as an integer one (none occurred: every access matched the emulator) -> masks
+  0x3f..., PRFM skipped; README + build.sh were missing; "os calls" counted only traced calls -> traced_calls; a
+  leftover variable. Relocation completeness, checked: the 12005 relocated words = 11395 (lib) + 610 (rta) 8-aligned
+  words in the span, and there are 0 such words at 4-mod-8 offsets in either file (no misaligned pointer missed);
+  an instruction pair can not produce one (high word 0xffffff80 is not an allocated A64 encoding).
+- Timing (qemu-aarch64 on the 2-CPU x86 build machine, FRAMES=30; meaningless for the phone, recorded as a baseline):
+  trapped access 6.5 us; steady frame (3AA set_ctrl + shot + 3 interrupts, ISP set_ctrl + shot + 2 interrupts, all
+  tasks drained) 76 ms wall, 1151 register accesses (7.5 ms of it trapping).
+- Phone run prepared: tools/android/run-isphost-s10.sh v1.0 + the same static test_front (stripped) in
+  isphost-s10.tar.gz: copies the three libraries from /vendor into /data/local/tmp/isphost, runs FRAMES=30 against
+  the dump-filled fake windows (no hardware, no /dev/mem), packs out/ to /sdcard/s10cam/isphost-out.tar.gz and
+  deletes the copied libraries. Gives: the host on real silicon (not qemu) + the real per-frame cost. NOT RUN YET.
