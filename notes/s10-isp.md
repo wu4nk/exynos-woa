@@ -286,3 +286,8 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   streaming), not the reset state: status registers in it are not what an idle block reads.
 - Next: answer the sensor interface with the real 3J1 numbers (GPL cis driver + setfile), then set_param / shot
   for one frame, then the frame-done interrupt path (fire irq 0/1 handler ddk+0x331e34 in the emulator).
+- 2026-11-17 20:41 DEVICE (user): `cat /sys/kernel/debug/fimc-is/isfw-msg` gave nothing (camera state at the time
+  not stated). Source (ExtremeKernel tree): isfw_debug_read returns 0 unless FIMC_IS_DEBUG_OPEN is set
+  (fimc-is-debug.c:733), set by fimc_is_debug_open from fimc-is-resourcemgr.c:1595 when the camera resources are
+  taken and cleared at :1819 when they are released -> the file is readable only WHILE the camera is open; the DDK
+  log_write fills that ring (interface-library.c:41-86). Also Android 14 may not mount debugfs: mount it first.
