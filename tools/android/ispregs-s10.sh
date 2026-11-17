@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# ispregs-s10.sh (v1.4) - Galaxy S10 on ANDROID (root): read the camera ISP's registers WHILE Samsung's camera stack
+# ispregs-s10.sh (v1.5) - Galaxy S10 on ANDROID (root): read the camera ISP's registers WHILE Samsung's camera stack
 # drives them, as ground truth for the ISP emulator and the Windows port (notes/s10-isp.md, 2026-11-17).
 # READS ONLY (32-bit loads through /dev/mem). Nothing is written to any register.
 #
@@ -8,7 +8,8 @@
 #       -> says whether this kernel lets root read registers at all (/dev/mem + devmem). Nothing else happens.
 #   then: open the Camera app on the FRONT camera and leave it on the preview, and run
 #   adb shell su -c "sh /data/local/tmp/ispregs-s10.sh ids"     the version registers only (a few reads, seconds)
-#   adb shell su -c "sh /data/local/tmp/ispregs-s10.sh dump"    3AA0 + ISPLP + MCSC, 64 KiB each (a few minutes)
+#   adb shell su -c "sh /data/local/tmp/ispregs-s10.sh dump"    3AA0 + ISPLP + MCSC, 64 KiB each
+#       (v1.5: with regdump-s10 next to this script: seconds; without it: devmem, ~40 minutes)
 #   adb pull /sdcard/s10cam/ispregs
 #
 # Safety: a register block whose power domain is off cannot be read - the read would stop the phone (it reboots).
@@ -20,7 +21,7 @@ MODE=${1:-check}
 OUT=/sdcard/s10cam/ispregs
 mkdir -p $OUT
 LOG=$OUT/ispregs-$MODE.txt
-echo "ispregs-s10.sh v1.4 $MODE $(date)" > $LOG
+echo "ispregs-s10.sh v1.5 $MODE $(date)" > $LOG
 say() { echo "$*"; echo "$*" >> $LOG; }
 
 DM=""
@@ -74,6 +75,16 @@ if [ "$MODE" = ids ]; then
       say "$n +$o ($a) = $(rd $a)"
     done
   done
+  say "done"
+  exit 0
+fi
+
+if [ "$MODE" = dump ] && [ -f "$(dirname "$0")/regdump-s10" ]; then
+  # v1.5: one process maps each block once (regdump-s10.c) - devmem is one exec per word (~50 ms on the phone)
+  RD=/data/local/tmp/regdump-s10
+  cp "$(dirname "$0")/regdump-s10" $RD && chmod 755 $RD
+  say "using $RD"
+  $RD $ST $OUT 3AA0:17190000:10000 ISPLP:17430000:10000 MCSC:17440000:10000 2>&1 | while read -r l; do say "$l"; done
   say "done"
   exit 0
 fi

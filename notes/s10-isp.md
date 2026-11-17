@@ -247,3 +247,18 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
   Nothing was read from the hardware. dump stopped at 3AA0 +6656 because runtime_status left "active" (the camera
   app was closed or paused - user to confirm). v1.4: no width (toybox default 4 B, busybox default 32 bit), errors
   kept in the output, one test read before ids/dump that stops the run if it is not a 0x value.
+### REAL hardware IDs (2026-11-17 20:22, DEVICE, ispregs v1.4 "ids", front camera open, ispdbg1 kernel)
+- 3AA0 +0xF0 = 0x07010000, +0xF4 = 0x0000cc22, +0xF8 = 0xdeadc0de; ISPLP +0xF0 = 0x07110000, +0xF4 = 0x0000c2ad,
+  +0xF8 = 0xdeadc0de; MCSC +0xF0/F4/F8 = 0xdeadc0de (no ID there - MCSC is driven by the GPL kernel, not the DDK).
+- => the Stage 2 HYPOTHESIS (3AA 7.0 / 0xcc12, ISP 7.0 / 0xd874) was WRONG. Real: 3AA v7.1 (DDK candidate at
+  0x216d10's neighbour list: F4 0xcc22, F0 0x07010000) and ISPLP v7.11 (F4 0xc2ad, F0 0x07110000). The emulator now
+  picks "ISP_Fimc3aaChainV7P1P0" and "ISP_FimcIspChainV7P11P0" - the classes Android runs on this phone.
+- 0xdeadc0de = the value this SoC returns for unimplemented offsets inside a powered block (512 of the first 1668
+  words of 3AA0).
+- Partial 3AA0 dump (devmem, words 0x0000..0x1a0c before the user stopped it - 50 ms per word): with it the 3AA
+  chain constructor gets further (sub-block IDs at +0x14f4/f8 0x8eb9/0xc907f815, +0x15f4 0xa95c, +0x17f4 0xc6b9,
+  +0x19f4 0x91e9) and now fails reading +0x1af4/+0x1af8 = past the dumped part. ISPLP needs its own dump (its
+  sub-blocks read +0x4d8.. +0xcd8 identifiers).
+- tools/android/regdump-s10.c v1.0: one static aarch64 process (zig cc -target aarch64-linux-musl -static) that
+  mmaps each block through /dev/mem (O_SYNC) and reads 32-bit words, re-checking runtime_status every 64 reads.
+  ispregs v1.5 uses it for "dump" when regdump-s10 sits next to the script. Not yet run on the phone.
