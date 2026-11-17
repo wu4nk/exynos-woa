@@ -192,9 +192,14 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
 ### Android's front-camera sensor sequence (i2c-trace.txt, bus i2c-2 address 0x10, 8640 register writes)
 - Three sensor modes in one session: 1701.101 912 x 684 (X_OUT 0x390 / Y_OUT 0x2ac, binning 0x0900 = 0x244,
   LLP 0x2318) = our mode 11 (setfile 120 fps, the DDK's AE warm-up: dmesg "Frame Time 8245" us); 1701.285
-  3648 x 2736 (0xe40 / 0xab0, binning 0x11 = none) = full 12 MP for preview/photo; 1711.951 3968 x 2232 (0xf80 /
+  3648 x 2736 (0xe40 / 0xab0, binning 0x11 = none) = full 10 MP for preview/photo; 1711.951 3968 x 2232 (0xf80 /
   0x8b8) for the 16:9 video. dmesg RTA_AE "start fps(60,60)" at video start.
 - Per frame the DDK/RTA rewrites FLL 0x0340, CIT 0x0202, AGAIN 0x0204, DGAIN 0x020E (1326 x each over ~22 s) =
   the 3A loop runs on the sensor every frame.
-- Meaning for Windows: Android never streams 912 x 684 to the user - the full sensor output goes through the ISP
+- Meaning for Windows: the 912 x 684 mode ran ~0.18 s (1701.101 -> 1701.285, INFERENCE: AE warm-up only); the
+  preview and the video used the full sensor output through the ISP
   (debayer, scaling, 3A). A CPU path at 3648 x 2736 is ~16x the pixels of today's binned mode.
+- 2026-11-17 review of 91eee61: 3648 x 2736 is 10 MP (not 12); "never streams 912 x 684" was an inference -> worded
+  as one; ispregs-s10.sh found devmem by grepping a usage text (wording varies) -> applet lists now, and the power
+  check runs every 64 registers instead of every 1024 (a camera closed mid-dump = a read of a powered-off block =
+  a phone reset; the window between checks is now ~64 reads). Residual risk stated in the script header.

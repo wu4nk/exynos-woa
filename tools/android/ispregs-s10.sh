@@ -25,10 +25,11 @@ say() { echo "$*"; echo "$*" >> $LOG; }
 
 DM=""
 if [ -c /dev/mem ]; then say "/dev/mem: present"; else say "/dev/mem: MISSING (kernel built without CONFIG_DEVMEM) - registers cannot be read this way"; fi
-if toybox devmem 2>&1 | grep -q -i usage; then DM="toybox devmem"; elif command -v devmem >/dev/null 2>&1; then DM=devmem; fi
+# applet lists, not usage texts (their wording differs between toybox / busybox versions)
+if toybox 2>/dev/null | tr ' ' '\n' | grep -qx devmem; then DM="toybox devmem"; fi
 if [ -z "$DM" ]; then
   for b in /data/adb/ksu/bin/busybox /data/adb/magisk/busybox /system/xbin/busybox; do
-    [ -x $b ] && $b devmem 2>&1 | grep -q -i usage && DM="$b devmem" && break
+    [ -x $b ] && $b --list 2>/dev/null | grep -qx devmem && DM="$b devmem" && break
   done
 fi
 say "devmem tool: ${DM:-none}"
@@ -70,9 +71,10 @@ if [ "$MODE" = dump ]; then
     echo "# $n base $b, offset value (32-bit reads), $(date)" > $F
     o=0
     while [ $o -lt 65536 ]; do
-      if [ $((o % 4096)) -eq 0 ]; then
+      # power check every 64 registers: closing the camera mid-dump must not reach a powered-off block
+      if [ $((o % 256)) -eq 0 ]; then
         active || { say "camera closed at $n +$o - stopped (partial file kept)"; exit 1; }
-        printf '\r%s +0x%04x ' $n $o
+        [ $((o % 4096)) -eq 0 ] && printf '\r%s +0x%04x ' $n $o
       fi
       printf '%04x %s\n' $o "$(rd $(printf '0x%08x' $((b + o))))" >> $F
       o=$((o + 4))
