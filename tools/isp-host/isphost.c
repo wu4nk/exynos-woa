@@ -96,6 +96,8 @@ static isp_host *G;                /* one instance per process: the OS callbacks
 static _Thread_local struct thr_entry *tls_entry;
 static _Thread_local int tls_in_irq;
 int isp_trace;                     /* 1: log every OS call */
+int isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;  /* DIAGNOSIS: emulator models */
+int isp_diag_unused_;             /* DIAGNOSIS: get_usec as front_init.py modelled it (notes/s10-isp.md) */
 
 /* ---------------- small helpers ---------------- */
 static void logf_(const char *fmt, ...)
@@ -585,7 +587,7 @@ static u64 os_svc_lock(A8) { UNUSED8; plat_mutex_lock(G->svc_lock); return 0; }
 static u64 os_svc_unlock(A8) { UNUSED8; plat_mutex_unlock(G->svc_lock); return 0; }
 static u64 os_svc_lock_rta(A8) { UNUSED8; plat_mutex_lock(G->svc_lock_rta); return 0; }
 static u64 os_svc_unlock_rta(A8) { UNUSED8; plat_mutex_unlock(G->svc_lock_rta); return 0; }
-static u64 os_random(A8) { UNUSED8; return plat_random(); }
+static u64 os_random(A8) { UNUSED8; return isp_diag_random0 ? 0 : plat_random(); }
 
 static u64 os_add_task(A8)               /* bool fimc_is_add_task(int priority, void *func, void *param) :1600 */
 {
@@ -613,6 +615,10 @@ static u64 os_add_task(A8)               /* bool fimc_is_add_task(int priority, 
 static u64 os_get_usec(A8)               /* int fimc_is_get_usec(uint64_t *time) :1467 */
 {
     UNUSED8;
+    if (isp_diag_emu_usec) {            /* DIAGNOSIS ONLY: the emulator's (wrong) model - value returned, *time untouched */
+        static u64 t = 1000000;
+        return t += 10;
+    }
     if (a0) *(u64 *)P(a0) = plat_usec();
     return 0;
 }
@@ -722,7 +728,7 @@ static u64 os_get_reg_addr(A8)           /* ulong get_reg_addr(u32 id) :1495 */
     return r;
 }
 
-static u64 os_in_irq(A8) { UNUSED8; return tls_in_irq ? 1 : 0; }   /* bool fimc_is_lib_in_irq(void) :1810 */
+static u64 os_in_irq(A8) { UNUSED8; return tls_in_irq && !isp_diag_in_irq0 ? 1 : 0; }   /* bool fimc_is_lib_in_irq(void) :1810 */
 
 static u64 os_flush_task(A8)             /* void fimc_is_lib_flush_task_handler(int priority) :1779 */
 {

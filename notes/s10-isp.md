@@ -517,3 +517,23 @@ ISPPRE SysMMU's frame (0x17210000) answered with an external abort (bugcheck 0x1
   V SYNC / CIN ROW / FRAME END (3AA) and V SYNC / FRAME END (ISP) handlers for 3 frames: every call -> 0, 17 tasks
   run on the workers, 15 interrupts. The only crash on the way was in the test itself (a local "SHOT" shadowing the
   enum index - now -Wshadow).
+- Native vs emulator, same inputs (FRAMES=3, real calibration; tools/isp-host/cmp_emu.py on test_front out vs a
+  fresh front_init.py run): all 38 steps return 0 in both; register ACCESS sequences (every R/W, offset, value, in
+  order) identical in 35 / 38 steps - 3AA chain_create (333 accesses), object_create, all shots, ISP chain_create,
+  all ISP frames. The 3 others (F1..F3 irq CIN ROW) differ only by 3 writes the emulator repeats and the host does not:
+  W 3AA0 +0x8070 = 1, +0x8068 = 0, +0x8064 = 2 at ddk+0x2a442c..34 - the SAME values both runs already wrote in
+  3AA shot F1. The writer (ddk+0x2a43a4, called through a vtable entry at file 0x3d48d8) skips when a 16-byte
+  parameter equals its cached copy (bl 0xe0ec4, memcmp-like); inferred: the parameter carries uninitialised (stack)
+  bytes, so "equal" depends on leftover stack contents. Ruled out by diagnosis switches (env, test only):
+  DIAG_EMU_USEC (get_usec as the emulator modelled it), DIAG_IN_IRQ0 (in_irq always 0), DIAG_RANDOM0 - none changes
+  it. Final register-window contents: identical except the modelled self-clearing registers (+0x0c, +0x3d2c).
+- Log lines: identical except time-dependent ones. The emulator never wrote get_usec's *time, so its "ISR V SYNC
+  F0 0~0 (0 us)" / "FT 0" lines were artefacts; natively "[S0][3AA0] Valid Time .. / Frame Time .." and the ISR
+  durations appear like on Android ("Valid Time 7613 / Frame Time 8251", isfw-msg-android.txt). One more line differs
+  with no time involved: "Error SIspStandAloneObject!!! nextFrameAnalogGain(4825) / (50962)" (emulator / host) - it is
+  an error line in both runs and absent on Android (our standalone ISP M2M parameters, not a host issue).
+- Register windows in the test = tools/isp-host/mmio_trap.c: an inaccessible mapping + SIGSEGV handler that decodes
+  LDR/STR (imm12, imm9 unscaled / pre / post, register offset) and LDP/STP, performs the access on the dump-filled
+  shadow, logs it like the emulator and models the polled self-clearing registers deterministically (a first try with
+  a polling thread lost the race on the 2-CPU build machine: "[COREX]sw_reset is time-out", its poll limit is 1001
+  reads). No undecoded instruction was hit in the whole run. Test-only diagnosis tool.

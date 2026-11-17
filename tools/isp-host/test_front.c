@@ -1,12 +1,12 @@
 /*
  * test_front.c - the front-camera run of tools/isp-re/front_init.py, natively: Samsung's libraries executed by
- * isphost on AArch64 Linux user mode (qemu-aarch64 on the build machine), register windows = plain memory filled
- * with this phone's live dumps, no hardware. Same order, same sensor answers, same parameter / shot structs.
+ * isphost on AArch64 Linux user mode (qemu-aarch64 on the build machine), register windows = trapped mappings
+ * (mmio_trap.c) backed by this phone's live dumps, no hardware. Same order, same sensor answers, same parameter / shot structs.
  *
  *   test_front <bin dir> <dump dir> <out dir> <sensor_itf_layout.txt> [front calibration image]
  *   env FRAMES (default 3), ISP (default 1), TRACE=1 (every OS call)
  * Writes <out>/host.log (every line), <out>/interface-calls.txt, <out>/regs-3AA0.txt / regs-ISPLP.txt (the windows'
- * final contents, "offset value"), <out>/timing.txt.
+ * final contents, "offset value"), <out>/mmio-<step>.txt (every register access), <out>/timing.txt.
  */
 #define _GNU_SOURCE
 #include <pthread.h>
@@ -16,9 +16,10 @@
 #include <sys/stat.h>
 
 #include "isphost.h"
+#include "mmio_trap.h"
 #include "plat_posix.h"
 
-extern int isp_trace;
+extern int isp_trace, isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;
 static isp_host *H;
 static const char *OUT;
 static FILE *itf_log;
@@ -153,22 +154,6 @@ static volatile u32 *window(const char *dump_dir, const char *name)
     return w;
 }
 
-/* Self-clearing registers the DDK polls (assembly, notes/s10-isp.md): 3AA / ISP +0x0c SW reset (write 1, poll 0),
-   ISP COREX +0x24 / +0x2c (write 1 to +0x24, poll +0x2c until 0; second copy +0x8000). Same model as front_init.py
-   "done_after" except that +0x24 is cleared here to see the next write (a TEST MODEL, not hardware behaviour). */
-static void *hw_model(void *p)
-{
-    (void)p;
-    for (;;) {
-        if (W3[0x0c / 4]) W3[0x0c / 4] = 0;
-        if (WI[0x0c / 4]) WI[0x0c / 4] = 0;
-        if (WI[0x3d24 / 4]) { WI[0x3d2c / 4] = 0; WI[0x3d24 / 4] = 0; }
-        if (WI[0xbd24 / 4]) { WI[0xbd2c / 4] = 0; WI[0xbd24 / 4] = 0; }
-        plat_sleep_us(20);
-    }
-    return NULL;
-}
-
 static void dump_window(volatile u32 *w, const char *name)
 {
     char p[1024];
@@ -186,13 +171,31 @@ enum { CHAIN_CREATE, OBJECT_CREATE, CHAIN_DESTROY, OBJECT_DESTROY, STOP, RECOVER
        CREATE_TUNE_SET, APPLY_TUNE_SET, DELETE_TUNE_SET, SET_FLASH, SET_AF, LOAD_CAL, GET_CAL, MODE_CHG, UPDATE_CTL,
        SET_SYSTEM_CONFIG };   /* struct lib_interface_func order, GPL interface-ddk.h:206 */
 
+static FILE *mmio_open(const char *label)
+{
+    char p[1024];
+    snprintf(p, sizeof(p), "%s/mmio-%s.txt", OUT, label);
+    for (char *c = p + strlen(OUT) + 1; *c; c++) if (*c == ' ') *c = '_';
+    FILE *f = fopen(p, "w");
+    trap_log_to(f);
+    return f;
+}
+
+static void mmio_close(FILE *f)
+{
+    trap_log_to(NULL);
+    if (f) fclose(f);
+}
+
 static u64 step(const char *label, u64 fn, int n, const u64 *a)
 {
     char b[64];
     plat_log("");
+    FILE *mf = mmio_open(label);
     u64 t0 = plat_usec();
     u64 r = isp_call(H, fn, n, a);
     isp_drain(H);
+    mmio_close(mf);
     u64 dt = plat_usec() - t0;
     snprintf(b, sizeof(b), "== %s -> 0x%x", label, (u32)r);
     plat_log(b);
@@ -205,11 +208,13 @@ static u64 fire(const char *label, volatile u32 *w, u32 reg, int bit, u32 chain,
 {
     char b[96];
     plat_log("");
+    FILE *mf = mmio_open(label);
     u64 t0 = plat_usec();
     w[reg / 4] = 1u << bit;
     u64 r = isp_irq_sync(H, chain, id);
     isp_drain(H);
     w[reg / 4] = 0;
+    mmio_close(mf);
     snprintf(b, sizeof(b), "== %s -> 0x%x", label, (u32)r);
     plat_log(b);
     fprintf(timing, "%-28s %10.1f ms\n", label, (plat_usec() - t0) / 1000.0);
@@ -238,6 +243,9 @@ int main(int argc, char **argv)
     snprintf(p, sizeof(p), "%s/timing.txt", OUT);
     timing = fopen(p, "w");
     isp_trace = getenv("TRACE") != NULL;
+    isp_diag_emu_usec = getenv("DIAG_EMU_USEC") != NULL;     /* diagnosis: the emulator's OS models */
+    isp_diag_in_irq0 = getenv("DIAG_IN_IRQ0") != NULL;
+    isp_diag_random0 = getenv("DIAG_RANDOM0") != NULL;
 
     size_t nd, nr;
     void *ddk = readfile(BIN, "fimc_is_lib.bin", &nd), *rta = readfile(BIN, "fimc_is_rta.bin", &nr);
@@ -245,7 +253,6 @@ int main(int argc, char **argv)
     if (!H) return 1;
     u64 B = isp_base(H), DDK = B + ISP_DDK_OFF, RTA = B + ISP_RTA_OFF;
     plat_posix_crash_report(B);
-    { char m[96]; snprintf(m, sizeof(m), "main thread sp near %p", (void *)&m); plat_log(m); }
     if (isp_start(H)) { plat_log("start failed"); return 1; }
 
     u64 itf = sensor_itf(layout);
@@ -263,15 +270,21 @@ int main(int argc, char **argv)
 
     W3 = window(DUMP, "3AA0");
     WI = window(DUMP, "ISPLP");
-    plat_posix_set_window(0, (void *)W3);                   /* ID_3AA_0 */
-    plat_posix_set_window(2, (void *)WI);                   /* ID_ISP_0 */
-    pthread_t mt;
-    pthread_create(&mt, NULL, hw_model, NULL);
+    /* the libraries get trapped windows (mmio_trap.c): every access logged, performed on W3 / WI */
+    void *T3 = trap_window("3AA0", W3, B), *TI = trap_window("ISP0", WI, B);
+    plat_posix_set_window(0, T3);                           /* ID_3AA_0 */
+    plat_posix_set_window(2, TI);                           /* ID_ISP_0 */
+    /* self-clearing registers the DDK polls (assembly, notes/s10-isp.md; = front_init.py done_after): 3AA / ISP
+       +0x0c SW reset (write 1, poll until 0), ISP COREX +0x24 -> poll +0x2c (second copy +0x8000) - TEST MODEL */
+    trap_done_after(0, 0x0c, 0, 0x0c);
+    trap_done_after(1, 0x0c, 1, 0x0c);
+    trap_done_after(1, 0x3d24, 1, 0x3d2c);
+    trap_done_after(1, 0xbd24, 1, 0xbd2c);
     u64 cb = (u64)(uintptr_t)zalloc(16);                    /* struct lib_callback_func {camera_callback, io_callback} */
     u64 cbs[2] = {isp_host_func(H, callback_op, 0), isp_host_func(H, callback_op, 1)};
     memcpy((void *)(uintptr_t)cb, cbs, 16);
 
-    u64 w3 = (u64)(uintptr_t)W3, wi = (u64)(uintptr_t)WI;
+    u64 w3 = (u64)(uintptr_t)T3, wi = (u64)(uintptr_t)TI;
     STEP("3AA chain_create", FN3[CHAIN_CREATE], 0, w3, 0, cb);
     u64 cfg = (u64)(uintptr_t)zalloc(40);
     w32(cfg, 1);
@@ -317,7 +330,7 @@ int main(int argc, char **argv)
         u32 r = (u32)ISP_CALL(H, FN3[CREATE_TUNE_SET], r64(obj3), 0, (u64)(uintptr_t)ts);
         if (r) { snprintf(b, sizeof(b), "create_tune_set %u -> 0x%x", i, r); plat_log(b); bad++; }
     }
-    snprintf(b, sizeof(b), "create_tune_set x%u done (%d failed)", count0, bad);
+    snprintf(b, sizeof(b), "== 3AA create_tune_set x%u -> 0x%x", count0, bad);
     plat_log(b);
     STEP("3AA apply_tune_set 6", FN3[APPLY_TUNE_SET], r64(obj3), 0, 6);
     unsigned char *cal = zalloc(64 * 1024);
