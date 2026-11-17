@@ -262,3 +262,27 @@ Scripts: tools/isp-re (README there). Offsets below are FILE offsets. The binari
 - tools/android/regdump-s10.c v1.0: one static aarch64 process (zig cc -target aarch64-linux-musl -static) that
   mmaps each block through /dev/mem (O_SYNC) and reads 32-bit words, re-checking runtime_status every 64 reads.
   ispregs v1.5 uses it for "dump" when regdump-s10 sits next to the script. Not yet run on the phone.
+### The init path runs end to end in the emulator (2026-11-17 20:40, tools/isp-re/front_init.py)
+- Input: full register dumps of 3AA0 / ISPLP / MCSC taken on the phone with the front camera previewing
+  (DEVICE 20:31, ispregs v1.5 + regdump-s10: 16384 words each; non-zero non-0xdeadc0de words 1984 / 2153 / 476)
+  -> notes/data/isp-dump-20261117/.
+- With them every "Identify()" passes. Remaining blockers were emulator-side and are modelled from assembly:
+  (1) SW reset: 3AA/ISP +0x0c write 1, poll until 0 (0x219e90, limit 10001); ISP COREX +0x24 write 1, poll +0x2c
+  until 0 (0x24f408, limit 1001; copy at +0x8000) - emu.done_after; (2) sema/mutex/spin init take void ** and
+  store a handle (GPL interface-library.c:821/877/1358) - os_defaults; (3) the VRA part needs its own OS struct
+  (18 entries, GPL interface-vra.h:70) via VRA_LIB_ADDR (file 0x20000) - Isp.vra_os_funcs; (4) object_create
+  calls the RTA (rta+0x80) -> RTA loaded at its place with its own table (GPL set_os_system_funcs_for_rta) -
+  Isp.rta_start_up ("[RTA]OS service was registered").
+- Result: start_up, vra_os_funcs, rta_start_up, register_sensor_interface -> 0; 3AA chain_create -> 0 (333
+  register accesses, interrupts 0/1 of chain 0 registered, handler ddk+0x331e34); set_system_config -> 0;
+  3AA object_create -> 0 (object ddk+0x19e8a00; RTA "RegisterRtaInterface FRONT GammaVersion 0x070B1023
+  DRCVersion 0x070B0451", AE/AWB/SCD/AFC objects created, "ActivateAlgorithms ae1 awb1 af0"); ISP chain_create
+  -> 0 (503 accesses, "ISP_FimcIspChainV7P11P0 ... CHAIN_REGISTER_MODE_SHADOW", interrupts 6/7 of chain 2);
+  ISP object_create -> 0 (ddk+0x1d6d2f0). Logs: notes/data/isp-emu-20261117/.
+- Caveats: the sensor interface answers 0 for every size / timing / gain query (only module id 38 and FRONT are
+  real), so the 3A objects were created around zeros; "[ERROR] ActivateAlgorithms object is NULL, sink id(6)" x8
+  is printed - unknown whether Android prints it too (no isfw-msg from Android yet; the ispdbg1 kernel has debugfs,
+  so /sys/kernel/debug/fimc-is/isfw-msg can now be pulled). The register values are a LIVE snapshot (camera
+  streaming), not the reset state: status registers in it are not what an idle block reads.
+- Next: answer the sensor interface with the real 3J1 numbers (GPL cis driver + setfile), then set_param / shot
+  for one frame, then the frame-done interrupt path (fire irq 0/1 handler ddk+0x331e34 in the emulator).

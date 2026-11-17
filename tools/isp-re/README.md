@@ -11,6 +11,7 @@ Run Python on them with `-I`, from outside the directory that holds the binaries
 | basefind.py FILE | finds the load base: VA - offset votes over function prologues |
 | basecheck.py FILE BASE | with a base: how many pointer words land in the file, on prologues, on strings |
 | disasm.py FILE OFF[,..] [N] | disassembles N instructions at file offsets |
+| front_init.py BIN DUMP OUT | the front-camera init path end to end in the emulator (start_up, VRA, RTA, sensor interface, 3AA + ISP chain_create with the phone's register dump, object_create); writes mmio-*.txt, interface-calls.txt |
 | osmap.py FILE [STOP] | Unicorn: runs the DDK start_up path from 0xf25b8 at its Android VA with marker OS functions (each a `ret`); prints where each OS-table index is stored, every OS call, and the DDK's log lines |
 | emu.py | Stage 2 harness (import it): DDK/RTA at their Android VAs in Unicorn, OS table of logging markers with GPL-semantics defaults (DMA pools, get_usec, get_reg_addr, irq/timer registration), fake register windows (every access logged), sensor-interface stubs |
 | sensor_itf_layout.txt | struct fimc_is_sensor_interface function-pointer offsets (beyond1 config, clang record layout of the GPL header) - emu.py fills it with logging stubs |

@@ -1,0 +1,11 @@
+ispregs-s10.sh v1.5 dump Tue Nov 17 20:31:01 +07 2026
+/dev/mem: present
+devmem tool: toybox devmem
+fimc_is runtime_status file: /sys/devices/platform/170e0000.fimc_is/power/runtime_status
+fimc_is runtime_status now: active
+test read 3AA0 +0x00f0: 0x07010000
+using /data/local/tmp/regdump-s10
+3AA0: /sdcard/s10cam/ispregs/3AA0.txt
+ISPLP: /sdcard/s10cam/ispregs/ISPLP.txt
+MCSC: /sdcard/s10cam/ispregs/MCSC.txt
+done

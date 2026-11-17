@@ -1,0 +1,120 @@
+start_up -> 0
+vra_os_funcs -> 0
+rta_start_up -> 0
+register_sensor_interface -> 0
+== 3AA chain_create -> 0x0  (register accesses 333, OS calls 259, interface calls 0)
+   log: [@][WRAP][E][3AA0]DICO_Chain_3aa_Create
+   log: [@][WRAP]createChain: hwType(0) hwId(0) addr(0x40000000)
+   log: [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(0) !!!
+   log: [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(1) !!!
+   log: ISP_Fimc3aaChainV7P1P0::SwReset
+   log: [@][WRAP][INFO]setOsCallback: mCameraCb(0x10000320), cameraCb(0x10000320)
+   log: [@][WRAP][INFO]setOsCallback: mIoCb(0x10000324), ioCb(0x10000324)
+== 3AA set_system_config -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][E] DICO_SystemConfig
+   log: [WRAP][E] DICO_SystemConfig
+   log: [WRAP]setOverflowControl: (recovery:1)
+   log: [WRAP]setOverflowControl: (recovery:1)
+== 3AA object_create -> 0x0  (register accesses 0, OS calls 759, interface calls 74)
+   log: [@][WRAP][E][S0]DICO_Object_3aa_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
+   log: [@][WRAP]Metadata: new
+   log: [@][WRAP]StreamInterface: new
+   log: [@][WRAP][0]StreamInterface: init
+   log: [@][WRAP]Metadata: init
+   log: [@][WRAP][S0](createObject[5652]): hwType(3AA) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+   log: [@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0x0)
+   log: [@][WRAP](WRAP_GetProperties[586]): w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[587]): order (0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(0), line_length_pck(0), frameleng(0)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(0), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (0), initialAperture(0)
+   log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+   log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+   log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+   log: [@][WRAP]INFO(createObject[5696]): sensor path(OTF)
+   log: WdrRgbyHist 256bins
+   log: Init 200
+   log: [@][WRAP](WRAP_GetProperties[586]): w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[587]): order (0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(0), line_length_pck(0), frameleng(0)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(0), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (0), initialAperture(0)
+   log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+   log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+   log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+   log: [VRA] [VRALIB] register_vra_isp_interface.
+   log: [VRA] [VRALIB] register_vra_isp_interface.
+   log: [RTA] RegisterRtaInterface sensorID = 1, sensor = 0xffffff80fa7abf68 
+   log: [RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0xffffff80fa7abf68 
+   log: [RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+   log: [RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+   log: [RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0xffffff80fa7abf68 
+   log: [RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+   log: [RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+   log: [CreateCommonObjectExternal] 
+   log: [CreateAeObjectExternal] 
+   log: [CreateAwbObjectExternal] 
+   log: [CreateScdObjectInternal] 
+   log: [CreateAfcObjectInternal] 
+   log: ActivateAlgorithms ae1 awb1 af0 
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [ERROR] ActivateAlgorithms object is NULL, sink id(6)
+   log: [@][WRAP][X][S0][3AA0]DICO_Object_3aa_Create 0xffffff80fb9c8a00
+3AA object = ddk+0x19e8a00
+== ISP chain_create -> 0x0  (register accesses 503, OS calls 263, interface calls 0)
+   log: [@][WRAP][E][ISP0]DICO_Chain_Isp_Create
+   log: [@][WRAP]createChain: hwType(1) hwId(0) addr(0x40100000)
+   log: ISP_FimcIspChainV7P11P0::ISP_FimcIspChainV7P11P0(const SIRC_IspObjectConfig*) CHAIN_REGISTER_MODE_SHADOW
+   log: [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(6) !!!
+   log: [@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(7) !!!
+   log: ISP_FimcIspChainV7P11P0::SwReset
+   log: [FRO] reset
+   log: [FRO] reset
+== ISP object_create -> 0x0  (register accesses 0, OS calls 349, interface calls 41)
+   log: [@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
+   log: [@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+   log: [@][WRAP][INFO]m_createObject3aaForTuneSet: [S0] hwId_3aa(0)
+   log: [@][WRAP](WRAP_GetProperties[586]): w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[587]): order (0)
+   log: [@][WRAP](WRAP_GetProperties[588]): exp (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[589]): again (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[590]): dgain (0, 0)
+   log: [@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+   log: [@][WRAP](WRAP_GetProperties[593]): pclk(0), line_length_pck(0), frameleng(0)
+   log: [@][WRAP](WRAP_GetProperties[594]): cur w(0), h(0)
+   log: [@][WRAP](WRAP_GetProperties[598]): max fps(0), hdr by again(0)
+   log: [@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (0), initialAperture(0)
+   log: [@][WRAP](WRAP_GetProperties[601]): companion available (0)
+   log: [@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+   log: [@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+   log: [RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0xffffff80fa7abf68 
+   log: [RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+   log: [RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+   log: [RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0xffffff80fa7abf68 
+   log: [RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+   log: [RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+   log: [CreateGammaObjectExternal] 
+   log: ActivateAlgorithms[351] gamma(1) 
+   log: ActivateAlgorithms[367] drc(2) 
+   log: [CreatePrcObjectExternal] 
+   log: ActivateAlgorithms[383] prc(1) 
+   log: ActivateAlgorithms[399] pipeline(2) 
+   log: [@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0xffffff80fbd4d2f0
+ISP object = ddk+0x1d6d2f0
+interrupts registered: [(0, 0, 'ddk+0x331e34'), (1, 0, 'ddk+0x331e34'), (6, 2, 'ddk+0x331e34'), (7, 2, 'ddk+0x331e34')]
