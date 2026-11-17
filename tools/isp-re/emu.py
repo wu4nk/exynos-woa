@@ -5,7 +5,7 @@
 #   from emu import Isp;  e = Isp(ddk_path);  e.start_up();  e.call(e.DDK + 0x80, 1, out_ptr)
 import struct
 from unicorn import (Uc, UcError, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_UNMAPPED,
-                     UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE)
+                     UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_HOOK_BLOCK)
 from unicorn.arm64_const import *
 from unicorn.unicorn_const import UC_MEM_WRITE
 
@@ -63,6 +63,13 @@ class Isp:
             u.mem_write(self.table + 8 * i, struct.pack('<Q', MK + 4 * i))
         u.hook_add(UC_HOOK_CODE, self._os, begin=MK, end=MK + 0xfff)
         u.hook_add(UC_HOOK_MEM_UNMAPPED, self._bad)
+        # instruction counter (block hook: adds the block size / 4) - for cost estimates, enabled by env EMU_COUNT
+        import os as _os
+        self._icount = 0
+        if _os.environ.get('EMU_COUNT'):
+            def _blk(uc, addr, size, data):
+                self._icount += size // 4
+            u.hook_add(UC_HOOK_BLOCK, _blk)
         u.reg_write(UC_ARM64_REG_CPACR_EL1, 0x300000)          # FP/SIMD on
         self.bad = None
         self.windows = {}                       # name -> (base, size)
@@ -286,6 +293,9 @@ class Isp:
             self.u.mem_write(t + 8 * k, struct.pack('<Q', self.stub('rta.' + n, hs.get(k))))
         self.rta_table = t
         return self.call(RTA, 0, t) & 0xffffffff
+
+    def icount(self):
+        return self._icount
 
     def drain(self, limit=200):
         """Run queued add_task work items (and the ones they queue) like the library's kthread workers would."""

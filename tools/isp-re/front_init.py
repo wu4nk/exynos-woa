@@ -98,15 +98,22 @@ e.done_after = {('3AA0', 0x0c): [('3AA0', 0x0c)], ('ISP0', 0x0c): [('ISP0', 0x0c
                 ('ISP0', 0x3d24): [('ISP0', 0x3d2c)], ('ISP0', 0xbd24): [('ISP0', 0xbd2c)]}
 
 
+STATS = []
+
+
 def step(label, fn, *a):
     e.logs.clear()
     n0, c0, s0 = len(e.mmio), len(e.calls), len(e.stub_calls)
+    import time
+    tm = time.perf_counter()
+    i0 = e.icount() if hasattr(e, 'icount') else 0
     try:
         r = '0x%x' % (e.call(fn, *a) & 0xffffffff)
     except RuntimeError as x:
         r = 'EXC ' + str(x)
     t0 = len(e.task_log)
     e.drain()
+    STATS.append((label, time.perf_counter() - tm, (e.icount() - i0) if hasattr(e, 'icount') else 0))
     if len(e.task_log) > t0:
         r += '  [tasks run: %s]' % ', '.join('%s->%s' % (f, rr) for p, f, rr in e.task_log[t0:])[:400]
     acc = e.mmio[n0:]
@@ -128,6 +135,7 @@ info = 38 << 16              # obj_info: module id 38 at bit 16, chain 0, instan
 step('3AA object_create', tabs['3AA']['object_create'], obj3, info, hw)
 print('3AA object =', e.img(e.q(obj3)))
 step('ISP chain_create', tabs['ISP']['chain_create'], 0, wi, 0, e.cb)
+step('ISP set_system_config', tabs['ISP']['set_system_config'], cfg)   # Android: DICO_SystemConfig after ISP0 create
 obji = e.alloc(8)
 info_isp = (38 << 16) | (1 << 12)      # Android: DICO_Object_Isp_Create (0x00261000) input(1) = M2M
 step('ISP object_create', tabs['ISP']['object_create'], obji, info_isp, hw)
@@ -223,6 +231,51 @@ def fire(label, bit):
     e.u.mem_write(w3 + 0x10c, struct.pack('<I', 0))
 
 
+# --- ISP0 (ISPLP) M2M: reads the 3AA's after-BDS output (2432 x 1824, 12-bit packed) from memory, sends YUV to MCSC
+# over OTF. Android: "[ISP0][ConfigureISPInput]: fro(1) inputImageArea(0,0 / 2432x1824 12/12bits)" (isfw-msg-android
+# :546). isp_param_set layout: param_layouts.txt. otf_output format YUV422 (2) / 8 bit = the GPL mcsp default
+# (v7_0_0/fimc-is-subdev-mcsp.c:88) - UNVERIFIED for this ISP; the register compare will tell.
+PI = e.alloc(1136)
+
+
+def puti(off, *vals):
+    e.u.mem_write(PI + off, struct.pack('<%dI' % len(vals), *vals))
+
+
+e.u.mem_write(PI, struct.pack('<Q', P))                         # taa_param
+puti(136, 1, 5, 12, 0, 1, 2432, 1824, 0, 2432, 1824, 0, 0, 2432, 1824, 0, 11)   # dma_input (vdma1)
+puti(392, 1, 2, 8, 0, 2432, 1824, 0, 0, 2432, 1824, 0)          # otf_output -> MCSC
+puti(776, bufs['after_bds'][1])                                 # input_dva = 3AA after-BDS buffer
+IRQI = sorted([i for i in e.irqs if i['chain'] == 2], key=lambda i: i['id'])
+
+
+def isp_frame(fc):
+    puti(1120, 0, fc)
+    if fc == 1:
+        step('ISP set_param', tabs['ISP']['set_param'], e.q(obji), PI)
+    step('ISP set_ctrl F%d' % fc, tabs['ISP']['set_ctrl'], e.q(obji), 0, fc, SHOT)
+    step('ISP shot F%d' % fc, tabs['ISP']['shot'], e.q(obji), PI, SHOT, 1)
+    # ISP interrupt 6 reads ISP +0x10c: bit 0 V SYNC, bit 1 FRAME END (IRQ_SCAN_ISP run, notes); Android order
+    for label, bit in (('V SYNC', 0), ('FRAME END', 1)):
+        e.u.mem_write(wi + 0x10c, struct.pack('<I', 1 << bit))
+        step('F%d ISP irq %s' % (fc, label), IRQI[0]['handler'], IRQI[0]['id'], IRQI[0]['ctx'])
+        e.u.mem_write(wi + 0x10c, struct.pack('<I', 0))
+    if os.environ.get('IRQ_SCAN_ISP') and fc == 1:
+        for irq in IRQI:
+            for st in (0x10c, 0x11c):
+                for bit in range(32):
+                    e.u.mem_write(wi + st, struct.pack('<I', 1 << bit))
+                    e.logs.clear()
+                    try:
+                        e.call(irq['handler'], irq['id'], irq['ctx']); r = 'ok'
+                    except RuntimeError as x:
+                        r = 'EXC ' + str(x)[:60]
+                    e.drain()
+                    e.u.mem_write(wi + st, struct.pack('<I', 0))
+                    print('ISPIRQ%d +0x%x bit %2d: %s; %s' % (irq['id'], st, bit, r,
+                          ' | '.join(l for l in e.logs if 'null interrupt' not in l)[:260]))
+
+
 NFRAMES = int(os.environ.get('FRAMES', '3'))
 for fc in range(1, NFRAMES + 1):
     if fc > 1:
@@ -232,6 +285,8 @@ for fc in range(1, NFRAMES + 1):
     fire('F%d irq V SYNC' % fc, 0)
     fire('F%d irq CIN ROW' % fc, 2)
     fire('F%d irq FRAME END' % fc, 1)
+    if os.environ.get('ISP', '1') == '1':
+        isp_frame(fc)
 # status registers read by the handler (assembly ddk+0x2f2bd4): 3AA +0x10c (irq 0), +0x11c (irq 1). Discovery: set
 # one bit at a time and record what the DDK does with it (logs + register accesses) - DIAGNOSIS ONLY
 if os.environ.get('IRQ_SCAN'):
@@ -253,3 +308,7 @@ print('interrupts registered:', [(i['id'], i['chain'], e.img(i['handler'])) for 
 with open(os.path.join(OUT, 'interface-calls.txt'), 'w') as f:
     for name, lr, x, ret in e.stub_calls:
         f.write('%s from %s x1..3 %s -> %s\n' % (name, e.img(lr), ' '.join('0x%x' % v for v in x[1:4]), ret))
+
+with open(os.path.join(OUT, 'timing.txt'), 'w') as f:
+    for label, sec, n in STATS:
+        f.write('%-28s %8.1f ms  %10d instructions\n' % (label, sec * 1000, n))

@@ -439,3 +439,25 @@ The handler (ddk+0x331e34, args (id, ctx)) reads 3AA +0x10c for interrupt 0 and 
   scene); +0x18fc, 0x19fc ... low byte equal (0x37), upper bits = hardware counters; frame / config-lock state
   (0x0c, 0x28, 0xc8, 0x118). Remaining log noise: "ISP_IoCallback_3aa: CONFIG_LOCK_DELAY" each frame and frame
   number "F0" in the ISR lines (the ISR reads the frame counter from a register: live-dump value).
+### ISP0 (M2M) frames and the per-frame cost (2026-11-17 22:30)
+- isp_param_set (param_layouts.txt): taa_param -> the 3AA set, dma_input = 3AA after-BDS 2432 x 1824, format 5
+  packed, 12 bit, msb 11; otf_output -> MCSC YUV422 8 bit (GPL v7 mcsp default, UNVERIFIED for this path);
+  input_dva = the 3AA after-BDS buffer. ISP set_system_config added (Android does it after ISP0 create).
+- ISP shot F1 -> 0 (1537 register accesses): "[ISP0][ConfigureISPInput]: fro(1) inputImageArea(0,0 / 2432x1824
+  12/12bits)", "ISP CellResolution: 38 x 28", "HW: (0, 16) 2432 x 1792", "normalizeShift = 9", "uThreshClipCnt_ =
+  532(128)", "TNR_MODE_BYPASS -> TNR_MODE_FIRST_RUN", "ControlClock clock 1 -> 1", "EOTF gamma disabled" - each
+  identical to Android's lines :546-557. Different: "DrcMode change Prev:0 -> Cur:1" (Android Cur:3) and "Unit gain
+  is set due to an empty histogram" (no image statistics in the emulator).
+- ISP interrupt 6 reads ISP +0x10c: bit 0 V SYNC, bit 1 FRAME END (IRQ_SCAN_ISP=1 run); every other bit of +0x10c
+  and all of interrupt 7's +0x11c have no handler in this mode (keep masked). Android's ISP order V SYNC -> FRAME
+  END ("TransitIsrState I0 ... I1").
+- Match after F1..F3 (cmp_dump.py): ISPLP 1032 comparable registers, 824 equal = 79.8 % (differences mostly in the
+  0x9800-0xa800 shadow copy: tone / DRC / AE-dependent); 3AA0 now 1202 / 1562 = 77.0 %.
+- Cost per steady frame (FRAMES=5, EMU_COUNT=1 block counter, timing.txt): 3AA set_ctrl 7.8k + shot 5.3k +
+  V SYNC (with its tasks = RTA AE/AWB/AF) 2.62M + CIN ROW 0.16M + FRAME END 0.05M; ISP set_ctrl 3.2k + shot 2.06M
+  + V SYNC 0.9k + FRAME END 29k instructions = about 5.0 M AArch64 instructions per frame -> ~150 M/s at 30 fps.
+  Init (start_up .. object_create, once): ~3.6 M. (Wall times in timing.txt are Python-hooked Unicorn on the build
+  machine - not a measure of anything on the phone.)
+- Microsoft's ARM64 ABI page (learn.microsoft.com/en-us/cpp/build/arm64-windows-abi-conventions) on x18: "Reserved
+  platform register: in kernel mode, points to KPCR for the current processor; In user mode, points to TEB";
+  volatility "N/A"; it does not spell out a "must not modify" rule beyond "Reserved".

@@ -81,6 +81,11 @@ register_sensor_interface (RTA) -> 0
    log: ISP_FimcIspChainV7P11P0::SwReset
    log: [FRO] reset
    log: [FRO] reset
+== ISP set_system_config -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][E] DICO_SystemConfig
+   log: [WRAP][E] DICO_SystemConfig
+   log: [WRAP]setOverflowControl: (recovery:1)
+   log: [WRAP]setOverflowControl: (recovery:1)
 == ISP object_create -> 0x0  (register accesses 0, OS calls 349, interface calls 41)
    log: [@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00261000) hwId(0), rep(0), input(1), moduleId(38)
    log: [@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(M2M), moduleId(38), repFlag(0)
@@ -268,6 +273,35 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
    log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
    log: [@][WRAP][ERROR][S0][F1][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== ISP set_param -> 0x0  (register accesses 0, OS calls 0, interface calls 0)
+== ISP set_ctrl F1 -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP shot F1 -> 0x0  (register accesses 1537, OS calls 181, interface calls 0)
+   log: [@][WRAP][S0][F1][ISP0][ConfigureISPInput]: fro(1) inputImageArea(0,0 / 2432x1824 12/12bits)
+   log: [Thumbnail][SetGeometry] ISP CellResolution: 38 x 28, CellGridResolution: 64 x 64
+   log: [Thumbnail][SetGeometry]statRoi: (0, 0) 2432 x 1824
+   log: [Thumbnail][SetGeometry]HW: (0, 16) 2432 x 1792
+   log: [SetGeometry]normalizeShift = 9
+   log: [SetGeometry]uThreshClipCnt_ = 532(128)
+   log: [S0][ISP0] SetIsrScheduleType 3 @ 0.000 fps earlyConfigLock 0
+   log: Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(4825), nextFrameDigitalGain(7227), shortMicrosExp(0)
+   log: [DRC][TMC][DbgMsg_StateAndExtInfo]DrcMode change Prev:0 -> Cur:1
+   log: [DRC][TMC][Process]Unit gain is set due to an empty histogram !
+   log: TNR mode init. by mode change: TNR_MODE_BYPASS
+   log: TNR mode change: TNR_MODE_BYPASS -> TNR_MODE_FIRST_RUN
+   log: ISP_FimcIspChainV7P11P0 ControlClock clock 1 -> 1
+   log: [ISP] EOTF gamma disabled
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== F1 ISP irq V SYNC -> 0x0  [tasks run: ddk+0x1c5668->0]  (register accesses 7, OS calls 27, interface calls 0)
+   log: [S0][F1][ISP0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+   log: PrintIsrTime
+   log: PrintIsrTime
+== F1 ISP irq FRAME END -> 0x0  [tasks run: ddk+0x1c573c->0, ddk+0x1c5810->0]  (register accesses 80, OS calls 137, interface calls 0)
+   log: [S0][F1][ISP0] TransitIsrState I1 V SYNC    --(FRAME END)--> FRAME END
 == 3AA set_ctrl F2 -> 0x0  (register accesses 0, OS calls 13, interface calls 4)
    log: [WRAP] Invalid iso mode: 0
    log: [WRAP] Invalid iso mode: 0
@@ -291,13 +325,38 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: [RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 0, senVerBinningRatio 0, touchEnable 0
    log: [RTA] enableDynamicShotDm 0, cameraClientIndex 0
    log: [RTA] [VQ_RD_G] EventFunc_OnVsync - Camera0 F | Stream[1] Vsync[0] | PDEN 1 | Mode RTA[ 3] pRTA[ 7] IN[11] | Scene 0 | Input 3648 x 2736 | 1 342 FT 0 | 
-== F2 irq CIN ROW -> 0x0  (register accesses 259, OS calls 100, interface calls 4)
+== F2 irq CIN ROW -> 0x0  (register accesses 326, OS calls 100, interface calls 4)
    log: [ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
 == F2 irq FRAME END -> 0x0  [tasks run: ddk+0x1ce714->0]  (register accesses 7, OS calls 91, interface calls 5)
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
    log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
    log: [@][WRAP][ERROR][S0][F2][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== ISP set_ctrl F2 -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP shot F2 -> 0x0  (register accesses 887, OS calls 225, interface calls 0)
+   log: Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(4825), nextFrameDigitalGain(7227), shortMicrosExp(0)
+   log: [DRC][TMC][Process]Unit gain is set due to an empty histogram !
+   log: TNR mode change: TNR_MODE_FIRST_RUN -> TNR_MODE_NORMAL
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== F2 ISP irq V SYNC -> 0x0  [tasks run: ddk+0x1c5668->0]  (register accesses 7, OS calls 44, interface calls 0)
+   log: PrintIsrTime
+   log: PrintIsrTime
+   log: [S0][ISP0] ISR V SYNC    F1 0~0 (0 us)
+   log: [S0][ISP0] ISR V SYNC    F1 0~0 (0 us)
+   log: [S0][ISP0] ISR FRAME END F1 0~0 (0 us)
+   log: [S0][ISP0] ISR FRAME END F1 0~0 (0 us)
+   log: [S0][ISP0] TASK V SYNC    0~0 (0 us)
+   log: [S0][ISP0] TASK V SYNC    0~0 (0 us)
+   log: [S0][ISP0] TASK CIN ROW   0~0 (0 us)
+   log: [S0][ISP0] TASK CIN ROW   0~0 (0 us)
+   log: [S0][ISP0] TASK FRAME END 0~0 (0 us)
+   log: [S0][ISP0] TASK FRAME END 0~0 (0 us)
+== F2 ISP irq FRAME END -> 0x0  [tasks run: ddk+0x1c573c->0, ddk+0x1c5810->0]  (register accesses 80, OS calls 134, interface calls 0)
 == 3AA set_ctrl F3 -> 0x0  (register accesses 0, OS calls 13, interface calls 4)
    log: [WRAP] Invalid iso mode: 0
    log: [WRAP] Invalid iso mode: 0
@@ -319,4 +378,73 @@ DMA buffers (kva, dva): {'before_bds': ('0x52ac4000', '0x82ac4000'), 'after_bds'
    log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
    log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
    log: [@][WRAP][ERROR][S0][F3][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== ISP set_ctrl F3 -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP shot F3 -> 0x0  (register accesses 1118, OS calls 222, interface calls 0)
+   log: Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(4825), nextFrameDigitalGain(7227), shortMicrosExp(0)
+   log: [DRC][TMC][Process]Unit gain is set due to an empty histogram !
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== F3 ISP irq V SYNC -> 0x0  [tasks run: ddk+0x1c5668->0]  (register accesses 7, OS calls 20, interface calls 0)
+== F3 ISP irq FRAME END -> 0x0  [tasks run: ddk+0x1c573c->0, ddk+0x1c5810->0]  (register accesses 80, OS calls 134, interface calls 0)
+== 3AA set_ctrl F4 -> 0x0  (register accesses 0, OS calls 13, interface calls 4)
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA shot F4 -> 0x0  (register accesses 0, OS calls 4, interface calls 0)
+== F4 irq V SYNC -> 0x0  [tasks run: ddk+0x1d4b58->0, ddk+0x1d2d90->0]  (register accesses 4, OS calls 103, interface calls 22)
+   log: [RTA] AE Lib ver : 0x92b80428
+== F4 irq CIN ROW -> 0x0  (register accesses 181, OS calls 119, interface calls 4)
+   log: [ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F4 irq FRAME END -> 0x0  [tasks run: ddk+0x1ce714->0]  (register accesses 7, OS calls 119, interface calls 5)
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+   log: [@][WRAP][ERROR][S0][F4][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== ISP set_ctrl F4 -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP shot F4 -> 0x0  (register accesses 1001, OS calls 222, interface calls 0)
+   log: Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(4825), nextFrameDigitalGain(7227), shortMicrosExp(0)
+   log: [DRC][TMC][Process]Unit gain is set due to an empty histogram !
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== F4 ISP irq V SYNC -> 0x0  [tasks run: ddk+0x1c5668->0]  (register accesses 7, OS calls 20, interface calls 0)
+== F4 ISP irq FRAME END -> 0x0  [tasks run: ddk+0x1c573c->0, ddk+0x1c5810->0]  (register accesses 80, OS calls 134, interface calls 0)
+== 3AA set_ctrl F5 -> 0x0  (register accesses 0, OS calls 13, interface calls 4)
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP] Invalid iso mode: 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid edge mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA shot F5 -> 0x0  (register accesses 0, OS calls 4, interface calls 0)
+== F5 irq V SYNC -> 0x0  [tasks run: ddk+0x1d4b58->0, ddk+0x1d2d90->0]  (register accesses 4, OS calls 103, interface calls 19)
+== F5 irq CIN ROW -> 0x0  (register accesses 309, OS calls 119, interface calls 4)
+   log: [ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F5 irq FRAME END -> 0x0  [tasks run: ddk+0x1ce714->0]  (register accesses 7, OS calls 119, interface calls 5)
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+   log: [@][WRAP][ERROR][S0][F5][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== ISP set_ctrl F5 -> 0x0  (register accesses 0, OS calls 8, interface calls 0)
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid edge mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+   log: [WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP shot F5 -> 0x0  (register accesses 852, OS calls 222, interface calls 0)
+   log: Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(4825), nextFrameDigitalGain(7227), shortMicrosExp(0)
+   log: [DRC][TMC][Process]Unit gain is set due to an empty histogram !
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+   log: [ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== F5 ISP irq V SYNC -> 0x0  [tasks run: ddk+0x1c5668->0]  (register accesses 7, OS calls 20, interface calls 0)
+== F5 ISP irq FRAME END -> 0x0  [tasks run: ddk+0x1c573c->0, ddk+0x1c5810->0]  (register accesses 80, OS calls 134, interface calls 0)
 interrupts registered: [(0, 0, 'ddk+0x331e34'), (1, 0, 'ddk+0x331e34'), (6, 2, 'ddk+0x331e34'), (7, 2, 'ddk+0x331e34')]

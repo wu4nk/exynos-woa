@@ -1,0 +1,56 @@
+3AA chain_create                 26.6 ms       31892 instructions
+3AA set_system_config             0.7 ms        1603 instructions
+3AA object_create               257.0 ms      413701 instructions
+ISP chain_create                 31.2 ms       49711 instructions
+ISP set_system_config             0.4 ms        1603 instructions
+ISP object_create              2370.5 ms     2937802 instructions
+3AA apply_tune_set 6             38.7 ms      172029 instructions
+3AA load_cal_data                11.1 ms       62051 instructions
+3AA get_cal_data type 2           1.0 ms        3872 instructions
+3AA set_param                     0.2 ms          40 instructions
+3AA set_ctrl F1                  24.1 ms       41654 instructions
+3AA shot F1                     282.7 ms      865790 instructions
+F1 irq V SYNC                     7.2 ms        8640 instructions
+F1 irq CIN ROW                   38.0 ms      169404 instructions
+F1 irq FRAME END                 16.7 ms       48217 instructions
+ISP set_param                     0.1 ms          29 instructions
+ISP set_ctrl F1                   1.2 ms        3161 instructions
+ISP shot F1                      85.5 ms      199073 instructions
+F1 ISP irq V SYNC                 2.0 ms        4258 instructions
+F1 ISP irq FRAME END             13.1 ms       31768 instructions
+3AA set_ctrl F2                   2.1 ms        7793 instructions
+3AA shot F2                       1.1 ms        5266 instructions
+F2 irq V SYNC                   296.6 ms     2593219 instructions
+F2 irq CIN ROW                   26.4 ms      162700 instructions
+F2 irq FRAME END                 11.3 ms       45468 instructions
+ISP set_ctrl F2                   0.8 ms        3161 instructions
+ISP shot F2                     220.6 ms     2061354 instructions
+F2 ISP irq V SYNC                 2.8 ms       13143 instructions
+F2 ISP irq FRAME END              9.6 ms       29023 instructions
+3AA set_ctrl F3                   1.6 ms        7793 instructions
+3AA shot F3                       1.0 ms        5266 instructions
+F3 irq V SYNC                   260.4 ms     2629718 instructions
+F3 irq CIN ROW                   34.8 ms      162077 instructions
+F3 irq FRAME END                 11.8 ms       45838 instructions
+ISP set_ctrl F3                   0.7 ms        3161 instructions
+ISP shot F3                     214.4 ms     2061321 instructions
+F3 ISP irq V SYNC                 0.8 ms         898 instructions
+F3 ISP irq FRAME END             11.6 ms       29043 instructions
+3AA set_ctrl F4                   1.7 ms        7793 instructions
+3AA shot F4                       0.9 ms        5266 instructions
+F4 irq V SYNC                   337.3 ms     2620575 instructions
+F4 irq CIN ROW                   26.3 ms      165678 instructions
+F4 irq FRAME END                 12.3 ms       46379 instructions
+ISP set_ctrl F4                   0.7 ms        3161 instructions
+ISP shot F4                     211.3 ms     2060399 instructions
+F4 ISP irq V SYNC                 0.5 ms         898 instructions
+F4 ISP irq FRAME END              9.5 ms       29320 instructions
+3AA set_ctrl F5                   1.6 ms        7793 instructions
+3AA shot F5                       0.9 ms        5266 instructions
+F5 irq V SYNC                   253.0 ms     2620382 instructions
+F5 irq CIN ROW                   27.0 ms      163336 instructions
+F5 irq FRAME END                 12.5 ms       46399 instructions
+ISP set_ctrl F5                   0.7 ms        3161 instructions
+ISP shot F5                     214.8 ms     2060854 instructions
+F5 ISP irq V SYNC                 0.6 ms         898 instructions
+F5 ISP irq FRAME END             10.5 ms       29320 instructions
