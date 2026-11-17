@@ -710,3 +710,9 @@ Logs: notes/data/camprobe-cpu-2 / camprobe-gpu-2-20261117.txt (picture: a person
   past the frame source: its preview path. Hypothesis (UNVERIFIED): rendering YUY2 for display needs a D3D11 video
   processor (colour conversion / scaling), which our Mali UMD does not implement (gpu-umd-d3d11.md D5 = plan). Next
   checks: a browser (getUserMedia: Chromium converts in its own GPU process) and Settings > Cameras preview.
+- 2026-11-17 10:47: Settings > Cameras > Galaxy S10 Front Camera: grey preview box (no picture), no error; the page
+  also offers "Video rotation" (Windows' own per-camera rotation - an alternative to rotating in the driver, later).
+  Same symptom as the Camera app. Relevant GPU state (notes/g17-dxva-mfc.md): the Mali UMD has a D3D11 video DDI
+  skeleton (V6a, decoder objects; profiles reported 0 unless decode works) and NO video processor yet (V6c =
+  NV12 -> BGRA VideoProcessorBlt, a plan). Consistent with the preview hypothesis, not a proof. Asked: the browser
+  test and the driver trace of the Settings session.
