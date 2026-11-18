@@ -1312,3 +1312,15 @@ Log: notes/data/isphost-win-20261118/pipe-0.10-full/front-trace.txt (S10eIsp 0.1
   ~25 ms a frame -> 30 fps. UNVERIFIED until the phone runs it; the conversion in S10eCamera (8.9 MB from
   write-combined memory a frame) is the next suspect and is in the stop line (conversion avg / max).
 - Fallback meanwhile: isp-s10.ps1 pipe -Bin + camera-s10.ps1 set -Resolution 0 (912x684, 30 fps, validated).
+- Review of 7501ef0 (own, adversarial): (1) an S10ePower before v3 answers domain 11 with INVALID_DEVICE_REQUEST ->
+  logged, gClocksUp stays FALSE, no release attempt - ok; a v2 driver with a v3 caller never sees the v3 fields
+  (the IOCTL copies min(outLen, sizeof) - CamClocks then logs REVISION_MISMATCH only if the call succeeded short).
+  (2) The release goes to the DT minimum, not to sboot's boot level (unknown, possibly lower): after the first
+  camera session INTCAM / CAM stay at Android's resting levels - a small idle-power cost, accepted (Android's own
+  idle state). (3) INTCAM may also move ISPPRE's mux: S10eCam writes only the divider field and restores the value it
+  found after the ACPM raise, before the release - order kept (raise before StreamStart, release after StreamStop).
+  (4) The fvmap match (DT min AND max present) guards against a different header order; a table without those exact
+  values refuses the domain (IntcamCheck / CamCheck 5) rather than guess. (5) No thermal cap on INTCAM / CAM (the ISP
+  zone, tz 4, is not read) - same as Android holding them for the session. (6) Next suspects if it stays slow: the
+  governor's IdleMif (MIF 421 MHz while idle; the camera's DT table asks MIF 1352000) and S10eCamera's 8.9 MB
+  write-combined read + range conversion per frame. No code change from the review.
