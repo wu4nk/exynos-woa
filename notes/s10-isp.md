@@ -1045,3 +1045,11 @@ Plan (each a task, each waits for the result before it):
 - Syntax check S10eIsp.c (scratch ucheck-umdf.sh, clang against WDK 26100 um + UMDF 2.15 headers): clean except the
   known _set_invalid_parameter_handler (km/crt lacks it; the EWDK build has it). test_front.c: zig aarch64 linux /
   windows-gnu clean.
+- Review of a9883f8 (adversarial): FOUND - plat_posix_log_to() swapped the log FILE without the log lock; with 0.6 an
+  ISR thread can plat_log() (isp_front_irq) while the run closes host.log -> write to a closing FILE. FIX (own commit):
+  plat_win.c / plat_posix.c take the log lock there. Checked, accepted and recorded: (1) masking writes +0x108 /
+  +0x118 through the mapping even when the probe did not verify the ID - an interrupt from the block means it is
+  clocked; (2) if masking does not drop the line the ISR keeps being called (counted, no further escalation: UMDF has
+  no way to disconnect a line from the ISR); (3) the ISR blocks in isp_irq_sync while the handler runs - it is not a
+  library thread, so no lock cycle with the control thread; (4) IrqReport skips objects when no interrupt resource
+  was assigned (UEFI v0.2.3); (5) in the hw3aashot run the DDK's stop zeroes +0x108 before host.log closes.

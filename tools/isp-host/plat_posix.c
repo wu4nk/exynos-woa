@@ -22,8 +22,10 @@ static int log_quiet;
 
 void plat_posix_log_to(FILE *f, int quiet)
 {
+    pthread_mutex_lock(&log_m);      /* a concurrent plat_log must not see a closing FILE */
     log_f = f;
     log_quiet = quiet;
+    pthread_mutex_unlock(&log_m);
 }
 
 void *plat_exec_alloc(size_t size, size_t align)

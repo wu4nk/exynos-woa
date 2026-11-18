@@ -25,8 +25,11 @@ static int log_quiet;
 
 void plat_posix_log_to(FILE *f, int quiet)
 {
+    /* under the log lock: S10eIsp 0.6's ISR can log (isp_front_irq) while the run closes host.log */
+    AcquireSRWLockExclusive(&log_m);
     log_f = f;
     log_quiet = quiet;
+    ReleaseSRWLockExclusive(&log_m);
 }
 
 void *plat_exec_alloc(size_t size, size_t align)
