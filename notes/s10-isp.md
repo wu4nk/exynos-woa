@@ -1053,3 +1053,18 @@ Plan (each a task, each waits for the result before it):
   no way to disconnect a line from the ISR); (3) the ISR blocks in isp_irq_sync while the handler runs - it is not a
   library thread, so no lock cycle with the control thread; (4) IrqReport skips objects when no interrupt resource
   was assigned (UEFI v0.2.3); (5) in the hw3aashot run the DDK's stop zeroes +0x108 before host.log closes.
+- 2026-11-18 21:24 RESULT (UEFI v0.2.4 flashed, S10eIsp 0.6, isp-s10.ps1 v1.7; notes/data/isphost-win-20261118/
+  irq-0.6/): FIRST REAL ISP INTERRUPT ON WINDOWS, handled by Samsung's library.
+  - Resources: raw vector 351 -> translated 2562 (level 10), raw 352 -> translated 2306 (level 9), flags 0 = level;
+    so the raw vector IS the GSIV. Objects: 0 -> vector 2562 = GSIV 351 -> id 0, 1 -> 2306 = 352 -> id 1, both
+    resolved "by GSIV" (here creation order = _CRS order too, but that is not relied on).
+  - At boot / device start: no interrupt (status: Irq all 0) - nothing pending, no storm.
+  - hw3aashot run: 14 steps all 0; "hw irq #1 id 0: +0x10c 0x00100000 -> handler 0x0 in 117 us -> +0x10c 0x00000000":
+    the IRQ0 bit-20 event seen in 0.5 now raised GSIV 351 during shot F1, the passive ISR handed it to the libraries'
+    handler (chain 0 id 0) on the host's irq thread, which cleared it (117 us ISR-to-done). Irq: id 0 1 / to the
+    libraries 1 / masked 0; id 1 0. Library stats: irqs 1. The 200 ms watch then saw +0x10c stay 0.
+  - Stop as in 0.5 (+0x00 / +0x108 and their +0x8000 copies to 0).
+  - The user also re-sent a standalone isphost run (isphost-s10.ps1): 282 steps, 8.01 ms/frame, x18 preserved on 16
+    threads - same as before.
+- Status of the 3AA0 path on Windows: registers, DMA addresses and interrupts all work with the real block. What is
+  missing for a real frame is the INPUT: CSIS -> 3AA0 OTF (sensor streaming via S10eCam) - next.

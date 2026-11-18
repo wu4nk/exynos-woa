@@ -1,0 +1,31 @@
+isp-s10.ps1 v1.7  status  2026-11-01T23:18:59
+firmware: 
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem26.inf 0.6.0.0
+probe report (S10eIsp 0.6):
+  S10eIsp 0.6 probe, process 840
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFF85809324D000, user-mode mapping 0000017C19310000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFF858093278000, user-mode mapping 0000017C19670000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFF85809328E000, user-mode mapping 0000017C19680000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFF8580932A4000, user-mode mapping 0000017C19690000
+  resource 4: interrupt raw vector 351 (GSIV), translated vector 2562 level 10 flags 0x0 (level)
+  resource 5: interrupt raw vector 352 (GSIV), translated vector 2306 level 9 flags 0x0 (level)
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 0000017C196A0000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+  DMA: pool 128 MiB at PA 0xF5751000..0xFD750FFF, write-combined, mapped at 0000017C196A0000 (S10eIspDma v1)
+  DCZID_EL0 = 0x4 (DZP 0, block 64 bytes)
+  DMA test: aligned 8-byte store + load -> ok
+  DMA test: unaligned 8-byte store + load (+0x1003) -> ok
+  DMA test: memset 64 KiB + check -> ok
+  DMA test: DC ZVA on a dirty block + check -> ok
+  DMA test: last byte store + load -> ok
+  DMA: handle closed (pool unmapped)
+interrupts (value Irq): id 0 (GSIV 351): 0, to the libraries 0, masked 0; id 1 (GSIV 352): 0, to the libraries 0, masked 0
+S10eIspDma service: RUNNING
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-status.txt
