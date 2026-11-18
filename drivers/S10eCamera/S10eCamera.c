@@ -95,6 +95,7 @@ typedef struct _CAMPIN {
     LONG    PipeRawSeq;     /* 0.10: engine frame number when the last pipeline frame came */
     ULONG64 PipeFrames;     /* 0.10: frames delivered from the ISP */
     ULONG   PipeAeApplied;
+    ULONG64 PipeCpuFrames;  /* 0.10.3: frames the CPU filled in while the ISP had none */
 } CAMPIN;
 
 static FAST_MUTEX gCamMutex;                             /* Process vs start / stop (the ring must not go away) */
@@ -557,6 +558,7 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
         c->Drops += (ULONG)(seq - c->PipeSeq - 1);
     c->PipeSeq = seq;
     c->PipeRawSeq = gS.Seq;
+    c->LastSeq = gS.Seq;                                 /* the CPU path's bookkeeping stays in step */
     c->Frames++;
     c->PipeFrames++;
     if (c->PipeFrames == 1)
@@ -618,13 +620,17 @@ static NTSTATUS PinProcess(PKSPIN Pin)
     if (gPipeOn) {                                       /* 0.10: Samsung's ISP output */
         if (c->PipeFrames == 0 && gShm->CamStage < 5)
             PIPE_STAGE(5);
-        if (gShm->Magic == S10EISP_SHM_MAGIC && gShm->State >= 2 && gS.Seq - c->PipeRawSeq < 60) {
+        /* 0.10.3: the ISP's frame whenever there is a new one; while it has none for 60 sensor frames (2 s) the CPU
+           conversion fills in frame by frame, and the ISP takes over again as soon as it publishes (0.10.2 switched
+           to the CPU path for the rest of the stream) */
+        if (gShm->Magic == S10EISP_SHM_MAGIC && gShm->State >= 2 &&
+            (gShm->Seq != c->PipeSeq || gS.Seq - c->PipeRawSeq < 60)) {
             (VOID)PipeProcess(Pin, c);
             ExReleaseFastMutex(&gCamMutex);
             return STATUS_PENDING;
         }
-        gPipeOn = FALSE;                                 /* the pipeline went away or stalled 2 s: CPU path */
         gPipeFellBack = TRUE;                            /* traced at stop: no file I/O under the fast mutex */
+        c->PipeCpuFrames++;
     }
     seq = gS.Seq;
     i = gS.Latest;
@@ -721,6 +727,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     c->WbR = c->WbB = 256;
     c->AeWait = 2;
     c->PipeFrames = 0;
+    c->PipeCpuFrames = 0;
     c->PipeAeApplied = 0;
     c->PipeRawSeq = 0;
     ExReleaseFastMutex(&gCamMutex);
@@ -791,7 +798,7 @@ static VOID CamStop(CAMPIN *c)
         "%I64u torn; conversion avg %I64u us, max %u us\r\n", c->Frames, c->PipeFrames, c->PipeAeApplied, c->Drops,
         c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     if (gPipeFellBack)
-        Log(&r, "pipe: no ISP frame for 60 sensor frames during the stream: fell back to the CPU conversion\r\n");
+        Log(&r, "pipe: the CPU conversion filled in %I64u frames while the ISP had none for 2 s\r\n", c->PipeCpuFrames);
     PIPE_STAGE(8);
     if (gShm != NULL)                                    /* 0.10: the pipeline stops its 3AA0 / ISP0 */
         ShmPut(&gShm->Want, 0);

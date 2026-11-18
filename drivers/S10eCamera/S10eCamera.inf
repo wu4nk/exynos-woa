@@ -8,7 +8,7 @@ Class       = Camera
 ClassGuid   = {ca3e7ab9-b4c3-4ae6-8251-579ef933890f}
 Provider    = %ProviderName%
 CatalogFile = S10eCamera.cat
-DriverVer   = 11/18/2026,0.10.2.0
+DriverVer   = 11/18/2026,0.10.3.0
 PnpLockdown = 1
 
 [SourceDisksNames]

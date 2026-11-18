@@ -415,7 +415,8 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
         u64 last_fe = hw_fe, last_ife = hw_isp_fe;
         int pend = -1;
         u32 s = 0;
-        u32 marks = 0;
+        u32 marks = 0, lat_marks = 0, isp_skips = 0, isp_recovers = 0;
+        u64 isp_t0 = 0;
         while (m->Want) {
             plat_sleep_us(1000);
             if (m->CamStage != cam_stage) {          /* diagnosis: S10eCamera's progress, written through */
@@ -426,6 +427,12 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
             }
             if (hw_isp_fe != last_ife) {             /* ISP0 finished the frame it was given: publish its slot */
                 last_ife = hw_isp_fe;
+                if (pend >= 0 && lat_marks < 8) {    /* diagnosis: ISP0 shot -> frame end, written through */
+                    lat_marks++;
+                    snprintf(b, sizeof(b), "pipe: ISP0 frame end %llu: %llu us after its shot",
+                             (unsigned long long)hw_isp_fe, (unsigned long long)(plat_usec() - isp_t0));
+                    plat_mark(b);
+                }
                 if (pend >= 0) {
                     m->Latest = pend;
                     m->Seq++;
@@ -450,11 +457,28 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
                              fc, s, m->Seq, m->Errors);
                     plat_mark(b);
                 }
-                PUT(PIO, 912, slot[s]);
-                PUT(PIO, 1120, 0, fc);
-                PCALL("ISP set_ctrl", FNI[SET_CTRL], oi, 0, fc, SHP);
-                PCALL("ISP shot", FNI[SHOT], oi, (u64)(uintptr_t)PIO, SHP, 1);
-                pend = (int)s;
+                if (pend < 0) {                      /* 0.9.2: never a new ISP0 shot while one is running (0.9.1 gave
+                                                        F5 the same slot as F4 while F4 was unfinished: ISP0 never
+                                                        ended a frame again) - this 3AA frame is dropped instead */
+                    PUT(PIO, 912, slot[s]);
+                    PUT(PIO, 1120, 0, fc);
+                    PCALL("ISP set_ctrl", FNI[SET_CTRL], oi, 0, fc, SHP);
+                    PCALL("ISP shot", FNI[SHOT], oi, (u64)(uintptr_t)PIO, SHP, 1);
+                    pend = (int)s;
+                    isp_t0 = plat_usec();
+                } else {
+                    isp_skips++;
+                    if (plat_usec() - isp_t0 > 200000) {   /* ISP0 silent 200 ms: stop + set_param re-arm it */
+                        snprintf(b, sizeof(b), "pipe: ISP0 stalled %llu ms on slot %d (ISPLP +0x10c 0x%08x +0x11c "
+                                 "0x%08x): stop + set_param", (unsigned long long)((plat_usec() - isp_t0) / 1000), pend,
+                                 HWI[0x10c / 4], HWI[0x11c / 4]);
+                        if (isp_recovers < 5) plat_mark(b);
+                        isp_recovers++;
+                        PCALL("ISP stop", FNI[STOP], oi, 0);
+                        PCALL("ISP set_param", FNI[SET_PARAM], oi, (u64)(uintptr_t)PIO);
+                        pend = -1;
+                    }
+                }
                 fc++;
                 PUT(P, 1764, fc);
                 PCALL("3AA set_ctrl", FN3[SET_CTRL], o3, 0, fc, SHP);
@@ -466,8 +490,9 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
         PCALL("3AA set_param", FN3[SET_PARAM], o3, PP);
         PCALL("ISP set_param", FNI[SET_PARAM], oi, (u64)(uintptr_t)PIO);
         m->State = 1;
-        snprintf(b, sizeof(b), "pipe: session %ld stopped after frame %u, %llu frames delivered in all, errors %ld",
-                 m->Sessions, fc, (unsigned long long)total, m->Errors);
+        snprintf(b, sizeof(b), "pipe: session %ld stopped after frame %u, %llu frames delivered in all, errors %ld, "
+                 "3AA frames skipped for a busy ISP0 %u, ISP0 re-arms %u", m->Sessions, fc, (unsigned long long)total,
+                 m->Errors, isp_skips, isp_recovers);
         pipe_status(b);
     }
 }

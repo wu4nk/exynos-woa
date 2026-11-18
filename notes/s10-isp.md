@@ -1219,3 +1219,15 @@ Plan (each a task, each waits for the result before it):
 - FIX S10eCamera 0.10.2: ShmPut = plain volatile store + KeMemoryBarrier for Want / CamStage (each SHM field has one
   writer, no read-modify-write needed). S10eIsp's side already used plain stores. Rule for this project: no
   Interlocked* / atomics on the S10eIspDma pool or any other uncached mapping.
+- 2026-11-18 23:02 S10eCamera 0.10.2 (pipe-0.10.2/): NO BLUE SCREEN - the atomics were it. Stages 2 -> 7 in order:
+  armed 30 ms after Want, stream with the OTF route, FIRST SAMSUNG-ISP FRAMES DELIVERED TO THE WINDOWS CAMERA, first AE
+  request applied to the sensor. But only 4 ISP frames: the 3AA0 ran on (2322 frame ends) while ISP0 ended 4 frames,
+  then none; S10eCamera fell back to the CPU path for the rest (2191 frames, 4 from the ISP, 4 AE applied).
+  The pipe marks show why: "F4 -> slot 0 (published 3)" then "F5 -> slot 0 (published 3)" - F4's ISP0 run had not
+  ended when the 3AA0 finished F5, and 0.9.1 started a second ISP0 shot on top of the running one (same slot); ISP0
+  never ended a frame again.
+- FIX S10eIsp 0.9.2: no ISP0 shot while one is pending - that 3AA frame is skipped for ISP0 (counted); ISP0 silent
+  for 200 ms -> ISP stop + set_param (re-arm, counted, first 5 marked with ISPLP +0x10c / +0x11c); ISP0 latency (shot ->
+  frame end) marked for the first 8 frames. S10eCamera 0.10.3: the CPU path only fills in while the ISP has no new
+  frame for 60 sensor frames and the ISP takes over again when it publishes (0.10.2 switched for good); raw
+  bookkeeping kept in step.

@@ -1,0 +1,8 @@
+S10eCamera 0.10 stop: 7298 frames delivered (0 from the ISP, 0 AE requests applied), 1980 dropped, 1141 torn; conversion avg 32902 us, max 115870 us
+[541990 ms] pipe: control block found (state 1, sessions 0): asking for frames
+[542023 ms] pipe: 3AA0 armed after 30 ms
+[542286 ms] pipe: stream started with the OTF route: 0x00000000
+S10eCamera 0.10 start: NV12 684 x 912 @ 30 fps, rotation 270, ring write-combined, sensor 912 x 684 (binned) + 2x2-block conversion
+pipe: 3AA0 armed after 30 ms (session 1): Samsung ISP frames, sensor with the OTF route
+S10eCamera 0.10 stop: 2191 frames delivered (4 from the ISP, 4 AE requests applied), 83 dropped, 2 torn; conversion avg 23243 us, max 54316 us
+pipe: no ISP frame for 60 sensor frames during the stream: fell back to the CPU conversion
