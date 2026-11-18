@@ -160,9 +160,27 @@ static volatile u32 *W3, *WI;
 
 /* S10eIsp 0.4 "hw3aa" (drivers/S10eIsp, run.flg): the REAL 3AA0 registers (UMDF user-mode mapping of 0x17190000) for
    the init steps only - chain_create / set_system_config / object_create; on Android only chain_create touched the 3AA
-   (notes/s10-isp.md). The run stops after them: no tune set, set_param, shot or interrupt reaches the hardware. */
+   (notes/s10-isp.md). The run stops after them: no tune set, set_param, shot or interrupt reaches the hardware.
+   0.5 "hw3aashot" (shot != 0): on through 3AA set_param / set_ctrl F1 / shot F1 on the real 3AA0 (DMA addresses =
+   S10eIspDma pool PAs; no input frame arrives - CSIS is not streaming), the interrupt status words watched for 200 ms
+   (no interrupt is connected), then the DDK's own stop (GPL fimc_is_lib_isp_stop: stop(object, instance)). */
 static volatile u32 *HW3;
-void isp_front_set_hw3aa(volatile void *va) { HW3 = (volatile u32 *)va; }
+static int HW3_SHOT;
+void isp_front_set_hw3aa(volatile void *va, int shot) { HW3 = (volatile u32 *)va; HW3_SHOT = shot; }
+
+static void hw_diff(const u32 *from, const u32 *to, const char *what)
+{
+    char b[160];
+    int n = 0;
+    for (unsigned o = 0; o < 0x10000; o += 4)
+        if (from[o / 4] != to[o / 4]) {
+            snprintf(b, sizeof(b), "hw 3AA0 %s +0x%04x 0x%08x -> 0x%08x", what, o, from[o / 4], to[o / 4]);
+            plat_log(b);
+            n++;
+        }
+    snprintf(b, sizeof(b), "hw3aa: %s: %d REAL 3AA0 registers changed", what, n);
+    plat_log(b);
+}
 
 static volatile u32 *window(const char *dump_dir, const char *name)
 {
@@ -343,8 +361,11 @@ int main(int argc, char **argv)
     }
     u32 *hw_before = NULL;
 #ifndef ISPHOST_DRIVER
-    if (getenv("HW3AA_SELFTEST")) HW3 = window(DUMP, "3AA0");   /* build-machine check of the hw3aa path: plain
-                                     memory, so the SW reset poll (+0x0c) times out here - real hardware clears it */
+    if (getenv("HW3AA_SELFTEST")) {   /* build-machine check of the hw3aa path: plain memory, so the SW reset poll
+                                         (+0x0c) times out here - real hardware clears it */
+        HW3 = window(DUMP, "3AA0");
+        HW3_SHOT = getenv("HW3AA_SHOT") != NULL;
+    }
 #endif
     if (HW3) {
         hw_before = malloc(0x10000);
@@ -352,8 +373,9 @@ int main(int argc, char **argv)
         snap(HW3, hw_before);
         plat_mark("hw3aa: 3AA0 read (before)");
         write_regs(hw_before, "3AA0-hw-before", "3AA0 0x17190000 REAL registers before chain_create (S10eIsp hw3aa)");
-        snprintf(b, sizeof(b), "hw3aa: REAL 3AA0 window %p for the init steps: +0xF0 0x%08x +0xF4 0x%08x", (void *)HW3,
-                 hw_before[0xF0 / 4], hw_before[0xF4 / 4]);
+        snprintf(b, sizeof(b), "hw3aa: REAL 3AA0 window %p for the init steps%s: +0xF0 0x%08x +0xF4 0x%08x",
+                 (void *)HW3, HW3_SHOT ? " + 3AA set_param / shot F1 / stop" : "", hw_before[0xF0 / 4],
+                 hw_before[0xF4 / 4]);
         plat_log(b);
         T3 = (void *)HW3;            /* the reset model below keeps polling the fake W3 (window 0): nothing is
                                         written to the hardware but by the libraries */
@@ -385,23 +407,18 @@ int main(int argc, char **argv)
     STEP("ISP object_create", FNI[OBJECT_CREATE], obji, (38u << 16) | (1u << 12), hw);   /* 0x00261000 = M2M */
     snprintf(b, sizeof(b), "ISP object = %s", isp_img(H, r64(obji), (char[48]){0}, 48));
     plat_log(b);
+    u32 *hw_init = NULL;
     if (HW3) {
-        u32 *after = malloc(0x10000);
+        hw_init = malloc(0x10000);
         plat_mark("hw3aa: reading all 3AA0 registers (after)");
-        snap(HW3, after);
-        write_regs(after, "3AA0-hw-after", "3AA0 0x17190000 REAL registers after the init steps (S10eIsp hw3aa)");
-        int nch = 0;
-        for (unsigned o = 0; o < 0x10000; o += 4)
-            if (hw_before[o / 4] != after[o / 4]) {
-                snprintf(b, sizeof(b), "hw 3AA0 +0x%04x 0x%08x -> 0x%08x", o, hw_before[o / 4], after[o / 4]);
-                plat_log(b);
-                nch++;
-            }
-        snprintf(b, sizeof(b), "hw3aa: %d REAL 3AA0 registers changed by the init steps; stopping here (no tune set, "
-                 "set_param, shot or interrupt on the hardware)", nch);
-        plat_log(b);
+        snap(HW3, hw_init);
+        write_regs(hw_init, "3AA0-hw-after", "3AA0 0x17190000 REAL registers after the init steps (S10eIsp hw3aa)");
+        hw_diff(hw_before, hw_init, "init");
         plat_mark("front: hw3aa init steps done");
-        return finish(lf);
+        if (!HW3_SHOT) {
+            plat_log("hw3aa: stopping here (no tune set, set_param, shot or interrupt on the hardware)");
+            return finish(lf);
+        }
     }
 
     /* setfile: V3 header (GPL hw-control.h:192), IP 0 = 3AA_ISP */
@@ -478,6 +495,37 @@ int main(int argc, char **argv)
     STEP("3AA set_param", FN3[SET_PARAM], r64(obj3), PP);
     STEP("3AA set_ctrl F1", FN3[SET_CTRL], r64(obj3), 0, 1, SHP);
     STEP("3AA shot F1", FN3[SHOT], r64(obj3), PP, SHP, 1);
+    if (HW3) {   /* 0.5 hw3aashot: the hardware is armed (Android's shot ends with +0x34 = 1, +0x00 = 1); no input */
+        u32 s1 = HW3[0x10c / 4], s2 = HW3[0x11c / 4];
+        snprintf(b, sizeof(b), "hw3aa: after shot F1: +0x00 0x%08x +0x10c 0x%08x +0x11c 0x%08x +0x108 0x%08x "
+                 "+0x118 0x%08x", HW3[0], s1, s2, HW3[0x108 / 4], HW3[0x118 / 4]);
+        plat_log(b);
+        plat_mark("hw3aa: shot F1 done, watching the interrupt status 200 ms");
+        u64 t0 = plat_usec();
+        while (plat_usec() - t0 < 200000) {
+            u32 n1 = HW3[0x10c / 4], n2 = HW3[0x11c / 4];
+            if (n1 != s1 || n2 != s2) {
+                snprintf(b, sizeof(b), "hw3aa: +%llu us: +0x10c 0x%08x +0x11c 0x%08x", (unsigned long long)(plat_usec() - t0),
+                         n1, n2);
+                plat_log(b);
+                s1 = n1;
+                s2 = n2;
+            }
+        }
+        u32 *hw_shot = malloc(0x10000);
+        plat_mark("hw3aa: reading all 3AA0 registers (after shot)");
+        snap(HW3, hw_shot);
+        write_regs(hw_shot, "3AA0-hw-shot", "3AA0 0x17190000 REAL registers after 3AA shot F1 + 200 ms (S10eIsp hw3aashot)");
+        hw_diff(hw_init, hw_shot, "shot");
+        STEP("3AA stop", FN3[STOP], r64(obj3), 0);
+        u32 *hw_stop = malloc(0x10000);
+        snap(HW3, hw_stop);
+        write_regs(hw_stop, "3AA0-hw-stop", "3AA0 0x17190000 REAL registers after the DDK's stop (S10eIsp hw3aashot)");
+        hw_diff(hw_shot, hw_stop, "stop");
+        plat_mark("front: hw3aa shot + stop done");
+        plat_log("hw3aa: stopping here (no ISP step, no interrupt delivered)");
+        return finish(lf);
+    }
 
     /* ISP0 M2M from the 3AA's after-BDS output */
     unsigned char *PI = zalloc(1136);

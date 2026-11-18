@@ -949,3 +949,26 @@ Plan (each a task, each waits for the result before it):
   PDP_STAT") - the same SysMMU as CSIS DMA, which S10eCam ran with physical addresses (reset = bypass; its NS frame
   aborts when read - notes/s10-camera.md 2026-11-16, never touched). So the 3AA DMA with dva = PA of the
   S10eIspDma pool is expected to work the same way (UNVERIFIED until a 3AA DMA runs).
+
+## Plan item 6 step 3: S10eIsp 0.5 "hw3aashot" - 3AA set_param / shot F1 / stop on the REAL 3AA0 (2026-11-18)
+- What the 3AA steps after the init touch (Android native run): apply_tune_set / load_cal_data / get_cal_data /
+  set_param / set_ctrl F1 = 0 register accesses; shot F1 = 26 R + 4977 W, ending with +0x450c 0, +0x0034 1, +0x0000 1
+  (the 3AA armed: it now waits for its OTF input). Later shots (F2..) write nothing - the work moves to the interrupts.
+- Which shot F1 writes are DMA addresses: a build with the fake pool at 0x40000000 instead of 0x80000000 moves exactly
+  those (notes/data/isphost-android-20261118/3aa-shot-dma-registers.txt: 56 registers, +0x0414 before_bds,
+  +0x0464 after_bds, +0x04b4..d0, +0x0594..b0, +0x0694..b0, +0x3268, +0x32b0 and their +0x8000 copies; pool offsets
+  0x3000..0x372a000). +0x4084 / +0xc084 0x8ff70000 is NOT an address (same value with both bases). So every DMA
+  address the 3AA gets lies inside the libraries' pool = S10eIspDma's pool on Windows (dva = PA, SysMMU_ISPPRE in
+  reset bypass - UNVERIFIED for the 3AA, verified for CSIS DMA).
+- 0.5: run.flg "run hw3aashot" (isp-s10.ps1 v1.6 front -Hw3aaShot): 0.4's init on the real 3AA0, then tune sets,
+  load/get cal, set_param, set_ctrl F1, shot F1 on it; read +0x00 / +0x10c / +0x11c / +0x108 / +0x118; watch +0x10c
+  / +0x11c for 200 ms and log every change (no interrupt is connected; no input frame should come: CSIS idle); all
+  3AA0 read -> regs-3AA0-hw-shot.txt + diff; then the DDK's own stop(object, 0) (GPL fimc_is_lib_isp_stop, called by
+  fimc_is_hw_3aa_disable) -> regs-3AA0-hw-stop.txt + diff. The run ends there (no ISP step, no fake interrupt).
+- Build-machine check (HW3AA_SELFTEST=1 HW3AA_SHOT=1, qemu, plain memory): all steps 0, shot armed +0x00 = 1, 437
+  words changed by the shot on the plain window, stop -> 0 writing +0x00 0, +0x108 0 (interrupt enables off), +0x110
+  0x40, +0x120 0x02000000. The "exposure is zero" / "CheckInputCritical" errors also appear in Android's run (normal).
+  Normal run unchanged (FRAMES=3: 39 steps 0); hw3aa (init only) unchanged.
+- Expected on the phone: no fault; the 56 DMA registers = pool PA + the offsets above (pool PA 0xF5832000 last time);
+  +0x10c / +0x11c stay quiet without input (if they move, that is the first hardware event to read); stop clears
+  +0x00.
