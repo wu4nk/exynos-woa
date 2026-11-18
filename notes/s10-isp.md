@@ -659,3 +659,19 @@ Plan (each a task, each waits for the result before it):
   the host never lets that happen on purpose).
 - The host test (isphost-test.exe) was not in this zip: the libraries were not yet in C:\S10Prov\isp (s10cam.zip
   sent back to the user for that).
+
+## Stage 4 option A: the native host on WINDOWS ARM64 (2026-11-18 14:18) - plan item 1b done
+- isphost-test.exe (zig aarch64-windows-gnu, plat_win.c + mmio_plain.c) on the S10 under Windows, user run of
+  isphost-s10.ps1 host, FRAMES=30, libraries from s10cam.zip\files, NO calibration file (rom1_cal.bin was not in
+  C:\S10Prov\isp -> zero buffer); notes/data/isphost-win-20261118/ (host.log, timing.txt).
+- Image at 0x1D910000000, 12005 pointers relocated, DDK / RTA start_up 0, all 282 steps -> 0, no crash, no
+  sw_reset time-out (the model thread kept up), 179 tasks, 150 interrupt handler runs - same counts as Android.
+- Against the Android run (same binary logic, calibration present there): every log line identical except the ones
+  that come from the missing calibration ("FROM CAL. DATA LOAD: FAIL! (0x600f)", get_cal_data centerX/Y 1584/1208
+  default instead of 1888/1400, AF cal Macro/Pan defaults, "Sensor_Revision = 0", AE "nextFrameAnalogGain"
+  values) and addresses. Final registers: 3AA0 21 words differ, all in +0x1a3c..+0x1a70 (follow the calibration),
+  ISP0 3: +0x3d24 (the model thread clears it, the trap model does not), +0xa208, +0xb038.
+- Cost on Windows (no trapping here, so this IS the host + libraries): median 10.9 ms, p90 16.1, max 22.1, min 7.4
+  ms per frame over 30 frames on 6 CPUs; one-time ISP object_create 35.8 ms. Fits 30 fps (33.3 ms).
+- => Option A works on Windows ARM64 in an ordinary process: relocation, x18 trampolines, threads, timers, tasks.
+  Next: hardware access (S10eCam 0.12 isp pending), then the UMDF probe (plan item 4).

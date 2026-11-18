@@ -1,0 +1,1545 @@
+isphost: kernel-half word 0xfffffffe01000000 at file +0x472e8 (not in the image span, left)
+isphost: kernel-half word 0xfffffffd03000001 at file +0x47370 (not in the image span, left)
+isphost: kernel-half word 0xffffffff0608ffff at file +0x47540 (not in the image span, left)
+isphost: kernel-half word 0xfffffffffefefdff at file +0x48028 (not in the image span, left)
+isphost: kernel-half word 0xffffffff0608ffff at file +0x48350 (not in the image span, left)
+isphost: 577 kernel-half words outside the span (left as they are)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x134df8 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x1365c0 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x137d90 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffffffff at file +0x13aa80 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffffffff at file +0x13aaa0 (not in the image span, left)
+isphost: 121 kernel-half words outside the span (left as they are)
+isphost: image at 000001D910000000 (delta 0x25816020000), 12005 pointers relocated; DDK '5E9820 10705-2021/04/05 16:59:12]L12XLOD01GM' RTA 'S5E9820 b18e67877-09/26 04:52:21]L12XLOD01GM'
+isphost: thread 0 stack 0x7b0f200000..0x7b10200000 x18 0x7b0d07e000
+isphost: thread 1 stack 0x7b10200000..0x7b11200000 x18 0x7b0d080000
+isphost: thread 2 stack 0x7b11200000..0x7b12200000 x18 0x7b0d082000
+isphost: thread 3 stack 0x7b12200000..0x7b13200000 x18 0x7b0d084000
+isphost: thread 4 stack 0x7b13200000..0x7b14200000 x18 0x7b0d086000
+isphost: thread 5 stack 0x7b14200000..0x7b15200000 x18 0x7b0d088000
+isphost: thread 6 stack 0x7b16200000..0x7b17200000 x18 0x7b0d08c000
+isphost: thread 7 stack 0x7b15200000..0x7b16200000 x18 0x7b0d08a000
+isphost: thread 8 stack 0x7b17200000..0x7b18200000 x18 0x7b0d08e000
+[@][WRAP]start_up_ddk:
+[@][WRAP]register_sensor_interface(0x0x1d9100e0040), register_sdk(0x0x1d9100e0080)
+[@][WRAP].text size: 2463408 B, text_end addr: 0x1d9103397f0
+[@][WRAP].rodata size: 747432 B, ro_end addr:   0x1d9103eff98
+[@][WRAP]remained space between rodata and bss: 196712 B
+[@][WRAP].bss size: 63600 B, bss_end addr:  0x1d91042f870
+[@][WRAP].data size: 12519312 B, data_end addr: 0x1d911020000
+[@][WRAP]heap size: 62914560 B, heap_end addr: 0x1d914c20000
+isphost: DDK start_up -> 0x0
+isphost: VRA set_os_funcs -> 0x0
+[RTA] [RTA]OS service was registered
+isphost: RTA start_up -> 0x0
+register_sensor_interface -> 0x0
+register_sensor_interface (RTA) -> 0x0
+[@][WRAP][E][1]register_isp_sdk
+[@][WRAP]###########################################################
+[@][WRAP]#####      FIMC-ISP LIBRARY 
+[@][WRAP]#####      Samsung System LSI
+[@][WRAP]#####      DDK revision: 10705
+[@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[@][WRAP]###########################################################
+[@][WRAP][E][2]register_isp_sdk
+[@][WRAP]###########################################################
+[@][WRAP]#####      FIMC-ISP LIBRARY 
+[@][WRAP]#####      Samsung System LSI
+[@][WRAP]#####      DDK revision: 10705
+[@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[@][WRAP]###########################################################
+trapped register access: 0.00 us each (2000 reads, sum 0)
+
+[@][WRAP][E][3AA0]DICO_Chain_3aa_Create
+[@][WRAP]createChain: hwType(0) hwId(0) addr(0x1d90e42a000)
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(0) !!!
+[@][DRV]Register interrupt:ID(0), handler(ddk+0x331e34) chain 0
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(1) !!!
+[@][DRV]Register interrupt:ID(1), handler(ddk+0x331e34) chain 0
+ISP_Fimc3aaChainV7P1P0::SwReset
+[@][WRAP][INFO]setOsCallback: mCameraCb(0x1d917002ec0), cameraCb(0x1d917002ec0)
+[@][WRAP][INFO]setOsCallback: mIoCb(0x1d917002ef0), ioCb(0x1d917002ef0)
+== 3AA chain_create -> 0x0
+
+[WRAP][E] DICO_SystemConfig
+[WRAP][E] DICO_SystemConfig
+[WRAP]setOverflowControl: (recovery:1)
+[WRAP]setOverflowControl: (recovery:1)
+== 3AA set_system_config -> 0x0
+
+[@][WRAP][E][S0]DICO_Object_3aa_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
+[@][WRAP]Metadata: new
+[@][WRAP]StreamInterface: new
+[@][WRAP][0]StreamInterface: init
+[@][WRAP]Metadata: init
+[@][WRAP][S0](createObject[5652]): hwType(3AA) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+[@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0x1d91033dc70)
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[@][WRAP]INFO(createObject[5696]): sensor path(OTF)
+WdrRgbyHist 256bins
+Init 200
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[VRA] [VRALIB] register_vra_isp_interface.
+[VRA] [VRALIB] register_vra_isp_interface.
+[RTA] RegisterRtaInterface sensorID = 1, sensor = 0x1d9107cbf68 
+[RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d9107cbf68 
+[RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d9107cbf68 
+[RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[CreateCommonObjectExternal] 
+[CreateAeObjectExternal] 
+[CreateAwbObjectExternal] 
+[CreateScdObjectInternal] 
+[CreateAfcObjectInternal] 
+[CreateAutoFocusObjectExternal] 
+ActivateAlgorithms ae1 awb1 af1 
+Ext AF is selected!
+[@][WRAP][X][S0][3AA0]DICO_Object_3aa_Create 0x1d9119e8a00
+== 3AA object_create -> 0x0
+3AA object = ddk+0x19e8a00
+
+[@][WRAP][E][ISP0]DICO_Chain_Isp_Create
+[@][WRAP]createChain: hwType(1) hwId(0) addr(0x1d90e43b000)
+ISP_FimcIspChainV7P11P0::ISP_FimcIspChainV7P11P0(const SIRC_IspObjectConfig*) CHAIN_REGISTER_MODE_SHADOW
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(6) !!!
+[@][DRV]Register interrupt:ID(6), handler(ddk+0x331e34) chain 2
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(7) !!!
+[@][DRV]Register interrupt:ID(7), handler(ddk+0x331e34) chain 2
+ISP_FimcIspChainV7P11P0::SwReset
+[FRO] reset
+[FRO] reset
+== ISP chain_create -> 0x0
+
+[WRAP][E] DICO_SystemConfig
+[WRAP][E] DICO_SystemConfig
+[WRAP]setOverflowControl: (recovery:1)
+[WRAP]setOverflowControl: (recovery:1)
+== ISP set_system_config -> 0x0
+
+[@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00261000) hwId(0), rep(0), input(1), moduleId(38)
+[@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(M2M), moduleId(38), repFlag(0)
+[@][WRAP][INFO]m_createObject3aaForTuneSet: [S0] hwId_3aa(0)
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d9107cbf68 
+[RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d9107cbf68 
+[RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[CreateGammaObjectExternal] 
+ActivateAlgorithms[351] gamma(1) 
+ActivateAlgorithms[367] drc(2) 
+[CreatePrcObjectExternal] 
+ActivateAlgorithms[383] prc(1) 
+ActivateAlgorithms[399] pipeline(2) 
+[@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0x1d911d6d320
+== ISP object_create -> 0x0
+ISP object = ddk+0x1d6d320
+setfile: magic 0x12345679 designed 0x798 scenarios 64 ips 6, 3AA_ISP tune sets 29
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(0)
+[@][WRAP][S0]newTuneSet: index( 0), tuneSetHandle(0x1d911ffe2d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(1)
+[@][WRAP][S0]newTuneSet: index( 1), tuneSetHandle(0x1d91201f4f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(2)
+[@][WRAP][S0]newTuneSet: index( 2), tuneSetHandle(0x1d912040710)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(3)
+[@][WRAP][S0]newTuneSet: index( 3), tuneSetHandle(0x1d912061930)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(4)
+[@][WRAP][S0]newTuneSet: index( 4), tuneSetHandle(0x1d912082b50)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(5)
+[@][WRAP][S0]newTuneSet: index( 5), tuneSetHandle(0x1d9120a3d70)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(6)
+[@][WRAP][S0]newTuneSet: index( 6), tuneSetHandle(0x1d9120c4f90)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(7)
+[@][WRAP][S0]newTuneSet: index( 7), tuneSetHandle(0x1d9120e61b0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(8)
+[@][WRAP][S0]newTuneSet: index( 8), tuneSetHandle(0x1d9121073d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(9)
+[@][WRAP][S0]newTuneSet: index( 9), tuneSetHandle(0x1d9121285f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(10)
+[@][WRAP][S0]newTuneSet: index(10), tuneSetHandle(0x1d912149810)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(11)
+[@][WRAP][S0]newTuneSet: index(11), tuneSetHandle(0x1d91216aa30)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(12)
+[@][WRAP][S0]newTuneSet: index(12), tuneSetHandle(0x1d91218bc50)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(13)
+[@][WRAP][S0]newTuneSet: index(13), tuneSetHandle(0x1d9121ace70)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(14)
+[@][WRAP][S0]newTuneSet: index(14), tuneSetHandle(0x1d9121ce090)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(15)
+[@][WRAP][S0]newTuneSet: index(15), tuneSetHandle(0x1d9121ef2b0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(16)
+[@][WRAP][S0]newTuneSet: index(16), tuneSetHandle(0x1d9122104d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(17)
+[@][WRAP][S0]newTuneSet: index(17), tuneSetHandle(0x1d9122316f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(18)
+[@][WRAP][S0]newTuneSet: index(18), tuneSetHandle(0x1d912252910)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(19)
+[@][WRAP][S0]newTuneSet: index(19), tuneSetHandle(0x1d912273b30)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(20)
+[@][WRAP][S0]newTuneSet: index(20), tuneSetHandle(0x1d912294d50)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(21)
+[@][WRAP][S0]newTuneSet: index(21), tuneSetHandle(0x1d9122b5f70)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(22)
+[@][WRAP][S0]newTuneSet: index(22), tuneSetHandle(0x1d9122d7190)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(23)
+[@][WRAP][S0]newTuneSet: index(23), tuneSetHandle(0x1d9122f83b0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(24)
+[@][WRAP][S0]newTuneSet: index(24), tuneSetHandle(0x1d9123195d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(25)
+[@][WRAP][S0]newTuneSet: index(25), tuneSetHandle(0x1d91233a7f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(26)
+[@][WRAP][S0]newTuneSet: index(26), tuneSetHandle(0x1d91235ba10)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(27)
+[@][WRAP][S0]newTuneSet: index(27), tuneSetHandle(0x1d91237cc30)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(28)
+[@][WRAP][S0]newTuneSet: index(28), tuneSetHandle(0x1d91239de50)
+== 3AA create_tune_set x29 -> 0x0
+
+[@][WRAP][E][S0]DICO_3aa_ApplyTuneSet I6
+[DeserializeContext] start address : 120c4f98, size : 135686, end address : 120e619e
+WdrRgbyHist 256bins
+[TuneSetApply] ----------------------------------------
+[TuneSetApply] Setfile Read : SUCCESS! [135686/135686]
+[TuneSetApply] ----------------------------------------
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[@][WRAP][S0]applyTuneSet: hw(0), index(6), tuneSetHandle(0x1d9120c4f90)
+== 3AA apply_tune_set 6 -> 0x0
+
+[@][WRAP][E][S0]DICO_LoadCalData addr:0xe46d000
+[RecognizeProject] Not Supported by new Version.
+[RecognizeProject] Not Supported by new Version.
+[FROM DATA, STREAM ID:0] M2M START!Cal Base - AF(0xe46d000), AWB(0xe46d000), AS(0xe46d000), PDAF(0xe46d000)
+[UpdateTuneSet_Legacy] AF cal loading error 
+[UpdateTuneSet_Legacy] AWB cal loading error 
+[UpdateTuneSet_Legacy] AS cal loading error 
+[UpdateTuneSet_Legacy] Load AS data from setfile.
+[FROM DATA, STREAM ID:0] FROM CAL. DATA LOAD: FAIL! (ERROR NO.:0x600f)
+== 3AA load_cal_data -> 0x0
+
+[@][WRAP][E][S0]DICO_GetCalData type:2
+[@][WRAP]SIRCSDK_GetCalibrationData: status(0) type(2) centerX/Y(1584/1208) biquadA/B(91383/16384)
+== 3AA get_cal_data type 2 -> 0x0
+cal_info data[0..3]: 1584 1208 91383 16384
+DMA buffers (dva): before_bds 0x82ac4000 after_bds 0x8372a000
+
+== 3AA set_param -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[@][WRAP][SDK_WRAP] SetFrameTime(): Error in ConfigureInput() = 4007
+[META] aamode(2), sceneMode(1) > newSceneMode(0), enableDynamicShotDm(0)
+SetLeiTranslationMode 0
+[DDK][S0][F000001] [<-] afMode: OFF, afTrigger: IDLE, aa.mode: AUTO, afState: 0(OS), 0(cur)
+[DDK][S0][F000001] [<-] afMode: OFF, afTrigger: IDLE, aa.mode: AUTO, afState: 0(OS), 0(cur)
+[DDK][S0][F000001] [<-] afRegions: (0, 0) ~ (0, 0), weight: 0
+[DDK][S0][F000001] [<-] afRegions: (0, 0) ~ (0, 0), weight: 0
+[DDK][S0][F000001] [<-] afmode_option: 0x00000000, afmode_ext: 0, pafMode: OFF, aeFlashMode: 0
+[DDK][S0][F000001] [<-] afmode_option: 0x00000000, afmode_ext: 0, pafMode: OFF, aeFlashMode: 0
+[DDK][S0][F000001] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[DDK][S0][F000001] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[DDK][S0][F000001] [<-][lens.ctl] Adjust focusDistance: 0.000000
+[DDK][S0][F000001] [<-][lens.ctl] Adjust focusDistance: 0.000000
+[S0][F000001] SetParam_AF : Start/ManualDiopters/Normal/Face OFF/Preview/0,0,0.000000/0:(0, 0)-(0, 0)
+[S0][F000001] AF Set window: (14746, 13108) - (18021, 19660)
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[SetAperture] aperture 0 
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[SetCameraClientIndex] Camera ClientIndex 0
+== 3AA set_ctrl F1 -> 0x0
+
+[@][WRAP][S0][F1] m_configureMotionEstimation Enable ME (2944x2208)
+[@][WRAP][S0][F1] m_configureMotionEstimation ME dummyFrames(2)
+[@][WRAP][S0][F1][3AA0][Configure3aaInput] full(1)-otf(1) fro(1) sensorArea(3968 x 2736) binnedSensorArea(3968 x 2736), calibratedCrop(160, 0 / 3648 x 2736), imageArea(352, 264 / 2944 x 2208)
+[@][WRAP][S0][F1][3AA0][Configure3aaInput] receivedStatRoi(0, 0 / 0 x 0), bayerCrop(2944 x 2208), statRoi(0, 0 / 2944 x 2208)
+[@][WRAP][0][m_configureOutput3aa] line(2649) pBayerDmaOutputBeforeBds(ON 2944x2208 11/12bits) =(BDS)=> 2432x1824 =(crop)=> chainDestinationArea(0,0 2432x1824) pOtfOutput(OFF) pBayerDmaOutputAfterBds(ON 11/12bits), 
+[IspObject_InitPdafLib] chainCropedSourceArea 352 264 2944 2208
+[IspObject_InitPdafLib] requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[IspObject_InitPdafLib] requestType: 1, bufInfo.statType: 500, bufInfo.sensorMode: 102, bufInfo.width: 1756, bufInfo.height: 1, bufInfo.elementSize: 1
+[IspObject_InitPdafLib] requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[IspObject_InitPdafLib] requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] RTA_AE front: CmlAeInit, sensorPlace=1, flag(0, 0)
+[RTA] RTA_AE front: CmlAeInit, (sensorPlace=1) AE Init Start 
+[RTA] jh Cal data  front  72 151 33      =   256
+[RTA] RTA_AE front: CmlAeInit, (sensorPlace=1) AE Init End 
+[RTA] CmlAwb_SetCreate 
+[RTA] Init
+[RTA] Init memset done
+[RTA] [CMG_AF] LoadModuleAfCalData - Rear[0] Sensor_Revision = 0 (a5xx = EVT0.3, a4,a3xx = 0.2, a2xx = 0.1, a1,a0xx = 0.0)
+[RTA] [CMG_AF] NearFarDataCheck - Camera0  Pan Position Error 0 -> 150
+[RTA] [CMG_AF] NearFarDataCheck - Camera0  Macro Position Error 0 -> 350
+[RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 94) : Front Version = 0xf680 Chip Type = 0 (0:LSI, 1:QC) 
+[RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 278) : af cal data far: 0, middle: 0, near: 0, add_80: 0, add_50: 0, plus_offset: 0, minus_offset: 0 *af_cal->zoom_rate(x1000) 0
+[RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 302) : paf_cal_data_info = 0 paf_cal_errcheck 0x00000000
+[RTA] [CMG_AF] EventFunc_Init - AF Lib Initial Camera0 Ver 0xF680
+[RTA] [VQ_RG_G] EventFunc_Init - FRONT AF Ver 0xF680    Far 150  0 Near 350 0   Face 0 extmode = 0 
+init 2360 1000 1000
+[DBG][LTR_Init]streamId 0 init:2360, Exp: 2360, AGain: 256, DGain: 256
+[Thumbnail][SetGeometry] 3AA CellResolution: 46 x 34, CellGridResolution: 64 x 64
+[Thumbnail][SetGeometry]statRoi: (0, 0) 2944 x 2208
+[Thumbnail][SetGeometry]HW: (0, 16) 2944 x 2176
+[SetGeometry]normalizeShift = 7
+[SetGeometry]uThreshClipCnt_ = 195(128)
+[S0][3AA0] SetIsrScheduleType 0 @ 30.000 fps earlyConfigLock 0
+minFps 7.000 maxFps 30.000 scenemode 0
+[IdleStateOnActivate] sceneType: 0
+SetNumOfFramePerOneRta 30.000 1
+SetNumOfFramePerOneRta rta 1 af 1 @ 30.000fps
+[RTA] RTA_AE: CmlAeBeforeStreamOn, (sensorPlace=1) start fps(7,30) scn=0
+[RTA] RTA_AE: CmlAeBeforeStreamOn, (sensorPlace=1) end Ev=0B88 Tv=089F Sv=0400
+[RTA] [RTA]AF_BoforeStreamOn[F:0][1] sceneMode = 0
+[RTA] [RTA]AF_BoforeStreamOn[F:0] 
+[RTA] [Ext AF] InitialCafConfig. afStatType: 1
+[RTA] [InitialPafConfig] requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitialPafConfig] requestType: 1, bufInfo.statType: 500, bufInfo.sensorMode: 102, bufInfo.width: 1756, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] [InitialPafConfig] (3710) front bayerWidth 3648 bayerHeight 2736 col 3648 activeX 3648 activeY 684 afSizeX 456 afSizeY 342 roiSx 0 roiSy 0 roiEx 455 roiEy 341 cropOn 0 cropSx 0 cropSy 0 cropEx 0 cropEy 0
+[RTA] [SetPdpAlcLut][line 3521][cam : 0] module version check NG & use defalt alc lut
+[RTA] [SetPdpAlcLut][line 3575][cam : 0] module alc 0 [Line_1] af1 3ff af2 3ff ~ af1 3ff af2 3ff [Line_5] af1 3ff af2 3ff ~ af1 3ff af2 3ff [Line_9] af1 3ff af2 3ff ~ af1 3ff af2 3ff [Line_11] af1 3ff af2 3ff ~ af1 3ff af2 3ff
+[RTA] [SetPdpAlcLut][line 3585][cam : 0] module alc 1 [Line_1] af1 3ff af2 3ff ~ af1 3ff af2 3ff [Line_5] af1 3ff af2 3ff ~ af1 3ff af2 3ff [Line_9] af1 3ff af2 3ff ~ af1 3ff af2 3ff [Line_11] af1 3ff af2 3ff ~ af1 3ff af2 3ff
+[RTA] [InitialPafConfig] requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitialPafConfig] requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] [VQ_RD_G] EventFunc_StreamOn - Sensor1 | Input 3648 x 2736 | FT 0 | OpMode0 | isVideo0 | EXT0
+[RTA] [RTA]AF_BoforeStreamOn[F:   0][1]num_of_skip_frame  rta = 1, af = 1 
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 1, bufInfo.statType: 500, bufInfo.sensorMode: 102, bufInfo.width: 1756, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] [InitStatBuffer] VC_STAT_TYPE_PDP_1_1_PDAF_STAT0 1756
+[RTA] [CalcPdWidthHeight] VC_SENSOR_MODE_2PD_MODE3 - input w : 3648, h : 2736 -> pd w : 456, h : 342
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] [InitStatBuffer] VC_STAT_TYPE_PDP_1_1_PDAF_STAT1 39424
+[RTA] [CalcPdWidthHeight] VC_SENSOR_MODE_2PD_MODE3 - input w : 3648, h : 2736 -> pd w : 456, h : 342
+[DBG][IdleStateOnActivate] cmlExp: 2539, cmlAGain: 256, cmlDGain: 256, cmlExpLong: 2539, cmlLongAGain: 256, cmlLongDGain: 256
+Error!!! nextFrameLei(0), nextFrameAnalogGain(256), nextFrameDigitalGain(256), shortMicrosExp(2539)
+[ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ERROR][CalcExposureDataWithRound] exposure is zero (s 1024.000000, l 1024.000000)
+InitFrameElement FrameElementForME (0x11BA4530)
+InitFrameElement FrameElementForME (0x11BA4568)
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== 3AA shot F1 -> 0x0
+interrupt registered: id 0 chain 0 handler ddk+0x331e34
+interrupt registered: id 1 chain 0 handler ddk+0x331e34
+interrupt registered: id 6 chain 2 handler ddk+0x331e34
+interrupt registered: id 7 chain 2 handler ddk+0x331e34
+
+[S0][F0][3AA0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+PrintIsrTime
+PrintIsrTime
+== F1 irq V SYNC -> 0x0
+
+[S0][F0][3AA0] TransitIsrState I1 V SYNC    --(CIN ROW  )--> CIN ROW  
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+ReleaseMeBuffer frameDescriptor is null
+ReleaseMeBuffer frameDescriptor is null
+InitFrameElement FrameElementForME (0x11BA45D8)
+InitFrameElement FrameElementForME (0x11BA4610)
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDma->buffer is null.
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDmaBeforeBdsproperties->buffer is null.
+== F1 irq CIN ROW -> 0x0
+
+[S0][F0][3AA0] TransitIsrState I2 CIN ROW   --(FRAME END)--> FRAME END
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F1][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F1 irq FRAME END -> 0x0
+
+== ISP set_param -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F1 -> 0x0
+
+[@][WRAP][S0][F1][ISP0][ConfigureISPInput]: fro(1) inputImageArea(0,0 / 2432x1824 12/12bits)
+[Thumbnail][SetGeometry] ISP CellResolution: 38 x 28, CellGridResolution: 64 x 64
+[Thumbnail][SetGeometry]statRoi: (0, 0) 2432 x 1824
+[Thumbnail][SetGeometry]HW: (0, 16) 2432 x 1792
+[SetGeometry]normalizeShift = 9
+[SetGeometry]uThreshClipCnt_ = 532(128)
+[S0][ISP0] SetIsrScheduleType 3 @ 0.000 fps earlyConfigLock 0
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][DbgMsg_StateAndExtInfo]DrcMode change Prev:0 -> Cur:1
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+TNR mode init. by mode change: TNR_MODE_BYPASS
+TNR mode change: TNR_MODE_BYPASS -> TNR_MODE_FIRST_RUN
+ISP_FimcIspChainV7P11P0 ControlClock clock 1 -> 1
+[ISP] EOTF gamma disabled
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F1 -> 0x0
+
+[S0][F1][ISP0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+PrintIsrTime
+PrintIsrTime
+== F1 ISP irq V SYNC -> 0x0
+
+[S0][F1][ISP0] TransitIsrState I1 V SYNC    --(FRAME END)--> FRAME END
+== F1 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F2 -> 0x0
+
+== 3AA shot F2 -> 0x0
+
+PrintIsrTime
+PrintIsrTime
+[S0][3AA0] Valid Time 5846 / Frame Time 22584 
+[S0][3AA0] Valid Time 5846 / Frame Time 22584 
+[S0][3AA0] ISR V SYNC    F0 692342739~692342919 (180 us)
+[S0][3AA0] ISR V SYNC    F0 692342739~692342919 (180 us)
+[S0][3AA0] ISR CIN ROW   F0 692345395~692345763 (368 us)
+[S0][3AA0] ISR CIN ROW   F0 692345395~692345763 (368 us)
+[S0][3AA0] ISR FRAME END F0 692348527~692348750 (223 us)
+[S0][3AA0] ISR FRAME END F0 692348527~692348750 (223 us)
+[RTA] [VQ_RD_G] EventFunc_OnVsync - Camera0 F | Stream[1] Vsync[0] | PDEN 1 | Mode RTA[ 3] pRTA[ 7] IN[11] | Scene 0 | Input 3648 x 2736 | 1 201 FT 123 | 
+[RTA] [External AE Command] AeLock 0,isWdr 1, ExposureValue 0, ExposureValueStep 0, ISO 0, MeteringMode 3, FlashMode 0,minFps 7, maxFps 30
+[RTA] simulation 0, ismanual 0, mgain 0, mExp 0, mTgain 0
+[RTA] SCENEMODE 0, videomode 0, cameraEntrance 0, vtMode 0, aeMode 2, operationMode 0, awbMode 3, zoomRatio 0
+[RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 0, senVerBinningRatio 0, touchEnable 0
+[RTA] enableDynamicShotDm 0, cameraClientIndex 0
+== F2 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F2 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F2][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F2 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F2 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+TNR mode change: TNR_MODE_FIRST_RUN -> TNR_MODE_NORMAL
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F2 -> 0x0
+
+PrintIsrTime
+PrintIsrTime
+[S0][ISP0] Valid Time 2652 / Frame Time 23063 
+[S0][ISP0] Valid Time 2652 / Frame Time 23063 
+[S0][ISP0] ISR V SYNC    F1 692357544~692357563 (19 us)
+[S0][ISP0] ISR V SYNC    F1 692357544~692357563 (19 us)
+[S0][ISP0] ISR FRAME END F1 692360136~692360149 (13 us)
+[S0][ISP0] ISR FRAME END F1 692360136~692360149 (13 us)
+[S0][ISP0] TASK V SYNC    692357577~692357580 (3 us)
+[S0][ISP0] TASK V SYNC    692357577~692357580 (3 us)
+[S0][ISP0] TASK CIN ROW   692360166~692360245 (79 us)
+[S0][ISP0] TASK CIN ROW   692360166~692360245 (79 us)
+[S0][ISP0] TASK FRAME END 692360249~692360339 (90 us)
+[S0][ISP0] TASK FRAME END 692360249~692360339 (90 us)
+== F2 ISP irq V SYNC -> 0x0
+
+== F2 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F3 -> 0x0
+
+== 3AA shot F3 -> 0x0
+
+[RTA] [External AE Command] AeLock 0,isWdr 1, ExposureValue 0, ExposureValueStep 0, ISO 0, MeteringMode 3, FlashMode 0,minFps 7, maxFps 30
+[RTA] simulation 0, ismanual 0, mgain 0, mExp 0, mTgain 0
+[RTA] SCENEMODE 0, videomode 0, cameraEntrance 0, vtMode 0, aeMode 2, operationMode 0, awbMode 3, zoomRatio 0
+[RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 1000, senVerBinningRatio 1000, touchEnable 0
+[RTA] enableDynamicShotDm 0, cameraClientIndex 0
+== F3 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F3 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F3][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F3 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F3 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F3 -> 0x0
+
+== F3 ISP irq V SYNC -> 0x0
+
+== F3 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F4 -> 0x0
+
+== 3AA shot F4 -> 0x0
+
+[RTA] AE Lib ver : 0x92b80428
+== F4 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F4 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F4][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F4 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F4 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F4 -> 0x0
+
+== F4 ISP irq V SYNC -> 0x0
+
+== F4 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F5 -> 0x0
+
+== 3AA shot F5 -> 0x0
+
+== F5 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F5 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F5][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F5 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F5 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F5 -> 0x0
+
+== F5 ISP irq V SYNC -> 0x0
+
+== F5 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F6 -> 0x0
+
+== 3AA shot F6 -> 0x0
+
+== F6 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F6 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F6][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F6 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F6 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F6 -> 0x0
+
+== F6 ISP irq V SYNC -> 0x0
+
+== F6 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F7 -> 0x0
+
+== 3AA shot F7 -> 0x0
+
+== F7 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F7 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F7][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F7 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F7 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F7 -> 0x0
+
+== F7 ISP irq V SYNC -> 0x0
+
+== F7 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F8 -> 0x0
+
+== 3AA shot F8 -> 0x0
+
+== F8 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F8 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F8][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F8 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F8 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F8 -> 0x0
+
+== F8 ISP irq V SYNC -> 0x0
+
+== F8 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F9 -> 0x0
+
+== 3AA shot F9 -> 0x0
+
+== F9 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F9 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F9][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F9 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F9 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F9 -> 0x0
+
+== F9 ISP irq V SYNC -> 0x0
+
+== F9 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F10 -> 0x0
+
+== 3AA shot F10 -> 0x0
+
+== F10 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F10 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F10][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F10 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F10 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F10 -> 0x0
+
+== F10 ISP irq V SYNC -> 0x0
+
+== F10 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F11 -> 0x0
+
+== 3AA shot F11 -> 0x0
+
+== F11 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F11 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F11][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F11 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F11 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F11 -> 0x0
+
+== F11 ISP irq V SYNC -> 0x0
+
+== F11 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F12 -> 0x0
+
+== 3AA shot F12 -> 0x0
+
+== F12 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F12 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F12][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F12 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F12 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F12 -> 0x0
+
+== F12 ISP irq V SYNC -> 0x0
+
+== F12 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F13 -> 0x0
+
+== 3AA shot F13 -> 0x0
+
+== F13 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F13 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F13][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F13 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F13 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F13 -> 0x0
+
+== F13 ISP irq V SYNC -> 0x0
+
+== F13 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F14 -> 0x0
+
+== 3AA shot F14 -> 0x0
+
+== F14 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F14 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F14][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F14 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F14 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F14 -> 0x0
+
+== F14 ISP irq V SYNC -> 0x0
+
+== F14 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F15 -> 0x0
+
+== 3AA shot F15 -> 0x0
+
+== F15 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F15 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F15][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F15 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F15 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F15 -> 0x0
+
+== F15 ISP irq V SYNC -> 0x0
+
+== F15 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F16 -> 0x0
+
+== 3AA shot F16 -> 0x0
+
+== F16 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F16 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F16][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F16 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F16 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F16 -> 0x0
+
+== F16 ISP irq V SYNC -> 0x0
+
+== F16 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F17 -> 0x0
+
+== 3AA shot F17 -> 0x0
+
+== F17 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F17 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F17][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F17 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F17 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F17 -> 0x0
+
+== F17 ISP irq V SYNC -> 0x0
+
+== F17 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F18 -> 0x0
+
+== 3AA shot F18 -> 0x0
+
+== F18 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F18 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F18][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F18 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F18 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F18 -> 0x0
+
+== F18 ISP irq V SYNC -> 0x0
+
+== F18 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F19 -> 0x0
+
+== 3AA shot F19 -> 0x0
+
+== F19 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F19 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F19][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F19 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F19 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F19 -> 0x0
+
+== F19 ISP irq V SYNC -> 0x0
+
+== F19 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F20 -> 0x0
+
+== 3AA shot F20 -> 0x0
+
+== F20 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F20 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F20][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F20 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F20 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F20 -> 0x0
+
+== F20 ISP irq V SYNC -> 0x0
+
+== F20 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F21 -> 0x0
+
+== 3AA shot F21 -> 0x0
+
+== F21 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F21 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F21][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F21 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F21 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F21 -> 0x0
+
+== F21 ISP irq V SYNC -> 0x0
+
+== F21 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F22 -> 0x0
+
+== 3AA shot F22 -> 0x0
+
+== F22 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F22 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F22][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F22 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F22 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F22 -> 0x0
+
+== F22 ISP irq V SYNC -> 0x0
+
+== F22 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F23 -> 0x0
+
+== 3AA shot F23 -> 0x0
+
+== F23 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F23 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F23][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F23 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F23 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F23 -> 0x0
+
+== F23 ISP irq V SYNC -> 0x0
+
+== F23 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F24 -> 0x0
+
+== 3AA shot F24 -> 0x0
+
+== F24 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F24 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F24][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F24 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F24 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F24 -> 0x0
+
+== F24 ISP irq V SYNC -> 0x0
+
+== F24 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F25 -> 0x0
+
+== 3AA shot F25 -> 0x0
+
+== F25 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F25 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F25][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F25 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F25 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F25 -> 0x0
+
+== F25 ISP irq V SYNC -> 0x0
+
+== F25 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F26 -> 0x0
+
+== 3AA shot F26 -> 0x0
+
+== F26 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F26 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F26][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F26 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F26 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F26 -> 0x0
+
+== F26 ISP irq V SYNC -> 0x0
+
+== F26 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F27 -> 0x0
+
+== 3AA shot F27 -> 0x0
+
+== F27 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F27 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F27][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F27 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F27 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F27 -> 0x0
+
+== F27 ISP irq V SYNC -> 0x0
+
+== F27 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F28 -> 0x0
+
+== 3AA shot F28 -> 0x0
+
+== F28 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F28 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F28][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F28 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F28 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F28 -> 0x0
+
+== F28 ISP irq V SYNC -> 0x0
+
+== F28 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F29 -> 0x0
+
+== 3AA shot F29 -> 0x0
+
+== F29 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F29 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F29][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F29 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F29 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F29 -> 0x0
+
+== F29 ISP irq V SYNC -> 0x0
+
+== F29 ISP irq FRAME END -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F30 -> 0x0
+
+== 3AA shot F30 -> 0x0
+
+== F30 irq V SYNC -> 0x0
+
+[ERROR]CheckInputCritical DDK set A Shadow set B, Corex Critical set A
+== F30 irq CIN ROW -> 0x0
+
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[S0][3AA0] EndProcCriticalRegion CheckInputCritical() failed(0x4000)
+[@][WRAP][ERROR][S0][F30][3AA] ISP_IoCallback_3aa: CONFIG_LOCK_DELAY
+== F30 irq FRAME END -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F30 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+[ERROR]CheckInputCritical DDK set B Shadow set B, Corex Critical set A
+== ISP shot F30 -> 0x0
+
+== F30 ISP irq V SYNC -> 0x0
+
+== F30 ISP irq FRAME END -> 0x0
+steady frames 3..30: 11.95 ms per frame wall (3AA + ISP calls, interrupts, tasks), 0 register accesses = ~0.00 ms trapping -> ~11.95 ms without the test's trapping
+done: traced OS calls 525, tasks 179, timers 0, irqs 150
