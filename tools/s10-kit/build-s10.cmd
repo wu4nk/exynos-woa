@@ -1,10 +1,11 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.19) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.20) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
+rem v1.20: S10eIspDma (contiguous DMA pool below 4 GiB mapped into the ISP host; legacy driver) -> out\S10eIspDma\.
 rem v1.19: S10eIsp (UMDF 2 probe for the camera ISP, binds DSDT CISP = ACPI\SAMS982C, UEFI v0.2.3+) -> out\S10eIsp\,
 rem installed by isp-s10.ps1. Never fails the kit.
 rem v1.17: S10eCam (camera bring-up stages, legacy service like S10ePower, cam-s10.ps1) -> out\S10eCam\. Never
@@ -95,6 +96,7 @@ rem v1.18: S10eCamera - the front camera as a Windows camera (AVStream on the S1
 call :camera || (echo [WARN] S10eCamera not built - no Windows camera & if exist "%OUT%\S10eCamera" rmdir /s /q "%OUT%\S10eCamera")
 rem v1.19: S10eIsp - UMDF 2 driver of the camera ISP (notes/s10-isp.md option A; v0.1 = probe). isp-s10.ps1 installs it.
 call :isp || (echo [WARN] S10eIsp not built & if exist "%OUT%\S10eIsp" rmdir /s /q "%OUT%\S10eIsp")
+call :ispdma || (echo [WARN] S10eIspDma not built & if exist "%OUT%\S10eIspDma" rmdir /s /q "%OUT%\S10eIspDma")
 rem v1.11: Bluetooth - Exynos9820Bt (BthxDDI transport over the BT UART, binds DSDT BTH0 = UEFI v0.2.1+ with the BT
 rem role latch). Its INF ships the phone's own patch file as bcm4375B1_semco.hcd; get-wifi-fw.cmd v1.1 puts the one
 rem that matches this phone's module in bcm4375\bt\. Without it Bluetooth is skipped (never fails the kit).
@@ -220,6 +222,21 @@ set "S10E_SIGN_SKIP="
 del /q "%DST%\*.obj" >nul 2>&1
 for %%F in ("%DST%\*.sys") do call :sign "%%~F" || exit /b 1
 echo [ OK ] S10eCam
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+:ispdma
+rem v1.20: the ISP host's DMA pool (legacy kernel driver like S10eCam; isp-s10.ps1 dma registers it, system start).
+set "DST=%OUT%\S10eIspDma"
+echo.
+echo ==== S10eIspDma (ISP host DMA pool) ====
+set "S10E_SIGN_SKIP=1"
+call "%SRCROOT%S10eIspDma\build.bat" "%DST%"
+if errorlevel 1 (set "S10E_SIGN_SKIP=" & echo [FAIL] S10eIspDma build.bat & exit /b 1)
+set "S10E_SIGN_SKIP="
+del /q "%DST%\*.obj" >nul 2>&1
+for %%F in ("%DST%\*.sys") do call :sign "%%~F" || exit /b 1
+echo [ OK ] S10eIspDma
 exit /b 0
 
 rem ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.0) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.1) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -8,17 +8,21 @@
                               Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp, value Probe)
       .\isp-s10.ps1 restart   disable + enable the device: the probe runs again
       .\isp-s10.ps1 remove    remove the driver package (the device stays, without a driver)
+      .\isp-s10.ps1 dma       (v1.1) install + start S10eIspDma (out\S10eIspDma\S10eIspDma.sys -> C:\S10Prov\ispdma,
+                              kernel service, SYSTEM start: its contiguous pool below 4 GiB is taken at boot, when
+                              there still is one). Then .\isp-s10.ps1 restart: S10eIsp 0.2 maps the pool and tests it.
+      .\isp-s10.ps1 dmaremove stop + delete the S10eIspDma service
   The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
   S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
-param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove')][string]$Action = 'status')
+param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove')][string]$Action = 'status')
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.0  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.1  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -44,6 +48,8 @@ function Status {
             W "no probe report under $k (driver not loaded yet, or it failed before writing)"
         }
     }
+    $q = (sc.exe query S10eIspDma 2>&1 | Out-String)
+    if ($q -match 'STATE\s*:\s*\d+\s+(\w+)') { W "S10eIspDma service: $($Matches[1])" } else { W 'S10eIspDma service: not installed' }
     $wudf = Get-Process WUDFHost -ErrorAction SilentlyContinue
     W "WUDFHost processes: $(@($wudf).Count)"
 }
@@ -59,6 +65,25 @@ switch ($Action) {
         Status
     }
     'status' { Status }
+    'dma' {
+        $sys = Join-Path $PSScriptRoot 'out\S10eIspDma\S10eIspDma.sys'
+        if (-not (Test-Path $sys)) { $sys = Join-Path $PSScriptRoot 'S10eIspDma\S10eIspDma.sys' }
+        if (-not (Test-Path $sys)) { W 'S10eIspDma.sys not found (out\S10eIspDma\ from build-s10.cmd v1.20)'; break }
+        $dir = 'C:\S10Prov\ispdma'
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        sc.exe stop S10eIspDma 2>&1 | Out-Null
+        Copy-Item -Force $sys $dir
+        sc.exe query S10eIspDma 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { sc.exe create S10eIspDma type= kernel start= system binPath= "$dir\S10eIspDma.sys" 2>&1 | ForEach-Object { W "  $_" } }
+        else { sc.exe config S10eIspDma binPath= "$dir\S10eIspDma.sys" start= system 2>&1 | ForEach-Object { W "  $_" } }
+        sc.exe start S10eIspDma 2>&1 | ForEach-Object { W "  $_" }
+        Status
+    }
+    'dmaremove' {
+        sc.exe stop S10eIspDma 2>&1 | ForEach-Object { W "  $_" }
+        sc.exe delete S10eIspDma 2>&1 | ForEach-Object { W "  $_" }
+        Status
+    }
     'restart' {
         $d = Dev
         if (-not $d) { Status; break }

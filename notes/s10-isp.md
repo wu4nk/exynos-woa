@@ -740,3 +740,28 @@ Plan (each a task, each waits for the result before it):
   register mapping). Left: DMA memory (plan item 5, kernel helper), interrupts (after the handler exists),
   pd-isplp (S10eCam 0.12 not run yet). ("firmware:" empty in the log: isp-s10.ps1 reads HARDWARE\...\BIOS
   BIOSVersion, absent here - cosmetic.)
+
+## 2026-11-18 17:22 cam-s10 isp again: still S10eCam 0.11
+- notes/data/isphost-win-20261118/cam-s10-isp-2.txt: the header still says "S10eCam 0.11" and no pd-isplp line:
+  cam-s10.ps1 runs the already registered C:\S10Prov\cam\S10eCam.sys; a new build only takes effect after
+  `.\cam-s10.ps1 install` (copies out\S10eCam\S10eCam.sys, sc config). pd-isplp still unknown.
+
+## Plan item 5: S10eIspDma 0.1 - DMA pool for the host (2026-11-18 17:40)
+- Docs (in addition to the item-4 ones): MmAllocateContiguousMemorySpecifyCache (ddi/wdm/nf-wdm-
+  mmallocatecontiguousmemoryspecifycache): nonpaged, physically contiguous; "uninitialized. A kernel-mode driver
+  must first zero this memory if it is going to make it visible to user-mode software"; "A driver that must use
+  contiguous memory should allocate this memory during driver initialization"; freed with MmFreeContiguousMemory;
+  IRQL <= DISPATCH_LEVEL. MEMORY_CACHING_TYPE (ddi/wdm/ne-wdm-_memory_caching_type): MmWriteCombined "should not be
+  cached by the processor, but writes ... can be combined"; "if a driver maps two different virtual address ranges
+  to the same physical address, it must ensure that it specifies the same caching behavior for both"; NOTHING about
+  how ARM64 maps the types (Normal-NC vs Device) -> tested on the phone (S10eIsp 0.2).
+- Size from the native run (TRACE=1, FRAMES=2): the libraries' own dma_alloc calls total ~45 MiB (2 x 0x1171200,
+  2 x 0x2e8300, 0x3b020, 0x8ca10, 0xe2220, 32 x 0x2740, 2 x 0xfb0), no dma_free; the 3AA output buffers of the test
+  add ~22 MiB. Default pool 128 MiB (registry Parameters\PoolMiB 16..512), halved on failure.
+- drivers/S10eIspDma: S10eIspDma.c (legacy WDM like S10eCam; pool in DriverEntry, WC then NC, below 4 GiB, zeroed;
+  MDL by MmBuildMdlForNonPagedPool; IOCTL_S10EISPDMA_MAP maps it UserMode (non-executable, MdlMappingNoExecute) in
+  the caller's context under __try; one owner handle; IRP_MJ_CLEANUP of that handle in the owner process unmaps and
+  re-zeroes; ACL SY + BA + LS = the Wudfhost account), S10eIspDmaIoctl.h, build.bat (S10eCam's toolchain).
+  build-s10.cmd v1.20 :ispdma, make-kit ships it, isp-s10.ps1 v1.1 dma / dmaremove (sc create start= system).
+  kcheck-wdm clean. Known gap: if the last handle to the owning file object is closed in ANOTHER process
+  (duplicated handle), CLEANUP does not unmap (wrong context) - the host never duplicates it.
