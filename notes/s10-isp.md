@@ -852,3 +852,13 @@ Plan (each a task, each waits for the result before it):
   instruction cache over the two files' ranges only (ddk_size + rta_size, ~8 MiB) instead of the 112 MiB span
   (only they hold code). Next experiments: isphost-test.exe again (same code, ordinary process, S10eIspDma now
   present) and front -NoDma with 0.3.2's marks.
+- 19:54 0.3.2 marks: front-trace.txt ends at "front: isp_front_main entered" - before "front: logs open, reading the
+  libraries". In between: mkdir(out), fopen host.log ("wc") - it exists, empty -, fopen interface-calls.txt and
+  setvbuf(itf_log, NULL, _IOLBF, 0). UCRT setvbuf: size must be 2..INT_MAX for _IOFBF / _IOLBF, otherwise the
+  invalid parameter handler runs - MSVC's default one fast-fails the process. The zig/mingw isphost-test.exe accepts
+  0, and it ran fine again at the same time (user's isphost.zip 19:54: 282 steps, steady 8.01 ms / frame, with
+  S10eIspDma loaded) -> cause found: OUR setvbuf call, only in the MSVC (driver) build. Every blue screen so far =
+  Wudfhost fast-failing in the front thread; the system then went down (why a host fast-fail ends in a blue screen
+  here is not explained yet - noted, no dump to read).
+- 0.3.3: setvbuf size 4096; S10eIsp installs an invalid-parameter handler for the front run that only records
+  "CRT invalid parameter" in front-trace.txt and returns (the CRT call fails with EINVAL instead of killing Wudfhost).

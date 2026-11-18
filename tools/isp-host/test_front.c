@@ -270,7 +270,10 @@ int main(int argc, char **argv)
     plat_posix_log_to(lf, getenv("QUIET") != NULL);
     snprintf(p, sizeof(p), "%s/interface-calls.txt", OUTDIR);
     itf_log = fopen(p, "w");
-    setvbuf(itf_log, NULL, _IOLBF, 0);
+    /* size 4096, not 0: the UCRT's setvbuf takes 2 <= size <= INT_MAX for _IOFBF / _IOLBF and invokes the invalid
+       parameter handler otherwise - with MSVC's default handler that fast-fails the process (S10eIsp 0.3 / 0.3.1 / 0.3.2
+       front runs died right here; mingw's setvbuf accepted 0) */
+    setvbuf(itf_log, NULL, _IOLBF, 4096);
     snprintf(p, sizeof(p), "%s/timing.txt", OUTDIR);
     timing = fopen(p, "w");
     isp_trace = getenv("TRACE") != NULL;

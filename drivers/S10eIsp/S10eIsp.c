@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.3.2) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.3.3) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -36,11 +36,12 @@
 #include <windows.h>
 #include <wdf.h>
 #include <strsafe.h>
+#include <stdlib.h>                          /* _set_invalid_parameter_handler (UCRT) */
 #include "../S10eIspDma/S10eIspDmaIoctl.h"
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 
-#define S10EISP_VERSION L"0.3.2"
+#define S10EISP_VERSION L"0.3.3"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -263,6 +264,19 @@ static void Trace(const char *fmt, ...)
 
 static BOOL g_nodma;
 
+/* 0.3.3: a CRT invalid-parameter report must not fast-fail Wudfhost (the default handler does: the 0.3.x front runs
+   died in setvbuf(size 0) - test_front.c). This handler records it and returns, so the CRT call fails with EINVAL. */
+static void __cdecl InvalidParameter(const wchar_t *expr, const wchar_t *func, const wchar_t *file, unsigned int line,
+                                     uintptr_t reserved)
+{
+    UNREFERENCED_PARAMETER(expr);
+    UNREFERENCED_PARAMETER(func);
+    UNREFERENCED_PARAMETER(file);
+    UNREFERENCED_PARAMETER(line);
+    UNREFERENCED_PARAMETER(reserved);
+    Trace("CRT invalid parameter reported (call returns an error)");
+}
+
 static DWORD WINAPI FrontThread(LPVOID p)
 {
     static char dir[MAX_PATH], data[MAX_PATH], layout[MAX_PATH], cal[MAX_PATH];
@@ -279,6 +293,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
     StringCchCopyA(data, MAX_PATH, dir);
     StringCchPrintfA(layout, MAX_PATH, "%s\\sensor_itf_layout.txt", dir);
 
+    _set_invalid_parameter_handler(InvalidParameter);
     Trace("S10eIsp %S front thread: process %lu, data %s, nodma %d", S10EISP_VERSION, GetCurrentProcessId(), data,
           g_nodma);
     S10EISPDMA_MAP_OUT m;
