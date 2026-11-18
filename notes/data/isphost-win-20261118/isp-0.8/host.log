@@ -1,0 +1,3465 @@
+isphost: kernel-half word 0xfffffffe01000000 at file +0x472e8 (not in the image span, left)
+isphost: kernel-half word 0xfffffffd03000001 at file +0x47370 (not in the image span, left)
+isphost: kernel-half word 0xffffffff0608ffff at file +0x47540 (not in the image span, left)
+isphost: kernel-half word 0xfffffffffefefdff at file +0x48028 (not in the image span, left)
+isphost: kernel-half word 0xffffffff0608ffff at file +0x48350 (not in the image span, left)
+isphost: 577 kernel-half words outside the span (left as they are)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x134df8 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x1365c0 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x137d90 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffffffff at file +0x13aa80 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffffffff at file +0x13aaa0 (not in the image span, left)
+isphost: 121 kernel-half words outside the span (left as they are)
+isphost: image at 000001D615000000 (delta 0x2551b020000), 12005 pointers relocated; DDK '5E9820 10705-2021/04/05 16:59:12]L12XLOD01GM' RTA 'S5E9820 b18e67877-09/26 04:52:21]L12XLOD01GM'
+isphost: thread 0 stack 0x8ba5e00000..0x8ba5f00000 x18 0x8ba5673000
+isphost: thread 1 stack 0x8ba5f00000..0x8ba6000000 x18 0x8ba5675000
+isphost: thread 2 stack 0x8ba6000000..0x8ba6100000 x18 0x8ba5677000
+isphost: thread 3 stack 0x8ba6100000..0x8ba6200000 x18 0x8ba5679000
+isphost: thread 4 stack 0x8ba6200000..0x8ba6300000 x18 0x8ba567b000
+isphost: thread 5 stack 0x8ba6300000..0x8ba6400000 x18 0x8ba567d000
+isphost: thread 6 stack 0x8ba6400000..0x8ba6500000 x18 0x8ba567f000
+isphost: thread 7 stack 0x8ba6500000..0x8ba6600000 x18 0x8ba5681000
+isphost: thread 8 stack 0x8ba6600000..0x8ba6700000 x18 0x8ba5683000
+[@][WRAP]start_up_ddk:
+[@][WRAP]register_sensor_interface(0x0x1d6150e0040), register_sdk(0x0x1d6150e0080)
+[@][WRAP].text size: 2463408 B, text_end addr: 0x1d6153397f0
+[@][WRAP].rodata size: 747432 B, ro_end addr:   0x1d6153eff98
+[@][WRAP]remained space between rodata and bss: 196712 B
+[@][WRAP].bss size: 63600 B, bss_end addr:  0x1d61542f870
+[@][WRAP].data size: 12519312 B, data_end addr: 0x1d616020000
+[@][WRAP]heap size: 62914560 B, heap_end addr: 0x1d619c20000
+isphost: DDK start_up -> 0x0
+isphost: VRA set_os_funcs -> 0x0
+[RTA] [RTA]OS service was registered
+isphost: RTA start_up -> 0x0
+register_sensor_interface -> 0x0
+register_sensor_interface (RTA) -> 0x0
+[@][WRAP][E][1]register_isp_sdk
+[@][WRAP]###########################################################
+[@][WRAP]#####      FIMC-ISP LIBRARY 
+[@][WRAP]#####      Samsung System LSI
+[@][WRAP]#####      DDK revision: 10705
+[@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[@][WRAP]###########################################################
+[@][WRAP][E][2]register_isp_sdk
+[@][WRAP]###########################################################
+[@][WRAP]#####      FIMC-ISP LIBRARY 
+[@][WRAP]#####      Samsung System LSI
+[@][WRAP]#####      DDK revision: 10705
+[@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[@][WRAP]###########################################################
+trapped register access: 0.00 us each (2000 reads, sum 0)
+hw3aa: REAL 3AA0 window 000001D60B1E0000 for the init steps + 3AA set_param / shot F1 / stop: +0xF0 0x07010000 +0xF4 0x0000cc22
+hwisp: REAL ISPLP window 000001D60B1F0000: +0xF0 0x07110000 +0xF4 0x0000c2ad
+
+[@][WRAP][E][3AA0]DICO_Chain_3aa_Create
+[@][WRAP]createChain: hwType(0) hwId(0) addr(0x1d60b1e0000)
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(0) !!!
+[@][DRV]Register interrupt:ID(0), handler(ddk+0x331e34) chain 0
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(1) !!!
+[@][DRV]Register interrupt:ID(1), handler(ddk+0x331e34) chain 0
+ISP_Fimc3aaChainV7P1P0::SwReset
+[@][WRAP][INFO]setOsCallback: mCameraCb(0x1d61c002ec0), cameraCb(0x1d61c002ec0)
+[@][WRAP][INFO]setOsCallback: mIoCb(0x1d61c002ef0), ioCb(0x1d61c002ef0)
+== 3AA chain_create -> 0x0
+
+[WRAP][E] DICO_SystemConfig
+[WRAP][E] DICO_SystemConfig
+[WRAP]setOverflowControl: (recovery:1)
+[WRAP]setOverflowControl: (recovery:1)
+== 3AA set_system_config -> 0x0
+
+[@][WRAP][E][S0]DICO_Object_3aa_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
+[@][WRAP]Metadata: new
+[@][WRAP]StreamInterface: new
+[@][WRAP][0]StreamInterface: init
+[@][WRAP]Metadata: init
+[@][WRAP][S0](createObject[5652]): hwType(3AA) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+[@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0x1d61533dc70)
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(2994)
+[@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[@][WRAP]INFO(createObject[5696]): sensor path(OTF)
+WdrRgbyHist 256bins
+Init 200
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(2994)
+[@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[VRA] [VRALIB] register_vra_isp_interface.
+[VRA] [VRALIB] register_vra_isp_interface.
+[RTA] RegisterRtaInterface sensorID = 1, sensor = 0x1d6157cbf68 
+[RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d6157cbf68 
+[RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d6157cbf68 
+[RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[CreateCommonObjectExternal] 
+[CreateAeObjectExternal] 
+[CreateAwbObjectExternal] 
+[CreateScdObjectInternal] 
+[CreateAfcObjectInternal] 
+[CreateAutoFocusObjectExternal] 
+ActivateAlgorithms ae1 awb1 af1 
+Ext AF is selected!
+[@][WRAP][X][S0][3AA0]DICO_Object_3aa_Create 0x1d6169e8a00
+== 3AA object_create -> 0x0
+3AA object = ddk+0x19e8a00
+
+[@][WRAP][E][ISP0]DICO_Chain_Isp_Create
+[@][WRAP]createChain: hwType(1) hwId(0) addr(0x1d60b1f0000)
+ISP_FimcIspChainV7P11P0::ISP_FimcIspChainV7P11P0(const SIRC_IspObjectConfig*) CHAIN_REGISTER_MODE_SHADOW
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(6) !!!
+[@][DRV]Register interrupt:ID(6), handler(ddk+0x331e34) chain 2
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(7) !!!
+[@][DRV]Register interrupt:ID(7), handler(ddk+0x331e34) chain 2
+ISP_FimcIspChainV7P11P0::SwReset
+[FRO] reset
+[FRO] reset
+== ISP chain_create -> 0x0
+
+[WRAP][E] DICO_SystemConfig
+[WRAP][E] DICO_SystemConfig
+[WRAP]setOverflowControl: (recovery:1)
+[WRAP]setOverflowControl: (recovery:1)
+== ISP set_system_config -> 0x0
+
+[@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00261000) hwId(0), rep(0), input(1), moduleId(38)
+[@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(M2M), moduleId(38), repFlag(0)
+[@][WRAP][INFO]m_createObject3aaForTuneSet: [S0] hwId_3aa(0)
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(2994)
+[@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d6157cbf68 
+[RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1d6157cbf68 
+[RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[CreateGammaObjectExternal] 
+ActivateAlgorithms[351] gamma(1) 
+ActivateAlgorithms[367] drc(2) 
+[CreatePrcObjectExternal] 
+ActivateAlgorithms[383] prc(1) 
+ActivateAlgorithms[399] pipeline(2) 
+[@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0x1d616d6d320
+== ISP object_create -> 0x0
+ISP object = ddk+0x1d6d320
+hw 3AA0 init +0x0008 0x00000000 -> 0x00000001
+hw 3AA0 init +0x0040 0x00000010 -> 0x00000000
+hw 3AA0 init +0x004c 0x00000000 -> 0x000003ff
+hw 3AA0 init +0x0054 0x00000001 -> 0x00000000
+hw 3AA0 init +0x0058 0x00000001 -> 0x00000000
+hw 3AA0 init +0x0078 0x00000000 -> 0x000003ff
+hw 3AA0 init +0x007c 0x00000000 -> 0x00000001
+hw 3AA0 init +0x0084 0x00000000 -> 0x00000001
+hw 3AA0 init +0x0100 0x00000000 -> 0x00000003
+hw 3AA0 init +0x0104 0x00000800 -> 0x00100800
+hw 3AA0 init +0x1428 0x00000002 -> 0x00000001
+hw 3AA0 init +0x1528 0x00000003 -> 0x00000001
+hw 3AA0 init +0x1534 0x00000003 -> 0x00000009
+hw 3AA0 init +0x17fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x18fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x19fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x1afc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x1b5c 0x00000100 -> 0x00000000
+hw 3AA0 init +0x1dfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x1efc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x1ffc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x22fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x23fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x24fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x2564 0x00000000 -> 0x00000037
+hw 3AA0 init +0x2664 0x00000000 -> 0x00000037
+hw 3AA0 init +0x29fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x2bfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x2dfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x2ffc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x30fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x31fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x32fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x33fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x34fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x36fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x37fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x39fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x3afc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x3b08 0x00000000 -> 0x20402000
+hw 3AA0 init +0x3bfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x4500 0x00000000 -> 0x00000001
+hw 3AA0 init +0x450c 0x00000001 -> 0x00000002
+hw 3AA0 init +0x4510 0x00000001 -> 0x00000000
+hw 3AA0 init +0x4518 0x00000000 -> 0x00000001
+hw 3AA0 init +0x4604 0x00000800 -> 0x00100800
+hw 3AA0 init +0x8008 0x00000000 -> 0x00000001
+hw 3AA0 init +0x8040 0x00000010 -> 0x00000000
+hw 3AA0 init +0x804c 0x00000000 -> 0x000003ff
+hw 3AA0 init +0x8054 0x00000001 -> 0x00000000
+hw 3AA0 init +0x8058 0x00000001 -> 0x00000000
+hw 3AA0 init +0x8078 0x00000000 -> 0x000003ff
+hw 3AA0 init +0x807c 0x00000000 -> 0x00000001
+hw 3AA0 init +0x8084 0x00000000 -> 0x00000001
+hw 3AA0 init +0x8100 0x00000000 -> 0x00000003
+hw 3AA0 init +0x8104 0x00000800 -> 0x00100800
+hw 3AA0 init +0x9428 0x00000002 -> 0x00000001
+hw 3AA0 init +0x9528 0x00000003 -> 0x00000001
+hw 3AA0 init +0x9534 0x00000003 -> 0x00000009
+hw 3AA0 init +0x97fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x98fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x99fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x9afc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x9b5c 0x00000100 -> 0x00000000
+hw 3AA0 init +0x9dfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x9efc 0x00000000 -> 0x00000037
+hw 3AA0 init +0x9ffc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xa2fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xa3fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xa4fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xa564 0x00000000 -> 0x00000037
+hw 3AA0 init +0xa664 0x00000000 -> 0x00000037
+hw 3AA0 init +0xa9fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xabfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xadfc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xaffc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb0fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb1fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb2fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb3fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb4fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb6fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb7fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xb9fc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xbafc 0x00000000 -> 0x00000037
+hw 3AA0 init +0xbb08 0x00000000 -> 0x20402000
+hw 3AA0 init +0xbbfc 0x00000000 -> 0x00000037
+hw3aa: init: 87 REAL 3AA0 registers changed
+setfile: magic 0x12345679 designed 0x798 scenarios 64 ips 6, 3AA_ISP tune sets 29
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(0)
+[@][WRAP][S0]newTuneSet: index( 0), tuneSetHandle(0x1d616ffe2d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(1)
+[@][WRAP][S0]newTuneSet: index( 1), tuneSetHandle(0x1d61701f4f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(2)
+[@][WRAP][S0]newTuneSet: index( 2), tuneSetHandle(0x1d617040710)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(3)
+[@][WRAP][S0]newTuneSet: index( 3), tuneSetHandle(0x1d617061930)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(4)
+[@][WRAP][S0]newTuneSet: index( 4), tuneSetHandle(0x1d617082b50)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(5)
+[@][WRAP][S0]newTuneSet: index( 5), tuneSetHandle(0x1d6170a3d70)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(6)
+[@][WRAP][S0]newTuneSet: index( 6), tuneSetHandle(0x1d6170c4f90)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(7)
+[@][WRAP][S0]newTuneSet: index( 7), tuneSetHandle(0x1d6170e61b0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(8)
+[@][WRAP][S0]newTuneSet: index( 8), tuneSetHandle(0x1d6171073d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(9)
+[@][WRAP][S0]newTuneSet: index( 9), tuneSetHandle(0x1d6171285f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(10)
+[@][WRAP][S0]newTuneSet: index(10), tuneSetHandle(0x1d617149810)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(11)
+[@][WRAP][S0]newTuneSet: index(11), tuneSetHandle(0x1d61716aa30)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(12)
+[@][WRAP][S0]newTuneSet: index(12), tuneSetHandle(0x1d61718bc50)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(13)
+[@][WRAP][S0]newTuneSet: index(13), tuneSetHandle(0x1d6171ace70)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(14)
+[@][WRAP][S0]newTuneSet: index(14), tuneSetHandle(0x1d6171ce090)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(15)
+[@][WRAP][S0]newTuneSet: index(15), tuneSetHandle(0x1d6171ef2b0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(16)
+[@][WRAP][S0]newTuneSet: index(16), tuneSetHandle(0x1d6172104d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(17)
+[@][WRAP][S0]newTuneSet: index(17), tuneSetHandle(0x1d6172316f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(18)
+[@][WRAP][S0]newTuneSet: index(18), tuneSetHandle(0x1d617252910)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(19)
+[@][WRAP][S0]newTuneSet: index(19), tuneSetHandle(0x1d617273b30)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(20)
+[@][WRAP][S0]newTuneSet: index(20), tuneSetHandle(0x1d617294d50)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(21)
+[@][WRAP][S0]newTuneSet: index(21), tuneSetHandle(0x1d6172b5f70)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(22)
+[@][WRAP][S0]newTuneSet: index(22), tuneSetHandle(0x1d6172d7190)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(23)
+[@][WRAP][S0]newTuneSet: index(23), tuneSetHandle(0x1d6172f83b0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(24)
+[@][WRAP][S0]newTuneSet: index(24), tuneSetHandle(0x1d6173195d0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(25)
+[@][WRAP][S0]newTuneSet: index(25), tuneSetHandle(0x1d61733a7f0)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(26)
+[@][WRAP][S0]newTuneSet: index(26), tuneSetHandle(0x1d61735ba10)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(27)
+[@][WRAP][S0]newTuneSet: index(27), tuneSetHandle(0x1d61737cc30)
+[@][WRAP][E][S0]DICO_CreateTuneSet[745] index(28)
+[@][WRAP][S0]newTuneSet: index(28), tuneSetHandle(0x1d61739de50)
+== 3AA create_tune_set x29 -> 0x0
+
+[@][WRAP][E][S0]DICO_3aa_ApplyTuneSet I6
+[DeserializeContext] start address : 170c4f98, size : 135686, end address : 170e619e
+WdrRgbyHist 256bins
+[TuneSetApply] ----------------------------------------
+[TuneSetApply] Setfile Read : SUCCESS! [135686/135686]
+[TuneSetApply] ----------------------------------------
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807240000), line_length_pck(8984), frameleng(2994)
+[@][WRAP](WRAP_GetProperties[594]): cur w(912), h(684)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[@][WRAP][S0]applyTuneSet: hw(0), index(6), tuneSetHandle(0x1d6170c4f90)
+== 3AA apply_tune_set 6 -> 0x0
+
+[@][WRAP][E][S0]DICO_LoadCalData addr:0xb2c9000
+[RecognizeProject] Not Supported by new Version.
+[RecognizeProject] Not Supported by new Version.
+[FROM DATA, STREAM ID:0] M2M START!Cal Base - AF(0xb2c9000), AWB(0xb2c9000), AS(0xb2c9000), PDAF(0xb2c9000)
+[UpdateTuneSet_Legacy] AF cal loading error 
+[UpdateTuneSet_Legacy] AWB cal loading error 
+[UpdateTuneSet_Legacy] AS cal loading error 
+[UpdateTuneSet_Legacy] Load AS data from setfile.
+[FROM DATA, STREAM ID:0] FROM CAL. DATA LOAD: FAIL! (ERROR NO.:0x600f)
+== 3AA load_cal_data -> 0x0
+
+[@][WRAP][E][S0]DICO_GetCalData type:2
+[@][WRAP]SIRCSDK_GetCalibrationData: status(0) type(2) centerX/Y(1584/1208) biquadA/B(91383/16384)
+== 3AA get_cal_data type 2 -> 0x0
+cal_info data[0..3]: 1584 1208 91383 16384
+DMA buffers (dva): before_bds 0xf82e8000 after_bds 0xf8419000
+
+== 3AA set_param -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[@][WRAP][SDK_WRAP] SetFrameTime(): Error in ConfigureInput() = 4007
+[META] aamode(2), sceneMode(1) > newSceneMode(0), enableDynamicShotDm(0)
+SetLeiTranslationMode 0
+[DDK][S0][F000001] [<-] afMode: OFF, afTrigger: IDLE, aa.mode: AUTO, afState: 0(OS), 0(cur)
+[DDK][S0][F000001] [<-] afMode: OFF, afTrigger: IDLE, aa.mode: AUTO, afState: 0(OS), 0(cur)
+[DDK][S0][F000001] [<-] afRegions: (0, 0) ~ (0, 0), weight: 0
+[DDK][S0][F000001] [<-] afRegions: (0, 0) ~ (0, 0), weight: 0
+[DDK][S0][F000001] [<-] afmode_option: 0x00000000, afmode_ext: 0, pafMode: OFF, aeFlashMode: 0
+[DDK][S0][F000001] [<-] afmode_option: 0x00000000, afmode_ext: 0, pafMode: OFF, aeFlashMode: 0
+[DDK][S0][F000001] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[DDK][S0][F000001] [<-] afmode_option: video(0), macro(0), face(0), delayed(0), out focusing(0), object tracking(0), multi point AF(0)
+[DDK][S0][F000001] [<-][lens.ctl] Adjust focusDistance: 0.000000
+[DDK][S0][F000001] [<-][lens.ctl] Adjust focusDistance: 0.000000
+[S0][F000001] SetParam_AF : Start/ManualDiopters/Normal/Face OFF/Preview/0,0,0.000000/0:(0, 0)-(0, 0)
+[S0][F000001] AF Set window: (14746, 13108) - (18021, 19660)
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[SetAperture] aperture 0 
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[SetCameraClientIndex] Camera ClientIndex 0
+== 3AA set_ctrl F1 -> 0x0
+
+[@][WRAP][S0][F1] m_configureMotionEstimation Enable ME (912x684)
+[@][WRAP][S0][F1] m_configureMotionEstimation ME dummyFrames(2)
+[@][WRAP][S0][F1][3AA0][Configure3aaInput] full(1)-otf(1) fro(1) sensorArea(3968 x 2736) binnedSensorArea(992 x 684), calibratedCrop(40, 0 / 912 x 684), imageArea(0, 0 / 912 x 684)
+[@][WRAP][S0][F1][3AA0][Configure3aaInput] receivedStatRoi(0, 0 / 0 x 0), bayerCrop(912 x 684), statRoi(0, 0 / 912 x 684)
+[@][WRAP][0][m_configureOutput3aa] line(2649) pBayerDmaOutputBeforeBds(ON 912x684 11/12bits) =(BDS)=> 912x684 =(crop)=> chainDestinationArea(0,0 912x684) pOtfOutput(OFF) pBayerDmaOutputAfterBds(ON 11/12bits), 
+[IspObject_InitPdafLib] chainCropedSourceArea 0 0 912 684
+[IspObject_InitPdafLib] requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[IspObject_InitPdafLib] requestType: 1, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[IspObject_InitPdafLib] requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[IspObject_InitPdafLib] requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] RTA_AE front: CmlAeInit, sensorPlace=1, flag(0, 0)
+[RTA] RTA_AE front: CmlAeInit, (sensorPlace=1) AE Init Start 
+[RTA] jh Cal data  front  72 151 33      =   256
+[RTA] RTA_AE front: CmlAeInit, (sensorPlace=1) AE Init End 
+[RTA] CmlAwb_SetCreate 
+[RTA] Init
+[RTA] Init memset done
+[RTA] [CMG_AF] LoadModuleAfCalData - Rear[0] Sensor_Revision = 0 (a5xx = EVT0.3, a4,a3xx = 0.2, a2xx = 0.1, a1,a0xx = 0.0)
+[RTA] [CMG_AF] NearFarDataCheck - Camera0  Pan Position Error 0 -> 150
+[RTA] [CMG_AF] NearFarDataCheck - Camera0  Macro Position Error 0 -> 350
+[RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 94) : Front Version = 0xf680 Chip Type = 0 (0:LSI, 1:QC) 
+[RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 278) : af cal data far: 0, middle: 0, near: 0, add_80: 0, add_50: 0, plus_offset: 0, minus_offset: 0 *af_cal->zoom_rate(x1000) 0
+[RTA] [cam_id_0][CMG_EFL] uint8_t CML_FRONT::FrontAfLib_BootingInit() (line 302) : paf_cal_data_info = 0 paf_cal_errcheck 0x00000000
+[RTA] [CMG_AF] EventFunc_Init - AF Lib Initial Camera0 Ver 0xF680
+[RTA] [VQ_RG_G] EventFunc_Init - FRONT AF Ver 0xF680    Far 150  0 Near 350 0   Face 0 extmode = 0 
+init 2360 1000 1000
+[DBG][LTR_Init]streamId 0 init:2360, Exp: 2360, AGain: 256, DGain: 256
+[Thumbnail][SetGeometry] 3AA CellResolution: 56 x 42, CellGridResolution: 16 x 16
+[Thumbnail][SetGeometry]statRoi: (0, 0) 912 x 684
+[Thumbnail][SetGeometry]HW: (8, 6) 896 x 672
+[SetGeometry]normalizeShift = 8
+[SetGeometry]uThreshClipCnt_ = 294(128)
+[S0][3AA0] SetIsrScheduleType 0 @ 30.000 fps earlyConfigLock 0
+minFps 7.000 maxFps 30.000 scenemode 0
+[IdleStateOnActivate] sceneType: 0
+SetNumOfFramePerOneRta 30.000 1
+SetNumOfFramePerOneRta rta 1 af 1 @ 30.000fps
+[RTA] RTA_AE: CmlAeBeforeStreamOn, (sensorPlace=1) start fps(7,30) scn=0
+[RTA] RTA_AE: CmlAeBeforeStreamOn, (sensorPlace=1) end Ev=0B88 Tv=089F Sv=0400
+[RTA] [RTA]AF_BoforeStreamOn[F:0][1] sceneMode = 0
+[RTA] [RTA]AF_BoforeStreamOn[F:0] 
+[RTA] [Ext AF] InitialCafConfig. afStatType: 1
+[RTA] [InitialPafConfig] requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitialPafConfig] requestType: 1, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitialPafConfig] requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitialPafConfig] requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] [VQ_RD_G] EventFunc_StreamOn - Sensor1 | Input 912 x 684 | FT 0 | OpMode0 | isVideo0 | EXT0
+[RTA] [RTA]AF_BoforeStreamOn[F:   0][1]num_of_skip_frame  rta = 1, af = 1 
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 0, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 1, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 2, bufInfo.statType: -1, bufInfo.sensorMode: -1, bufInfo.width: 0, bufInfo.height: 0, bufInfo.elementSize: 0
+[RTA] [InitStatBuffer] sensorPlace 1 requestType: 3, bufInfo.statType: 501, bufInfo.sensorMode: 102, bufInfo.width: 39424, bufInfo.height: 1, bufInfo.elementSize: 1
+[RTA] [InitStatBuffer] VC_STAT_TYPE_PDP_1_1_PDAF_STAT1 39424
+[RTA] [CalcPdWidthHeight] VC_SENSOR_MODE_2PD_MODE3 - input w : 912, h : 684 -> pd w : 114, h : 85
+[DBG][IdleStateOnActivate] cmlExp: 2539, cmlAGain: 256, cmlDGain: 256, cmlExpLong: 2539, cmlLongAGain: 256, cmlLongDGain: 256
+Error!!! nextFrameLei(0), nextFrameAnalogGain(256), nextFrameDigitalGain(256), shortMicrosExp(2539)
+[ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ERROR][CalcExposureData] exposure is zero (s 1024, l 1024)
+[ERROR][CalcExposureDataWithRound] exposure is zero (s 1024.000000, l 1024.000000)
+InitFrameElement FrameElementForME (0x16BA4530)
+InitFrameElement FrameElementForME (0x16BA4568)
+hw irq #1 3AA0 id 0: +0x10c 0x00100000 +0x11c 0x00000000 -> handler 0x0 in 62 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== 3AA shot F1 -> 0x0
+hw3aa: after shot F1: +0x00 0x00000001 +0x10c 0x00000000 +0x11c 0x00000000 +0x108 0xfff0005f +0x118 0x00000000
+hw3aa otf: +5 ms: interrupts 1, frame starts 0, frame ends 0
+[S0][F0][3AA0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+PrintIsrTime
+PrintIsrTime
+hw irq #2 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 411 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw3aa otf: +2552 ms: interrupts 2, frame starts 1, frame ends 0
+[S0][F0][3AA0] TransitIsrState I1 V SYNC    --(CIN ROW  )--> CIN ROW  
+ReleaseMeBuffer frameDescriptor is null
+ReleaseMeBuffer frameDescriptor is null
+InitFrameElement FrameElementForME (0x16BA45D8)
+InitFrameElement FrameElementForME (0x16BA4610)
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDma->buffer is null.
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDmaBeforeBdsproperties->buffer is null.
+hw3aa otf: +2555 ms: interrupts 3, frame starts 1, frame ends 0
+hw irq #3 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 707 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #4 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 59 us -> +0x10c 0x00000000 +0x11c 0x00000000
+[INFO][S0][F000000] [SIRC AF] Window config changed.(win 0)
+[S0][F0][3AA0] TransitIsrState I2 CIN ROW   --(FRAME END)--> FRAME END
+hw irq #5 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 362 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+== ISP set_param -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F1 -> 0x0
+
+[@][WRAP][S0][F1][ISP0][ConfigureISPInput]: fro(1) inputImageArea(0,0 / 912x684 12/12bits)
+[Thumbnail][SetGeometry] ISP CellResolution: 56 x 42, CellGridResolution: 16 x 16
+[Thumbnail][SetGeometry]statRoi: (0, 0) 912 x 684
+[Thumbnail][SetGeometry]HW: (8, 6) 896 x 672
+[SetGeometry]normalizeShift = 10
+[SetGeometry]uThreshClipCnt_ = 1176(128)
+[S0][ISP0] SetIsrScheduleType 3 @ 0.000 fps earlyConfigLock 0
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+[DRC][TMC][DbgMsg_StateAndExtInfo]DrcMode change Prev:0 -> Cur:1
+[DRC][TMC][Process]Unit gain is set due to an empty histogram !
+TNR mode init. by mode change: TNR_MODE_BYPASS
+TNR mode change: TNR_MODE_BYPASS -> TNR_MODE_FIRST_RUN
+ISP_FimcIspChainV7P11P0 ControlClock clock 1 -> 1
+[ISP] EOTF gamma disabled
+[S0][F1][ISP0] TransitIsrState I0 ABNORMAL  --(V SYNC   )--> V SYNC   
+PrintIsrTime
+PrintIsrTime
+hw irq #6 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 202 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F1 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+PrintIsrTime
+PrintIsrTime
+[S0][3AA0] Valid Time 7572 / Frame Time 33182 
+[S0][3AA0] Valid Time 7572 / Frame Time 33182 
+[S0][3AA0] ISR V SYNC    F0 206948497~206948648 (151 us)
+[S0][3AA0] ISR V SYNC    F0 206948497~206948648 (151 us)
+[S0][3AA0] ISR CIN ROW   F0 206953703~206954269 (566 us)
+[S0][3AA0] ISR CIN ROW   F0 206953703~206954269 (566 us)
+[S0][3AA0] ISR FRAME END F0 206956028~206956226 (198 us)
+[S0][3AA0] ISR FRAME END F0 206956028~206956226 (198 us)
+== 3AA set_ctrl F2 -> 0x0
+
+hw irq #7 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 404 us -> +0x10c 0x00000000 +0x11c 0x00000000
+[RTA] [VQ_RD_G] EventFunc_OnVsync - Camera0 F | Stream[1] Vsync[0] | PDEN 1 | Mode RTA[ 3] pRTA[ 7] IN[11] | Scene 0 | Input 912 x 684 | 1 201 FT 139 | 
+[RTA] [External AE Command] AeLock 0,isWdr 1, ExposureValue 0, ExposureValueStep 0, ISO 0, MeteringMode 3, FlashMode 0,minFps 7, maxFps 30
+[RTA] simulation 0, ismanual 0, mgain 0, mExp 0, mTgain 0
+[RTA] SCENEMODE 0, videomode 0, cameraEntrance 0, vtMode 0, aeMode 2, operationMode 0, awbMode 3, zoomRatio 0
+[RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 0, senVerBinningRatio 0, touchEnable 0
+[RTA] enableDynamicShotDm 0, cameraClientIndex 0
+== 3AA shot F2 -> 0x0
+hw irq #8 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 762 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #9 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 62 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #10 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 555 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[S0][F1][ISP0] TransitIsrState I1 V SYNC    --(FRAME END)--> FRAME END
+hw irq #11 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 137 us -> +0x10c 0x00000000 +0x11c 0x00000000
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F2 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:2][Index:2]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-1], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[10]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-2], 0x0
+TNR mode change: TNR_MODE_FIRST_RUN -> TNR_MODE_NORMAL
+[ISP] EOTF gamma disabled
+PrintIsrTime
+PrintIsrTime
+[S0][ISP0] Valid Time 14626 / Frame Time 29084 
+[S0][ISP0] Valid Time 14626 / Frame Time 29084 
+[S0][ISP0] ISR V SYNC    F1 206976010~206976025 (15 us)
+[S0][ISP0] ISR V SYNC    F1 206976010~206976025 (15 us)
+[S0][ISP0] ISR FRAME END F1 206990596~206990609 (13 us)
+[S0][ISP0] ISR FRAME END F1 206990596~206990609 (13 us)
+[S0][ISP0] TASK V SYNC    206976173~206976178 (5 us)
+[S0][ISP0] TASK V SYNC    206976173~206976178 (5 us)
+[S0][ISP0] TASK CIN ROW   206990721~206990778 (57 us)
+[S0][ISP0] TASK CIN ROW   206990721~206990778 (57 us)
+[S0][ISP0] TASK FRAME END 206990781~206990947 (166 us)
+[S0][ISP0] TASK FRAME END 206990781~206990947 (166 us)
+hw irq #12 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 396 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F2 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F3 -> 0x0
+
+hw irq #13 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 215 us -> +0x10c 0x00000000 +0x11c 0x00000000
+[RTA] [External AE Command] AeLock 0,isWdr 1, ExposureValue 0, ExposureValueStep 0, ISO 0, MeteringMode 3, FlashMode 0,minFps 7, maxFps 30
+[RTA] simulation 0, ismanual 0, mgain 0, mExp 0, mTgain 0
+[RTA] SCENEMODE 0, videomode 0, cameraEntrance 0, vtMode 0, aeMode 2, operationMode 0, awbMode 3, zoomRatio 0
+[RTA] manualExposure 33333000 vendor_manualExposure 0, senHorBinningRatio 4000, senVerBinningRatio 4000, touchEnable 0
+[RTA] enableDynamicShotDm 0, cameraClientIndex 0
+== 3AA shot F3 -> 0x0
+hw irq #14 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 91 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #15 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 497 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #16 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 68 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #17 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 261 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F3 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:3][Index:3]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-2], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-1], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[10]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-3], 0x0
+hw irq #18 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 100 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F3 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F4 -> 0x0
+
+== 3AA shot F4 -> 0x0
+hw irq #19 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 282 us -> +0x10c 0x00000000 +0x11c 0x00000000
+[RTA] AE Lib ver : 0x92b80428
+hw irq #20 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 90 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #21 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 461 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #22 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 47 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #23 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 257 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F4 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+hw irq #24 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 98 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F4 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F5 -> 0x0
+
+hw irq #25 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 189 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== 3AA shot F5 -> 0x0
+hw irq #26 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 187 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #27 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 552 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #28 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 61 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #29 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 259 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F5 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:5][Index:5]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-4], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-3], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-1], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[10]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-5], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-5], 0x0
+hw irq #30 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 90 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F5 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F6 -> 0x0
+
+== 3AA shot F6 -> 0x0
+hw irq #31 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 196 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #32 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 83 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #33 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 651 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #34 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 100 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #35 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 244 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F6 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+hw irq #36 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 91 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F6 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F7 -> 0x0
+
+hw irq #37 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 190 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== 3AA shot F7 -> 0x0
+hw irq #38 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 83 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #39 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 512 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #40 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 57 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #41 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 223 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F7 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:7][Index:7]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-6], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-5], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-3], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-1], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[10]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-7], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-7], 0x0
+hw irq #42 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 95 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F7 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F8 -> 0x0
+
+== 3AA shot F8 -> 0x0
+hw irq #43 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 248 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #44 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 79 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #45 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 538 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #46 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 59 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #47 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 208 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F8 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+hw irq #48 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 93 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F8 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F9 -> 0x0
+
+== 3AA shot F9 -> 0x0
+hw irq #49 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 310 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #50 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 83 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #51 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 492 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #52 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 55 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #53 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 237 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F9 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+hw irq #54 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 92 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F9 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F10 -> 0x0
+
+hw irq #55 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 187 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== 3AA shot F10 -> 0x0
+hw irq #56 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 85 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #57 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 611 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #58 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 52 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #59 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 221 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F10 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:10][Index:10]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-9], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-8], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-6], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-4], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-2], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-1], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-10], 0x0
+hw irq #60 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 97 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== ISP shot F10 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F11 -> 0x0
+
+hw irq #61 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 193 us -> +0x10c 0x00000000 +0x11c 0x00000000
+== 3AA shot F11 -> 0x0
+hw irq #62 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 88 us -> +0x10c 0x00000000 +0x11c 0x00000000
+hw irq #63 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 531 us -> +0x10c 0x00000000 +0x11c 0x02000000
+hw irq #64 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 57 us -> +0x10c 0x00000000 +0x11c 0x00000000
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F11 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:11][Index:11]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-10], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-9], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-7], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-5], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-3], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-2], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-1], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-11], 0x0
+== ISP shot F11 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F12 -> 0x0
+
+== 3AA shot F12 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F12 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:12][Index:12]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-11], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-10], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-8], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-6], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-4], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-3], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-2], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-1], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-12], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-12], 0x0
+== ISP shot F12 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F13 -> 0x0
+
+== 3AA shot F13 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F13 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+== ISP shot F13 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F14 -> 0x0
+
+== 3AA shot F14 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F14 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:14][Index:14]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-13], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-12], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-10], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-8], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-6], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-5], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-4], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-3], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-1], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-14], 0x0
+== ISP shot F14 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F15 -> 0x0
+
+== 3AA shot F15 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F15 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+== ISP shot F15 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F16 -> 0x0
+
+== 3AA shot F16 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F16 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:16][Index:16]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-15], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-14], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-12], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-10], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-8], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-7], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-6], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-5], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-3], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-1], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-16], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-16], 0x0
+== ISP shot F16 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F17 -> 0x0
+
+== 3AA shot F17 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F17 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+== ISP shot F17 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F18 -> 0x0
+
+== 3AA shot F18 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F18 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:18][Index:18]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-17], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-16], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-14], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-12], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-10], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-9], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-8], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-7], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-5], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-3], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-1], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-18], 0x0
+== ISP shot F18 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F19 -> 0x0
+
+== 3AA shot F19 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F19 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:19][Index:19]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-18], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-17], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-15], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-13], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-11], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-10], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-9], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-8], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-6], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-4], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-2], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-1], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-19], 0x0
+== ISP shot F19 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F20 -> 0x0
+
+== 3AA shot F20 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F20 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+== ISP shot F20 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F21 -> 0x0
+
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDma->buffer is null.
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDmaBeforeBdsproperties->buffer is null.
+== 3AA shot F21 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F21 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:21][Index:21]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-20], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-19], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-17], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-15], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-13], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-12], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-11], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-10], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-8], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-6], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-4], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-3], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-1], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-21], 0x0
+== ISP shot F21 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F22 -> 0x0
+
+== 3AA shot F22 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F22 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:22][Index:22]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-21], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-20], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-18], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-16], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-14], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-13], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-12], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-11], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-9], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-7], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-5], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-4], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-2], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-1], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-22], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-22], 0x0
+== ISP shot F22 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F23 -> 0x0
+
+== 3AA shot F23 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F23 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:23][Index:23]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-22], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-21], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-19], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-17], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-15], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-14], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-13], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-12], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-10], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-8], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-6], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-5], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-3], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-2], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:22, Diff:-1], 0x1d6165d9770
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-23], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-23], 0x0
+== ISP shot F23 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F24 -> 0x0
+
+== 3AA shot F24 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F24 -> 0x0
+
+Error SIspStandAloneObject!!! nextFrameLei(0), nextFrameAnalogGain(38380), nextFrameDigitalGain(40782), shortMicrosExp(0)
+== ISP shot F24 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F25 -> 0x0
+
+== 3AA shot F25 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F25 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:25][Index:25]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-24], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-23], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-21], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-19], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-17], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-16], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-15], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-14], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-12], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-10], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-8], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-7], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-5], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-4], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:22, Diff:-3], 0x1d6165d9770
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:24, Diff:-1], 0x1d6166644c0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-25], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-25], 0x0
+== ISP shot F25 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F26 -> 0x0
+
+== 3AA shot F26 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F26 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:26][Index:26]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-25], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-24], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-22], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-20], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-18], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-17], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-16], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-15], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-13], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-11], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-9], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-8], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-6], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-5], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:22, Diff:-4], 0x1d6165d9770
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:24, Diff:-2], 0x1d6166644c0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:25, Diff:-1], 0x1d6166c0da0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-26], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-26], 0x0
+== ISP shot F26 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F27 -> 0x0
+
+== 3AA shot F27 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F27 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:27][Index:27]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-26], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-25], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-23], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-21], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-19], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-18], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-17], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-16], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-14], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-12], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-10], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-9], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-7], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-6], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:22, Diff:-5], 0x1d6165d9770
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:24, Diff:-3], 0x1d6166644c0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:25, Diff:-2], 0x1d6166c0da0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:26, Diff:-1], 0x1d6166fe8e0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-27], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-27], 0x0
+== ISP shot F27 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F28 -> 0x0
+
+== 3AA shot F28 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F28 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:28][Index:28]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-27], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-26], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-24], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-22], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-20], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-19], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-18], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-17], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-15], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-13], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-11], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-10], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-8], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-7], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:22, Diff:-6], 0x1d6165d9770
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:24, Diff:-4], 0x1d6166644c0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:25, Diff:-3], 0x1d6166c0da0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:26, Diff:-2], 0x1d6166fe8e0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:27, Diff:-1], 0x1d61673c420
+[@][WRAP][S0] mIspFrameInfo[28]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-28], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-28], 0x0
+== ISP shot F28 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F29 -> 0x0
+
+== 3AA shot F29 -> 0x0
+
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid edge mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+[WRAP][S0][HW1] Invalid noiseReduction mode 0
+== ISP set_ctrl F29 -> 0x0
+
+[@][WRAP][ERROR][S0]getIspFrameDesc fail: [F:29][Index:29]
+[@][WRAP][S0] mIspFrameInfo[0]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[1]=[F:1, Diff:-28], 0x1d61603ede0
+[@][WRAP][S0] mIspFrameInfo[2]=[F:2, Diff:-27], 0x1d61605db80
+[@][WRAP][S0] mIspFrameInfo[3]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[4]=[F:4, Diff:-25], 0x1d6160e88d0
+[@][WRAP][S0] mIspFrameInfo[5]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[6]=[F:6, Diff:-23], 0x1d616173620
+[@][WRAP][S0] mIspFrameInfo[7]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[8]=[F:8, Diff:-21], 0x0
+[@][WRAP][S0] mIspFrameInfo[9]=[F:9, Diff:-20], 0x1d61624b580
+[@][WRAP][S0] mIspFrameInfo[10]=[F:10, Diff:-19], 0x1d6162890c0
+[@][WRAP][S0] mIspFrameInfo[11]=[F:11, Diff:-18], 0x1d6162c6c00
+[@][WRAP][S0] mIspFrameInfo[12]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[13]=[F:13, Diff:-16], 0x1d616361020
+[@][WRAP][S0] mIspFrameInfo[14]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[15]=[F:15, Diff:-14], 0x1d6163ebd70
+[@][WRAP][S0] mIspFrameInfo[16]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[17]=[F:17, Diff:-12], 0x1d616476ac0
+[@][WRAP][S0] mIspFrameInfo[18]=[F:18, Diff:-11], 0x1d6164c3cd0
+[@][WRAP][S0] mIspFrameInfo[19]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[20]=[F:20, Diff:-9], 0x1d61653f350
+[@][WRAP][S0] mIspFrameInfo[21]=[F:21, Diff:-8], 0x1d61659bc30
+[@][WRAP][S0] mIspFrameInfo[22]=[F:22, Diff:-7], 0x1d6165d9770
+[@][WRAP][S0] mIspFrameInfo[23]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[24]=[F:24, Diff:-5], 0x1d6166644c0
+[@][WRAP][S0] mIspFrameInfo[25]=[F:25, Diff:-4], 0x1d6166c0da0
+[@][WRAP][S0] mIspFrameInfo[26]=[F:26, Diff:-3], 0x1d6166fe8e0
+[@][WRAP][S0] mIspFrameInfo[27]=[F:27, Diff:-2], 0x1d61673c420
+[@][WRAP][S0] mIspFrameInfo[28]=[F:28, Diff:-1], 0x1d616798d00
+[@][WRAP][S0] mIspFrameInfo[29]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[30]=[F:0, Diff:-29], 0x0
+[@][WRAP][S0] mIspFrameInfo[31]=[F:0, Diff:-29], 0x0
+== ISP shot F29 -> 0x0
+
+[WRAP] Invalid iso mode: 0
+[WRAP] Invalid iso mode: 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid edge mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+[WRAP][S0][HW0] Invalid noiseReduction mode 0
+== 3AA set_ctrl F30 -> 0x0
+
+== 3AA shot F30 -> 0x0
+hw3aa otf: done after 3513 ms: interrupts 174, frame starts 29, frame ends 29, shots 30, ISP0 frame ends 28
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDma->buffer is null.
+[SDK] SIRC_FimcIpProcessorSet3aa::ConfigureSimpleDmaProcessor(): outBayerDmaBeforeBdsproperties->buffer is null.
+hwisp: ISP0 YUY2 buffer (dva 0xf854a000): 1247616 of 1247616 bytes written -> C:\S10Prov\isp\out/otf-isp-yuy2-912x684.raw
+
+[@][WRAP][E][S0]DICO_Isp_Stop
+[@][WRAP][S0]stopObject(ISP)
+== ISP stop -> 0x0
+hw3aa otf: before_bds buffer (dva 0xf82e8000): 935431 of 1247616 bytes written by the 3AA -> C:\S10Prov\isp\out/otf-before_bds-912x684.raw
+hw3aa otf: after_bds buffer (dva 0xf8419000): 935431 of 1247616 bytes written by the 3AA -> C:\S10Prov\isp\out/otf-after_bds-912x684.raw
+hw 3AA0 shot +0x0000 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0024 0x00000011 -> 0x00000000
+hw 3AA0 shot +0x0028 0x00000000 -> 0x00000003
+hw 3AA0 shot +0x005c 0x00000000 -> 0x00000008
+hw 3AA0 shot +0x0060 0x00000000 -> 0x01de0000
+hw 3AA0 shot +0x0064 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x006c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0070 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x00c8 0x00000000 -> 0x00000003
+hw 3AA0 shot +0x0104 0x00100800 -> 0x000ffe00
+hw 3AA0 shot +0x0108 0x00000000 -> 0xfff0005f
+hw 3AA0 shot +0x0114 0x00000000 -> 0x05ff80b0
+hw 3AA0 shot +0x0118 0x00000000 -> 0x02000000
+hw 3AA0 shot +0x0330 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x0334 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x0338 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0344 0x00000000 -> 0x00000006
+hw 3AA0 shot +0x034c 0x00000000 -> 0x000000f0
+hw 3AA0 shot +0x0358 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0408 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x040c 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x0410 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x0434 0xffffffff -> 0xe8371fba
+hw 3AA0 shot +0x0458 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x045c 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x0460 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x0484 0xffffffff -> 0xe8371fba
+hw 3AA0 shot +0x04a0 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x04a8 0x00000020 -> 0x00003400
+hw 3AA0 shot +0x04b0 0x00000020 -> 0x00003400
+hw 3AA0 shot +0x04b4 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04b8 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04bc 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04c0 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04c4 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04c8 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04cc 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04d0 0x00000000 -> 0xf5884000
+hw 3AA0 shot +0x04d4 0xffffffff -> 0xaf97186c
+hw 3AA0 shot +0x0588 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x058c 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x0590 0x00000020 -> 0x00000000
+hw 3AA0 shot +0x05b4 0xffffffff -> 0xbb396609
+hw 3AA0 shot +0x0680 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0684 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x0688 0x00000020 -> 0x00000140
+hw 3AA0 shot +0x068c 0x00000020 -> 0x000000f0
+hw 3AA0 shot +0x0690 0x00000020 -> 0x000001e0
+hw 3AA0 shot +0x0694 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x0698 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x069c 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x06a0 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x06a4 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x06a8 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x06ac 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x06b0 0x00000000 -> 0xf58dc200
+hw 3AA0 shot +0x06b4 0xffffffff -> 0x2f2ec17d
+hw 3AA0 shot +0x06c0 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0720 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x0724 0x00000020 -> 0x00000140
+hw 3AA0 shot +0x0728 0x00000020 -> 0x000000f0
+hw 3AA0 shot +0x072c 0x00000020 -> 0x000001e0
+hw 3AA0 shot +0x0730 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x0734 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x0738 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x073c 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x0740 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x0744 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x0748 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x074c 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0x0780 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x07a4 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x1400 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1404 0x00200020 -> 0x02ac0390
+hw 3AA0 shot +0x1410 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x1438 0x00000000 -> 0x000001c8
+hw 3AA0 shot +0x143c 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x1440 0x00000000 -> 0x0004c260
+hw 3AA0 shot +0x1708 0x00000320 -> 0x00000020
+hw 3AA0 shot +0x1710 0x00000320 -> 0x00000064
+hw 3AA0 shot +0x1714 0x00000000 -> 0x00000390
+hw 3AA0 shot +0x1718 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x171c 0x000000aa -> 0x00000000
+hw 3AA0 shot +0x18fc 0x00000037 -> 0x0000c637
+hw 3AA0 shot +0x1900 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x190c 0x00002000 -> 0x00000390
+hw 3AA0 shot +0x1910 0x00002000 -> 0x000002ac
+hw 3AA0 shot +0x19fc 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0x1a00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x1a08 0x04000400 -> 0x10001000
+hw 3AA0 shot +0x1a10 0x00000600 -> 0x00002108
+hw 3AA0 shot +0x1a14 0x01000100 -> 0x002a0030
+hw 3AA0 shot +0x1a18 0x01000100 -> 0x002f002c
+hw 3AA0 shot +0x1a24 0x00000000 -> 0x0014a500
+hw 3AA0 shot +0x1a3c 0x00000000 -> 0x3b483a70
+hw 3AA0 shot +0x1a40 0x00000000 -> 0x000164f7
+hw 3AA0 shot +0x1a44 0x00000000 -> 0x00004000
+hw 3AA0 shot +0x1a48 0x00000000 -> 0x00000005
+hw 3AA0 shot +0x1a4c 0x00007ffe -> 0x00000801
+hw 3AA0 shot +0x1a50 0x00000600 -> 0x000023ee
+hw 3AA0 shot +0x1a58 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1a5c 0x00000000 -> 0x00000339
+hw 3AA0 shot +0x1a60 0x00000000 -> 0x00000339
+hw 3AA0 shot +0x1afc 0x00000037 -> 0x00007437
+hw 3AA0 shot +0x1b00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x1b04 0x00000004 -> 0x000000a3
+hw 3AA0 shot +0x1b14 0x00000080 -> 0x00000010
+hw 3AA0 shot +0x1b18 0x000000ff -> 0x00000010
+hw 3AA0 shot +0x1b1c 0x00000000 -> 0x00060008
+hw 3AA0 shot +0x1b20 0x00008080 -> 0x00002a38
+hw 3AA0 shot +0x1b24 0x00008080 -> 0x00002a38
+hw 3AA0 shot +0x1b2c 0x3fff3fff -> 0x3e803e80
+hw 3AA0 shot +0x1b30 0x3fff3fff -> 0x3e803e80
+hw 3AA0 shot +0x1b34 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x1b38 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x1b3c 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x1b40 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x1b44 0x00000a00 -> 0x00000888
+hw 3AA0 shot +0x1b48 0x001d964d -> 0x00219748
+hw 3AA0 shot +0x1b50 0x00000100 -> 0x00000040
+hw 3AA0 shot +0x1b54 0x00000100 -> 0x00000040
+hw 3AA0 shot +0x1b58 0x00000100 -> 0x00000040
+hw 3AA0 shot +0x1b60 0x00000000 -> 0x00001c00
+hw 3AA0 shot +0x1b68 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1b6c 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1b70 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1b74 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1b78 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1b7c 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1c00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x1c04 0x08000800 -> 0x08890889
+hw 3AA0 shot +0x1c08 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x1c0c 0x08000800 -> 0x04440222
+hw 3AA0 shot +0x1c10 0x00000800 -> 0x00000222
+hw 3AA0 shot +0x1c14 0x08000800 -> 0x04440222
+hw 3AA0 shot +0x1c18 0x00000800 -> 0x00000222
+hw 3AA0 shot +0x1c1c 0x08000800 -> 0x04440222
+hw 3AA0 shot +0x1c20 0x00000800 -> 0x00000222
+hw 3AA0 shot +0x1c28 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x1c2c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1c3c 0x00000fff -> 0x00000000
+hw 3AA0 shot +0x1c40 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x1c44 0x00000000 -> 0x00000007
+hw 3AA0 shot +0x1c48 0x00000000 -> 0x00000007
+hw 3AA0 shot +0x1c4c 0x00000000 -> 0x00000006
+hw 3AA0 shot +0x1c50 0x00000555 -> 0x00000666
+hw 3AA0 shot +0x1c54 0x00555555 -> 0x00000446
+hw 3AA0 shot +0x1c64 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1c68 0x00002020 -> 0x00000a12
+hw 3AA0 shot +0x1c6c 0x00000020 -> 0x00000032
+hw 3AA0 shot +0x1c70 0x00000040 -> 0x00000044
+hw 3AA0 shot +0x1c7c 0x00000fff -> 0x00000383
+hw 3AA0 shot +0x1c80 0x00003fff -> 0x000002a7
+hw 3AA0 shot +0x1d00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x1d08 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1d0c 0x00000800 -> 0x0000084b
+hw 3AA0 shot +0x1d18 0x00000800 -> 0x00000c2a
+hw 3AA0 shot +0x1d2c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1d3c 0x000005ff -> 0x00003fff
+hw 3AA0 shot +0x1d44 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x1dfc 0x00000037 -> 0x00006737
+hw 3AA0 shot +0x1e00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x1e04 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x1e08 0x00000000 -> 0x04000400
+hw 3AA0 shot +0x1e10 0x02000000 -> 0x02490000
+hw 3AA0 shot +0x1e14 0x06000400 -> 0x05ff0441
+hw 3AA0 shot +0x1e18 0x0a000800 -> 0x0a3e078a
+hw 3AA0 shot +0x1e1c 0x0e000c00 -> 0x0e840c88
+hw 3AA0 shot +0x1e20 0x12001000 -> 0x11de1045
+hw 3AA0 shot +0x1e24 0x16001400 -> 0x1622135a
+hw 3AA0 shot +0x1e28 0x1a001800 -> 0x1b0118ab
+hw 3AA0 shot +0x1e2c 0x1e001c00 -> 0x1f1e1d26
+hw 3AA0 shot +0x1e30 0x22002000 -> 0x22b320f3
+hw 3AA0 shot +0x1e34 0x26002400 -> 0x26052462
+hw 3AA0 shot +0x1e38 0x2a002800 -> 0x291e279a
+hw 3AA0 shot +0x1e3c 0x2e002c00 -> 0x2c032a97
+hw 3AA0 shot +0x1e40 0x32003000 -> 0x30132d63
+hw 3AA0 shot +0x1e44 0x36003400 -> 0x352032a7
+hw 3AA0 shot +0x1e48 0x3a003800 -> 0x39cb3781
+hw 3AA0 shot +0x1e4c 0x02003c00 -> 0x04003c00
+hw 3AA0 shot +0x1e50 0x02000000 -> 0x00800000
+hw 3AA0 shot +0x1e54 0x06000400 -> 0x01800100
+hw 3AA0 shot +0x1e58 0x0a000800 -> 0x03000200
+hw 3AA0 shot +0x1e5c 0x0e000c00 -> 0x05000400
+hw 3AA0 shot +0x1e60 0x12001000 -> 0x07000600
+hw 3AA0 shot +0x1e64 0x16001400 -> 0x0a000800
+hw 3AA0 shot +0x1e68 0x1a001800 -> 0x0e000c00
+hw 3AA0 shot +0x1e6c 0x1e001c00 -> 0x12001000
+hw 3AA0 shot +0x1e70 0x22002000 -> 0x16001400
+hw 3AA0 shot +0x1e74 0x26002400 -> 0x1a001800
+hw 3AA0 shot +0x1e78 0x2a002800 -> 0x1e001c00
+hw 3AA0 shot +0x1e7c 0x2e002c00 -> 0x22002000
+hw 3AA0 shot +0x1e80 0x32003000 -> 0x28002400
+hw 3AA0 shot +0x1e84 0x36003400 -> 0x30002c00
+hw 3AA0 shot +0x1e88 0x3a003800 -> 0x38003400
+hw 3AA0 shot +0x1e8c 0x02003c00 -> 0x04003c00
+hw 3AA0 shot +0x1efc 0x00000037 -> 0x0000fc37
+hw 3AA0 shot +0x1f00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x1f04 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x1f10 0x00000200 -> 0x00000390
+hw 3AA0 shot +0x1f14 0x00000200 -> 0x000002ac
+hw 3AA0 shot +0x1f48 0x00000280 -> 0x00000390
+hw 3AA0 shot +0x1f4c 0x000001e0 -> 0x000000ac
+hw 3AA0 shot +0x1f50 0x00001000 -> 0x00000100
+hw 3AA0 shot +0x1f54 0x00001000 -> 0x00000100
+hw 3AA0 shot +0x1f60 0x00001a1a -> 0x00001616
+hw 3AA0 shot +0x1f70 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x1ffc 0x00000037 -> 0x0000c537
+hw 3AA0 shot +0x2200 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x220c 0x00002000 -> 0x00000390
+hw 3AA0 shot +0x2210 0x00002000 -> 0x000002ac
+hw 3AA0 shot +0x22fc 0x00000037 -> 0x00006637
+hw 3AA0 shot +0x2300 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2304 0x00003fff -> 0x00003ff0
+hw 3AA0 shot +0x23fc 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0x24fc 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0x2500 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2504 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x254c 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x2550 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2554 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2558 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2564 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0x2600 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2604 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2608 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x260c 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x2610 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x2614 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x2618 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x261c 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x2620 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x2624 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0x2628 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x262c 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x2630 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x2634 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x2638 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x263c 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x2640 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x2644 0x20002000 -> 0x22222222
+hw 3AA0 shot +0x264c 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x2654 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2658 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2664 0x00000037 -> 0x00007237
+hw 3AA0 shot +0x2700 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2734 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2738 0x0000c800 -> 0x00000000
+hw 3AA0 shot +0x2744 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x274c 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2750 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x2754 0x04000fff -> 0x0fff0fdc
+hw 3AA0 shot +0x2758 0x00010800 -> 0x00030800
+hw 3AA0 shot +0x275c 0x00000000 -> 0x00010100
+hw 3AA0 shot +0x2768 0x00000000 -> 0x00000040
+hw 3AA0 shot +0x2770 0x00000000 -> 0x00000040
+hw 3AA0 shot +0x2778 0x00000000 -> 0x00002014
+hw 3AA0 shot +0x27b0 0x001f0100 -> 0x000a0100
+hw 3AA0 shot +0x27b4 0x00000000 -> 0x0f800000
+hw 3AA0 shot +0x27b8 0x00010000 -> 0x00010ab0
+hw 3AA0 shot +0x27bc 0x50000000 -> 0x40000320
+hw 3AA0 shot +0x2854 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2858 0x00000000 -> 0x03900000
+hw 3AA0 shot +0x285c 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x2880 0xfff00000 -> 0x00000000
+hw 3AA0 shot +0x2884 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2888 0x00000000 -> 0x0020005f
+hw 3AA0 shot +0x288c 0x00000000 -> 0x00000008
+hw 3AA0 shot +0x2890 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x289c 0x00000000 -> 0x00000022
+hw 3AA0 shot +0x28a0 0x00000000 -> 0x00100001
+hw 3AA0 shot +0x28b4 0x00000000 -> 0x00000140
+hw 3AA0 shot +0x28bc 0x00000000 -> 0x00080100
+hw 3AA0 shot +0x2900 0x00000000 -> 0x00420028
+hw 3AA0 shot +0x2904 0x00000000 -> 0x007f006a
+hw 3AA0 shot +0x2908 0x00000000 -> 0x000000ca
+hw 3AA0 shot +0x290c 0x00000000 -> 0x00001818
+hw 3AA0 shot +0x2910 0x00000000 -> 0x3732302e
+hw 3AA0 shot +0x2914 0x00000000 -> 0x0000003c
+hw 3AA0 shot +0x2918 0x00000000 -> 0x00f000a0
+hw 3AA0 shot +0x291c 0x00000000 -> 0x02300168
+hw 3AA0 shot +0x2920 0x00000000 -> 0x000002f8
+hw 3AA0 shot +0x2924 0x00000000 -> 0x00b400a0
+hw 3AA0 shot +0x2928 0x00000000 -> 0x01670104
+hw 3AA0 shot +0x292c 0x00000000 -> 0x00000209
+hw 3AA0 shot +0x2930 0x00000000 -> 0x1814100c
+hw 3AA0 shot +0x2934 0x00000000 -> 0x0000001c
+hw 3AA0 shot +0x2938 0x00000000 -> 0x1814100c
+hw 3AA0 shot +0x293c 0x00000000 -> 0x0000001c
+hw 3AA0 shot +0x2940 0x00000000 -> 0x000b0008
+hw 3AA0 shot +0x2944 0x00000000 -> 0x0014000e
+hw 3AA0 shot +0x2948 0x00000000 -> 0x00000020
+hw 3AA0 shot +0x294c 0x00000000 -> 0x00050004
+hw 3AA0 shot +0x2950 0x00000000 -> 0x000a0007
+hw 3AA0 shot +0x2954 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x2958 0x00000000 -> 0x005f003c
+hw 3AA0 shot +0x295c 0x00000000 -> 0x00bf008c
+hw 3AA0 shot +0x2960 0x00000000 -> 0x000000fb
+hw 3AA0 shot +0x296c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2970 0x00000000 -> 0x0000084b
+hw 3AA0 shot +0x2974 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x2978 0x00000000 -> 0x00000615
+hw 3AA0 shot +0x297c 0x00000000 -> 0x000001ee
+hw 3AA0 shot +0x2980 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x2984 0x00000000 -> 0x000002a1
+hw 3AA0 shot +0x2a04 0x0000100e -> 0x00000002
+hw 3AA0 shot +0x2a08 0x00020001 -> 0x01000000
+hw 3AA0 shot +0x2a0c 0x00040003 -> 0x02000180
+hw 3AA0 shot +0x2a10 0x00060005 -> 0x03000280
+hw 3AA0 shot +0x2a14 0x00080007 -> 0x04000380
+hw 3AA0 shot +0x2a18 0x000a0009 -> 0x05000480
+hw 3AA0 shot +0x2a1c 0x000c000b -> 0x06000580
+hw 3AA0 shot +0x2a20 0x000e000d -> 0x07000680
+hw 3AA0 shot +0x2a24 0x0010000f -> 0x08000780
+hw 3AA0 shot +0x2a28 0x00120011 -> 0x09000880
+hw 3AA0 shot +0x2a2c 0x00140013 -> 0x0a000980
+hw 3AA0 shot +0x2a30 0x00160015 -> 0x0b000a80
+hw 3AA0 shot +0x2a34 0x00180017 -> 0x0c000b80
+hw 3AA0 shot +0x2a38 0x001a0019 -> 0x0d000c80
+hw 3AA0 shot +0x2a3c 0x001c001b -> 0x0e000d80
+hw 3AA0 shot +0x2a40 0x001e001d -> 0x0f000e80
+hw 3AA0 shot +0x2a44 0x0020001f -> 0x00800f80
+hw 3AA0 shot +0x2a4c 0x00000000 -> 0x01110089
+hw 3AA0 shot +0x2a50 0x00000000 -> 0x0222019a
+hw 3AA0 shot +0x2a54 0x00000000 -> 0x033302ab
+hw 3AA0 shot +0x2a58 0x00000000 -> 0x044403bc
+hw 3AA0 shot +0x2a5c 0x00000000 -> 0x055504cd
+hw 3AA0 shot +0x2a60 0x00000000 -> 0x066605de
+hw 3AA0 shot +0x2a64 0x00000000 -> 0x077706ef
+hw 3AA0 shot +0x2a68 0x00000000 -> 0x08890800
+hw 3AA0 shot +0x2a6c 0x00000000 -> 0x099a0911
+hw 3AA0 shot +0x2a70 0x00000000 -> 0x0aab0a22
+hw 3AA0 shot +0x2a74 0x00000000 -> 0x0bbc0b33
+hw 3AA0 shot +0x2a78 0x00000000 -> 0x0ccd0c44
+hw 3AA0 shot +0x2a7c 0x00000000 -> 0x0dde0d55
+hw 3AA0 shot +0x2a80 0x00000000 -> 0x0eef0e66
+hw 3AA0 shot +0x2a84 0x00000000 -> 0x00890f77
+hw 3AA0 shot +0x2a8c 0x00020000 -> 0x00000000
+hw 3AA0 shot +0x2a94 0x00020000 -> 0x00000000
+hw 3AA0 shot +0x2aa0 0x00020000 -> 0x00000000
+hw 3AA0 shot +0x2aa8 0x00020000 -> 0x00000000
+hw 3AA0 shot +0x2ab0 0x00640064 -> 0x00000000
+hw 3AA0 shot +0x2ab4 0x00000003 -> 0x00000000
+hw 3AA0 shot +0x2ab8 0x00000005 -> 0x00000000
+hw 3AA0 shot +0x2abc 0x00000000 -> 0x0019ed07
+hw 3AA0 shot +0x2bfc 0x00000037 -> 0x0000b037
+hw 3AA0 shot +0x2d04 0x00000000 -> 0x00000011
+hw 3AA0 shot +0x2d08 0x00000000 -> 0x00000011
+hw 3AA0 shot +0x2d0c 0x00000000 -> 0x00003e26
+hw 3AA0 shot +0x2d10 0x00000000 -> 0x00001e00
+hw 3AA0 shot +0x2d14 0x00000000 -> 0x00000439
+hw 3AA0 shot +0x2d18 0x00000000 -> 0x00003fa1
+hw 3AA0 shot +0x2d1c 0x00000000 -> 0x00001da1
+hw 3AA0 shot +0x2d20 0x00000000 -> 0x0000025f
+hw 3AA0 shot +0x2d24 0x00000000 -> 0x000003b4
+hw 3AA0 shot +0x2d28 0x00000000 -> 0x00003f42
+hw 3AA0 shot +0x2d48 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x2d54 0x00000000 -> 0x00000fff
+hw 3AA0 shot +0x2d58 0x00000000 -> 0x00000800
+hw 3AA0 shot +0x2d5c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2e00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x2e04 0x0000fff0 -> 0x00001ff1
+hw 3AA0 shot +0x2e08 0x00000040 -> 0x00000400
+hw 3AA0 shot +0x2e0c 0x00001000 -> 0x00003fff
+hw 3AA0 shot +0x2e18 0x00000007 -> 0x00000001
+hw 3AA0 shot +0x2e2c 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x2e30 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x2e3c 0x00000000 -> 0x000000c8
+hw 3AA0 shot +0x2e40 0x00001000 -> 0x00000078
+hw 3AA0 shot +0x2e48 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x2e4c 0x00000004 -> 0x0000000a
+hw 3AA0 shot +0x2e54 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x2e58 0x00000081 -> 0x00000100
+hw 3AA0 shot +0x2e5c 0x0000000d -> 0x00000000
+hw 3AA0 shot +0x2e60 0x00000004 -> 0x00000008
+hw 3AA0 shot +0x2e6c 0x0000000e -> 0x00000004
+hw 3AA0 shot +0x2e70 0x00000010 -> 0x00000000
+hw 3AA0 shot +0x2e74 0x00000280 -> 0x00000800
+hw 3AA0 shot +0x2e78 0x00000280 -> 0x00001000
+hw 3AA0 shot +0x2e7c 0x00000000 -> 0x00000080
+hw 3AA0 shot +0x2e84 0x00000000 -> 0x00000080
+hw 3AA0 shot +0x2e88 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x2e9c 0x00000020 -> 0x00000014
+hw 3AA0 shot +0x2ea0 0x00000020 -> 0x0000001e
+hw 3AA0 shot +0x2eb4 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x2ec8 0x00000000 -> 0x00000040
+hw 3AA0 shot +0x2ecc 0x00000000 -> 0x00000800
+hw 3AA0 shot +0x2ed0 0x00000004 -> 0x00000006
+hw 3AA0 shot +0x2ed8 0x00004000 -> 0x000002ac
+hw 3AA0 shot +0x2ee0 0x00000000 -> 0x0000001f
+hw 3AA0 shot +0x2ee8 0x00000000 -> 0x00000077
+hw 3AA0 shot +0x2f00 0x00000000 -> 0x00000077
+hw 3AA0 shot +0x2f0c 0x00000fff -> 0x00003ff3
+hw 3AA0 shot +0x2f10 0x00000008 -> 0x00000005
+hw 3AA0 shot +0x2f14 0x0000000b -> 0x00000006
+hw 3AA0 shot +0x2f18 0x00000002 -> 0x00000000
+hw 3AA0 shot +0x2f1c 0x00000002 -> 0x00000000
+hw 3AA0 shot +0x2f20 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x2f24 0x00000004 -> 0x00000005
+hw 3AA0 shot +0x2f28 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x2f2c 0x00000000 -> 0x000001f4
+hw 3AA0 shot +0x2f30 0x00000000 -> 0x000001f4
+hw 3AA0 shot +0x2f38 0x00000040 -> 0x00000000
+hw 3AA0 shot +0x2f3c 0x00000005 -> 0x00000004
+hw 3AA0 shot +0x2f50 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x2f54 0x0000000c -> 0x0000000b
+hw 3AA0 shot +0x2f68 0x00000000 -> 0x00000037
+hw 3AA0 shot +0x2f6c 0x20202020 -> 0x00000000
+hw 3AA0 shot +0x2f74 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x2f78 0x0000000f -> 0x0000001f
+hw 3AA0 shot +0x2f7c 0x00000100 -> 0x00000060
+hw 3AA0 shot +0x2f80 0x00000100 -> 0x00000080
+hw 3AA0 shot +0x2f84 0x00000300 -> 0x00000200
+hw 3AA0 shot +0x2f88 0x00000300 -> 0x00000200
+hw 3AA0 shot +0x2f8c 0x00000300 -> 0x00000000
+hw 3AA0 shot +0x2f90 0x00000300 -> 0x00000000
+hw 3AA0 shot +0x2f94 0x0000400c -> 0x0000100d
+hw 3AA0 shot +0x2f98 0x00004000 -> 0x00000f80
+hw 3AA0 shot +0x2f9c 0x00004000 -> 0x00000ab0
+hw 3AA0 shot +0x2fa0 0x00000000 -> 0x00000028
+hw 3AA0 shot +0x2fa8 0x00000000 -> 0x00000022
+hw 3AA0 shot +0x2fac 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x2ffc 0x00000037 -> 0x0000e137
+hw 3AA0 shot +0x30fc 0x00000037 -> 0x0000c637
+hw 3AA0 shot +0x31fc 0x00000037 -> 0x0000d637
+hw 3AA0 shot +0x3200 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x3204 0x00000000 -> 0x00000003
+hw 3AA0 shot +0x3208 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x3210 0x00000000 -> 0x00440044
+hw 3AA0 shot +0x3214 0x00000000 -> 0x00330033
+hw 3AA0 shot +0x3218 0x08000800 -> 0x10001000
+hw 3AA0 shot +0x3220 0x00000000 -> 0x00010001
+hw 3AA0 shot +0x3224 0x0008000c -> 0x000c000c
+hw 3AA0 shot +0x3228 0x0008000c -> 0x000c000c
+hw 3AA0 shot +0x3234 0x02000200 -> 0x028a028a
+hw 3AA0 shot +0x3238 0x00000200 -> 0x0000028a
+hw 3AA0 shot +0x323c 0x003c0050 -> 0x000c0010
+hw 3AA0 shot +0x3268 0x00000000 -> 0xf594d320
+hw 3AA0 shot +0x326c 0x00000000 -> 0xf594d000
+hw 3AA0 shot +0x3270 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x3274 0x00000000 -> 0xf594e960
+hw 3AA0 shot +0x329c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x32a4 0x00000000 -> 0x00007800
+hw 3AA0 shot +0x32ac 0x00000000 -> 0x00000078
+hw 3AA0 shot +0x32b0 0x00000000 -> 0xf594d4b0
+hw 3AA0 shot +0x32b4 0x00000000 -> 0xf594d190
+hw 3AA0 shot +0x32b8 0x00000000 -> 0xf594eaf0
+hw 3AA0 shot +0x32fc 0x00000037 -> 0x00006c37
+hw 3AA0 shot +0x33fc 0x00000037 -> 0x00005d37
+hw 3AA0 shot +0x3400 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x340c 0x00002000 -> 0x00000390
+hw 3AA0 shot +0x3410 0x00002000 -> 0x000002ac
+hw 3AA0 shot +0x34fc 0x00000037 -> 0x00005d37
+hw 3AA0 shot +0x3600 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x3604 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x3608 0x00000000 -> 0x00000040
+hw 3AA0 shot +0x3610 0x00000000 -> 0x00100000
+hw 3AA0 shot +0x3614 0x00000000 -> 0x00240019
+hw 3AA0 shot +0x3618 0x00000000 -> 0x00400031
+hw 3AA0 shot +0x361c 0x00000000 -> 0x00630051
+hw 3AA0 shot +0x3620 0x00000000 -> 0x00900079
+hw 3AA0 shot +0x3624 0x00000000 -> 0x00c300a9
+hw 3AA0 shot +0x3628 0x00000000 -> 0x00fe00df
+hw 3AA0 shot +0x362c 0x00000000 -> 0x0143011f
+hw 3AA0 shot +0x3630 0x00000000 -> 0x01910169
+hw 3AA0 shot +0x3634 0x00000000 -> 0x01e701bb
+hw 3AA0 shot +0x3638 0x00000000 -> 0x02440214
+hw 3AA0 shot +0x363c 0x00000000 -> 0x02a80275
+hw 3AA0 shot +0x3640 0x00000000 -> 0x031402dd
+hw 3AA0 shot +0x3644 0x00000000 -> 0x0386034c
+hw 3AA0 shot +0x3648 0x00000000 -> 0x03ff03c2
+hw 3AA0 shot +0x364c 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0x3650 0x00000000 -> 0x00400000
+hw 3AA0 shot +0x3654 0x00000000 -> 0x00800060
+hw 3AA0 shot +0x3658 0x00000000 -> 0x00c000a0
+hw 3AA0 shot +0x365c 0x00000000 -> 0x010000e0
+hw 3AA0 shot +0x3660 0x00000000 -> 0x01400120
+hw 3AA0 shot +0x3664 0x00000000 -> 0x01800160
+hw 3AA0 shot +0x3668 0x00000000 -> 0x01c001a0
+hw 3AA0 shot +0x366c 0x00000000 -> 0x020001e0
+hw 3AA0 shot +0x3670 0x00000000 -> 0x02400220
+hw 3AA0 shot +0x3674 0x00000000 -> 0x02800260
+hw 3AA0 shot +0x3678 0x00000000 -> 0x02c002a0
+hw 3AA0 shot +0x367c 0x00000000 -> 0x030002e0
+hw 3AA0 shot +0x3680 0x00000000 -> 0x03400320
+hw 3AA0 shot +0x3684 0x00000000 -> 0x03800360
+hw 3AA0 shot +0x3688 0x00000000 -> 0x03c003a0
+hw 3AA0 shot +0x368c 0x00000000 -> 0x002003e0
+hw 3AA0 shot +0x3700 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x370c 0x00000000 -> 0x001b012f
+hw 3AA0 shot +0x3710 0x00000000 -> 0x07d80028
+hw 3AA0 shot +0x3714 0x00000000 -> 0x07aa00d0
+hw 3AA0 shot +0x3718 0x00000000 -> 0x07e70141
+hw 3AA0 shot +0x371c 0x00000000 -> 0x07b30049
+hw 3AA0 shot +0x3720 0x00000000 -> 0x0766013c
+hw 3AA0 shot +0x3724 0x00000000 -> 0x00180157
+hw 3AA0 shot +0x3728 0x00000000 -> 0x07990003
+hw 3AA0 shot +0x372c 0x00000000 -> 0x07b50104
+hw 3AA0 shot +0x3730 0x00000000 -> 0x00060145
+hw 3AA0 shot +0x3734 0x00000000 -> 0x07a50029
+hw 3AA0 shot +0x3738 0x00000000 -> 0x079f010f
+hw 3AA0 shot +0x373c 0x00000000 -> 0x00060145
+hw 3AA0 shot +0x3740 0x00000000 -> 0x07a50029
+hw 3AA0 shot +0x3744 0x00000000 -> 0x079f010f
+hw 3AA0 shot +0x3748 0x00000000 -> 0x00060145
+hw 3AA0 shot +0x374c 0x00000000 -> 0x07a50029
+hw 3AA0 shot +0x3750 0x00000000 -> 0x079f010f
+hw 3AA0 shot +0x3754 0x00000000 -> 0x00060145
+hw 3AA0 shot +0x3758 0x00000000 -> 0x07a50029
+hw 3AA0 shot +0x375c 0x00000000 -> 0x079f010f
+hw 3AA0 shot +0x3760 0x00000000 -> 0x00060145
+hw 3AA0 shot +0x3764 0x00000000 -> 0x07a50029
+hw 3AA0 shot +0x3768 0x00000000 -> 0x079f010f
+hw 3AA0 shot +0x376c 0x00000000 -> 0x00150134
+hw 3AA0 shot +0x3770 0x00000000 -> 0x07a40029
+hw 3AA0 shot +0x3774 0x00000000 -> 0x079f010f
+hw 3AA0 shot +0x3778 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x377c 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x3780 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x3784 0x00000000 -> 0x001e01e2
+hw 3AA0 shot +0x3788 0x00000000 -> 0x01030000
+hw 3AA0 shot +0x378c 0x00000000 -> 0x000407f9
+hw 3AA0 shot +0x3790 0x00000000 -> 0x00080108
+hw 3AA0 shot +0x3794 0x00000000 -> 0x000007f0
+hw 3AA0 shot +0x3798 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x379c 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x37a0 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x37a4 0x00000000 -> 0x0000000c
+hw 3AA0 shot +0x3800 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x3810 0x00000000 -> 0x001c0000
+hw 3AA0 shot +0x3814 0x00000000 -> 0x007d0057
+hw 3AA0 shot +0x3818 0x00000000 -> 0x00c800a2
+hw 3AA0 shot +0x381c 0x00000000 -> 0x010c00ed
+hw 3AA0 shot +0x3820 0x00000000 -> 0x014c0128
+hw 3AA0 shot +0x3824 0x00000000 -> 0x01a20179
+hw 3AA0 shot +0x3828 0x00000000 -> 0x01e701c6
+hw 3AA0 shot +0x382c 0x00000000 -> 0x02200205
+hw 3AA0 shot +0x3830 0x00000000 -> 0x02640239
+hw 3AA0 shot +0x3834 0x00000000 -> 0x02a60283
+hw 3AA0 shot +0x3838 0x00000000 -> 0x02ed02c5
+hw 3AA0 shot +0x383c 0x00000000 -> 0x0341031b
+hw 3AA0 shot +0x3840 0x00000000 -> 0x037e0362
+hw 3AA0 shot +0x3844 0x00000000 -> 0x03ae0397
+hw 3AA0 shot +0x3848 0x00000000 -> 0x03d503c2
+hw 3AA0 shot +0x384c 0x00000000 -> 0x001803e7
+hw 3AA0 shot +0x3850 0x00000000 -> 0x001c0000
+hw 3AA0 shot +0x3854 0x00000000 -> 0x007d0057
+hw 3AA0 shot +0x3858 0x00000000 -> 0x00c800a2
+hw 3AA0 shot +0x385c 0x00000000 -> 0x010c00ed
+hw 3AA0 shot +0x3860 0x00000000 -> 0x014c0128
+hw 3AA0 shot +0x3864 0x00000000 -> 0x01a20179
+hw 3AA0 shot +0x3868 0x00000000 -> 0x01e701c6
+hw 3AA0 shot +0x386c 0x00000000 -> 0x02200205
+hw 3AA0 shot +0x3870 0x00000000 -> 0x02640239
+hw 3AA0 shot +0x3874 0x00000000 -> 0x02a60283
+hw 3AA0 shot +0x3878 0x00000000 -> 0x02ed02c5
+hw 3AA0 shot +0x387c 0x00000000 -> 0x0341031b
+hw 3AA0 shot +0x3880 0x00000000 -> 0x037e0362
+hw 3AA0 shot +0x3884 0x00000000 -> 0x03ae0397
+hw 3AA0 shot +0x3888 0x00000000 -> 0x03d503c2
+hw 3AA0 shot +0x388c 0x00000000 -> 0x001803e7
+hw 3AA0 shot +0x3900 0x00000000 -> 0x001c0000
+hw 3AA0 shot +0x3904 0x00000000 -> 0x007d0057
+hw 3AA0 shot +0x3908 0x00000000 -> 0x00c800a2
+hw 3AA0 shot +0x390c 0x00000000 -> 0x010c00ed
+hw 3AA0 shot +0x3910 0x00000000 -> 0x014c0128
+hw 3AA0 shot +0x3914 0x00000000 -> 0x01a20179
+hw 3AA0 shot +0x3918 0x00000000 -> 0x01e701c6
+hw 3AA0 shot +0x391c 0x00000000 -> 0x02200205
+hw 3AA0 shot +0x3920 0x00000000 -> 0x02640239
+hw 3AA0 shot +0x3924 0x00000000 -> 0x02a60283
+hw 3AA0 shot +0x3928 0x00000000 -> 0x02ed02c5
+hw 3AA0 shot +0x392c 0x00000000 -> 0x0341031b
+hw 3AA0 shot +0x3930 0x00000000 -> 0x037e0362
+hw 3AA0 shot +0x3934 0x00000000 -> 0x03ae0397
+hw 3AA0 shot +0x3938 0x00000000 -> 0x03d503c2
+hw 3AA0 shot +0x393c 0x00000000 -> 0x001803e7
+hw 3AA0 shot +0x3940 0x00000000 -> 0x00080000
+hw 3AA0 shot +0x3944 0x00000000 -> 0x00180010
+hw 3AA0 shot +0x3948 0x00000000 -> 0x00280020
+hw 3AA0 shot +0x394c 0x00000000 -> 0x00380030
+hw 3AA0 shot +0x3950 0x00000000 -> 0x00500040
+hw 3AA0 shot +0x3954 0x00000000 -> 0x00700060
+hw 3AA0 shot +0x3958 0x00000000 -> 0x00900080
+hw 3AA0 shot +0x395c 0x00000000 -> 0x00b000a0
+hw 3AA0 shot +0x3960 0x00000000 -> 0x00e000c0
+hw 3AA0 shot +0x3964 0x00000000 -> 0x01200100
+hw 3AA0 shot +0x3968 0x00000000 -> 0x01800140
+hw 3AA0 shot +0x396c 0x00000000 -> 0x020001c0
+hw 3AA0 shot +0x3970 0x00000000 -> 0x02800240
+hw 3AA0 shot +0x3974 0x00000000 -> 0x030002c0
+hw 3AA0 shot +0x3978 0x00000000 -> 0x03800340
+hw 3AA0 shot +0x397c 0x00000000 -> 0x004003c0
+hw 3AA0 shot +0x3a00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x3a04 0x00000000 -> 0x00000132
+hw 3AA0 shot +0x3a08 0x00000000 -> 0x00000753
+hw 3AA0 shot +0x3a0c 0x00000000 -> 0x00000200
+hw 3AA0 shot +0x3a10 0x00000000 -> 0x00000259
+hw 3AA0 shot +0x3a14 0x00000000 -> 0x000006ad
+hw 3AA0 shot +0x3a18 0x00000000 -> 0x00000653
+hw 3AA0 shot +0x3a1c 0x00000000 -> 0x00000075
+hw 3AA0 shot +0x3a20 0x00000000 -> 0x00000200
+hw 3AA0 shot +0x3a24 0x00000000 -> 0x000007ad
+hw 3AA0 shot +0x3a2c 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0x3a34 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0x3a3c 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0x3a48 0x00000000 -> 0x00000200
+hw 3AA0 shot +0x3a4c 0x00000000 -> 0x00000200
+hw 3AA0 shot +0x3c0c 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x3c10 0x0000039a -> 0x00000000
+hw 3AA0 shot +0x3c14 0x000002cd -> 0x00000000
+hw 3AA0 shot +0x3c18 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x3c1c 0x00000010 -> 0x00000000
+hw 3AA0 shot +0x3c20 0x00000028 -> 0x00000000
+hw 3AA0 shot +0x3c24 0x00000190 -> 0x00000000
+hw 3AA0 shot +0x3c28 0x00000258 -> 0x00000000
+hw 3AA0 shot +0x3c2c 0x00000400 -> 0x00003fff
+hw 3AA0 shot +0x3c30 0x00000400 -> 0x00000000
+hw 3AA0 shot +0x3c34 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x3d04 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0x3d08 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0x3d0c 0x00000000 -> 0x00000050
+hw 3AA0 shot +0x3d10 0x00000000 -> 0x00000050
+hw 3AA0 shot +0x3d1c 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0x3d20 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0x3d24 0x00000000 -> 0x00000050
+hw 3AA0 shot +0x3d28 0x00000000 -> 0x00000050
+hw 3AA0 shot +0x3d2c 0x00000000 -> 0x0000000c
+hw 3AA0 shot +0x3d30 0x00000000 -> 0x00000180
+hw 3AA0 shot +0x3d38 0x00000000 -> 0x0000084b
+hw 3AA0 shot +0x3d3c 0x00000000 -> 0x00000615
+hw 3AA0 shot +0x3d44 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x3d48 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x3d58 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x3d5c 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x3d64 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x3d68 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x3d74 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x3d7c 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x3d80 0x00000000 -> 0x000000a0
+hw 3AA0 shot +0x3d84 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x3d94 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x3da8 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x3dac 0x00000000 -> 0x00000010
+hw 3AA0 shot +0x3db4 0x00000000 -> 0x000001ee
+hw 3AA0 shot +0x3db8 0x00000000 -> 0x000002a1
+hw 3AA0 shot +0x3dd0 0x00000000 -> 0x00000040
+hw 3AA0 shot +0x3dd4 0x00000000 -> 0x00000020
+hw 3AA0 shot +0x3dd8 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x3ddc 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x3de8 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x3dec 0x00000000 -> 0x00000040
+hw 3AA0 shot +0x3df0 0x00000000 -> 0x00000800
+hw 3AA0 shot +0x3df4 0x00000004 -> 0x00000006
+hw 3AA0 shot +0x3df8 0x00000000 -> 0x00000300
+hw 3AA0 shot +0x4000 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x400c 0x00000000 -> 0x019a0184
+hw 3AA0 shot +0x4010 0x00000000 -> 0x017c00e4
+hw 3AA0 shot +0x4014 0x00000000 -> 0x00e40214
+hw 3AA0 shot +0x4018 0x00000000 -> 0x0214017c
+hw 3AA0 shot +0x401c 0x00000000 -> 0x017c00e4
+hw 3AA0 shot +0x4020 0x00000000 -> 0x00000214
+hw 3AA0 shot +0x4024 0x00000000 -> 0x011200ef
+hw 3AA0 shot +0x4028 0x00000000 -> 0x00ab00ab
+hw 3AA0 shot +0x402c 0x00000000 -> 0x011d00ab
+hw 3AA0 shot +0x4030 0x00000000 -> 0x011d011d
+hw 3AA0 shot +0x4034 0x00000000 -> 0x018f018f
+hw 3AA0 shot +0x4038 0x00000000 -> 0x0000018f
+hw 3AA0 shot +0x403c 0x00220022 -> 0x005b0089
+hw 3AA0 shot +0x4040 0x00220022 -> 0x00980098
+hw 3AA0 shot +0x4044 0x00220022 -> 0x00980098
+hw 3AA0 shot +0x4048 0x00220022 -> 0x00980098
+hw 3AA0 shot +0x404c 0x00220022 -> 0x00980098
+hw 3AA0 shot +0x4050 0x00000022 -> 0x00000098
+hw 3AA0 shot +0x4054 0x00220022 -> 0x008900cd
+hw 3AA0 shot +0x4058 0x00220022 -> 0x00720072
+hw 3AA0 shot +0x405c 0x00220022 -> 0x00720072
+hw 3AA0 shot +0x4060 0x00220022 -> 0x00720072
+hw 3AA0 shot +0x4064 0x00220022 -> 0x00720072
+hw 3AA0 shot +0x4068 0x00000022 -> 0x00000072
+hw 3AA0 shot +0x406c 0x0e000100 -> 0x0fff0008
+hw 3AA0 shot +0x4070 0x00008ff7 -> 0x00004800
+hw 3AA0 shot +0x4074 0x00000100 -> 0x0000000f
+hw 3AA0 shot +0x4078 0x00000100 -> 0x00000008
+hw 3AA0 shot +0x407c 0x00000021 -> 0x00000010
+hw 3AA0 shot +0x408c 0x00000011 -> 0x00000001
+hw 3AA0 shot +0x4094 0x0f0b0602 -> 0x20f0e0f0
+hw 3AA0 shot +0x4098 0x0b0602bc -> 0xf0e0f040
+hw 3AA0 shot +0x409c 0x0000bc0f -> 0x00004020
+hw 3AA0 shot +0x40ac 0x00000fff -> 0x00000f00
+hw 3AA0 shot +0x40b4 0x03f201c0 -> 0x03b4039a
+hw 3AA0 shot +0x40b8 0x03f203f2 -> 0x002003ee
+hw 3AA0 shot +0x40bc 0x03f203f2 -> 0x00260031
+hw 3AA0 shot +0x40c0 0x03f203f2 -> 0x00060013
+hw 3AA0 shot +0x40c4 0x03f203f2 -> 0x00000001
+hw 3AA0 shot +0x40c8 0x03f203f2 -> 0x00000000
+hw 3AA0 shot +0x40cc 0x03f203f2 -> 0x00000000
+hw 3AA0 shot +0x40d0 0x03f203f2 -> 0x00000000
+hw 3AA0 shot +0x40d4 0x000003f2 -> 0x00000000
+hw 3AA0 shot +0x40d8 0x00020fdf -> 0x0001ffff
+hw 3AA0 shot +0x4100 0x00000000 -> 0x00000032
+hw 3AA0 shot +0x4104 0x00000000 -> 0x00006c5c
+hw 3AA0 shot +0x4108 0x00000000 -> 0x00000127
+hw 3AA0 shot +0x4140 0x00000000 -> 0x0008a716
+hw 3AA0 shot +0x4144 0x00000000 -> 0x0003b720
+hw 3AA0 shot +0x4148 0x00000000 -> 0x0005e215
+hw 3AA0 shot +0x414c 0x00000000 -> 0x0005c2cf
+hw 3AA0 shot +0x4150 0x00000000 -> 0x0006277f
+hw 3AA0 shot +0x4154 0x00000000 -> 0x000528b6
+hw 3AA0 shot +0x4158 0x00000000 -> 0x00052622
+hw 3AA0 shot +0x415c 0x00000000 -> 0x0006350d
+hw 3AA0 shot +0x4160 0x00000000 -> 0x0005af46
+hw 3AA0 shot +0x4164 0x00000000 -> 0x0005aba3
+hw 3AA0 shot +0x4168 0x00000000 -> 0x000679be
+hw 3AA0 shot +0x416c 0x00000000 -> 0x000956b8
+hw 3AA0 shot +0x4170 0x00000000 -> 0x00040a71
+hw 3AA0 shot +0x4174 0x00000000 -> 0x000643c2
+hw 3AA0 shot +0x4178 0x00000000 -> 0x00061f0a
+hw 3AA0 shot +0x417c 0x00000000 -> 0x00067023
+hw 3AA0 shot +0x4180 0x00000000 -> 0x00059b20
+hw 3AA0 shot +0x4184 0x00000000 -> 0x000597dc
+hw 3AA0 shot +0x4188 0x00000000 -> 0x0006772c
+hw 3AA0 shot +0x418c 0x00000000 -> 0x00060bd5
+hw 3AA0 shot +0x4190 0x00000000 -> 0x00060133
+hw 3AA0 shot +0x4194 0x00000000 -> 0x0006b8e7
+hw 3AA0 shot +0x4200 0x00000000 -> 0x00004c23
+hw 3AA0 shot +0x4204 0x00000000 -> 0x00002118
+hw 3AA0 shot +0x4208 0x00000000 -> 0x00003164
+hw 3AA0 shot +0x420c 0x00000000 -> 0x00003090
+hw 3AA0 shot +0x4210 0x00000000 -> 0x00003191
+hw 3AA0 shot +0x4214 0x00000000 -> 0x00002e29
+hw 3AA0 shot +0x4218 0x00000000 -> 0x00002ded
+hw 3AA0 shot +0x421c 0x00000000 -> 0x00003263
+hw 3AA0 shot +0x4220 0x00000000 -> 0x0000303d
+hw 3AA0 shot +0x4224 0x00000000 -> 0x00003090
+hw 3AA0 shot +0x4228 0x00000000 -> 0x00003346
+hw 3AA0 shot +0x422c 0x00000000 -> 0x00005a42
+hw 3AA0 shot +0x4230 0x00000000 -> 0x000027c5
+hw 3AA0 shot +0x4234 0x00000000 -> 0x0000395c
+hw 3AA0 shot +0x4238 0x00000000 -> 0x00003805
+hw 3AA0 shot +0x423c 0x00000000 -> 0x00003763
+hw 3AA0 shot +0x4240 0x00000000 -> 0x0000375f
+hw 3AA0 shot +0x4244 0x00000000 -> 0x00003710
+hw 3AA0 shot +0x4248 0x00000000 -> 0x000037ab
+hw 3AA0 shot +0x424c 0x00000000 -> 0x000037a9
+hw 3AA0 shot +0x4250 0x00000000 -> 0x00003774
+hw 3AA0 shot +0x4254 0x00000000 -> 0x0000384e
+hw 3AA0 shot +0x4258 0x00000000 -> 0x00006db5
+hw 3AA0 shot +0x425c 0x00000000 -> 0x000030b3
+hw 3AA0 shot +0x4260 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4264 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4268 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x426c 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4270 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4274 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4278 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x427c 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4280 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0x4284 0x00000000 -> 0x00019222
+hw 3AA0 shot +0x4288 0x00000000 -> 0x0000b04b
+hw 3AA0 shot +0x428c 0x00000000 -> 0x0000f460
+hw 3AA0 shot +0x4290 0x00000000 -> 0x0000ffe8
+hw 3AA0 shot +0x4294 0x00000000 -> 0x00011b94
+hw 3AA0 shot +0x4298 0x00000000 -> 0x0000f601
+hw 3AA0 shot +0x429c 0x00000000 -> 0x0000f5b1
+hw 3AA0 shot +0x42a0 0x00000000 -> 0x00011b10
+hw 3AA0 shot +0x42a4 0x00000000 -> 0x00010792
+hw 3AA0 shot +0x42a8 0x00000000 -> 0x00010928
+hw 3AA0 shot +0x42ac 0x00000000 -> 0x00012344
+hw 3AA0 shot +0x4300 0x00000000 -> 0x00000a90
+hw 3AA0 shot +0x4304 0x00000000 -> 0x000006be
+hw 3AA0 shot +0x4308 0x00000000 -> 0x000005b1
+hw 3AA0 shot +0x430c 0x00000000 -> 0x00000621
+hw 3AA0 shot +0x4310 0x00000000 -> 0x000006b6
+hw 3AA0 shot +0x4314 0x00000000 -> 0x000005d6
+hw 3AA0 shot +0x4318 0x00000000 -> 0x000005f5
+hw 3AA0 shot +0x431c 0x00000000 -> 0x000006a3
+hw 3AA0 shot +0x4320 0x00000000 -> 0x00000626
+hw 3AA0 shot +0x4324 0x00000000 -> 0x0000065e
+hw 3AA0 shot +0x4328 0x00000000 -> 0x000006ee
+hw 3AA0 shot +0x432c 0x00000000 -> 0x00006b77
+hw 3AA0 shot +0x4330 0x00000000 -> 0x00002fb9
+hw 3AA0 shot +0x4334 0x00000000 -> 0x00004221
+hw 3AA0 shot +0x4338 0x00000000 -> 0x00004251
+hw 3AA0 shot +0x433c 0x00000000 -> 0x00004276
+hw 3AA0 shot +0x4340 0x00000000 -> 0x00004242
+hw 3AA0 shot +0x4344 0x00000000 -> 0x00004231
+hw 3AA0 shot +0x4348 0x00000000 -> 0x00004269
+hw 3AA0 shot +0x434c 0x00000000 -> 0x00004262
+hw 3AA0 shot +0x4350 0x00000000 -> 0x00004256
+hw 3AA0 shot +0x4354 0x00000000 -> 0x00004292
+hw 3AA0 shot +0x4358 0x00000000 -> 0x0006469e
+hw 3AA0 shot +0x435c 0x00000000 -> 0x0002d265
+hw 3AA0 shot +0x4360 0x00000000 -> 0x000411a1
+hw 3AA0 shot +0x4364 0x00000000 -> 0x000424f2
+hw 3AA0 shot +0x4368 0x00000000 -> 0x00046aaf
+hw 3AA0 shot +0x436c 0x00000000 -> 0x0003f712
+hw 3AA0 shot +0x4370 0x00000000 -> 0x0003d9f4
+hw 3AA0 shot +0x4374 0x00000000 -> 0x00048222
+hw 3AA0 shot +0x4378 0x00000000 -> 0x00043821
+hw 3AA0 shot +0x437c 0x00000000 -> 0x000426bb
+hw 3AA0 shot +0x4380 0x00000000 -> 0x0004a2d8
+hw 3AA0 shot +0x4400 0x00000000 -> 0x0082abf4
+hw 3AA0 shot +0x4404 0x00000000 -> 0x00398f3f
+hw 3AA0 shot +0x4408 0x00000000 -> 0x0066bf20
+hw 3AA0 shot +0x440c 0x00000000 -> 0x00596067
+hw 3AA0 shot +0x4410 0x00000000 -> 0x00518da5
+hw 3AA0 shot +0x4414 0x00000000 -> 0x0050af55
+hw 3AA0 shot +0x4418 0x00000000 -> 0x004e3060
+hw 3AA0 shot +0x441c 0x00000000 -> 0x004df464
+hw 3AA0 shot +0x4420 0x00000000 -> 0x0052b517
+hw 3AA0 shot +0x4424 0x00000000 -> 0x004b0061
+hw 3AA0 shot +0x4428 0x00000000 -> 0x004b7378
+hw 3AA0 shot +0x442c 0x00000000 -> 0x0000688a
+hw 3AA0 shot +0x4430 0x00000000 -> 0x00002e78
+hw 3AA0 shot +0x4434 0x00000000 -> 0x000040b8
+hw 3AA0 shot +0x4438 0x00000000 -> 0x000040b5
+hw 3AA0 shot +0x443c 0x00000000 -> 0x00004100
+hw 3AA0 shot +0x4440 0x00000000 -> 0x000040c0
+hw 3AA0 shot +0x4444 0x00000000 -> 0x00004087
+hw 3AA0 shot +0x4448 0x00000000 -> 0x000040ca
+hw 3AA0 shot +0x444c 0x00000000 -> 0x00004092
+hw 3AA0 shot +0x4450 0x00000000 -> 0x000040df
+hw 3AA0 shot +0x4454 0x00000000 -> 0x00004108
+hw 3AA0 shot +0x4458 0x00000000 -> 0x0002eb52
+hw 3AA0 shot +0x445c 0x00000000 -> 0x00014b7c
+hw 3AA0 shot +0x4460 0x00000000 -> 0x0001e5e8
+hw 3AA0 shot +0x4464 0x00000000 -> 0x0001fb24
+hw 3AA0 shot +0x4468 0x00000000 -> 0x00021513
+hw 3AA0 shot +0x446c 0x00000000 -> 0x0001dab9
+hw 3AA0 shot +0x4470 0x00000000 -> 0x0001c558
+hw 3AA0 shot +0x4474 0x00000000 -> 0x00020a2e
+hw 3AA0 shot +0x4478 0x00000000 -> 0x0001dca8
+hw 3AA0 shot +0x447c 0x00000000 -> 0x0001f05e
+hw 3AA0 shot +0x4480 0x00000000 -> 0x000226b1
+hw 3AA0 shot +0x450c 0x00000002 -> 0x00000000
+hw 3AA0 shot +0x4604 0x00100800 -> 0x001ffe47
+hw 3AA0 shot +0x8000 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8024 0x00000011 -> 0x00000000
+hw 3AA0 shot +0x8028 0x00000000 -> 0x00000003
+hw 3AA0 shot +0x805c 0x00000000 -> 0x00000008
+hw 3AA0 shot +0x8060 0x00000000 -> 0x01de0000
+hw 3AA0 shot +0x8064 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x8070 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x80c8 0x00000000 -> 0x00000003
+hw 3AA0 shot +0x8104 0x00100800 -> 0x000ffe00
+hw 3AA0 shot +0x8108 0x00000000 -> 0xfff0005f
+hw 3AA0 shot +0x8114 0x00000000 -> 0x05ff80b0
+hw 3AA0 shot +0x8118 0x00000000 -> 0x02000000
+hw 3AA0 shot +0x8330 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x8334 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x8338 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8344 0x00000000 -> 0x00000006
+hw 3AA0 shot +0x834c 0x00000000 -> 0x000000f0
+hw 3AA0 shot +0x8358 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8400 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8404 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x8408 0x00000020 -> 0x00000390
+hw 3AA0 shot +0x840c 0x00000020 -> 0x000002ac
+hw 3AA0 shot +0x8410 0x00000020 -> 0x00000560
+hw 3AA0 shot +0x8414 0x00000000 -> 0xf82e8000
+hw 3AA0 shot +0x8434 0xffffffff -> 0xe8371fba
+hw 3AA0 shot +0x8450 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8454 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x8458 0x00000020 -> 0x00000390
+hw 3AA0 shot +0x845c 0x00000020 -> 0x000002ac
+hw 3AA0 shot +0x8460 0x00000020 -> 0x00000560
+hw 3AA0 shot +0x8464 0x00000000 -> 0xf8419000
+hw 3AA0 shot +0x8484 0xffffffff -> 0xe8371fba
+hw 3AA0 shot +0x84a0 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x84a8 0x00000020 -> 0x00003400
+hw 3AA0 shot +0x84b0 0x00000020 -> 0x00003400
+hw 3AA0 shot +0x84b4 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84b8 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84bc 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84c0 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84c4 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84c8 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84cc 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84d0 0x00000000 -> 0xf58a1800
+hw 3AA0 shot +0x84d4 0xffffffff -> 0xaf97186c
+hw 3AA0 shot +0x8580 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8588 0x00000020 -> 0x00000008
+hw 3AA0 shot +0x858c 0x00000020 -> 0x00000006
+hw 3AA0 shot +0x8590 0x00000020 -> 0x00000010
+hw 3AA0 shot +0x8594 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x8598 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x859c 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x85a0 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x85a4 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x85a8 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x85ac 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x85b0 0x00000000 -> 0xf587e000
+hw 3AA0 shot +0x85b4 0xffffffff -> 0xbb396609
+hw 3AA0 shot +0x8680 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8684 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x8688 0x00000020 -> 0x00000140
+hw 3AA0 shot +0x868c 0x00000020 -> 0x000000f0
+hw 3AA0 shot +0x8690 0x00000020 -> 0x000001e0
+hw 3AA0 shot +0x8694 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x8698 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x869c 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x86a0 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x86a4 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x86a8 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x86ac 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x86b0 0x00000000 -> 0xf58c0000
+hw 3AA0 shot +0x86b4 0xffffffff -> 0x2f2ec17d
+hw 3AA0 shot +0x86c0 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8720 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x8724 0x00000020 -> 0x00000140
+hw 3AA0 shot +0x8728 0x00000020 -> 0x000000f0
+hw 3AA0 shot +0x872c 0x00000020 -> 0x000001e0
+hw 3AA0 shot +0x8730 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x8734 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x8738 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x873c 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x8740 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x8744 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x8748 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x874c 0x00000000 -> 0xf5914600
+hw 3AA0 shot +0x8780 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x87a4 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x8804 0x00000000 -> 0x00000390
+hw 3AA0 shot +0x8808 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x9400 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x9404 0x00200020 -> 0x02ac0390
+hw 3AA0 shot +0x9410 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x9438 0x00000000 -> 0x000001c8
+hw 3AA0 shot +0x943c 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0x9440 0x00000000 -> 0x0004c260
+hw 3AA0 shot +0x98fc 0x00000037 -> 0x0000c637
+hw 3AA0 shot +0x9900 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x990c 0x00002000 -> 0x00000390
+hw 3AA0 shot +0x9910 0x00002000 -> 0x000002ac
+hw 3AA0 shot +0x99fc 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0x9a00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x9a08 0x04000400 -> 0x10001000
+hw 3AA0 shot +0x9a10 0x00000600 -> 0x00002108
+hw 3AA0 shot +0x9a14 0x01000100 -> 0x002a0030
+hw 3AA0 shot +0x9a18 0x01000100 -> 0x002f002c
+hw 3AA0 shot +0x9a24 0x00000000 -> 0x0014a500
+hw 3AA0 shot +0x9a3c 0x00000000 -> 0x3b483a70
+hw 3AA0 shot +0x9a40 0x00000000 -> 0x000164f7
+hw 3AA0 shot +0x9a44 0x00000000 -> 0x00004000
+hw 3AA0 shot +0x9a48 0x00000000 -> 0x00000005
+hw 3AA0 shot +0x9a4c 0x00007ffe -> 0x00000801
+hw 3AA0 shot +0x9a50 0x00000600 -> 0x000023ee
+hw 3AA0 shot +0x9a5c 0x00000000 -> 0x00000339
+hw 3AA0 shot +0x9a60 0x00000000 -> 0x00000339
+hw 3AA0 shot +0x9afc 0x00000037 -> 0x00007437
+hw 3AA0 shot +0x9b00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x9b04 0x00000004 -> 0x000000a3
+hw 3AA0 shot +0x9b14 0x00000080 -> 0x00000010
+hw 3AA0 shot +0x9b18 0x000000ff -> 0x00000010
+hw 3AA0 shot +0x9b1c 0x00000000 -> 0x00060008
+hw 3AA0 shot +0x9b20 0x00008080 -> 0x00002a38
+hw 3AA0 shot +0x9b24 0x00008080 -> 0x00002a38
+hw 3AA0 shot +0x9b2c 0x3fff3fff -> 0x3e803e80
+hw 3AA0 shot +0x9b30 0x3fff3fff -> 0x3e803e80
+hw 3AA0 shot +0x9b34 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x9b38 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x9b3c 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x9b40 0x00003fff -> 0x00003fef
+hw 3AA0 shot +0x9b44 0x00000a00 -> 0x00000888
+hw 3AA0 shot +0x9b48 0x001d964d -> 0x00219748
+hw 3AA0 shot +0x9b50 0x00000100 -> 0x00000040
+hw 3AA0 shot +0x9b54 0x00000100 -> 0x00000040
+hw 3AA0 shot +0x9b58 0x00000100 -> 0x00000040
+hw 3AA0 shot +0x9b60 0x00000000 -> 0x00001c00
+hw 3AA0 shot +0x9b68 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9b6c 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9b70 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9b74 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9b78 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9b7c 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9c00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x9c04 0x08000800 -> 0x08890889
+hw 3AA0 shot +0x9c08 0x00000800 -> 0x00000889
+hw 3AA0 shot +0x9c0c 0x08000800 -> 0x04440222
+hw 3AA0 shot +0x9c10 0x00000800 -> 0x00000222
+hw 3AA0 shot +0x9c14 0x08000800 -> 0x04440222
+hw 3AA0 shot +0x9c18 0x00000800 -> 0x00000222
+hw 3AA0 shot +0x9c1c 0x08000800 -> 0x04440222
+hw 3AA0 shot +0x9c20 0x00000800 -> 0x00000222
+hw 3AA0 shot +0x9c28 0x00000000 -> 0x00000100
+hw 3AA0 shot +0x9c2c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x9c3c 0x00000fff -> 0x00000000
+hw 3AA0 shot +0x9c40 0x00003fff -> 0x00000000
+hw 3AA0 shot +0x9c44 0x00000000 -> 0x00000007
+hw 3AA0 shot +0x9c48 0x00000000 -> 0x00000007
+hw 3AA0 shot +0x9c4c 0x00000000 -> 0x00000006
+hw 3AA0 shot +0x9c50 0x00000555 -> 0x00000666
+hw 3AA0 shot +0x9c54 0x00555555 -> 0x00000446
+hw 3AA0 shot +0x9c64 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x9c68 0x00002020 -> 0x00000a12
+hw 3AA0 shot +0x9c6c 0x00000020 -> 0x00000032
+hw 3AA0 shot +0x9c70 0x00000040 -> 0x00000044
+hw 3AA0 shot +0x9c7c 0x00000fff -> 0x00000383
+hw 3AA0 shot +0x9c80 0x00003fff -> 0x000002a7
+hw 3AA0 shot +0x9d00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x9d08 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x9d0c 0x00000800 -> 0x00000847
+hw 3AA0 shot +0x9d18 0x00000800 -> 0x00000c2c
+hw 3AA0 shot +0x9d2c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x9d3c 0x000005ff -> 0x00003fff
+hw 3AA0 shot +0x9d44 0x00000000 -> 0x00000400
+hw 3AA0 shot +0x9dfc 0x00000037 -> 0x00006737
+hw 3AA0 shot +0x9e00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x9e04 0x00000000 -> 0x00000001
+hw 3AA0 shot +0x9e08 0x00000000 -> 0x04000400
+hw 3AA0 shot +0x9e10 0x02000000 -> 0x02490000
+hw 3AA0 shot +0x9e14 0x06000400 -> 0x05ff0441
+hw 3AA0 shot +0x9e18 0x0a000800 -> 0x0a3e078a
+hw 3AA0 shot +0x9e1c 0x0e000c00 -> 0x0e840c88
+hw 3AA0 shot +0x9e20 0x12001000 -> 0x11de1045
+hw 3AA0 shot +0x9e24 0x16001400 -> 0x1622135a
+hw 3AA0 shot +0x9e28 0x1a001800 -> 0x1b0118ab
+hw 3AA0 shot +0x9e2c 0x1e001c00 -> 0x1f1e1d26
+hw 3AA0 shot +0x9e30 0x22002000 -> 0x22b320f3
+hw 3AA0 shot +0x9e34 0x26002400 -> 0x26052462
+hw 3AA0 shot +0x9e38 0x2a002800 -> 0x291e279a
+hw 3AA0 shot +0x9e3c 0x2e002c00 -> 0x2c032a97
+hw 3AA0 shot +0x9e40 0x32003000 -> 0x30132d63
+hw 3AA0 shot +0x9e44 0x36003400 -> 0x352032a7
+hw 3AA0 shot +0x9e48 0x3a003800 -> 0x39cb3781
+hw 3AA0 shot +0x9e4c 0x02003c00 -> 0x04003c00
+hw 3AA0 shot +0x9e50 0x02000000 -> 0x00800000
+hw 3AA0 shot +0x9e54 0x06000400 -> 0x01800100
+hw 3AA0 shot +0x9e58 0x0a000800 -> 0x03000200
+hw 3AA0 shot +0x9e5c 0x0e000c00 -> 0x05000400
+hw 3AA0 shot +0x9e60 0x12001000 -> 0x07000600
+hw 3AA0 shot +0x9e64 0x16001400 -> 0x0a000800
+hw 3AA0 shot +0x9e68 0x1a001800 -> 0x0e000c00
+hw 3AA0 shot +0x9e6c 0x1e001c00 -> 0x12001000
+hw 3AA0 shot +0x9e70 0x22002000 -> 0x16001400
+hw 3AA0 shot +0x9e74 0x26002400 -> 0x1a001800
+hw 3AA0 shot +0x9e78 0x2a002800 -> 0x1e001c00
+hw 3AA0 shot +0x9e7c 0x2e002c00 -> 0x22002000
+hw 3AA0 shot +0x9e80 0x32003000 -> 0x28002400
+hw 3AA0 shot +0x9e84 0x36003400 -> 0x30002c00
+hw 3AA0 shot +0x9e88 0x3a003800 -> 0x38003400
+hw 3AA0 shot +0x9e8c 0x02003c00 -> 0x04003c00
+hw 3AA0 shot +0x9efc 0x00000037 -> 0x0000fc37
+hw 3AA0 shot +0x9f00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0x9f04 0x00000000 -> 0x00000002
+hw 3AA0 shot +0x9f10 0x00000200 -> 0x00000390
+hw 3AA0 shot +0x9f14 0x00000200 -> 0x000002ac
+hw 3AA0 shot +0x9f48 0x00000280 -> 0x00000390
+hw 3AA0 shot +0x9f4c 0x000001e0 -> 0x000000ac
+hw 3AA0 shot +0x9f50 0x00001000 -> 0x00000100
+hw 3AA0 shot +0x9f54 0x00001000 -> 0x00000100
+hw 3AA0 shot +0x9f60 0x00001a1a -> 0x00001616
+hw 3AA0 shot +0x9f70 0x0000002d -> 0x00000046
+hw 3AA0 shot +0x9ffc 0x00000037 -> 0x0000c537
+hw 3AA0 shot +0xa200 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa20c 0x00002000 -> 0x00000390
+hw 3AA0 shot +0xa210 0x00002000 -> 0x000002ac
+hw 3AA0 shot +0xa2fc 0x00000037 -> 0x00006637
+hw 3AA0 shot +0xa300 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa304 0x00003fff -> 0x00003ff0
+hw 3AA0 shot +0xa3fc 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0xa4fc 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0xa500 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa504 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa54c 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xa550 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa554 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa558 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa564 0x00000037 -> 0x0000db37
+hw 3AA0 shot +0xa600 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa604 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa608 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa60c 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa610 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa614 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa618 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa61c 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa620 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa624 0x00000000 -> 0x7c007c00
+hw 3AA0 shot +0xa628 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa62c 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa630 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa634 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa638 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa63c 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa640 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa644 0x20002000 -> 0x22222222
+hw 3AA0 shot +0xa64c 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xa654 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa658 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa664 0x00000037 -> 0x00007237
+hw 3AA0 shot +0xa700 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa734 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa738 0x0000c800 -> 0x00000000
+hw 3AA0 shot +0xa744 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa74c 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa750 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xa754 0x04000fff -> 0x0fff0fdc
+hw 3AA0 shot +0xa758 0x00010800 -> 0x00030800
+hw 3AA0 shot +0xa75c 0x00000000 -> 0x00010100
+hw 3AA0 shot +0xa768 0x00000000 -> 0x00000040
+hw 3AA0 shot +0xa770 0x00000000 -> 0x00000040
+hw 3AA0 shot +0xa778 0x00000000 -> 0x00002014
+hw 3AA0 shot +0xa7b0 0x001f0100 -> 0x000a0100
+hw 3AA0 shot +0xa7b4 0x00000000 -> 0x0f800000
+hw 3AA0 shot +0xa7b8 0x00010000 -> 0x00010ab0
+hw 3AA0 shot +0xa7bc 0x50000000 -> 0x40000320
+hw 3AA0 shot +0xa854 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xa858 0x00000000 -> 0x03900000
+hw 3AA0 shot +0xa85c 0x00000000 -> 0x000002ac
+hw 3AA0 shot +0xa880 0xfff00000 -> 0x00000000
+hw 3AA0 shot +0xa884 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa888 0x00000000 -> 0x0020005f
+hw 3AA0 shot +0xa88c 0x00000000 -> 0x00000008
+hw 3AA0 shot +0xa890 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa89c 0x00000000 -> 0x00000022
+hw 3AA0 shot +0xa8a0 0x00000000 -> 0x00100001
+hw 3AA0 shot +0xa8b4 0x00000000 -> 0x00000140
+hw 3AA0 shot +0xa8bc 0x00000000 -> 0x00080100
+hw 3AA0 shot +0xa900 0x00000000 -> 0x00420028
+hw 3AA0 shot +0xa904 0x00000000 -> 0x007f006a
+hw 3AA0 shot +0xa908 0x00000000 -> 0x000000ca
+hw 3AA0 shot +0xa90c 0x00000000 -> 0x00001818
+hw 3AA0 shot +0xa910 0x00000000 -> 0x3732302e
+hw 3AA0 shot +0xa914 0x00000000 -> 0x0000003c
+hw 3AA0 shot +0xa918 0x00000000 -> 0x00f000a0
+hw 3AA0 shot +0xa91c 0x00000000 -> 0x02300168
+hw 3AA0 shot +0xa920 0x00000000 -> 0x000002f8
+hw 3AA0 shot +0xa924 0x00000000 -> 0x00b400a0
+hw 3AA0 shot +0xa928 0x00000000 -> 0x01670104
+hw 3AA0 shot +0xa92c 0x00000000 -> 0x00000209
+hw 3AA0 shot +0xa930 0x00000000 -> 0x1814100c
+hw 3AA0 shot +0xa934 0x00000000 -> 0x0000001c
+hw 3AA0 shot +0xa938 0x00000000 -> 0x1814100c
+hw 3AA0 shot +0xa93c 0x00000000 -> 0x0000001c
+hw 3AA0 shot +0xa940 0x00000000 -> 0x000b0008
+hw 3AA0 shot +0xa944 0x00000000 -> 0x0014000e
+hw 3AA0 shot +0xa948 0x00000000 -> 0x00000020
+hw 3AA0 shot +0xa94c 0x00000000 -> 0x00050004
+hw 3AA0 shot +0xa950 0x00000000 -> 0x000a0007
+hw 3AA0 shot +0xa954 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xa958 0x00000000 -> 0x005f003c
+hw 3AA0 shot +0xa95c 0x00000000 -> 0x00bf008c
+hw 3AA0 shot +0xa960 0x00000000 -> 0x000000fb
+hw 3AA0 shot +0xa96c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xa970 0x00000000 -> 0x00000847
+hw 3AA0 shot +0xa974 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xa978 0x00000000 -> 0x00000616
+hw 3AA0 shot +0xa97c 0x00000000 -> 0x000001ef
+hw 3AA0 shot +0xa980 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xa984 0x00000000 -> 0x000002a1
+hw 3AA0 shot +0xaa00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xaa04 0x0000100e -> 0x00000002
+hw 3AA0 shot +0xaa08 0x00020001 -> 0x01000000
+hw 3AA0 shot +0xaa0c 0x00040003 -> 0x02000180
+hw 3AA0 shot +0xaa10 0x00060005 -> 0x03000280
+hw 3AA0 shot +0xaa14 0x00080007 -> 0x04000380
+hw 3AA0 shot +0xaa18 0x000a0009 -> 0x05000480
+hw 3AA0 shot +0xaa1c 0x000c000b -> 0x06000580
+hw 3AA0 shot +0xaa20 0x000e000d -> 0x07000680
+hw 3AA0 shot +0xaa24 0x0010000f -> 0x08000780
+hw 3AA0 shot +0xaa28 0x00120011 -> 0x09000880
+hw 3AA0 shot +0xaa2c 0x00140013 -> 0x0a000980
+hw 3AA0 shot +0xaa30 0x00160015 -> 0x0b000a80
+hw 3AA0 shot +0xaa34 0x00180017 -> 0x0c000b80
+hw 3AA0 shot +0xaa38 0x001a0019 -> 0x0d000c80
+hw 3AA0 shot +0xaa3c 0x001c001b -> 0x0e000d80
+hw 3AA0 shot +0xaa40 0x001e001d -> 0x0f000e80
+hw 3AA0 shot +0xaa44 0x0020001f -> 0x00800f80
+hw 3AA0 shot +0xaa4c 0x00000000 -> 0x01110089
+hw 3AA0 shot +0xaa50 0x00000000 -> 0x0222019a
+hw 3AA0 shot +0xaa54 0x00000000 -> 0x033302ab
+hw 3AA0 shot +0xaa58 0x00000000 -> 0x044403bc
+hw 3AA0 shot +0xaa5c 0x00000000 -> 0x055504cd
+hw 3AA0 shot +0xaa60 0x00000000 -> 0x066605de
+hw 3AA0 shot +0xaa64 0x00000000 -> 0x077706ef
+hw 3AA0 shot +0xaa68 0x00000000 -> 0x08890800
+hw 3AA0 shot +0xaa6c 0x00000000 -> 0x099a0911
+hw 3AA0 shot +0xaa70 0x00000000 -> 0x0aab0a22
+hw 3AA0 shot +0xaa74 0x00000000 -> 0x0bbc0b33
+hw 3AA0 shot +0xaa78 0x00000000 -> 0x0ccd0c44
+hw 3AA0 shot +0xaa7c 0x00000000 -> 0x0dde0d55
+hw 3AA0 shot +0xaa80 0x00000000 -> 0x0eef0e66
+hw 3AA0 shot +0xaa84 0x00000000 -> 0x00890f77
+hw 3AA0 shot +0xaa88 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xaa8c 0x00020000 -> 0x00080000
+hw 3AA0 shot +0xaa94 0x00020000 -> 0x00080000
+hw 3AA0 shot +0xaaa0 0x00020000 -> 0x00090000
+hw 3AA0 shot +0xaaa8 0x00020000 -> 0x000ac000
+hw 3AA0 shot +0xaab0 0x00640064 -> 0x00060008
+hw 3AA0 shot +0xaab4 0x00000003 -> 0x00000006
+hw 3AA0 shot +0xaab8 0x00000005 -> 0x00000008
+hw 3AA0 shot +0xaabc 0x00000000 -> 0x0019ed07
+hw 3AA0 shot +0xabfc 0x00000037 -> 0x0000b037
+hw 3AA0 shot +0xad04 0x00000000 -> 0x00000011
+hw 3AA0 shot +0xad08 0x00000000 -> 0x00000011
+hw 3AA0 shot +0xad0c 0x00000000 -> 0x00003e26
+hw 3AA0 shot +0xad10 0x00000000 -> 0x00001e00
+hw 3AA0 shot +0xad14 0x00000000 -> 0x00000439
+hw 3AA0 shot +0xad18 0x00000000 -> 0x00003fa1
+hw 3AA0 shot +0xad1c 0x00000000 -> 0x00001da1
+hw 3AA0 shot +0xad20 0x00000000 -> 0x0000025f
+hw 3AA0 shot +0xad24 0x00000000 -> 0x000003b4
+hw 3AA0 shot +0xad28 0x00000000 -> 0x00003f42
+hw 3AA0 shot +0xad48 0x0000002d -> 0x00000046
+hw 3AA0 shot +0xad54 0x00000000 -> 0x00000fff
+hw 3AA0 shot +0xad58 0x00000000 -> 0x00000800
+hw 3AA0 shot +0xad5c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xae00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xae04 0x0000fff0 -> 0x00001ff1
+hw 3AA0 shot +0xae08 0x00000040 -> 0x00000400
+hw 3AA0 shot +0xae0c 0x00001000 -> 0x00003fff
+hw 3AA0 shot +0xae18 0x00000007 -> 0x00000001
+hw 3AA0 shot +0xae2c 0x00003fff -> 0x00000000
+hw 3AA0 shot +0xae30 0x00003fff -> 0x00000000
+hw 3AA0 shot +0xae3c 0x00000000 -> 0x000000c8
+hw 3AA0 shot +0xae40 0x00001000 -> 0x00000078
+hw 3AA0 shot +0xae48 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xae4c 0x00000004 -> 0x0000000a
+hw 3AA0 shot +0xae54 0x00003fff -> 0x00000000
+hw 3AA0 shot +0xae58 0x00000081 -> 0x00000100
+hw 3AA0 shot +0xae5c 0x0000000d -> 0x00000000
+hw 3AA0 shot +0xae60 0x00000004 -> 0x00000008
+hw 3AA0 shot +0xae6c 0x0000000e -> 0x00000004
+hw 3AA0 shot +0xae70 0x00000010 -> 0x00000000
+hw 3AA0 shot +0xae74 0x00000280 -> 0x00000800
+hw 3AA0 shot +0xae78 0x00000280 -> 0x00001000
+hw 3AA0 shot +0xae7c 0x00000000 -> 0x00000080
+hw 3AA0 shot +0xae84 0x00000000 -> 0x00000080
+hw 3AA0 shot +0xae88 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xae9c 0x00000020 -> 0x00000014
+hw 3AA0 shot +0xaea0 0x00000020 -> 0x0000001e
+hw 3AA0 shot +0xaeb4 0x00003fff -> 0x00000000
+hw 3AA0 shot +0xaec8 0x00000000 -> 0x00000040
+hw 3AA0 shot +0xaecc 0x00000000 -> 0x00000800
+hw 3AA0 shot +0xaed0 0x00000004 -> 0x00000006
+hw 3AA0 shot +0xaed8 0x00004000 -> 0x000002ac
+hw 3AA0 shot +0xaee0 0x00000000 -> 0x0000001f
+hw 3AA0 shot +0xaee8 0x00000000 -> 0x00000077
+hw 3AA0 shot +0xaf00 0x00000000 -> 0x00000077
+hw 3AA0 shot +0xaf0c 0x00000fff -> 0x00003ff3
+hw 3AA0 shot +0xaf10 0x00000008 -> 0x00000005
+hw 3AA0 shot +0xaf14 0x0000000b -> 0x00000006
+hw 3AA0 shot +0xaf18 0x00000002 -> 0x00000000
+hw 3AA0 shot +0xaf1c 0x00000002 -> 0x00000000
+hw 3AA0 shot +0xaf20 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xaf24 0x00000004 -> 0x00000005
+hw 3AA0 shot +0xaf28 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xaf2c 0x00000000 -> 0x000001f4
+hw 3AA0 shot +0xaf30 0x00000000 -> 0x000001f4
+hw 3AA0 shot +0xaf38 0x00000040 -> 0x00000000
+hw 3AA0 shot +0xaf3c 0x00000005 -> 0x00000004
+hw 3AA0 shot +0xaf50 0x00003fff -> 0x00000000
+hw 3AA0 shot +0xaf54 0x0000000c -> 0x0000000b
+hw 3AA0 shot +0xaf68 0x00000000 -> 0x00000037
+hw 3AA0 shot +0xaf6c 0x20202020 -> 0x00000000
+hw 3AA0 shot +0xaf74 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xaf78 0x0000000f -> 0x0000001f
+hw 3AA0 shot +0xaf7c 0x00000100 -> 0x00000060
+hw 3AA0 shot +0xaf80 0x00000100 -> 0x00000080
+hw 3AA0 shot +0xaf84 0x00000300 -> 0x00000200
+hw 3AA0 shot +0xaf88 0x00000300 -> 0x00000200
+hw 3AA0 shot +0xaf8c 0x00000300 -> 0x00000000
+hw 3AA0 shot +0xaf90 0x00000300 -> 0x00000000
+hw 3AA0 shot +0xaf94 0x0000400c -> 0x0000100d
+hw 3AA0 shot +0xaf98 0x00004000 -> 0x00000f80
+hw 3AA0 shot +0xaf9c 0x00004000 -> 0x00000ab0
+hw 3AA0 shot +0xafa0 0x00000000 -> 0x00000028
+hw 3AA0 shot +0xafa8 0x00000000 -> 0x00000022
+hw 3AA0 shot +0xafac 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xaffc 0x00000037 -> 0x0000e137
+hw 3AA0 shot +0xb0fc 0x00000037 -> 0x0000c637
+hw 3AA0 shot +0xb1fc 0x00000037 -> 0x0000d637
+hw 3AA0 shot +0xb200 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xb204 0x00000000 -> 0x00000003
+hw 3AA0 shot +0xb208 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xb210 0x00000000 -> 0x00440044
+hw 3AA0 shot +0xb214 0x00000000 -> 0x00330033
+hw 3AA0 shot +0xb218 0x08000800 -> 0x10001000
+hw 3AA0 shot +0xb220 0x00000000 -> 0x00010001
+hw 3AA0 shot +0xb224 0x0008000c -> 0x000c000c
+hw 3AA0 shot +0xb228 0x0008000c -> 0x000c000c
+hw 3AA0 shot +0xb234 0x02000200 -> 0x028a028a
+hw 3AA0 shot +0xb238 0x00000200 -> 0x0000028a
+hw 3AA0 shot +0xb23c 0x003c0050 -> 0x000c0010
+hw 3AA0 shot +0xb268 0x00000000 -> 0xf594d000
+hw 3AA0 shot +0xb26c 0x00000000 -> 0xf594dc80
+hw 3AA0 shot +0xb270 0x00000000 -> 0xf5930800
+hw 3AA0 shot +0xb274 0x00000000 -> 0xf594e640
+hw 3AA0 shot +0xb29c 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xb2a4 0x00000000 -> 0x00007800
+hw 3AA0 shot +0xb2ac 0x00000000 -> 0x00000078
+hw 3AA0 shot +0xb2b0 0x00000000 -> 0xf594d190
+hw 3AA0 shot +0xb2b4 0x00000000 -> 0xf594de10
+hw 3AA0 shot +0xb2b8 0x00000000 -> 0xf594e7d0
+hw 3AA0 shot +0xb2fc 0x00000037 -> 0x00006c37
+hw 3AA0 shot +0xb3fc 0x00000037 -> 0x00005d37
+hw 3AA0 shot +0xb400 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xb40c 0x00002000 -> 0x00000390
+hw 3AA0 shot +0xb410 0x00002000 -> 0x000002ac
+hw 3AA0 shot +0xb4fc 0x00000037 -> 0x00005d37
+hw 3AA0 shot +0xb600 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xb604 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xb608 0x00000000 -> 0x00000040
+hw 3AA0 shot +0xb610 0x00000000 -> 0x00100000
+hw 3AA0 shot +0xb614 0x00000000 -> 0x00240019
+hw 3AA0 shot +0xb618 0x00000000 -> 0x00400031
+hw 3AA0 shot +0xb61c 0x00000000 -> 0x00630051
+hw 3AA0 shot +0xb620 0x00000000 -> 0x00900079
+hw 3AA0 shot +0xb624 0x00000000 -> 0x00c300a9
+hw 3AA0 shot +0xb628 0x00000000 -> 0x00fe00df
+hw 3AA0 shot +0xb62c 0x00000000 -> 0x0143011f
+hw 3AA0 shot +0xb630 0x00000000 -> 0x01910169
+hw 3AA0 shot +0xb634 0x00000000 -> 0x01e701bb
+hw 3AA0 shot +0xb638 0x00000000 -> 0x02440214
+hw 3AA0 shot +0xb63c 0x00000000 -> 0x02a80275
+hw 3AA0 shot +0xb640 0x00000000 -> 0x031402dd
+hw 3AA0 shot +0xb644 0x00000000 -> 0x0386034c
+hw 3AA0 shot +0xb648 0x00000000 -> 0x03ff03c2
+hw 3AA0 shot +0xb64c 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0xb650 0x00000000 -> 0x00400000
+hw 3AA0 shot +0xb654 0x00000000 -> 0x00800060
+hw 3AA0 shot +0xb658 0x00000000 -> 0x00c000a0
+hw 3AA0 shot +0xb65c 0x00000000 -> 0x010000e0
+hw 3AA0 shot +0xb660 0x00000000 -> 0x01400120
+hw 3AA0 shot +0xb664 0x00000000 -> 0x01800160
+hw 3AA0 shot +0xb668 0x00000000 -> 0x01c001a0
+hw 3AA0 shot +0xb66c 0x00000000 -> 0x020001e0
+hw 3AA0 shot +0xb670 0x00000000 -> 0x02400220
+hw 3AA0 shot +0xb674 0x00000000 -> 0x02800260
+hw 3AA0 shot +0xb678 0x00000000 -> 0x02c002a0
+hw 3AA0 shot +0xb67c 0x00000000 -> 0x030002e0
+hw 3AA0 shot +0xb680 0x00000000 -> 0x03400320
+hw 3AA0 shot +0xb684 0x00000000 -> 0x03800360
+hw 3AA0 shot +0xb688 0x00000000 -> 0x03c003a0
+hw 3AA0 shot +0xb68c 0x00000000 -> 0x002003e0
+hw 3AA0 shot +0xb700 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xb70c 0x00000000 -> 0x001b0130
+hw 3AA0 shot +0xb710 0x00000000 -> 0x07d70028
+hw 3AA0 shot +0xb714 0x00000000 -> 0x07a900d0
+hw 3AA0 shot +0xb718 0x00000000 -> 0x07e70142
+hw 3AA0 shot +0xb71c 0x00000000 -> 0x07b20049
+hw 3AA0 shot +0xb720 0x00000000 -> 0x0765013c
+hw 3AA0 shot +0xb724 0x00000000 -> 0x00190159
+hw 3AA0 shot +0xb728 0x00000000 -> 0x07980003
+hw 3AA0 shot +0xb72c 0x00000000 -> 0x07b40103
+hw 3AA0 shot +0xb730 0x00000000 -> 0x00060146
+hw 3AA0 shot +0xb734 0x00000000 -> 0x07a40029
+hw 3AA0 shot +0xb738 0x00000000 -> 0x079e010f
+hw 3AA0 shot +0xb73c 0x00000000 -> 0x00060146
+hw 3AA0 shot +0xb740 0x00000000 -> 0x07a40029
+hw 3AA0 shot +0xb744 0x00000000 -> 0x079e010f
+hw 3AA0 shot +0xb748 0x00000000 -> 0x00060146
+hw 3AA0 shot +0xb74c 0x00000000 -> 0x07a40029
+hw 3AA0 shot +0xb750 0x00000000 -> 0x079e010f
+hw 3AA0 shot +0xb754 0x00000000 -> 0x00060146
+hw 3AA0 shot +0xb758 0x00000000 -> 0x07a40029
+hw 3AA0 shot +0xb75c 0x00000000 -> 0x079e010f
+hw 3AA0 shot +0xb760 0x00000000 -> 0x00060146
+hw 3AA0 shot +0xb764 0x00000000 -> 0x07a40029
+hw 3AA0 shot +0xb768 0x00000000 -> 0x079e010f
+hw 3AA0 shot +0xb76c 0x00000000 -> 0x00150135
+hw 3AA0 shot +0xb770 0x00000000 -> 0x07a30029
+hw 3AA0 shot +0xb774 0x00000000 -> 0x079e010f
+hw 3AA0 shot +0xb778 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xb77c 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xb780 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xb784 0x00000000 -> 0x001e01e2
+hw 3AA0 shot +0xb788 0x00000000 -> 0x01030000
+hw 3AA0 shot +0xb78c 0x00000000 -> 0x000407f9
+hw 3AA0 shot +0xb790 0x00000000 -> 0x00080108
+hw 3AA0 shot +0xb794 0x00000000 -> 0x000007f0
+hw 3AA0 shot +0xb798 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xb79c 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xb7a0 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xb7a4 0x00000000 -> 0x0000000c
+hw 3AA0 shot +0xb800 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xb810 0x00000000 -> 0x001c0000
+hw 3AA0 shot +0xb814 0x00000000 -> 0x007d0057
+hw 3AA0 shot +0xb818 0x00000000 -> 0x00c800a2
+hw 3AA0 shot +0xb81c 0x00000000 -> 0x010c00ed
+hw 3AA0 shot +0xb820 0x00000000 -> 0x014c0128
+hw 3AA0 shot +0xb824 0x00000000 -> 0x01a20179
+hw 3AA0 shot +0xb828 0x00000000 -> 0x01e701c6
+hw 3AA0 shot +0xb82c 0x00000000 -> 0x02200205
+hw 3AA0 shot +0xb830 0x00000000 -> 0x02640239
+hw 3AA0 shot +0xb834 0x00000000 -> 0x02a60283
+hw 3AA0 shot +0xb838 0x00000000 -> 0x02ed02c5
+hw 3AA0 shot +0xb83c 0x00000000 -> 0x0341031b
+hw 3AA0 shot +0xb840 0x00000000 -> 0x037e0362
+hw 3AA0 shot +0xb844 0x00000000 -> 0x03ae0397
+hw 3AA0 shot +0xb848 0x00000000 -> 0x03d503c2
+hw 3AA0 shot +0xb84c 0x00000000 -> 0x001803e7
+hw 3AA0 shot +0xb850 0x00000000 -> 0x001c0000
+hw 3AA0 shot +0xb854 0x00000000 -> 0x007d0057
+hw 3AA0 shot +0xb858 0x00000000 -> 0x00c800a2
+hw 3AA0 shot +0xb85c 0x00000000 -> 0x010c00ed
+hw 3AA0 shot +0xb860 0x00000000 -> 0x014c0128
+hw 3AA0 shot +0xb864 0x00000000 -> 0x01a20179
+hw 3AA0 shot +0xb868 0x00000000 -> 0x01e701c6
+hw 3AA0 shot +0xb86c 0x00000000 -> 0x02200205
+hw 3AA0 shot +0xb870 0x00000000 -> 0x02640239
+hw 3AA0 shot +0xb874 0x00000000 -> 0x02a60283
+hw 3AA0 shot +0xb878 0x00000000 -> 0x02ed02c5
+hw 3AA0 shot +0xb87c 0x00000000 -> 0x0341031b
+hw 3AA0 shot +0xb880 0x00000000 -> 0x037e0362
+hw 3AA0 shot +0xb884 0x00000000 -> 0x03ae0397
+hw 3AA0 shot +0xb888 0x00000000 -> 0x03d503c2
+hw 3AA0 shot +0xb88c 0x00000000 -> 0x001803e7
+hw 3AA0 shot +0xb900 0x00000000 -> 0x001c0000
+hw 3AA0 shot +0xb904 0x00000000 -> 0x007d0057
+hw 3AA0 shot +0xb908 0x00000000 -> 0x00c800a2
+hw 3AA0 shot +0xb90c 0x00000000 -> 0x010c00ed
+hw 3AA0 shot +0xb910 0x00000000 -> 0x014c0128
+hw 3AA0 shot +0xb914 0x00000000 -> 0x01a20179
+hw 3AA0 shot +0xb918 0x00000000 -> 0x01e701c6
+hw 3AA0 shot +0xb91c 0x00000000 -> 0x02200205
+hw 3AA0 shot +0xb920 0x00000000 -> 0x02640239
+hw 3AA0 shot +0xb924 0x00000000 -> 0x02a60283
+hw 3AA0 shot +0xb928 0x00000000 -> 0x02ed02c5
+hw 3AA0 shot +0xb92c 0x00000000 -> 0x0341031b
+hw 3AA0 shot +0xb930 0x00000000 -> 0x037e0362
+hw 3AA0 shot +0xb934 0x00000000 -> 0x03ae0397
+hw 3AA0 shot +0xb938 0x00000000 -> 0x03d503c2
+hw 3AA0 shot +0xb93c 0x00000000 -> 0x001803e7
+hw 3AA0 shot +0xb940 0x00000000 -> 0x00080000
+hw 3AA0 shot +0xb944 0x00000000 -> 0x00180010
+hw 3AA0 shot +0xb948 0x00000000 -> 0x00280020
+hw 3AA0 shot +0xb94c 0x00000000 -> 0x00380030
+hw 3AA0 shot +0xb950 0x00000000 -> 0x00500040
+hw 3AA0 shot +0xb954 0x00000000 -> 0x00700060
+hw 3AA0 shot +0xb958 0x00000000 -> 0x00900080
+hw 3AA0 shot +0xb95c 0x00000000 -> 0x00b000a0
+hw 3AA0 shot +0xb960 0x00000000 -> 0x00e000c0
+hw 3AA0 shot +0xb964 0x00000000 -> 0x01200100
+hw 3AA0 shot +0xb968 0x00000000 -> 0x01800140
+hw 3AA0 shot +0xb96c 0x00000000 -> 0x020001c0
+hw 3AA0 shot +0xb970 0x00000000 -> 0x02800240
+hw 3AA0 shot +0xb974 0x00000000 -> 0x030002c0
+hw 3AA0 shot +0xb978 0x00000000 -> 0x03800340
+hw 3AA0 shot +0xb97c 0x00000000 -> 0x004003c0
+hw 3AA0 shot +0xba00 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xba04 0x00000000 -> 0x00000132
+hw 3AA0 shot +0xba08 0x00000000 -> 0x00000753
+hw 3AA0 shot +0xba0c 0x00000000 -> 0x00000200
+hw 3AA0 shot +0xba10 0x00000000 -> 0x00000259
+hw 3AA0 shot +0xba14 0x00000000 -> 0x000006ad
+hw 3AA0 shot +0xba18 0x00000000 -> 0x00000653
+hw 3AA0 shot +0xba1c 0x00000000 -> 0x00000075
+hw 3AA0 shot +0xba20 0x00000000 -> 0x00000200
+hw 3AA0 shot +0xba24 0x00000000 -> 0x000007ad
+hw 3AA0 shot +0xba2c 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0xba34 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0xba3c 0x00000000 -> 0x000003ff
+hw 3AA0 shot +0xba48 0x00000000 -> 0x00000200
+hw 3AA0 shot +0xba4c 0x00000000 -> 0x00000200
+hw 3AA0 shot +0xbc0c 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xbc10 0x0000039a -> 0x00000000
+hw 3AA0 shot +0xbc14 0x000002cd -> 0x00000000
+hw 3AA0 shot +0xbc18 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xbc1c 0x00000010 -> 0x00000000
+hw 3AA0 shot +0xbc20 0x00000028 -> 0x00000000
+hw 3AA0 shot +0xbc24 0x00000190 -> 0x00000000
+hw 3AA0 shot +0xbc28 0x00000258 -> 0x00000000
+hw 3AA0 shot +0xbc2c 0x00000400 -> 0x00003fff
+hw 3AA0 shot +0xbc30 0x00000400 -> 0x00000000
+hw 3AA0 shot +0xbc34 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xbd04 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0xbd08 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0xbd0c 0x00000000 -> 0x00000050
+hw 3AA0 shot +0xbd10 0x00000000 -> 0x00000050
+hw 3AA0 shot +0xbd1c 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0xbd20 0x00000000 -> 0x000000c0
+hw 3AA0 shot +0xbd24 0x00000000 -> 0x00000050
+hw 3AA0 shot +0xbd28 0x00000000 -> 0x00000050
+hw 3AA0 shot +0xbd2c 0x00000000 -> 0x0000000c
+hw 3AA0 shot +0xbd30 0x00000000 -> 0x00000180
+hw 3AA0 shot +0xbd38 0x00000000 -> 0x00000847
+hw 3AA0 shot +0xbd3c 0x00000000 -> 0x00000616
+hw 3AA0 shot +0xbd44 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xbd48 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xbd58 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xbd5c 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xbd64 0x00000000 -> 0x00000400
+hw 3AA0 shot +0xbd68 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xbd74 0x00000000 -> 0x00000001
+hw 3AA0 shot +0xbd7c 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xbd80 0x00000000 -> 0x000000a0
+hw 3AA0 shot +0xbd84 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xbd94 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xbda8 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xbdac 0x00000000 -> 0x00000010
+hw 3AA0 shot +0xbdb4 0x00000000 -> 0x000001ef
+hw 3AA0 shot +0xbdb8 0x00000000 -> 0x000002a1
+hw 3AA0 shot +0xbdd0 0x00000000 -> 0x00000040
+hw 3AA0 shot +0xbdd4 0x00000000 -> 0x00000020
+hw 3AA0 shot +0xbdd8 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xbddc 0x00000000 -> 0x00000002
+hw 3AA0 shot +0xbde8 0x00000000 -> 0x00000100
+hw 3AA0 shot +0xbdec 0x00000000 -> 0x00000040
+hw 3AA0 shot +0xbdf0 0x00000000 -> 0x00000800
+hw 3AA0 shot +0xbdf4 0x00000004 -> 0x00000006
+hw 3AA0 shot +0xbdf8 0x00000000 -> 0x00000300
+hw 3AA0 shot +0xc000 0x00000001 -> 0x00000000
+hw 3AA0 shot +0xc00c 0x00000000 -> 0x019a0184
+hw 3AA0 shot +0xc010 0x00000000 -> 0x017c00e4
+hw 3AA0 shot +0xc014 0x00000000 -> 0x00e40214
+hw 3AA0 shot +0xc018 0x00000000 -> 0x0214017c
+hw 3AA0 shot +0xc01c 0x00000000 -> 0x017c00e4
+hw 3AA0 shot +0xc020 0x00000000 -> 0x00000214
+hw 3AA0 shot +0xc024 0x00000000 -> 0x011200ef
+hw 3AA0 shot +0xc028 0x00000000 -> 0x00ab00ab
+hw 3AA0 shot +0xc02c 0x00000000 -> 0x011d00ab
+hw 3AA0 shot +0xc030 0x00000000 -> 0x011d011d
+hw 3AA0 shot +0xc034 0x00000000 -> 0x018f018f
+hw 3AA0 shot +0xc038 0x00000000 -> 0x0000018f
+hw 3AA0 shot +0xc03c 0x00220022 -> 0x005b0089
+hw 3AA0 shot +0xc040 0x00220022 -> 0x00980098
+hw 3AA0 shot +0xc044 0x00220022 -> 0x00980098
+hw 3AA0 shot +0xc048 0x00220022 -> 0x00980098
+hw 3AA0 shot +0xc04c 0x00220022 -> 0x00980098
+hw 3AA0 shot +0xc050 0x00000022 -> 0x00000098
+hw 3AA0 shot +0xc054 0x00220022 -> 0x008900cd
+hw 3AA0 shot +0xc058 0x00220022 -> 0x00720072
+hw 3AA0 shot +0xc05c 0x00220022 -> 0x00720072
+hw 3AA0 shot +0xc060 0x00220022 -> 0x00720072
+hw 3AA0 shot +0xc064 0x00220022 -> 0x00720072
+hw 3AA0 shot +0xc068 0x00000022 -> 0x00000072
+hw 3AA0 shot +0xc06c 0x0e000100 -> 0x0fff0008
+hw 3AA0 shot +0xc070 0x00008ff7 -> 0x00004800
+hw 3AA0 shot +0xc074 0x00000100 -> 0x0000000f
+hw 3AA0 shot +0xc078 0x00000100 -> 0x00000008
+hw 3AA0 shot +0xc07c 0x00000021 -> 0x00000010
+hw 3AA0 shot +0xc08c 0x00000011 -> 0x00000001
+hw 3AA0 shot +0xc094 0x0f0b0602 -> 0x20f0e0f0
+hw 3AA0 shot +0xc098 0x0b0602bc -> 0xf0e0f040
+hw 3AA0 shot +0xc09c 0x0000bc0f -> 0x00004020
+hw 3AA0 shot +0xc0ac 0x00000fff -> 0x00000f00
+hw 3AA0 shot +0xc0b4 0x03f201c0 -> 0x03b4039a
+hw 3AA0 shot +0xc0b8 0x03f203f2 -> 0x002003ee
+hw 3AA0 shot +0xc0bc 0x03f203f2 -> 0x00260031
+hw 3AA0 shot +0xc0c0 0x03f203f2 -> 0x00060013
+hw 3AA0 shot +0xc0c4 0x03f203f2 -> 0x00000001
+hw 3AA0 shot +0xc0c8 0x03f203f2 -> 0x00000000
+hw 3AA0 shot +0xc0cc 0x03f203f2 -> 0x00000000
+hw 3AA0 shot +0xc0d0 0x03f203f2 -> 0x00000000
+hw 3AA0 shot +0xc0d4 0x000003f2 -> 0x00000000
+hw 3AA0 shot +0xc0d8 0x00020fdf -> 0x0001ffff
+hw 3AA0 shot +0xc100 0x00000000 -> 0x00000032
+hw 3AA0 shot +0xc104 0x00000000 -> 0x00006c5c
+hw 3AA0 shot +0xc108 0x00000000 -> 0x00000127
+hw 3AA0 shot +0xc140 0x00000000 -> 0x0008a716
+hw 3AA0 shot +0xc144 0x00000000 -> 0x0003b720
+hw 3AA0 shot +0xc148 0x00000000 -> 0x0005e215
+hw 3AA0 shot +0xc14c 0x00000000 -> 0x0005c2cf
+hw 3AA0 shot +0xc150 0x00000000 -> 0x0006277f
+hw 3AA0 shot +0xc154 0x00000000 -> 0x000528b6
+hw 3AA0 shot +0xc158 0x00000000 -> 0x00052622
+hw 3AA0 shot +0xc15c 0x00000000 -> 0x0006350d
+hw 3AA0 shot +0xc160 0x00000000 -> 0x0005af46
+hw 3AA0 shot +0xc164 0x00000000 -> 0x0005aba3
+hw 3AA0 shot +0xc168 0x00000000 -> 0x000679be
+hw 3AA0 shot +0xc16c 0x00000000 -> 0x000956b8
+hw 3AA0 shot +0xc170 0x00000000 -> 0x00040a71
+hw 3AA0 shot +0xc174 0x00000000 -> 0x000643c2
+hw 3AA0 shot +0xc178 0x00000000 -> 0x00061f0a
+hw 3AA0 shot +0xc17c 0x00000000 -> 0x00067023
+hw 3AA0 shot +0xc180 0x00000000 -> 0x00059b20
+hw 3AA0 shot +0xc184 0x00000000 -> 0x000597dc
+hw 3AA0 shot +0xc188 0x00000000 -> 0x0006772c
+hw 3AA0 shot +0xc18c 0x00000000 -> 0x00060bd5
+hw 3AA0 shot +0xc190 0x00000000 -> 0x00060133
+hw 3AA0 shot +0xc194 0x00000000 -> 0x0006b8e7
+hw 3AA0 shot +0xc200 0x00000000 -> 0x00004c23
+hw 3AA0 shot +0xc204 0x00000000 -> 0x00002118
+hw 3AA0 shot +0xc208 0x00000000 -> 0x00003164
+hw 3AA0 shot +0xc20c 0x00000000 -> 0x00003090
+hw 3AA0 shot +0xc210 0x00000000 -> 0x00003191
+hw 3AA0 shot +0xc214 0x00000000 -> 0x00002e29
+hw 3AA0 shot +0xc218 0x00000000 -> 0x00002ded
+hw 3AA0 shot +0xc21c 0x00000000 -> 0x00003263
+hw 3AA0 shot +0xc220 0x00000000 -> 0x0000303d
+hw 3AA0 shot +0xc224 0x00000000 -> 0x00003090
+hw 3AA0 shot +0xc228 0x00000000 -> 0x00003346
+hw 3AA0 shot +0xc22c 0x00000000 -> 0x00005a42
+hw 3AA0 shot +0xc230 0x00000000 -> 0x000027c5
+hw 3AA0 shot +0xc234 0x00000000 -> 0x0000395c
+hw 3AA0 shot +0xc238 0x00000000 -> 0x00003805
+hw 3AA0 shot +0xc23c 0x00000000 -> 0x00003763
+hw 3AA0 shot +0xc240 0x00000000 -> 0x0000375f
+hw 3AA0 shot +0xc244 0x00000000 -> 0x00003710
+hw 3AA0 shot +0xc248 0x00000000 -> 0x000037ab
+hw 3AA0 shot +0xc24c 0x00000000 -> 0x000037a9
+hw 3AA0 shot +0xc250 0x00000000 -> 0x00003774
+hw 3AA0 shot +0xc254 0x00000000 -> 0x0000384e
+hw 3AA0 shot +0xc258 0x00000000 -> 0x00006db5
+hw 3AA0 shot +0xc25c 0x00000000 -> 0x000030b3
+hw 3AA0 shot +0xc260 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc264 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc268 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc26c 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc270 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc274 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc278 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc27c 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc280 0x00000000 -> 0x000043b0
+hw 3AA0 shot +0xc284 0x00000000 -> 0x00019222
+hw 3AA0 shot +0xc288 0x00000000 -> 0x0000b04b
+hw 3AA0 shot +0xc28c 0x00000000 -> 0x0000f460
+hw 3AA0 shot +0xc290 0x00000000 -> 0x0000ffe8
+hw 3AA0 shot +0xc294 0x00000000 -> 0x00011b94
+hw 3AA0 shot +0xc298 0x00000000 -> 0x0000f601
+hw 3AA0 shot +0xc29c 0x00000000 -> 0x0000f5b1
+hw 3AA0 shot +0xc2a0 0x00000000 -> 0x00011b10
+hw 3AA0 shot +0xc2a4 0x00000000 -> 0x00010792
+hw 3AA0 shot +0xc2a8 0x00000000 -> 0x00010928
+hw 3AA0 shot +0xc2ac 0x00000000 -> 0x00012344
+hw 3AA0 shot +0xc300 0x00000000 -> 0x00000a90
+hw 3AA0 shot +0xc304 0x00000000 -> 0x000006be
+hw 3AA0 shot +0xc308 0x00000000 -> 0x000005b1
+hw 3AA0 shot +0xc30c 0x00000000 -> 0x00000621
+hw 3AA0 shot +0xc310 0x00000000 -> 0x000006b6
+hw 3AA0 shot +0xc314 0x00000000 -> 0x000005d6
+hw 3AA0 shot +0xc318 0x00000000 -> 0x000005f5
+hw 3AA0 shot +0xc31c 0x00000000 -> 0x000006a3
+hw 3AA0 shot +0xc320 0x00000000 -> 0x00000626
+hw 3AA0 shot +0xc324 0x00000000 -> 0x0000065e
+hw 3AA0 shot +0xc328 0x00000000 -> 0x000006ee
+hw 3AA0 shot +0xc32c 0x00000000 -> 0x00006b77
+hw 3AA0 shot +0xc330 0x00000000 -> 0x00002fb9
+hw 3AA0 shot +0xc334 0x00000000 -> 0x00004221
+hw 3AA0 shot +0xc338 0x00000000 -> 0x00004251
+hw 3AA0 shot +0xc33c 0x00000000 -> 0x00004276
+hw 3AA0 shot +0xc340 0x00000000 -> 0x00004242
+hw 3AA0 shot +0xc344 0x00000000 -> 0x00004231
+hw 3AA0 shot +0xc348 0x00000000 -> 0x00004269
+hw 3AA0 shot +0xc34c 0x00000000 -> 0x00004262
+hw 3AA0 shot +0xc350 0x00000000 -> 0x00004256
+hw 3AA0 shot +0xc354 0x00000000 -> 0x00004292
+hw 3AA0 shot +0xc358 0x00000000 -> 0x0006469e
+hw 3AA0 shot +0xc35c 0x00000000 -> 0x0002d265
+hw 3AA0 shot +0xc360 0x00000000 -> 0x000411a1
+hw 3AA0 shot +0xc364 0x00000000 -> 0x000424f2
+hw 3AA0 shot +0xc368 0x00000000 -> 0x00046aaf
+hw 3AA0 shot +0xc36c 0x00000000 -> 0x0003f712
+hw 3AA0 shot +0xc370 0x00000000 -> 0x0003d9f4
+hw 3AA0 shot +0xc374 0x00000000 -> 0x00048222
+hw 3AA0 shot +0xc378 0x00000000 -> 0x00043821
+hw 3AA0 shot +0xc37c 0x00000000 -> 0x000426bb
+hw 3AA0 shot +0xc380 0x00000000 -> 0x0004a2d8
+hw 3AA0 shot +0xc400 0x00000000 -> 0x0082abf4
+hw 3AA0 shot +0xc404 0x00000000 -> 0x00398f3f
+hw 3AA0 shot +0xc408 0x00000000 -> 0x0066bf20
+hw 3AA0 shot +0xc40c 0x00000000 -> 0x00596067
+hw 3AA0 shot +0xc410 0x00000000 -> 0x00518da5
+hw 3AA0 shot +0xc414 0x00000000 -> 0x0050af55
+hw 3AA0 shot +0xc418 0x00000000 -> 0x004e3060
+hw 3AA0 shot +0xc41c 0x00000000 -> 0x004df464
+hw 3AA0 shot +0xc420 0x00000000 -> 0x0052b517
+hw 3AA0 shot +0xc424 0x00000000 -> 0x004b0061
+hw 3AA0 shot +0xc428 0x00000000 -> 0x004b7378
+hw 3AA0 shot +0xc42c 0x00000000 -> 0x0000688a
+hw 3AA0 shot +0xc430 0x00000000 -> 0x00002e78
+hw 3AA0 shot +0xc434 0x00000000 -> 0x000040b8
+hw 3AA0 shot +0xc438 0x00000000 -> 0x000040b5
+hw 3AA0 shot +0xc43c 0x00000000 -> 0x00004100
+hw 3AA0 shot +0xc440 0x00000000 -> 0x000040c0
+hw 3AA0 shot +0xc444 0x00000000 -> 0x00004087
+hw 3AA0 shot +0xc448 0x00000000 -> 0x000040ca
+hw 3AA0 shot +0xc44c 0x00000000 -> 0x00004092
+hw 3AA0 shot +0xc450 0x00000000 -> 0x000040df
+hw 3AA0 shot +0xc454 0x00000000 -> 0x00004108
+hw 3AA0 shot +0xc458 0x00000000 -> 0x0002eb52
+hw 3AA0 shot +0xc45c 0x00000000 -> 0x00014b7c
+hw 3AA0 shot +0xc460 0x00000000 -> 0x0001e5e8
+hw 3AA0 shot +0xc464 0x00000000 -> 0x0001fb24
+hw 3AA0 shot +0xc468 0x00000000 -> 0x00021513
+hw 3AA0 shot +0xc46c 0x00000000 -> 0x0001dab9
+hw 3AA0 shot +0xc470 0x00000000 -> 0x0001c558
+hw 3AA0 shot +0xc474 0x00000000 -> 0x00020a2e
+hw 3AA0 shot +0xc478 0x00000000 -> 0x0001dca8
+hw 3AA0 shot +0xc47c 0x00000000 -> 0x0001f05e
+hw 3AA0 shot +0xc480 0x00000000 -> 0x000226b1
+hw3aa: shot: 1684 REAL 3AA0 registers changed
+hw3aa: real interrupts handed to the libraries so far: 183
+
+[@][WRAP][E][S0]DICO_3aa_Stop
+[@][WRAP][S0]stopObject(3AA)
+== 3AA stop -> 0x0
+hw 3AA0 stop +0x0000 0x00000001 -> 0x00000000
+hw 3AA0 stop +0x0108 0xfff0005f -> 0x00000000
+hw 3AA0 stop +0x0114 0x05ff80b0 -> 0x040000b0
+hw 3AA0 stop +0x0118 0x02000000 -> 0x00000000
+hw 3AA0 stop +0x4604 0x001ffe47 -> 0x00000000
+hw 3AA0 stop +0x8000 0x00000001 -> 0x00000000
+hw 3AA0 stop +0x8108 0xfff0005f -> 0x00000000
+hw 3AA0 stop +0x8114 0x05ff80b0 -> 0x040000b0
+hw 3AA0 stop +0x8118 0x02000000 -> 0x00000000
+hw3aa: stop: 9 REAL 3AA0 registers changed
+hw3aa: stopping here (no ISP step, no interrupt delivered)
+done: traced OS calls 535, tasks 210, timers 0, irqs 183

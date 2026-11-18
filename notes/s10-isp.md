@@ -1160,3 +1160,14 @@ Plan (each a task, each waits for the result before it):
   END + b5); "ISP0 frame ends 28"; GSIV 329 none. 3AA as in 0.7 (29 / 29). The YUY2 buffer line was cut by the
   script's 80-line filter and the zip sent was the old isphost.zip: result of the YUY2 buffer pending (v1.9.1 prints
   the result lines separately).
+- 2026-11-18 21:56 the zip (isp-0.8/host.log): "hwisp: ISP0 YUY2 buffer (dva 0xF854A000): 1247616 of 1247616 bytes
+  written" - FIRST FULL-COLOUR FRAME FROM SAMSUNG'S ISP ON WINDOWS: YUY2 912x684 (Y U Y V, stride 1824), demosaiced /
+  white-balanced by ISP0; rendered: correct colours (shop signs readable, mirrored = front camera). Dark: Y median 3,
+  p99 132 - the sensor runs S10eCam's fixed setfile exposure; the libraries' AE output is not applied to the sensor
+  yet (our sensor interface ignores its set calls). U / V means 129 / 128 (neutral). Image not committed (scene).
+  "getIspFrameDesc fail: [F:n][Index:n]" 19 times out of 29 ISP set_ctrl - the ISP shot still ran and wrote
+  (frame-number bookkeeping between our 3AA / ISP fcounts; the HAL keeps them in step - to fix with the streaming
+  loop).
+- Next (fast): (1) streaming: S10eCam stream -Bin -Otf + S10eIsp loop producing YUY2 into a ring in the S10eIspDma
+  pool, S10eCamera (AVStream) taking frames from there instead of its CPU demosaic; (2) AE: forward the libraries'
+  sensor exposure / gain requests to S10eCam (STREAM_EXPOSURE).

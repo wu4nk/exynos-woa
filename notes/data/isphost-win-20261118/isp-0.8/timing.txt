@@ -1,0 +1,131 @@
+3AA chain_create                    1.5 ms
+3AA set_system_config               0.7 ms
+3AA object_create                   7.9 ms
+ISP chain_create                    2.0 ms
+ISP set_system_config               0.7 ms
+ISP object_create                   8.8 ms
+3AA apply_tune_set 6                1.6 ms
+3AA load_cal_data                   1.0 ms
+3AA get_cal_data type 2             0.6 ms
+3AA set_param                       0.4 ms
+3AA set_ctrl F1                     1.3 ms
+3AA shot F1                         8.6 ms
+ISP set_param                       0.6 ms
+ISP set_ctrl F1                     0.8 ms
+ISP shot F1                         3.8 ms
+3AA set_ctrl F2                     0.7 ms
+3AA shot F2                         0.7 ms
+ISP set_ctrl F2                     0.8 ms
+ISP shot F2                         5.4 ms
+3AA set_ctrl F3                     0.9 ms
+3AA shot F3                         1.8 ms
+ISP set_ctrl F3                     0.6 ms
+ISP shot F3                         4.3 ms
+3AA set_ctrl F4                     0.8 ms
+3AA shot F4                         0.7 ms
+ISP set_ctrl F4                     0.8 ms
+ISP shot F4                         4.0 ms
+3AA set_ctrl F5                     0.9 ms
+3AA shot F5                         2.5 ms
+ISP set_ctrl F5                     0.8 ms
+ISP shot F5                         4.6 ms
+3AA set_ctrl F6                     1.1 ms
+3AA shot F6                         0.6 ms
+ISP set_ctrl F6                     0.7 ms
+ISP shot F6                         4.0 ms
+3AA set_ctrl F7                     1.3 ms
+3AA shot F7                         1.5 ms
+ISP set_ctrl F7                     0.7 ms
+ISP shot F7                         5.1 ms
+3AA set_ctrl F8                     1.0 ms
+3AA shot F8                         0.4 ms
+ISP set_ctrl F8                     0.8 ms
+ISP shot F8                         4.3 ms
+3AA set_ctrl F9                     0.9 ms
+3AA shot F9                         0.8 ms
+ISP set_ctrl F9                     0.8 ms
+ISP shot F9                         4.1 ms
+3AA set_ctrl F10                    0.8 ms
+3AA shot F10                        1.9 ms
+ISP set_ctrl F10                    0.8 ms
+ISP shot F10                        4.8 ms
+3AA set_ctrl F11                    0.9 ms
+3AA shot F11                        1.7 ms
+ISP set_ctrl F11                    0.8 ms
+ISP shot F11                        4.5 ms
+3AA set_ctrl F12                    0.8 ms
+3AA shot F12                        2.3 ms
+ISP set_ctrl F12                    0.7 ms
+ISP shot F12                        4.5 ms
+3AA set_ctrl F13                    0.9 ms
+3AA shot F13                        0.6 ms
+ISP set_ctrl F13                    0.8 ms
+ISP shot F13                        4.1 ms
+3AA set_ctrl F14                    0.9 ms
+3AA shot F14                        2.6 ms
+ISP set_ctrl F14                    0.7 ms
+ISP shot F14                        4.5 ms
+3AA set_ctrl F15                    0.9 ms
+3AA shot F15                        0.6 ms
+ISP set_ctrl F15                    0.7 ms
+ISP shot F15                        4.4 ms
+3AA set_ctrl F16                    0.8 ms
+3AA shot F16                        1.0 ms
+ISP set_ctrl F16                    0.7 ms
+ISP shot F16                        4.2 ms
+3AA set_ctrl F17                    0.8 ms
+3AA shot F17                        0.6 ms
+ISP set_ctrl F17                    0.8 ms
+ISP shot F17                        3.7 ms
+3AA set_ctrl F18                    0.9 ms
+3AA shot F18                        2.1 ms
+ISP set_ctrl F18                    0.7 ms
+ISP shot F18                        4.6 ms
+3AA set_ctrl F19                    1.0 ms
+3AA shot F19                        0.7 ms
+ISP set_ctrl F19                    0.8 ms
+ISP shot F19                        4.1 ms
+3AA set_ctrl F20                    0.9 ms
+3AA shot F20                        0.6 ms
+ISP set_ctrl F20                    0.8 ms
+ISP shot F20                        3.8 ms
+3AA set_ctrl F21                    1.0 ms
+3AA shot F21                        0.6 ms
+ISP set_ctrl F21                    0.8 ms
+ISP shot F21                        4.2 ms
+3AA set_ctrl F22                    0.9 ms
+3AA shot F22                        0.7 ms
+ISP set_ctrl F22                    0.8 ms
+ISP shot F22                        4.3 ms
+3AA set_ctrl F23                    0.9 ms
+3AA shot F23                        0.7 ms
+ISP set_ctrl F23                    0.8 ms
+ISP shot F23                        4.2 ms
+3AA set_ctrl F24                    1.1 ms
+3AA shot F24                        0.7 ms
+ISP set_ctrl F24                    1.0 ms
+ISP shot F24                        3.7 ms
+3AA set_ctrl F25                    1.1 ms
+3AA shot F25                        1.5 ms
+ISP set_ctrl F25                    1.0 ms
+ISP shot F25                        4.5 ms
+3AA set_ctrl F26                    1.1 ms
+3AA shot F26                        0.6 ms
+ISP set_ctrl F26                    0.7 ms
+ISP shot F26                        4.2 ms
+3AA set_ctrl F27                    0.8 ms
+3AA shot F27                        1.2 ms
+ISP set_ctrl F27                    0.7 ms
+ISP shot F27                        4.3 ms
+3AA set_ctrl F28                    0.8 ms
+3AA shot F28                        0.6 ms
+ISP set_ctrl F28                    0.7 ms
+ISP shot F28                        4.6 ms
+3AA set_ctrl F29                    0.8 ms
+3AA shot F29                        1.2 ms
+ISP set_ctrl F29                    0.7 ms
+ISP shot F29                        4.2 ms
+3AA set_ctrl F30                    0.8 ms
+3AA shot F30                        0.6 ms
+ISP stop                            0.4 ms
+3AA stop                            1.1 ms
