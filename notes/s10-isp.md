@@ -770,3 +770,8 @@ Plan (each a task, each waits for the result before it):
   load, memset 64 KiB, DC ZVA (generated code; DCZID_EL0 read the same way, DZP checked), last-byte access; then
   closes the handle (unmaps). Device memory would fault on the unaligned / DC ZVA ones; Normal-NC would not.
   ucheck-umdf clean. INF DriverVer 0.2.0.0.
+- 17:36 user run (notes/data/isphost-win-20261118/*-2.txt): S10eIsp 0.2 installed (oem15.inf 0.2.0.0), the 0.1
+  probe part identical to before; "DMA: open \\.\S10eIspDma failed 2" - isp-s10.ps1 dma found no
+  out\S10eIspDma\S10eIspDma.sys (not built or not copied with the kit: build log needed). The restart report shows
+  the same process 6836 and the same mapping addresses as install 15 s earlier: probably the install run's report
+  (Disable-PnpDevice errors are silenced in v1.1) - to check. cam-s10 isp still 0.11 (install not run).

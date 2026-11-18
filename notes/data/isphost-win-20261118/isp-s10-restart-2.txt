@@ -1,0 +1,22 @@
+isp-s10.ps1 v1.1  restart  2026-11-18T17:36:28
+firmware: 
+restarting ACPI\SAMS982C\0
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem15.inf 0.2.0.0
+probe report (S10eIsp 0.2):
+  S10eIsp 0.2 probe, process 6836
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFFA58110440000, user-mode mapping 0000023EB49B0000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFFA58110444000, user-mode mapping 0000023EB49D0000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFFA58110454000, user-mode mapping 0000023EB49E0000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFFA58110480000, user-mode mapping 0000023EB49F0000
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 0000023EB5010000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+  DMA: open \\.\S10eIspDma failed 2 (S10eIspDma not installed / not started: isp-s10.ps1 dma)
+S10eIspDma service: not installed
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-restart.txt
