@@ -1268,3 +1268,47 @@ Plan (each a task, each waits for the result before it):
   write-combined memory. Frames ISP0 cannot take are skipped by the pipeline (0.9.2 gating), so the rate may drop
   below 30 fps; the stop line and the pipe's session line will tell.
 - isp-s10.ps1 v1.11 pipe [-Bin]; camera-s10.ps1 set -Resolution 0/1 -DriverRotation.
+
+## Phone 2026-11-18 ~23:55: full resolution runs, but ~10 fps and the Camera app restarts (black flicker)
+Log: notes/data/isphost-win-20261118/pipe-0.10-full/front-trace.txt (S10eIsp 0.10 "on", S10eCamera 0.12).
+- Every session: armed, stream started, first ISP0 frame, AE applied, errors 0, re-arms 0 - but ISP0 needs
+  95-107 ms per 2432x1824 frame (one 171 ms) after its shot, so only every 3rd-4th 3AA frame gets in ("skipped for
+  a busy ISP0" 6-15 per session) = ~10 fps. The client stops each session ~0.5-0.8 s after its first frame (2-6
+  frames) and starts again ~1 s later: 7 sessions in ~5 s, then again after a pause = the user's "black flicker like
+  before" (0.4 2026-11-17: the client also stopped after ~0.36 s when frames came slower than declared).
+- ISP0 throughput: 2432x1824 / 95 ms = ~46 MP/s; 912x684 / 15-18 ms = ~35-41 MP/s - the same rate at both sizes =
+  clock-bound, not a fixed per-frame cost. Android runs this exact preview at 30 fps (>= 133 MP/s).
+- Why the clock is low: CMU_TOP ISPPRE_BUS was found at mux 3 / div /4 (S10eCam 0.5-0.14 logs) = the cal-if vddi LUT's
+  lowest row (cmucal-vclk.c cmucal_vclk_vddi[] with ISPPRE/ISPLP/ISPHQ_BUS; cmucal-vclklut.c vddi_uud_lut_params:
+  ISPPRE mux 3 div 3, ISPLP mux 2 div 2, ISPHQ mux 2 div 6; nm/od rows: all mux 0 div 0). Parents (cmucal-node.c:310)
+  {PLL_SHARED4, SHARED0_DIV4, SHARED1_DIV4, SHARED2_DIV2}. So ISPLP / ISPHQ presumably sit at their lowest rows too
+  (not read yet - S10eCam 0.16 logs them).
+- Android's knob for these is not the CMU but ACPM DVFS: devfreq_intcam (dfs_id ACPM_DVFS_INTCAM 0x0B04000B,
+  freq_info min 630000 max 690000) and devfreq_cam (0x0B04000C, 650000..690000) (kernel exynos9820.dts devfreq_2 /
+  devfreq_4); enum acpm_dvfs_id: dvfs_intcam = 11, dvfs_cam = 12 (acpm_dvfs_exynos9820.h; G3D = 10 and LITTLE = 2 are
+  device-validated with the same numbering). The camera driver's dvfs table (stock beyond1lte DT, scratchpad
+  b1.dts:4836 "dvfs table v0.3 for 12M/10M"): front_preview / front_preview_full / front_capture: int_cam 640000,
+  cam 680000, mif 1352000, int 100000; rear_preview_full int_cam 660000; default 690000 / 690000.
+- Fix (this commit):
+  - S10ePower version 3: domains INTCAM (11) / CAM (12). At load their levels are read from ACPM's own fvmap
+    (header[idx] -> o_ratevolt, fvmap.c / fvmap.h struct fvmap_header + rate_volt) - the domain is used only if its
+    table holds the DT min AND max exactly (proof that header[idx] is that domain), and only levels inside the DT
+    range are ever requested (RoundDown); whole rate/volt table -> service key IntcamTable / CamTable, checks ->
+    IntcamCheck / CamCheck (0 ok, 1 no fvmap, 2 level count, 3 offset, 4 not descending, 5 DT min/max missing).
+    State + s10epowerctl "set intcam|cam K"; S10EPOWER_STATE grows (IntcamCurKhz, CamCurKhz, IntcamLevels,
+    CamLevels); the governor's MIF check now needs only the version-2 prefix. No thermal cap on these two (Android
+    holds them the whole camera session).
+  - S10eCamera 0.13: while a stream runs through the ISP, before StreamStart: S10ePower SET_FREQ INTCAM 640000 /
+    CAM 680000 (Android's front_preview levels); after StreamStop (S10eCam has put its ISPPRE divider back) or a
+    failed start: 630000 / 650000 (the DT devfreq minimums = what Android rests at). Kernel-to-kernel IOCTL
+    (IoGetDeviceObjectPointer, as PipeOpen); each result in the start / stop report. ACPM sets frequency and
+    voltage; nothing touches the CMU. Without S10ePower v3 + AllowSend: logged, behaviour as 0.12.
+  - S10eCam 0.16 (engine, read only): the stream report logs CMU_TOP mux / div of ISPPRE_BUS, ISPLP_BUS (0x108C /
+    0x187C) and ISPHQ_BUS (0x1088 / 0x1878) (cmucal-sfr.c:116-118, 400-402) - before / after the ACPM request shows
+    what INTCAM / CAM move.
+  - isp-s10.ps1 v1.12 pipe: says whether S10ePower v3 is running with AllowSend; power-s10.ps1 v2.0.5 status lists
+    IntcamCheck / CamCheck and the two fvmap tables.
+- Expected: if ISP0 runs on ISPLP_BUS, the vddi nm row (mux 0 = PLL_SHARED4, /1) vs uud (SHARED1_DIV4, /3) is ~4x ->
+  ~25 ms a frame -> 30 fps. UNVERIFIED until the phone runs it; the conversion in S10eCamera (8.9 MB from
+  write-combined memory a frame) is the next suspect and is in the stop line (conversion avg / max).
+- Fallback meanwhile: isp-s10.ps1 pipe -Bin + camera-s10.ps1 set -Resolution 0 (912x684, 30 fps, validated).

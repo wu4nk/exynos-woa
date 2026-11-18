@@ -300,7 +300,7 @@ static void Run(void)
         S10EPOWER_STATE st;
         DWORD got = 0;
         gMifOk = DeviceIoControl(gPower, IOCTL_S10EPOWER_GET_STATE, NULL, 0, &st, sizeof(st), &got, NULL) &&
-                 got >= sizeof(st);
+                 got >= S10EPOWER_STATE_V2_SIZE;
         Stat("MifControl", gMifOk);
     }
     qsi(8 /* SystemProcessorPerformanceInformation */, prev, sizeof(prev[0]) * ncpu, NULL);

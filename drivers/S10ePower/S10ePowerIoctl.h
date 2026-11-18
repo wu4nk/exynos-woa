@@ -20,12 +20,17 @@
 /* MIF (memory controller): enum acpm_dvfs_id dvfs_mif = 0 (cal_acpm_dvfs_exynos9820.h, notes/gpu-m16-g3don.md:37);
  * not exercised from Windows before G17 (notes/g17-dxva-mfc.md) */
 #define S10EPOWER_DOM_MIF     0u
+/* Camera ISP bus clocks (S10 camera 2026-11-18, notes/s10-isp.md): enum acpm_dvfs_id dvfs_intcam = 11, dvfs_cam = 12
+ * (cal-if exynos9820/acpm_dvfs_exynos9820.h; DT dfs_id ACPM_DVFS_INTCAM 0x0B04000B / ACPM_DVFS_CAM 0x0B04000C). Only
+ * levels of ACPM's own fvmap table inside the DT devfreq range are requested (S10ePower.c CamLadderLoad). */
+#define S10EPOWER_DOM_INTCAM  11u
+#define S10EPOWER_DOM_CAM     12u
 
 /* Thermal zones (ACPM ch 9 READ_TEMP tzid; DT ids 0 BIG, 1 MID, 2 LITTLE, 3 G3D, 4 ISP - tz->id equality UNVERIFIED) */
 #define S10EPOWER_TZ_COUNT    5u
 
 typedef struct _S10EPOWER_STATE {
-    unsigned int Version;              /* 2 (1 had no Mif* fields) */
+    unsigned int Version;              /* 3 (1 had no Mif* fields, 2 no Intcam / Cam fields) */
     unsigned int AllowSend;            /* registry switch: 0 = read-only (C0) */
     unsigned int TempC[S10EPOWER_TZ_COUNT];   /* last READ_TEMP per tz, 0xFF = not read */
     unsigned int TempReads, TempFails;
@@ -37,9 +42,13 @@ typedef struct _S10EPOWER_STATE {
     /* version 2: filled only for callers whose buffer holds them (older tools pass the version-1 size) */
     unsigned int MifCurKhz;            /* granted MIF rate, 0 = never requested since load (boot rate UNKNOWN) */
     unsigned int MifReqKhz;            /* last requested MIF rate */
+    /* version 3 */
+    unsigned int IntcamCurKhz, CamCurKhz;   /* granted, 0 = never requested since load (boot rate UNKNOWN) */
+    unsigned int IntcamLevels, CamLevels;   /* fvmap levels usable (inside the DT range), 0 = domain refused */
 } S10EPOWER_STATE;
 
 #define S10EPOWER_STATE_V1_SIZE  ((unsigned int)FIELD_OFFSET(S10EPOWER_STATE, MifCurKhz))
+#define S10EPOWER_STATE_V2_SIZE  ((unsigned int)FIELD_OFFSET(S10EPOWER_STATE, IntcamCurKhz))
 
 typedef struct _S10EPOWER_SET_FREQ {
     unsigned int Domain;               /* S10EPOWER_DOM_* */

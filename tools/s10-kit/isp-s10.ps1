@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.10) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.12) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -51,7 +51,7 @@ $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.11  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.12  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -181,6 +181,15 @@ switch ($Action) {
             (icacls $isp /grant '*S-1-5-19:(OI)(CI)M' 2>&1) | Out-Null
             Set-Content -Path "$isp\pipe.flg" -Value $(if ($Bin) { 'on bin' } else { 'on' }) -Encoding ascii
             W "pipe.flg written ($(Get-Content "$isp\pipe.flg")): the camera pipeline starts with the device (and at every boot); full sensor unless -Bin"
+            # v1.12: S10eCamera 0.13 asks S10ePower (version 3, AllowSend 1) for the ISP clocks while it streams
+            $pk = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\S10ePower' -ErrorAction SilentlyContinue
+            if ((Get-Service S10ePower -ErrorAction SilentlyContinue).Status -ne 'Running' -or $pk.AllowSendActive -ne 1) {
+                W 'S10ePower is not running with AllowSend 1: the ISP stays at its boot clock (~10 fps at full size). Fix: .\power-s10.ps1 enable'
+            } elseif ($null -eq $pk.IntcamCheck) {
+                W 'S10ePower is older than version 3 (no ISP clock control): .\power-s10.ps1 enable updates it'
+            } else {
+                W "S10ePower ISP domains: IntcamCheck $($pk.IntcamCheck), CamCheck $($pk.CamCheck) (0 = usable)"
+            }
         }
         Remove-Item "$isp\front-trace.txt" -ErrorAction SilentlyContinue
         if (Test-Path "$isp\out") { Remove-Item -Recurse -Force "$isp\out" -ErrorAction SilentlyContinue }

@@ -1,0 +1,232 @@
+pipe.flg found: camera pipeline, full sensor 3648x2736 -> 2432x1824 (mode 12)
+S10eIsp 0.10 front thread: process 9076, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_093aa00010ca2f78, nodma 0, hw3aa 1, hw3aashot 1
+hwisp: the libraries get the REAL ISPLP window 000002071FA20000
+hw3aa: the libraries get the REAL 3AA0 window 000002071FA10000 for the init steps + 3AA set_param / shot F1 / stop
+S10eIspDma open: ok (0)
+pool mapped: 128 MiB PA 0xF5824000 va 0x2071FA40000 cache 1
+pipe: control block at pool offset 0x7FF0000
+calling isp_front_main, argc 5
+2269579876 us  front: isp_front_main entered
+2269585558 us  front: logs open, reading the libraries
+2269598905 us  front: libraries read
+2269601266 us  isp_load: exec alloc
+2269605403 us  isp_load: exec alloc ok
+2269626673 us  isp_load: copied + relocated
+2269630026 us  isp_load: icache flushed
+2269633490 us  isp_load: threads starting
+2269636033 us  isp_load: threads registered
+2269638394 us  isp_start: DDK start_up
+2269652361 us  isp_start: RTA start_up
+2269701495 us  hw3aa: reading all 3AA0 registers (before)
+2269723255 us  hw3aa: 3AA0 read (before)
+2269743089 us  3AA chain_create
+2269748108 us  3AA set_system_config
+2269753441 us  3AA object_create
+2269765050 us  ISP chain_create
+2269771365 us  ISP set_system_config
+2269776479 us  ISP object_create
+2269789303 us  hw3aa: reading all 3AA0 registers (after)
+2269828482 us  front: hw3aa init steps done
+2269853007 us  3AA apply_tune_set 6
+2269858758 us  3AA load_cal_data
+2269863306 us  3AA get_cal_data type 2
+2269873299 us  pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), 2432x1824 YUY2 for sensor mode 12 (3648x2736), waiting for S10eCamera
+2290750141 us  pipe: session 1 armed at F1
+2290769441 us  pipe: S10eCamera stage 3 (3AA frame ends 0, ISP0 frame ends 0, published 0)
+2291816016 us  pipe: S10eCamera stage 4 (3AA frame ends 0, ISP0 frame ends 0, published 0)
+2291850018 us  pipe: F1 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+2291864017 us  pipe: S10eCamera stage 5 (3AA frame ends 1, ISP0 frame ends 0, published 0)
+2291885019 us  pipe: F2 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+2291918014 us  pipe: F3 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+2291951029 us  pipe: F4 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+2291960004 us  pipe: ISP0 frame end 1: 97723 us after its shot
+2291984008 us  pipe: F5 3AA frame end -> ISP0 into slot 1 (published 1, errors 0)
+2292018057 us  pipe: F6 3AA frame end -> ISP0 into slot 1 (published 1, errors 0)
+2292105388 us  pipe: ISP0 frame end 2: 95361 us after its shot
+2292116183 us  pipe: S10eCamera stage 6 (3AA frame ends 8, ISP0 frame ends 2, published 2)
+2292152035 us  pipe: S10eCamera stage 7 (3AA frame ends 10, ISP0 frame ends 2, published 2)
+2292246849 us  pipe: ISP0 frame end 3: 97336 us after its shot
+2292371067 us  pipe: ISP0 frame end 4: 107066 us after its shot
+2292616036 us  pipe: ISP0 frame end 5: 171277 us after its shot
+2292631980 us  pipe: session 1 stopped after frame 22, 5 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 15, ISP0 re-arms 0
+2293509642 us  pipe: session 2 armed at F23
+2293517092 us  pipe: S10eCamera stage 3 (3AA frame ends 22, ISP0 frame ends 5, published 5)
+2293791030 us  pipe: S10eCamera stage 4 (3AA frame ends 22, ISP0 frame ends 5, published 5)
+2293826025 us  pipe: S10eCamera stage 5 (3AA frame ends 23, ISP0 frame ends 5, published 5)
+2293833427 us  pipe: F23 3AA frame end -> ISP0 into slot 0 (published 5, errors 0)
+2293859034 us  pipe: F24 3AA frame end -> ISP0 into slot 0 (published 5, errors 0)
+2293893022 us  pipe: F25 3AA frame end -> ISP0 into slot 0 (published 5, errors 0)
+2293925043 us  pipe: F26 3AA frame end -> ISP0 into slot 0 (published 5, errors 0)
+2293942017 us  pipe: ISP0 frame end 6: 95040 us after its shot
+2293959017 us  pipe: F27 3AA frame end -> ISP0 into slot 1 (published 6, errors 0)
+2293993015 us  pipe: F28 3AA frame end -> ISP0 into slot 1 (published 6, errors 0)
+2294083024 us  pipe: ISP0 frame end 7: 96464 us after its shot
+2294113048 us  pipe: S10eCamera stage 7 (3AA frame ends 31, ISP0 frame ends 7, published 7)
+2294208074 us  pipe: ISP0 frame end 8: 96710 us after its shot
+2294339008 us  pipe: ISP0 frame end 9: 95700 us after its shot
+2294383035 us  pipe: S10eCamera stage 8 (3AA frame ends 39, ISP0 frame ends 9, published 9)
+2294387554 us  pipe: session 2 stopped after frame 40, 9 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 12, ISP0 re-arms 0
+2295526040 us  pipe: session 3 armed at F41
+2295531572 us  pipe: S10eCamera stage 3 (3AA frame ends 39, ISP0 frame ends 9, published 9)
+2295808559 us  pipe: S10eCamera stage 4 (3AA frame ends 39, ISP0 frame ends 9, published 9)
+2295843563 us  pipe: S10eCamera stage 5 (3AA frame ends 40, ISP0 frame ends 9, published 9)
+2295846508 us  pipe: F41 3AA frame end -> ISP0 into slot 0 (published 9, errors 0)
+2295876576 us  pipe: F42 3AA frame end -> ISP0 into slot 0 (published 9, errors 0)
+2295910544 us  pipe: F43 3AA frame end -> ISP0 into slot 0 (published 9, errors 0)
+2295943549 us  pipe: F44 3AA frame end -> ISP0 into slot 0 (published 9, errors 0)
+2295954564 us  pipe: ISP0 frame end 10: 94919 us after its shot
+2295976539 us  pipe: F45 3AA frame end -> ISP0 into slot 1 (published 10, errors 0)
+2296009539 us  pipe: F46 3AA frame end -> ISP0 into slot 1 (published 10, errors 0)
+2296098558 us  pipe: ISP0 frame end 11: 96701 us after its shot
+2296104565 us  pipe: S10eCamera stage 6 (3AA frame ends 47, ISP0 frame ends 11, published 11)
+2296110757 us  pipe: S10eCamera stage 7 (3AA frame ends 48, ISP0 frame ends 11, published 11)
+2296229050 us  pipe: ISP0 frame end 12: 95614 us after its shot
+2296359063 us  pipe: ISP0 frame end 13: 94726 us after its shot
+2296374081 us  pipe: S10eCamera stage 8 (3AA frame ends 55, ISP0 frame ends 13, published 13)
+2296387670 us  pipe: session 3 stopped after frame 58, 13 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 12, ISP0 re-arms 0
+2297343823 us  pipe: session 4 armed at F59
+2297353302 us  pipe: S10eCamera stage 3 (3AA frame ends 56, ISP0 frame ends 13, published 13)
+2297627628 us  pipe: S10eCamera stage 4 (3AA frame ends 56, ISP0 frame ends 13, published 13)
+2297663871 us  pipe: S10eCamera stage 5 (3AA frame ends 56, ISP0 frame ends 13, published 13)
+2297671544 us  pipe: F59 3AA frame end -> ISP0 into slot 0 (published 13, errors 0)
+2297715638 us  pipe: F60 3AA frame end -> ISP0 into slot 0 (published 13, errors 0)
+2297751843 us  pipe: F61 3AA frame end -> ISP0 into slot 0 (published 13, errors 0)
+2297766647 us  pipe: F62 3AA frame end -> ISP0 into slot 0 (published 13, errors 0)
+2297795900 us  pipe: ISP0 frame end 14: 82994 us after its shot
+2297800397 us  pipe: F63 3AA frame end -> ISP0 into slot 1 (published 14, errors 0)
+2297841643 us  pipe: F64 3AA frame end -> ISP0 into slot 1 (published 14, errors 0)
+2297930093 us  pipe: ISP0 frame end 15: 90689 us after its shot
+2297956135 us  pipe: S10eCamera stage 6 (3AA frame ends 65, ISP0 frame ends 15, published 15)
+2297961170 us  pipe: S10eCamera stage 7 (3AA frame ends 65, ISP0 frame ends 15, published 15)
+2298079614 us  pipe: ISP0 frame end 16: 96211 us after its shot
+2298116699 us  pipe: session 4 stopped after frame 73, 16 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 10, ISP0 re-arms 0
+2391110429 us  pipe: session 5 armed at F74
+2391121615 us  pipe: S10eCamera stage 3 (3AA frame ends 70, ISP0 frame ends 16, published 16)
+2391391916 us  pipe: S10eCamera stage 4 (3AA frame ends 70, ISP0 frame ends 16, published 16)
+2391442118 us  pipe: S10eCamera stage 5 (3AA frame ends 71, ISP0 frame ends 16, published 16)
+2391458514 us  pipe: F74 3AA frame end -> ISP0 into slot 0 (published 16, errors 0)
+2391483092 us  pipe: F75 3AA frame end -> ISP0 into slot 0 (published 16, errors 0)
+2391493917 us  pipe: F76 3AA frame end -> ISP0 into slot 0 (published 16, errors 0)
+2391526927 us  pipe: F77 3AA frame end -> ISP0 into slot 0 (published 16, errors 0)
+2391559921 us  pipe: F78 3AA frame end -> ISP0 into slot 0 (published 16, errors 0)
+2391575057 us  pipe: ISP0 frame end 17: 95210 us after its shot
+2391592920 us  pipe: F79 3AA frame end -> ISP0 into slot 1 (published 17, errors 0)
+2391717939 us  pipe: ISP0 frame end 18: 101024 us after its shot
+2391725942 us  pipe: S10eCamera stage 6 (3AA frame ends 79, ISP0 frame ends 18, published 18)
+2391760963 us  pipe: S10eCamera stage 7 (3AA frame ends 81, ISP0 frame ends 18, published 18)
+2391852930 us  pipe: ISP0 frame end 19: 94678 us after its shot
+2391986797 us  pipe: ISP0 frame end 20: 96054 us after its shot
+2392017983 us  pipe: session 5 stopped after frame 92, 20 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 13, ISP0 re-arms 0
+2393260211 us  pipe: session 6 armed at F93
+2393267922 us  pipe: S10eCamera stage 3 (3AA frame ends 88, ISP0 frame ends 20, published 20)
+2393560511 us  pipe: S10eCamera stage 4 (3AA frame ends 88, ISP0 frame ends 20, published 20)
+2393588372 us  pipe: S10eCamera stage 5 (3AA frame ends 88, ISP0 frame ends 20, published 20)
+2393593447 us  pipe: F93 3AA frame end -> ISP0 into slot 0 (published 20, errors 0)
+2393624471 us  pipe: F94 3AA frame end -> ISP0 into slot 0 (published 20, errors 0)
+2393645437 us  pipe: F95 3AA frame end -> ISP0 into slot 0 (published 20, errors 0)
+2393678440 us  pipe: F96 3AA frame end -> ISP0 into slot 0 (published 20, errors 0)
+2393707499 us  pipe: ISP0 frame end 21: 94917 us after its shot
+2393712449 us  pipe: F97 3AA frame end -> ISP0 into slot 1 (published 21, errors 0)
+2393745446 us  pipe: F98 3AA frame end -> ISP0 into slot 1 (published 21, errors 0)
+2393832416 us  pipe: ISP0 frame end 22: 95112 us after its shot
+2393844447 us  pipe: S10eCamera stage 6 (3AA frame ends 96, ISP0 frame ends 22, published 22)
+2393874468 us  pipe: S10eCamera stage 7 (3AA frame ends 97, ISP0 frame ends 22, published 22)
+2393968425 us  pipe: ISP0 frame end 23: 96345 us after its shot
+2393990666 us  pipe: session 6 stopped after frame 106, 23 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 9, ISP0 re-arms 0
+2394836660 us  pipe: session 7 armed at F107
+2394845510 us  pipe: S10eCamera stage 3 (3AA frame ends 101, ISP0 frame ends 23, published 23)
+2395122454 us  pipe: S10eCamera stage 4 (3AA frame ends 101, ISP0 frame ends 23, published 23)
+2395156439 us  pipe: S10eCamera stage 5 (3AA frame ends 102, ISP0 frame ends 23, published 23)
+2395172720 us  pipe: F107 3AA frame end -> ISP0 into slot 0 (published 23, errors 0)
+2395190026 us  pipe: F108 3AA frame end -> ISP0 into slot 0 (published 23, errors 0)
+2395221969 us  pipe: F109 3AA frame end -> ISP0 into slot 0 (published 23, errors 0)
+2395256505 us  pipe: F110 3AA frame end -> ISP0 into slot 0 (published 23, errors 0)
+2395283490 us  pipe: ISP0 frame end 24: 95905 us after its shot
+2395290508 us  pipe: F111 3AA frame end -> ISP0 into slot 1 (published 24, errors 0)
+2395322504 us  pipe: F112 3AA frame end -> ISP0 into slot 1 (published 24, errors 0)
+2395403508 us  pipe: ISP0 frame end 25: 95606 us after its shot
+2395415507 us  pipe: S10eCamera stage 6 (3AA frame ends 109, ISP0 frame ends 25, published 25)
+2395421554 us  pipe: S10eCamera stage 7 (3AA frame ends 109, ISP0 frame ends 25, published 25)
+2395540500 us  pipe: ISP0 frame end 26: 96166 us after its shot
+2395671516 us  pipe: ISP0 frame end 27: 96158 us after its shot
+2395711190 us  pipe: session 7 stopped after frame 124, 27 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 12, ISP0 re-arms 0
+2396546349 us  pipe: session 8 armed at F125
+2396553509 us  pipe: S10eCamera stage 3 (3AA frame ends 118, ISP0 frame ends 27, published 27)
+2396827512 us  pipe: S10eCamera stage 4 (3AA frame ends 118, ISP0 frame ends 27, published 27)
+2396861450 us  pipe: F125 3AA frame end -> ISP0 into slot 0 (published 27, errors 0)
+2396883446 us  pipe: S10eCamera stage 5 (3AA frame ends 119, ISP0 frame ends 27, published 27)
+2396895470 us  pipe: F126 3AA frame end -> ISP0 into slot 0 (published 27, errors 0)
+2396928446 us  pipe: F127 3AA frame end -> ISP0 into slot 0 (published 27, errors 0)
+2396962447 us  pipe: F128 3AA frame end -> ISP0 into slot 0 (published 27, errors 0)
+2396977465 us  pipe: ISP0 frame end 28: 95896 us after its shot
+2396996438 us  pipe: F129 3AA frame end -> ISP0 into slot 1 (published 28, errors 0)
+2397028466 us  pipe: F130 3AA frame end -> ISP0 into slot 1 (published 28, errors 0)
+2397117433 us  pipe: ISP0 frame end 29: 95197 us after its shot
+2397160483 us  pipe: S10eCamera stage 7 (3AA frame ends 127, ISP0 frame ends 29, published 29)
+2397251983 us  pipe: ISP0 frame end 30: 94119 us after its shot
+2397275983 us  pipe: S10eCamera stage 8 (3AA frame ends 129, ISP0 frame ends 30, published 30)
+pipe.flg found: camera pipeline, full sensor 3648x2736 -> 2432x1824 (mode 12)
+S10eIsp 0.10 front thread: process 868, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_093aa00010ca2f78, nodma 0, hw3aa 1, hw3aashot 1
+hwisp: the libraries get the REAL ISPLP window 000001E6A9FC0000
+hw3aa: the libraries get the REAL 3AA0 window 000001E6A9FB0000 for the init steps + 3AA set_param / shot F1 / stop
+S10eIspDma open: ok (0)
+pool mapped: 128 MiB PA 0xF561F000 va 0x1E6A9FE0000 cache 1
+pipe: control block at pool offset 0x7FF0000
+calling isp_front_main, argc 5
+  23381075 us  front: isp_front_main entered
+  23390626 us  front: logs open, reading the libraries
+  23448183 us  front: libraries read
+  23450591 us  isp_load: exec alloc
+  23454772 us  isp_load: exec alloc ok
+  23478713 us  isp_load: copied + relocated
+  23481973 us  isp_load: icache flushed
+  23484453 us  isp_load: threads starting
+  23486149 us  isp_load: threads registered
+  23487742 us  isp_start: DDK start_up
+  23501155 us  isp_start: RTA start_up
+  23545536 us  hw3aa: reading all 3AA0 registers (before)
+  23570151 us  hw3aa: 3AA0 read (before)
+  23599893 us  3AA chain_create
+  23606565 us  3AA set_system_config
+  23610920 us  3AA object_create
+  23622890 us  ISP chain_create
+  23630966 us  ISP set_system_config
+  23636026 us  ISP object_create
+  23648260 us  hw3aa: reading all 3AA0 registers (after)
+  23703694 us  front: hw3aa init steps done
+  23753465 us  3AA apply_tune_set 6
+  23757953 us  3AA load_cal_data
+  23761405 us  3AA get_cal_data type 2
+  23769573 us  pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), 2432x1824 YUY2 for sensor mode 12 (3648x2736), waiting for S10eCamera
+  54084515 us  pipe: session 1 armed at F1
+  54090586 us  pipe: S10eCamera stage 2 (3AA frame ends 0, ISP0 frame ends 0, published 0)
+  54094565 us  pipe: S10eCamera stage 3 (3AA frame ends 0, ISP0 frame ends 0, published 0)
+  54371290 us  pipe: S10eCamera stage 4 (3AA frame ends 0, ISP0 frame ends 0, published 0)
+  54405095 us  pipe: S10eCamera stage 5 (3AA frame ends 1, ISP0 frame ends 0, published 0)
+  54408677 us  pipe: F1 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+  54438109 us  pipe: F2 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+  54471116 us  pipe: F3 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+  54505103 us  pipe: F4 3AA frame end -> ISP0 into slot 0 (published 0, errors 0)
+  54510150 us  pipe: ISP0 frame end 1: 95805 us after its shot
+  54539098 us  pipe: F5 3AA frame end -> ISP0 into slot 1 (published 1, errors 0)
+  54571391 us  pipe: F6 3AA frame end -> ISP0 into slot 1 (published 1, errors 0)
+  54662091 us  pipe: ISP0 frame end 2: 95210 us after its shot
+  54687119 us  pipe: S10eCamera stage 7 (3AA frame ends 9, ISP0 frame ends 2, published 2)
+  54779102 us  pipe: ISP0 frame end 3: 93986 us after its shot
+  54908446 us  pipe: ISP0 frame end 4: 95724 us after its shot
+  54919187 us  pipe: S10eCamera stage 8 (3AA frame ends 16, ISP0 frame ends 4, published 4)
+  54922449 us  pipe: session 1 stopped after frame 17, 4 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 12, ISP0 re-arms 0
+  56377928 us  pipe: session 2 armed at F18
+  56384499 us  pipe: S10eCamera stage 3 (3AA frame ends 16, ISP0 frame ends 4, published 4)
+  56658780 us  pipe: S10eCamera stage 4 (3AA frame ends 16, ISP0 frame ends 4, published 4)
+  56691100 us  pipe: F18 3AA frame end -> ISP0 into slot 0 (published 4, errors 0)
+  56707572 us  pipe: S10eCamera stage 5 (3AA frame ends 17, ISP0 frame ends 4, published 4)
+  56724413 us  pipe: F19 3AA frame end -> ISP0 into slot 0 (published 4, errors 0)
+  56757114 us  pipe: F20 3AA frame end -> ISP0 into slot 0 (published 4, errors 0)
+  56791113 us  pipe: F21 3AA frame end -> ISP0 into slot 0 (published 4, errors 0)
+  56801147 us  pipe: ISP0 frame end 5: 96799 us after its shot
+  56823172 us  pipe: F22 3AA frame end -> ISP0 into slot 1 (published 5, errors 0)
+  56860569 us  pipe: F23 3AA frame end -> ISP0 into slot 1 (published 5, errors 0)
+  56940613 us  pipe: ISP0 frame end 6: 94838 us after its shot
+  56945956 us  pipe: S10eCamera stage 7 (3AA frame ends 24, ISP0 frame ends 6, published 6)
+  56969006 us  pipe: session 2 stopped after frame 27, 6 frames delivered in all, errors 0, 3AA frames skipped for a busy ISP0 6, ISP0 re-arms 0

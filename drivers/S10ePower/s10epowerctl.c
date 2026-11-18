@@ -3,6 +3,7 @@
  *   s10epowerctl state                 temperatures, granted / capped / requested clocks, counters
  *   s10epowerctl set little|mid|g3d K  request K kHz (rounded down to the ladder, capped by the thermal guard)
  *   s10epowerctl set mif K             MIF: K >= 2093000 -> 2093000, else 421000 (the two verified rates, no cap)
+ *   s10epowerctl set intcam|cam K      camera ISP bus clocks: the highest ACPM fvmap level <= K inside the DT range
  * SPDX-License-Identifier: GPL-2.0
  */
 #include <windows.h>
@@ -20,10 +21,15 @@ static void Print(const S10EPOWER_STATE *s, DWORD got)
            s->CapKhz[0], s->ReqKhz[0], s->CurKhz[1], s->CapKhz[1], s->ReqKhz[1], s->CurKhz[2], s->CapKhz[2],
            s->ReqKhz[2]);
     printf("sends %u fails %u timeouts %u\n", s->Sends, s->SendFails, s->Timeouts);
-    if (got >= sizeof(*s))
+    if (got >= S10EPOWER_STATE_V2_SIZE)
         printf("MIF cur %u req %u kHz (0 = not requested since the driver loaded)\n", s->MifCurKhz, s->MifReqKhz);
     else
         printf("MIF: driver version %u has no MIF control\n", s->Version);
+    if (got >= sizeof(*s))
+        printf("INTCAM cur %u kHz (%u levels) | CAM cur %u kHz (%u levels) (0 levels = domain refused)\n",
+               s->IntcamCurKhz, s->IntcamLevels, s->CamCurKhz, s->CamLevels);
+    else
+        printf("INTCAM / CAM: driver version %u has no camera clock control\n", s->Version);
 }
 
 int main(int argc, char **argv)
@@ -39,7 +45,8 @@ int main(int argc, char **argv)
     if (argc >= 4 && !strcmp(argv[1], "set")) {
         S10EPOWER_SET_FREQ f;
         f.Domain = !strcmp(argv[2], "little") ? S10EPOWER_DOM_LITTLE : !strcmp(argv[2], "mid") ? S10EPOWER_DOM_MID
-                 : !strcmp(argv[2], "g3d") ? S10EPOWER_DOM_G3D : !strcmp(argv[2], "mif") ? S10EPOWER_DOM_MIF : 0xFFFF;
+                 : !strcmp(argv[2], "g3d") ? S10EPOWER_DOM_G3D : !strcmp(argv[2], "mif") ? S10EPOWER_DOM_MIF
+                 : !strcmp(argv[2], "intcam") ? S10EPOWER_DOM_INTCAM : !strcmp(argv[2], "cam") ? S10EPOWER_DOM_CAM : 0xFFFF;
         f.Khz = (unsigned int)strtoul(argv[3], NULL, 10);
         if (!DeviceIoControl(h, IOCTL_S10EPOWER_SET_FREQ, &f, sizeof(f), &s, sizeof(s), &got, NULL)) {
             printf("set failed (%lu)\n", GetLastError());

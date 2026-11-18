@@ -1,5 +1,5 @@
 <#
-  power-s10.ps1 (v2.0.4) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
+  power-s10.ps1 (v2.0.5) - Galaxy S10: CPU / GPU clocks and temperatures through upstream's S10ePower (ACPM client) and
   S10eGovernor (load-following clocks, screen-off minimum, thermal guard at 83 C). Run ON THE PHONE, PowerShell as
   Administrator, from the kit folder that holds out\S10ePower\ (build-s10.cmd v1.13+).
 
@@ -45,6 +45,9 @@
                               off at a time (Wi-Fi, Bluetooth, audio + amplifier, video decoder, USB host, touch), then
                               all of them together, baseline before and after. Charger unplugged, hands off ~13 min.
                               Every device is switched back on at the end, also on Ctrl+C or an error.
+    (v2.0.5) S10ePower version 3 also serves the camera: S10eCamera 0.13 asks it for Android's camera ISP clock levels
+                              (INTCAM 640 / CAM 680 MHz, ACPM sets the voltage) while a stream runs through Samsung's
+                              ISP. To update an installed S10ePower: .\power-s10.ps1 enable (status lists the ISP levels).
 
   Every action writes C:\S10Prov\power-report.txt (send that file back). clocks.exe (live speeds) goes on the desktop.
 
@@ -120,10 +123,10 @@ function Show-Key {
                  'AcpmPlugins', 'FvmapPlugin', 'FvmapOff', 'G3dOcCheck', 'G3dTopRate', 'G3dTopVolt', 'G3dPllLevels',
                  'G3dPms0', 'G3dPms1', 'GpuOc', 'GpuOcStatus', 'GpuOcActive', 'CpuOc', 'CpuOcStatus', 'CpuOcActive',
                  'LittleOcCheck', 'LittleOcUv', 'MidOcCheck', 'MidOcUv', 'CpuOcUv', 'CpuOcMidOk',
-                 'TempPeakCpu', 'TempPeakG3d', 'GuardTrips', 'GuardPeak') {
+                 'TempPeakCpu', 'TempPeakG3d', 'GuardTrips', 'GuardPeak', 'IntcamCheck', 'CamCheck') {
     if ($null -ne $k.$n) { Info ("{0} = {1}" -f $n, $k.$n) }
   }
-  foreach ($n in 'LittleLevels', 'MidLevels') {   # v1.4: the ACPM fvmap's CPU levels (rate kHz, voltage uV pairs)
+  foreach ($n in 'LittleLevels', 'MidLevels', 'IntcamTable', 'CamTable') {   # v1.4: the ACPM fvmap's CPU levels (rate kHz, voltage uV pairs); v2.0.5: + the camera ISP domains
     $b = $k.$n
     if ($b -is [byte[]]) {
       $l = for ($i = 0; $i + 7 -lt $b.Length; $i += 8) { '{0}/{1}' -f ([BitConverter]::ToUInt32($b, $i) / 1000), ([BitConverter]::ToUInt32($b, $i + 4) / 1000) }

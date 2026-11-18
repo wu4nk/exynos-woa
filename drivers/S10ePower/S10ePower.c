@@ -8,7 +8,9 @@
  *   - READ_TEMP on the TMU channel (ch 9, stock DT acpm_tmu; used only if the channel table shows id 9 as a queue
  *     channel) every second for tz 1 MID, 2 LITTLE, 3 G3D;
  *   - FREQ_REQ on the DVFS channel (ch 0, device-validated from UEFI) for LITTLE (idx 2), MID (idx 3), G3D (idx 10),
- *     only to rates on the DT ladders, and never above the thermal-guard cap (notes/clocks-dvfs.md "thermal guard").
+ *     only to rates on the DT ladders, and never above the thermal-guard cap (notes/clocks-dvfs.md "thermal guard");
+ *   - (version 3, S10 camera) FREQ_REQ for INTCAM (idx 11) / CAM (idx 12), the ISP's bus clocks, only to levels of
+ *     ACPM's own fvmap table inside the DT devfreq range (S10eCamera asks while it streams through the ISP).
  * Without temperature readings the cap stays at the UEFI boot rates (no clock increase without thermal data -
  * memory thermals-before-clocks). The ACPM is load-bearing: one request at a time, every request waited for.
  *
@@ -329,6 +331,8 @@ static NTSTATUS SetMif(ULONG Khz)
     return st;
 }
 
+static NTSTATUS SetCam(ULONG Dom, ULONG Khz);
+
 static NTSTATUS SetFreq(ULONG Dom, ULONG Khz)
 {
     ULONG n, slot, cmd[4];
@@ -337,6 +341,8 @@ static NTSTATUS SetFreq(ULONG Dom, ULONG Khz)
 
     if (Dom == S10EPOWER_DOM_MIF)
         return SetMif(Khz);
+    if (Dom == S10EPOWER_DOM_INTCAM || Dom == S10EPOWER_DOM_CAM)
+        return SetCam(Dom, Khz);
     if (l == NULL || !gState.AllowSend || !gDvfs.Ok)
         return STATUS_INVALID_DEVICE_REQUEST;
     gState.ReqKhz[slot] = Khz;
@@ -454,6 +460,14 @@ static VOID GuardThread(PVOID Context)
 #define G3D_PMS_806           0x007c0400u
 
 static ULONG gFvmap;                    /* SRAM offset of the fvmap, 0 = not found */
+/* INTCAM / CAM: the DT devfreq ranges (kernel exynos9820.dts devfreq_2 intcam freq_info min 630000 max 690000,
+ * devfreq_4 cam min 650000 max 690000) and the fvmap levels inside them, read at load (CamLadderLoad) */
+#define INTCAM_MIN_KHZ  630000u
+#define INTCAM_MAX_KHZ  690000u
+#define CAM_MIN_KHZ     650000u
+#define CAM_MAX_KHZ     690000u
+#define CAM_LV_MAX      16u
+static ULONG gLadderIntcam[CAM_LV_MAX], gLadderCam[CAM_LV_MAX];
 static struct { BOOLEAN On; ULONG PmsOff, Pms0, RateOff, Rate0, TabOff; UCHAR Tab0; } gOc;
 
 static UCHAR R8(ULONG Off) { return READ_REGISTER_UCHAR((volatile UCHAR *)(gSram + Off)); }
@@ -504,6 +518,62 @@ static VOID FvmapLocate(VOID)
         }
         return;
     }
+}
+
+/* fvmap.c: header[idx] (struct fvmap_header, 24 bytes) -> o_ratevolt -> num_of_lv x {rate, volt}, rates descending.
+ * The domain is taken only if its table holds the DT's min and max exactly (so header[Dom] is the domain the DT
+ * describes); the levels inside [Min, Max] become its ladder. The whole rate/volt table goes to the service key
+ * (<Name>Table, REG_BINARY) for the record. Returns the ladder length, 0 = refused (<Name>Check says why). */
+static ULONG CamLadderLoad(ULONG Dom, ULONG Min, ULONG Max, ULONG *L, PCWSTR Check, PCWSTR Table)
+{
+    ULONG h, lv, rv, i, n = 0, prev = 0xFFFFFFFFu, raw[64];
+    BOOLEAN hasMin = FALSE, hasMax = FALSE;
+
+    if (gFvmap == 0) { WriteDword(Check, 1); return 0; }
+    h = gFvmap + Dom * FVH_SIZE;
+    lv = R8(h + FVH_NUM_LV);
+    if (lv == 0 || lv > 32) { WriteDword(Check, 2); return 0; }
+    if (R16(h + FVH_O_RATEVOLT) + lv * 8 > FVMAP_SIZE || ((gFvmap + R16(h + FVH_O_RATEVOLT)) & 3) != 0) {
+        WriteDword(Check, 3);
+        return 0;
+    }
+    rv = gFvmap + R16(h + FVH_O_RATEVOLT);
+    for (i = 0; i < lv; i++) {
+        ULONG rate = R32(gSram + rv + i * 8);
+        raw[2 * i] = rate;
+        raw[2 * i + 1] = R32(gSram + rv + i * 8 + 4);
+        if (rate == 0 || rate >= prev) { WriteDword(Check, 4); return 0; }
+        prev = rate;
+        if (rate == Min) hasMin = TRUE;
+        if (rate == Max) hasMax = TRUE;
+        if (rate >= Min && rate <= Max && n < CAM_LV_MAX)
+            L[n++] = rate;
+    }
+    (VOID)RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE, gKey, Table, REG_BINARY, raw, lv * 8);
+    if (!hasMin || !hasMax) { WriteDword(Check, 5); return 0; }
+    WriteDword(Check, 0);
+    return n;
+}
+
+static NTSTATUS SetCam(ULONG Dom, ULONG Khz)
+{
+    BOOLEAN intcam = Dom == S10EPOWER_DOM_INTCAM;
+    const ULONG *l = intcam ? gLadderIntcam : gLadderCam;
+    ULONG n = intcam ? gState.IntcamLevels : gState.CamLevels, cmd[4];
+    NTSTATUS st;
+
+    if (n == 0 || !gState.AllowSend || !gDvfs.Ok)
+        return STATUS_INVALID_DEVICE_REQUEST;
+    cmd[0] = Dom; cmd[1] = RoundDown(l, n, Khz); cmd[2] = ACPM_FREQ_REQ; cmd[3] = 0;
+    ExAcquireFastMutex(&gAcpmLock);
+    st = AcpmSend(&gDvfs, cmd);
+    if (NT_SUCCESS(st)) {
+        if (intcam) gState.IntcamCurKhz = cmd[1]; else gState.CamCurKhz = cmd[1];
+    }
+    ExReleaseFastMutex(&gAcpmLock);
+    if (!NT_SUCCESS(st))
+        InterlockedIncrement((volatile LONG *)&gState.SendFails);
+    return st;
 }
 
 /* fvmap_init_gpu_oc's layout checks. Returns 0 when every one passes, else the first failed check's number
@@ -811,7 +881,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     ExInitializeFastMutex(&gAcpmLock);
     KeInitializeEvent(&gStopEvent, NotificationEvent, FALSE);
     RtlZeroMemory(&gState, sizeof(gState));
-    gState.Version = 2;
+    gState.Version = 3;
     for (i = 0; i < S10EPOWER_TZ_COUNT; i++)
         gState.TempC[i] = 0xFF;
     gState.CurKhz[0] = BOOT_LITTLE; gState.CurKhz[1] = BOOT_MID; gState.CurKhz[2] = BOOT_G3D;
@@ -825,6 +895,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     }
     DumpChannels();
     FvmapLocate();   /* read-only */
+    gState.IntcamLevels = CamLadderLoad(S10EPOWER_DOM_INTCAM, INTCAM_MIN_KHZ, INTCAM_MAX_KHZ, gLadderIntcam, L"IntcamCheck",
+                                        L"IntcamTable");
+    gState.CamLevels = CamLadderLoad(S10EPOWER_DOM_CAM, CAM_MIN_KHZ, CAM_MAX_KHZ, gLadderCam, L"CamCheck", L"CamTable");
     gState.AllowSend = ReadDword(L"AllowSend", 0) == 1;
     WriteDword(L"AllowSendActive", gState.AllowSend);
 

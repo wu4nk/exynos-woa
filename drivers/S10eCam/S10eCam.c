@@ -189,6 +189,10 @@
 #define   TOP_ISPPRE_BUS_MUX  (0x1094u - 0x1000u)
 #define   TOP_ISPPRE_BUS_DIV  (0x1884u - 0x1000u)
 #define   TOP_ISPPRE_BUS_GATE (0x20A0u - 0x1000u)
+#define   TOP_ISPLP_BUS_MUX   (0x108Cu - 0x1000u)   /* 0.16: cmucal-sfr.c:117 / :401 / :118 / :402 (read only, logged) */
+#define   TOP_ISPLP_BUS_DIV   (0x187Cu - 0x1000u)
+#define   TOP_ISPHQ_BUS_MUX   (0x1088u - 0x1000u)
+#define   TOP_ISPHQ_BUS_DIV   (0x1878u - 0x1000u)
 #define CMU_ISPPRE          0x17000000ULL
 #define CMU_ISPPRE_SIZE     0x4000u
 #define   IP_BUS_USER         0x0100u
@@ -1445,6 +1449,9 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     x.CsisMsk0 = R32(x.Csis, CSIS_INT_MSK0);
     x.CsisMsk1 = R32(x.Csis, CSIS_INT_MSK1);
     Log(r, "  found: ISPPRE_BUS div %08X, PMU iso %08X, sysreg +0x500 %08X\r\n", x.TopDiv, x.Iso, x.PhyRst);
+    Log(r, "  CMU_TOP mux / div: ISPPRE_BUS %08X / %08X, ISPLP_BUS %08X / %08X, ISPHQ_BUS %08X / %08X\r\n",
+        R32(m->Top, TOP_ISPPRE_BUS_MUX), x.TopDiv, R32(m->Top, TOP_ISPLP_BUS_MUX), R32(m->Top, TOP_ISPLP_BUS_DIV),
+        R32(m->Top, TOP_ISPHQ_BUS_MUX), R32(m->Top, TOP_ISPHQ_BUS_DIV));
 
     /* --- ISPPRE bus clock (CSIS2 and its DMA): 400 MHz / (div + 1) */
     if (in->IspDiv != 0x100) {
@@ -1927,7 +1934,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.15 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.16 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1997,7 +2004,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.15 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.16 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);

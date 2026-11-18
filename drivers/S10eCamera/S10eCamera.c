@@ -59,7 +59,13 @@
  *   (3648 x 2736, S10eCam 0.15 S10ECAM_SHOT_FULL) over the OTF route only (S10ECAM_SHOT_NODMA: no raw ring, frames
  *   counted from CSIS2's frame end), and the picture is ISP0's 2432 x 1824 (Android's own preview size: crop
  *   2944 x 2208, Bayer downscaled by the 3AA) - 7x the pixels of the binned 912 x 684. The full resolution has no CPU
- *   path: without the pipeline the start fails. Resolution 0 = 0.11 (912 x 684, CPU fallback). *
+ *   path: without the pipeline the start fails. Resolution 0 = 0.11 (912 x 684, CPU fallback).
+ * 0.13: ISP0 took ~95 ms for a 2432 x 1824 frame (2026-11-18: ~10 fps, the Camera app restarting its stream, black
+ *   flicker) - the ISP bus clocks were where sboot left them (CMU_TOP ISPPRE_BUS found at the cal-if vddi LUT's
+ *   lowest row). While a stream runs through the ISP, S10ePower (version 3, AllowSend) is asked for Android's own
+ *   camera DVFS levels: INTCAM 640000 / CAM 680000 kHz (stock beyond1lte DT camera dvfs table0 "12M/10M",
+ *   front_preview*_int_cam / _cam); at stop the DT devfreq minimums 630000 / 650000 (the levels Android rests at).
+ *   ACPM sets frequency and voltage together; nothing is written to the CMU here. Without S10ePower: logged, as 0.12.
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
  * SPDX-License-Identifier: GPL-2.0
@@ -75,6 +81,7 @@
 #include <ksmedia.h>
 #include "S10eCameraLut.h"
 #include "..\S10eIspDma\S10eIspDmaIoctl.h"   /* 0.10: S10EISP_SHM, IOCTL_S10EISPDMA_KVA */
+#include "..\S10ePower\S10ePowerIoctl.h"     /* 0.13: INTCAM / CAM requests */
 
 #define CAM_SW          (S10ECAM_SHOT_W / 2)             /* 912: the binned image, sensor orientation */
 #define CAM_SH          (S10ECAM_SHOT_H / 2)             /* 684 */
@@ -733,6 +740,60 @@ static NTSTATUS PinProcess(PKSPIN Pin)
     return STATUS_PENDING;
 }
 
+/* 0.13: Android's camera DVFS levels (On) or its resting ones (!On) through S10ePower; kernel caller = no access
+   check on the open (as PipeOpen). Each result goes to the report. */
+#define CAM_INTCAM_ON   640000u                          /* stock DT dvfs table0 front_preview_int_cam 0x9C400 */
+#define CAM_CAM_ON      680000u                          /* front_preview_cam 0xA6040 */
+#define CAM_INTCAM_OFF  630000u                          /* exynos9820.dts devfreq_intcam freq_info min */
+#define CAM_CAM_OFF     650000u                          /* devfreq_cam freq_info min */
+static BOOLEAN gClocksUp;
+
+static VOID CamClocks(BOOLEAN On, REPORT *r)
+{
+    UNICODE_STRING     n;
+    PFILE_OBJECT       fo;
+    PDEVICE_OBJECT     dev;
+    S10EPOWER_SET_FREQ f;
+    S10EPOWER_STATE    st;
+    IO_STATUS_BLOCK    iosb;
+    KEVENT             ev;
+    PIRP               irp;
+    NTSTATUS           s[2];
+    ULONG              i;
+
+    RtlInitUnicodeString(&n, S10EPOWER_DEVICE_NAME);
+    s[0] = IoGetDeviceObjectPointer(&n, FILE_READ_DATA | FILE_WRITE_DATA, &fo, &dev);
+    if (!NT_SUCCESS(s[0])) {
+        Log(r, "ISP clocks: S10ePower not loaded (0x%08X): left as they are\r\n", s[0]);
+        return;
+    }
+    RtlZeroMemory(&st, sizeof(st));
+    for (i = 0; i < 2; i++) {
+        f.Domain = i == 0 ? S10EPOWER_DOM_INTCAM : S10EPOWER_DOM_CAM;
+        f.Khz = i == 0 ? (On ? CAM_INTCAM_ON : CAM_INTCAM_OFF) : (On ? CAM_CAM_ON : CAM_CAM_OFF);
+        KeInitializeEvent(&ev, NotificationEvent, FALSE);
+        irp = IoBuildDeviceIoControlRequest(IOCTL_S10EPOWER_SET_FREQ, dev, &f, sizeof(f), &st, sizeof(st), FALSE, &ev,
+                                            &iosb);
+        if (irp == NULL) {
+            s[i] = STATUS_INSUFFICIENT_RESOURCES;
+            continue;
+        }
+        s[i] = IoCallDriver(dev, irp);
+        if (s[i] == STATUS_PENDING) {
+            KeWaitForSingleObject(&ev, Executive, KernelMode, FALSE, NULL);
+            s[i] = iosb.Status;
+        }
+        if (NT_SUCCESS(s[i]) && iosb.Information < sizeof(st))
+            s[i] = STATUS_REVISION_MISMATCH;             /* an S10ePower before version 3 */
+    }
+    ObDereferenceObject(fo);
+    if (On)
+        gClocksUp = NT_SUCCESS(s[0]) || NT_SUCCESS(s[1]);
+    Log(r, "ISP clocks %s: INTCAM 0x%08X -> %u kHz (%u levels), CAM 0x%08X -> %u kHz (%u levels)%s\r\n",
+        On ? "up" : "back down", s[0], st.IntcamCurKhz, st.IntcamLevels, s[1], st.CamCurKhz, st.CamLevels,
+        NT_SUCCESS(s[0]) && NT_SUCCESS(s[1]) ? "" : " (S10ePower version 3 with AllowSend 1 needed: power-s10.ps1)");
+}
+
 static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
 {
     S10ECAM_SHOT_IN in;
@@ -749,7 +810,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     if (!gFull && gBin && gFps == 60)
         in.Flags |= S10ECAM_SHOT_FPS60;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.12 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
+    Log(&r, "S10eCamera 0.13 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
         gOutW, gOutH, gFps, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
         gFull ? "3648 x 2736 (mode 12) -> Samsung ISP 2432 x 1824" :
@@ -808,8 +869,14 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
         WriteReport(gLog, r.Used);
         return STATUS_DEVICE_NOT_READY;
     }
+    if (gPipeOn)                                         /* 0.13: before the engine reads the ISPPRE divider */
+        CamClocks(TRUE, &r);
     s = StreamStart(&in, NULL, OnFrame, Pin, &r);
     Log(&r, "start: 0x%08X\r\n", s);
+    if (!NT_SUCCESS(s) && gClocksUp) {                   /* CamStop does nothing for a stream that never ran */
+        CamClocks(FALSE, &r);
+        gClocksUp = FALSE;
+    }
     if (gPipeOn) {
         PIPE_STAGE(4);
         Trace("pipe: stream started with the OTF route: 0x%08X\r\n", s);
@@ -835,7 +902,7 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.10 stop: %I64u frames delivered (%I64u from the ISP, %u AE requests applied), %I64u dropped, "
+    Log(&r, "S10eCamera 0.13 stop: %I64u frames delivered (%I64u from the ISP, %u AE requests applied), %I64u dropped, "
         "%I64u torn; conversion avg %I64u us, max %u us\r\n", c->Frames, c->PipeFrames, c->PipeAeApplied, c->Drops,
         c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
     if (gPipeFellBack)
@@ -849,6 +916,10 @@ static VOID CamStop(CAMPIN *c)
     ExReleaseFastMutex(&gCamMutex);
     StreamStop(&r);
     PIPE_STAGE(9);
+    if (gClocksUp) {                                     /* 0.13: after the engine put its ISPPRE divider back */
+        CamClocks(FALSE, &r);
+        gClocksUp = FALSE;
+    }
     ExAcquireFastMutex(&gCamMutex);
     gPipeOn = FALSE;
     PipeClose();
@@ -1156,7 +1227,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
         Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", rb);
-    Trace("S10eCamera 0.12 (IspPipe %u, Resolution %u) device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gIspPipe, gFull, gOutW,
+    Trace("S10eCamera 0.13 (IspPipe %u, Resolution %u) device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gIspPipe, gFull, gOutW,
           gOutH, gFps, gRot,
           gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
           gFull ? "3648 x 2736 -> ISP 2432 x 1824" : gBin ? "binned 912 x 684" : "1824 x 1368");
