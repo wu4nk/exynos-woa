@@ -929,3 +929,23 @@ Plan (each a task, each waits for the result before it):
   EvtReleaseHardware; the reset model thread polls the fake W3 only (window 0 shadow = W3, T3 replaced after
   trap_window); fire() is never reached in hw mode (return before the frame loop); finish() closes all files on both
   paths; the normal run still gives 39 steps all 0 (FRAMES=3, qemu).
+- 2026-11-18 20:49 RESULT (S10eIsp 0.4, isp-s10.ps1 v1.5 front -Hw3aa; notes/data/isphost-win-20261118/
+  isp-s10-front-0.4-hw3aa.txt, hw3aa-0.4/{host.log, regs-3AA0-hw-before.txt, regs-3AA0-hw-after.txt, timing.txt}):
+  FIRST ISP REGISTER WRITES FROM WINDOWS - no hang, no fault. 6 steps all -> 0, 3AA chain_create 1.4 ms on the
+  hardware, NO "sw_reset is time-out" (the real +0x0c self-cleared; "ISP_Fimc3aaChainV7P1P0::SwReset" logged), the
+  snapshots before / after read all 64 KiB without trouble (19 ms / 41 ms). 87 words changed.
+- Read-back vs Android's chain_create writes (last write per offset, mmio-3AA_chain_create.txt): 83 offsets written,
+  75 read back exactly the last written value. The 8 others: +0x0c (SW reset, self-clears), +0x28 / +0xc8 / +0x4524 /
+  +0x454c (wrote 1 / 3, read 0: self-clearing command bits - inferred), +0x110 / +0x120 / +0x4548 read 0xdeadc0de
+  before and after (write-only / no read path - Android's dump has 0xdeadc0de there too).
+- Changed but not written by the DDK (36): +0x0104 / +0x4604 / +0x8104 0x00000800 -> 0x00100800 (status bit 20 -
+  meaning unknown), and the +0x8000 bank: +0x8008 / 8040 / 8084 / 8100 / 9428 / 9528 / 9534 and the 0x37 into
+  +0x97fc..+0xbbfc - the DDK wrote +0x8054 / 8058 / 804c / 8078 / 807c / 9b5c / 9b0c / 9e00 / a400 / bb08 / bb0c /
+  a500 itself; the rest of the +0x8000 copy follows the +0x0000 writes on its own (a mirrored / second context bank -
+  inferred from this run only).
+- 3AA0 after the init steps vs Android's preview dump: 1504 of 16384 words differ - expected (Android's was taken
+  mid-stream, after set_param / shots).
+- DMA path for the next step: 3AA0's DMA goes through SysMMU_ISPPRE 0x17210000 (DT port-name "3AA0, 3AA1, CSIS,
+  PDP_STAT") - the same SysMMU as CSIS DMA, which S10eCam ran with physical addresses (reset = bypass; its NS frame
+  aborts when read - notes/s10-camera.md 2026-11-16, never touched). So the 3AA DMA with dva = PA of the
+  S10eIspDma pool is expected to work the same way (UNVERIFIED until a 3AA DMA runs).

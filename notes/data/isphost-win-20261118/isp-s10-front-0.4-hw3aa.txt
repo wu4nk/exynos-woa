@@ -1,0 +1,141 @@
+isp-s10.ps1 v1.5  front  2026-11-02T00:12:16
+firmware: 
+icacls C:\S10Prov\isp /grant *S-1-5-19:(OI)(CI)M   (LocalService = Wudfhost)
+  processed file: C:\S10Prov\isp
+  Successfully processed 1 files; Failed processing 0 files
+run.flg: run hw3aa
+pnputil /restart-device ACPI\SAMS982C\0
+  Microsoft PnP Utility
+  
+  Restarting device:         ACPI\SAMS982C\0
+  Device restarted successfully.
+  
+FrontRun: finished: rc 0, log C:\S10Prov\isp\out\host.log  (3 s)
+front-trace.txt:
+  run.flg found ("run hw3aa
+  "), nodma 0, hw3aa 1
+  S10eIsp 0.4 front thread: process 2288, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_f5757c7134304e2c, nodma 0, hw3aa 1
+  hw3aa: the libraries get the REAL 3AA0 window 000001AD667F0000 for the init steps
+  S10eIspDma open: ok (0)
+  pool mapped: 128 MiB PA 0xF5832000 va 0x1AD66D60000 cache 1
+  calling isp_front_main, argc 5
+  3329792143 us  front: isp_front_main entered
+  3329799341 us  front: logs open, reading the libraries
+  3329815347 us  front: libraries read
+  3329819281 us  isp_load: exec alloc
+  3329825679 us  isp_load: exec alloc ok
+  3329849942 us  isp_load: copied + relocated
+  3329854115 us  isp_load: icache flushed
+  3329857066 us  isp_load: threads starting
+  3329859667 us  isp_load: threads registered
+  3329862190 us  isp_start: DDK start_up
+  3329875794 us  isp_start: RTA start_up
+  3329924436 us  hw3aa: reading all 3AA0 registers (before)
+  3329943959 us  hw3aa: 3AA0 read (before)
+  3329963569 us  3AA chain_create
+  3329969707 us  3AA set_system_config
+  3329974449 us  3AA object_create
+  3329983012 us  ISP chain_create
+  3329987238 us  ISP set_system_config
+  3329992058 us  ISP object_create
+  3330005205 us  hw3aa: reading all 3AA0 registers (after)
+  3330046740 us  front: hw3aa init steps done
+  3330049261 us  front: done
+  isp_front_main returned 0
+host.log: 265 lines, steps 6, not 0: 0
+  isphost: image at 000001AD70000000 (delta 0x22c76020000), 12005 pointers relocated; DDK '5E9820 10705-2021/04/05 16:59:12]L12XLOD01GM' RTA 'S5E9820 b18e67877-09/26 04:52:21]L12XLOD01GM'
+  [@][WRAP]start_up_ddk:
+  isphost: DDK start_up -> 0x0
+  isphost: RTA start_up -> 0x0
+  hw3aa: REAL 3AA0 window 000001AD667F0000 for the init steps: +0xF0 0x07010000 +0xF4 0x0000cc22
+  hw3aa: 87 REAL 3AA0 registers changed by the init steps; stopping here (no tune set, set_param, shot or interrupt on the hardware)
+  done: traced OS calls 81, tasks 0, timers 0, irqs 0
+REAL 3AA0 registers changed: 87
+  hw 3AA0 +0x0008 0x00000000 -> 0x00000001
+  hw 3AA0 +0x0040 0x00000010 -> 0x00000000
+  hw 3AA0 +0x004c 0x00000000 -> 0x000003ff
+  hw 3AA0 +0x0054 0x00000001 -> 0x00000000
+  hw 3AA0 +0x0058 0x00000001 -> 0x00000000
+  hw 3AA0 +0x0078 0x00000000 -> 0x000003ff
+  hw 3AA0 +0x007c 0x00000000 -> 0x00000001
+  hw 3AA0 +0x0084 0x00000000 -> 0x00000001
+  hw 3AA0 +0x0100 0x00000000 -> 0x00000003
+  hw 3AA0 +0x0104 0x00000800 -> 0x00100800
+  hw 3AA0 +0x1428 0x00000002 -> 0x00000001
+  hw 3AA0 +0x1528 0x00000003 -> 0x00000001
+  hw 3AA0 +0x1534 0x00000003 -> 0x00000009
+  hw 3AA0 +0x17fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x18fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x19fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x1afc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x1b5c 0x00000100 -> 0x00000000
+  hw 3AA0 +0x1dfc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x1efc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x1ffc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x22fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x23fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x24fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x2564 0x00000000 -> 0x00000037
+  hw 3AA0 +0x2664 0x00000000 -> 0x00000037
+  hw 3AA0 +0x29fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x2bfc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x2dfc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x2ffc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x30fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x31fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x32fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x33fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x34fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x36fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x37fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x39fc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x3afc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x3b08 0x00000000 -> 0x20402000
+  hw 3AA0 +0x3bfc 0x00000000 -> 0x00000037
+  hw 3AA0 +0x4500 0x00000000 -> 0x00000001
+  hw 3AA0 +0x450c 0x00000001 -> 0x00000002
+  hw 3AA0 +0x4510 0x00000001 -> 0x00000000
+  hw 3AA0 +0x4518 0x00000000 -> 0x00000001
+  hw 3AA0 +0x4604 0x00000800 -> 0x00100800
+  hw 3AA0 +0x8008 0x00000000 -> 0x00000001
+  hw 3AA0 +0x8040 0x00000010 -> 0x00000000
+  hw 3AA0 +0x804c 0x00000000 -> 0x000003ff
+  hw 3AA0 +0x8054 0x00000001 -> 0x00000000
+  hw 3AA0 +0x8058 0x00000001 -> 0x00000000
+  hw 3AA0 +0x8078 0x00000000 -> 0x000003ff
+  hw 3AA0 +0x807c 0x00000000 -> 0x00000001
+  hw 3AA0 +0x8084 0x00000000 -> 0x00000001
+  hw 3AA0 +0x8100 0x00000000 -> 0x00000003
+  hw 3AA0 +0x8104 0x00000800 -> 0x00100800
+  hw 3AA0 +0x9428 0x00000002 -> 0x00000001
+  hw 3AA0 +0x9528 0x00000003 -> 0x00000001
+  hw 3AA0 +0x9534 0x00000003 -> 0x00000009
+  hw 3AA0 +0x97fc 0x00000000 -> 0x00000037
+zip: C:\S10Prov\isp-front.zip
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem24.inf 0.4.0.0
+probe report (S10eIsp 0.4):
+  S10eIsp 0.4 probe, process 2288
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFFBC01A7AA6000, user-mode mapping 000001AD667D0000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFFBC01A7AAA000, user-mode mapping 000001AD667F0000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFFBC01A7B80000, user-mode mapping 000001AD66D40000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFFBC01A7B90000, user-mode mapping 000001AD66D50000
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 000001AD66D60000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+  DMA: pool 128 MiB at PA 0xF5832000..0xFD831FFF, write-combined, mapped at 000001AD66D60000 (S10eIspDma v1)
+  DCZID_EL0 = 0x4 (DZP 0, block 64 bytes)
+  DMA test: aligned 8-byte store + load -> ok
+  DMA test: unaligned 8-byte store + load (+0x1003) -> ok
+  DMA test: memset 64 KiB + check -> ok
+  DMA test: DC ZVA on a dirty block + check -> ok
+  DMA test: last byte store + load -> ok
+  DMA: handle closed (pool unmapped)
+  front run: started (FrontRun value, C:\S10Prov\isp\out\host.log)
+S10eIspDma service: RUNNING
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-front.txt

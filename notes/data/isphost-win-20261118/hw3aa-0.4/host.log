@@ -1,0 +1,265 @@
+isphost: kernel-half word 0xfffffffe01000000 at file +0x472e8 (not in the image span, left)
+isphost: kernel-half word 0xfffffffd03000001 at file +0x47370 (not in the image span, left)
+isphost: kernel-half word 0xffffffff0608ffff at file +0x47540 (not in the image span, left)
+isphost: kernel-half word 0xfffffffffefefdff at file +0x48028 (not in the image span, left)
+isphost: kernel-half word 0xffffffff0608ffff at file +0x48350 (not in the image span, left)
+isphost: 577 kernel-half words outside the span (left as they are)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x134df8 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x1365c0 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffff0000 at file +0x137d90 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffffffff at file +0x13aa80 (not in the image span, left)
+isphost: kernel-half word 0xffffffffffffffff at file +0x13aaa0 (not in the image span, left)
+isphost: 121 kernel-half words outside the span (left as they are)
+isphost: image at 000001AD70000000 (delta 0x22c76020000), 12005 pointers relocated; DDK '5E9820 10705-2021/04/05 16:59:12]L12XLOD01GM' RTA 'S5E9820 b18e67877-09/26 04:52:21]L12XLOD01GM'
+isphost: thread 1 stack 0x7e57700000..0x7e57800000 x18 0x7e56eba000
+isphost: thread 2 stack 0x7e57600000..0x7e57700000 x18 0x7e56eb8000
+isphost: thread 0 stack 0x7e57500000..0x7e57600000 x18 0x7e56eb6000
+isphost: thread 3 stack 0x7e57800000..0x7e57900000 x18 0x7e56ebc000
+isphost: thread 6 stack 0x7e57a00000..0x7e57b00000 x18 0x7e56ec0000
+isphost: thread 5 stack 0x7e57b00000..0x7e57c00000 x18 0x7e56ec2000
+isphost: thread 4 stack 0x7e57900000..0x7e57a00000 x18 0x7e56ebe000
+isphost: thread 7 stack 0x7e57c00000..0x7e57d00000 x18 0x7e56ec4000
+isphost: thread 8 stack 0x7e57d00000..0x7e57e00000 x18 0x7e56ec6000
+[@][WRAP]start_up_ddk:
+[@][WRAP]register_sensor_interface(0x0x1ad700e0040), register_sdk(0x0x1ad700e0080)
+[@][WRAP].text size: 2463408 B, text_end addr: 0x1ad703397f0
+[@][WRAP].rodata size: 747432 B, ro_end addr:   0x1ad703eff98
+[@][WRAP]remained space between rodata and bss: 196712 B
+[@][WRAP].bss size: 63600 B, bss_end addr:  0x1ad7042f870
+[@][WRAP].data size: 12519312 B, data_end addr: 0x1ad71020000
+[@][WRAP]heap size: 62914560 B, heap_end addr: 0x1ad74c20000
+isphost: DDK start_up -> 0x0
+isphost: VRA set_os_funcs -> 0x0
+[RTA] [RTA]OS service was registered
+isphost: RTA start_up -> 0x0
+register_sensor_interface -> 0x0
+register_sensor_interface (RTA) -> 0x0
+[@][WRAP][E][1]register_isp_sdk
+[@][WRAP]###########################################################
+[@][WRAP]#####      FIMC-ISP LIBRARY 
+[@][WRAP]#####      Samsung System LSI
+[@][WRAP]#####      DDK revision: 10705
+[@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[@][WRAP]###########################################################
+[@][WRAP][E][2]register_isp_sdk
+[@][WRAP]###########################################################
+[@][WRAP]#####      FIMC-ISP LIBRARY 
+[@][WRAP]#####      Samsung System LSI
+[@][WRAP]#####      DDK revision: 10705
+[@][WRAP]#####      DDK date: 2021-04-05 16:57:46
+[@][WRAP]###########################################################
+trapped register access: 0.00 us each (2000 reads, sum 0)
+hw3aa: REAL 3AA0 window 000001AD667F0000 for the init steps: +0xF0 0x07010000 +0xF4 0x0000cc22
+
+[@][WRAP][E][3AA0]DICO_Chain_3aa_Create
+[@][WRAP]createChain: hwType(0) hwId(0) addr(0x1ad667f0000)
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(0) !!!
+[@][DRV]Register interrupt:ID(0), handler(ddk+0x331e34) chain 0
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(0) int_num(1) !!!
+[@][DRV]Register interrupt:ID(1), handler(ddk+0x331e34) chain 0
+ISP_Fimc3aaChainV7P1P0::SwReset
+[@][WRAP][INFO]setOsCallback: mCameraCb(0x1ad77002ec0), cameraCb(0x1ad77002ec0)
+[@][WRAP][INFO]setOsCallback: mIoCb(0x1ad77002ef0), ioCb(0x1ad77002ef0)
+== 3AA chain_create -> 0x0
+
+[WRAP][E] DICO_SystemConfig
+[WRAP][E] DICO_SystemConfig
+[WRAP]setOverflowControl: (recovery:1)
+[WRAP]setOverflowControl: (recovery:1)
+== 3AA set_system_config -> 0x0
+
+[@][WRAP][E][S0]DICO_Object_3aa_Create: (0x00260000) hwId(0), rep(0), input(0), moduleId(38)
+[@][WRAP]Metadata: new
+[@][WRAP]StreamInterface: new
+[@][WRAP][0]StreamInterface: init
+[@][WRAP]Metadata: init
+[@][WRAP][S0](createObject[5652]): hwType(3AA) hwId(0), inputType(OTF), moduleId(38), repFlag(0)
+[@][WRAP][0]WRAP_GetSensorDriver: moduleId(38) sensorDriverObj->afdDriverItfPtr(0x1ad7033dc70)
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[@][WRAP]INFO(createObject[5696]): sensor path(OTF)
+WdrRgbyHist 256bins
+Init 200
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[VRA] [VRALIB] register_vra_isp_interface.
+[VRA] [VRALIB] register_vra_isp_interface.
+[RTA] RegisterRtaInterface sensorID = 1, sensor = 0x1ad707cbf68 
+[RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1ad707cbf68 
+[RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1ad707cbf68 
+[RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[CreateCommonObjectExternal] 
+[CreateAeObjectExternal] 
+[CreateAwbObjectExternal] 
+[CreateScdObjectInternal] 
+[CreateAfcObjectInternal] 
+[CreateAutoFocusObjectExternal] 
+ActivateAlgorithms ae1 awb1 af1 
+Ext AF is selected!
+[@][WRAP][X][S0][3AA0]DICO_Object_3aa_Create 0x1ad719e8a00
+== 3AA object_create -> 0x0
+3AA object = ddk+0x19e8a00
+
+[@][WRAP][E][ISP0]DICO_Chain_Isp_Create
+[@][WRAP]createChain: hwType(1) hwId(0) addr(0x1ad66877000)
+ISP_FimcIspChainV7P11P0::ISP_FimcIspChainV7P11P0(const SIRC_IspObjectConfig*) CHAIN_REGISTER_MODE_SHADOW
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(6) !!!
+[@][DRV]Register interrupt:ID(6), handler(ddk+0x331e34) chain 2
+[@][WRAP]SIRC_INT_RegisterInterrupt: chainId(2) int_num(7) !!!
+[@][DRV]Register interrupt:ID(7), handler(ddk+0x331e34) chain 2
+ISP_FimcIspChainV7P11P0::SwReset
+[FRO] reset
+[FRO] reset
+== ISP chain_create -> 0x0
+
+[WRAP][E] DICO_SystemConfig
+[WRAP][E] DICO_SystemConfig
+[WRAP]setOverflowControl: (recovery:1)
+[WRAP]setOverflowControl: (recovery:1)
+== ISP set_system_config -> 0x0
+
+[@][WRAP][E][S0]DICO_Object_Isp_Create: (0x00261000) hwId(0), rep(0), input(1), moduleId(38)
+[@][WRAP][S0](createObject[5652]): hwType(ISP) hwId(0), inputType(M2M), moduleId(38), repFlag(0)
+[@][WRAP][INFO]m_createObject3aaForTuneSet: [S0] hwId_3aa(0)
+[@][WRAP](WRAP_GetProperties[586]): w(3968), h(2736)
+[@][WRAP](WRAP_GetProperties[587]): order (0)
+[@][WRAP](WRAP_GetProperties[588]): exp (23, 33257)
+[@][WRAP](WRAP_GetProperties[589]): again (1000, 16000)
+[@][WRAP](WRAP_GetProperties[590]): dgain (1000, 128000)
+[@][WRAP](WRAP_GetProperties[592]): sensorId (0), streamId(0), moduleId(38) sensorPlace(1) 3aaotfmode(0)
+[@][WRAP](WRAP_GetProperties[593]): pclk(807720000), line_length_pck(9384), frameleng(2864)
+[@][WRAP](WRAP_GetProperties[594]): cur w(3648), h(2736)
+[@][WRAP](WRAP_GetProperties[598]): max fps(30), hdr by again(0)
+[@][WRAP](WRAP_GetProperties[600]): use_sensor_dgain (1), initialAperture(190)
+[@][WRAP](WRAP_GetProperties[601]): companion available (0)
+[@][WRAP](WRAP_GetProperties[602]): aperture available (0)
+[@][WRAP](WRAP_GetProperties[603]): laserAf available (0)
+[RTA] [RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1ad707cbf68 
+[RTA] [RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[RTA] [@][RTA] RegisterRtaInterface sensorPlace = 1, sensor = 0x1ad707cbf68 
+[RTA] [@][RTA] RegisterRtaInterface FRONT GammaVersion : 0x070B1023 
+[RTA] [@][RTA] RegisterRtaInterface FRONT DRCVersion : 0x070B0451 
+[CreateGammaObjectExternal] 
+ActivateAlgorithms[351] gamma(1) 
+ActivateAlgorithms[367] drc(2) 
+[CreatePrcObjectExternal] 
+ActivateAlgorithms[383] prc(1) 
+ActivateAlgorithms[399] pipeline(2) 
+[@][WRAP][X][S0][ISP0]DICO_Object_Isp_Create 0x1ad71d6d320
+== ISP object_create -> 0x0
+ISP object = ddk+0x1d6d320
+hw 3AA0 +0x0008 0x00000000 -> 0x00000001
+hw 3AA0 +0x0040 0x00000010 -> 0x00000000
+hw 3AA0 +0x004c 0x00000000 -> 0x000003ff
+hw 3AA0 +0x0054 0x00000001 -> 0x00000000
+hw 3AA0 +0x0058 0x00000001 -> 0x00000000
+hw 3AA0 +0x0078 0x00000000 -> 0x000003ff
+hw 3AA0 +0x007c 0x00000000 -> 0x00000001
+hw 3AA0 +0x0084 0x00000000 -> 0x00000001
+hw 3AA0 +0x0100 0x00000000 -> 0x00000003
+hw 3AA0 +0x0104 0x00000800 -> 0x00100800
+hw 3AA0 +0x1428 0x00000002 -> 0x00000001
+hw 3AA0 +0x1528 0x00000003 -> 0x00000001
+hw 3AA0 +0x1534 0x00000003 -> 0x00000009
+hw 3AA0 +0x17fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x18fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x19fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x1afc 0x00000000 -> 0x00000037
+hw 3AA0 +0x1b5c 0x00000100 -> 0x00000000
+hw 3AA0 +0x1dfc 0x00000000 -> 0x00000037
+hw 3AA0 +0x1efc 0x00000000 -> 0x00000037
+hw 3AA0 +0x1ffc 0x00000000 -> 0x00000037
+hw 3AA0 +0x22fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x23fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x24fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x2564 0x00000000 -> 0x00000037
+hw 3AA0 +0x2664 0x00000000 -> 0x00000037
+hw 3AA0 +0x29fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x2bfc 0x00000000 -> 0x00000037
+hw 3AA0 +0x2dfc 0x00000000 -> 0x00000037
+hw 3AA0 +0x2ffc 0x00000000 -> 0x00000037
+hw 3AA0 +0x30fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x31fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x32fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x33fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x34fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x36fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x37fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x39fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x3afc 0x00000000 -> 0x00000037
+hw 3AA0 +0x3b08 0x00000000 -> 0x20402000
+hw 3AA0 +0x3bfc 0x00000000 -> 0x00000037
+hw 3AA0 +0x4500 0x00000000 -> 0x00000001
+hw 3AA0 +0x450c 0x00000001 -> 0x00000002
+hw 3AA0 +0x4510 0x00000001 -> 0x00000000
+hw 3AA0 +0x4518 0x00000000 -> 0x00000001
+hw 3AA0 +0x4604 0x00000800 -> 0x00100800
+hw 3AA0 +0x8008 0x00000000 -> 0x00000001
+hw 3AA0 +0x8040 0x00000010 -> 0x00000000
+hw 3AA0 +0x804c 0x00000000 -> 0x000003ff
+hw 3AA0 +0x8054 0x00000001 -> 0x00000000
+hw 3AA0 +0x8058 0x00000001 -> 0x00000000
+hw 3AA0 +0x8078 0x00000000 -> 0x000003ff
+hw 3AA0 +0x807c 0x00000000 -> 0x00000001
+hw 3AA0 +0x8084 0x00000000 -> 0x00000001
+hw 3AA0 +0x8100 0x00000000 -> 0x00000003
+hw 3AA0 +0x8104 0x00000800 -> 0x00100800
+hw 3AA0 +0x9428 0x00000002 -> 0x00000001
+hw 3AA0 +0x9528 0x00000003 -> 0x00000001
+hw 3AA0 +0x9534 0x00000003 -> 0x00000009
+hw 3AA0 +0x97fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x98fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x99fc 0x00000000 -> 0x00000037
+hw 3AA0 +0x9afc 0x00000000 -> 0x00000037
+hw 3AA0 +0x9b5c 0x00000100 -> 0x00000000
+hw 3AA0 +0x9dfc 0x00000000 -> 0x00000037
+hw 3AA0 +0x9efc 0x00000000 -> 0x00000037
+hw 3AA0 +0x9ffc 0x00000000 -> 0x00000037
+hw 3AA0 +0xa2fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xa3fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xa4fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xa564 0x00000000 -> 0x00000037
+hw 3AA0 +0xa664 0x00000000 -> 0x00000037
+hw 3AA0 +0xa9fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xabfc 0x00000000 -> 0x00000037
+hw 3AA0 +0xadfc 0x00000000 -> 0x00000037
+hw 3AA0 +0xaffc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb0fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb1fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb2fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb3fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb4fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb6fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb7fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xb9fc 0x00000000 -> 0x00000037
+hw 3AA0 +0xbafc 0x00000000 -> 0x00000037
+hw 3AA0 +0xbb08 0x00000000 -> 0x20402000
+hw 3AA0 +0xbbfc 0x00000000 -> 0x00000037
+hw3aa: 87 REAL 3AA0 registers changed by the init steps; stopping here (no tune set, set_param, shot or interrupt on the hardware)
+done: traced OS calls 81, tasks 0, timers 0, irqs 0
