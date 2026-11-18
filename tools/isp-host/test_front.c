@@ -259,7 +259,11 @@ int main(int argc, char **argv)
     mkdir(OUTDIR, 0755);
     char p[1024];
     snprintf(p, sizeof(p), "%s/host.log", OUTDIR);
+#ifdef ISPHOST_DRIVER
+    FILE *lf = fopen(p, "wc");   /* "c": every fflush commits to disk (UCRT) - the last line survives a crash */
+#else
     FILE *lf = fopen(p, "w");
+#endif
     plat_posix_log_to(lf, getenv("QUIET") != NULL);
     snprintf(p, sizeof(p), "%s/interface-calls.txt", OUTDIR);
     itf_log = fopen(p, "w");

@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.3) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.3.1) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -40,7 +40,7 @@
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 
-#define S10EISP_VERSION L"0.3"
+#define S10EISP_VERSION L"0.3.1"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -241,6 +241,28 @@ static void SetValue(PCWSTR name, PCWSTR text)
     WdfRegistryClose(key);
 }
 
+/* 0.3.1 (after a blue screen during the first front run, 2026-11-18 19:07, no dump / no event): every step of the
+   run thread goes to C:\S10Prov\isp\front-trace.txt, written through to disk (FILE_FLAG_WRITE_THROUGH), so the last
+   line survives a crash; host.log is opened with the UCRT commit flag for the same reason (test_front.c). */
+static void Trace(const char *fmt, ...)
+{
+    char b[512];
+    va_list ap;
+    DWORD n;
+    va_start(ap, fmt);
+    StringCchVPrintfA(b, ARRAYSIZE(b) - 2, fmt, ap);
+    va_end(ap);
+    StringCchCatA(b, ARRAYSIZE(b), "\r\n");
+    HANDLE f = CreateFileA(ISP_DIR "\\front-trace.txt", FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    WriteFile(f, b, (DWORD)strlen(b), &n, NULL);
+    FlushFileBuffers(f);
+    CloseHandle(f);
+}
+
+static BOOL g_nodma;
+
 static DWORD WINAPI FrontThread(LPVOID p)
 {
     static char dir[MAX_PATH], data[MAX_PATH], layout[MAX_PATH], cal[MAX_PATH];
@@ -257,10 +279,28 @@ static DWORD WINAPI FrontThread(LPVOID p)
     StringCchCopyA(data, MAX_PATH, dir);
     StringCchPrintfA(layout, MAX_PATH, "%s\\sensor_itf_layout.txt", dir);
 
-    HANDLE h = CreateFileW(S10EISPDMA_USER_PATH, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    Trace("S10eIsp %S front thread: process %lu, data %s, nodma %d", S10EISP_VERSION, GetCurrentProcessId(), data,
+          g_nodma);
     S10EISPDMA_MAP_OUT m;
     DWORD got = 0;
     RtlZeroMemory(&m, sizeof(m));
+    if (g_nodma) {
+        /* bisect switch: the libraries get plat_win's own (fake, VirtualAlloc) DMA pool - S10eIspDma is not opened */
+        Trace("nodma: S10eIspDma not used, fake pool");
+        plat_win_set_thread_fatal(1);
+        SetEnvironmentVariableA("FRAMES", "30");
+        SetEnvironmentVariableA("QUIET", "1");
+        SetValue(L"FrontRun", L"started (nodma)");
+        char *argv0[6] = {"isp_front", ISP_DIR, data, ISP_DIR "\\out", layout, NULL};
+        Trace("calling isp_front_main (nodma)");
+        int rc0 = isp_front_main(5, argv0);
+        Trace("isp_front_main returned %d", rc0);
+        StringCchPrintfW(msg, ARRAYSIZE(msg), L"finished (nodma): rc %d", rc0);
+        SetValue(L"FrontRun", msg);
+        return 0;
+    }
+    HANDLE h = CreateFileW(S10EISPDMA_USER_PATH, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    Trace("S10eIspDma open: %s (%lu)", h == INVALID_HANDLE_VALUE ? "FAILED" : "ok", GetLastError());
     if (h == INVALID_HANDLE_VALUE ||
         !DeviceIoControl(h, IOCTL_S10EISPDMA_MAP, NULL, 0, &m, sizeof(m), &got, NULL) || got < sizeof(m)) {
         StringCchPrintfW(msg, ARRAYSIZE(msg), L"not run: S10eIspDma pool unavailable (error %lu)", GetLastError());
@@ -269,6 +309,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
         return 1;
     }
     /* the handle stays open for the process's lifetime: the libraries' pools live in the mapping */
+    Trace("pool mapped: %llu MiB PA 0x%08llX va 0x%llX cache %u", m.Bytes >> 20, m.Pa, m.UserVa, m.Cache);
     plat_win_dma_pool((void *)(ULONG_PTR)m.UserVa, m.Pa, m.Bytes);
     plat_win_set_thread_fatal(1);
     SetEnvironmentVariableA("FRAMES", "30");
@@ -281,7 +322,9 @@ static DWORD WINAPI FrontThread(LPVOID p)
                      L"started: pool %llu MiB at PA 0x%08llX (%s), data %S, log " ISP_DIR "\\out\\host.log",
                      m.Bytes >> 20, m.Pa, m.Cache ? L"write-combined" : L"non-cached", data);
     SetValue(L"FrontRun", msg);
+    Trace("calling isp_front_main, argc %d", argc);
     int rc = isp_front_main(argc, argv);      /* an exit() / library assert inside ends this thread only */
+    Trace("isp_front_main returned %d", rc);
     StringCchPrintfW(msg, ARRAYSIZE(msg), L"finished: rc %d, log " ISP_DIR "\\out\\host.log", rc);
     SetValue(L"FrontRun", msg);
     return 0;
@@ -289,8 +332,15 @@ static DWORD WINAPI FrontThread(LPVOID p)
 
 static void MaybeFrontRun(void)
 {
-    if (GetFileAttributesW(L"" ISP_DIR "\\run.flg") == INVALID_FILE_ATTRIBUTES) return;
+    char flg[64] = {0};
+    DWORD n = 0;
+    HANDLE f = CreateFileW(L"" ISP_DIR "\\run.flg", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    ReadFile(f, flg, sizeof(flg) - 1, &n, NULL);
+    CloseHandle(f);
     DeleteFileW(L"" ISP_DIR "\\run.flg");
+    g_nodma = strstr(flg, "nodma") != NULL;          /* 0.3.1: run.flg containing "nodma" = without S10eIspDma */
+    Trace("run.flg found (\"%s\"), nodma %d", flg, g_nodma);
     if (InterlockedExchange(&g_front_started, 1)) {
         Log(L"front run: already ran in this process (one per Wudfhost: isp-s10.ps1 restart starts a new one)");
         return;

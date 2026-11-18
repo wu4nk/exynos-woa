@@ -827,3 +827,17 @@ Plan (each a task, each waits for the result before it):
   ISPHOST_DRIVER, C17. build-s10.cmd v1.21 copies data\ into out\S10eIsp. isp-s10.ps1 v1.3 front: icacls grants
   LocalService (S-1-5-19, Wudfhost's account) modify on C:\S10Prov\isp, run.flg, pnputil /restart-device, waits for
   FrontRun (180 s), prints the host.log summary, zips out\ to C:\S10Prov\isp-front.zip. NOT BUILT / RUN YET.
+
+## 2026-11-18 19:07 BLUE SCREEN during the first S10eIsp 0.3 front run
+- User: isp-s10.ps1 install (0.3 probe OK, incl. the DMA tests) then front -> blue screen. After the reboot: no
+  minidump, no LiveKernelReports, no System event 1001 or 41 (the UFS driver has no crash-dump path, and the event
+  log writes of that boot were lost); isp-s10-front.txt empty and no C:\S10Prov\isp\out\host.log (lost from the
+  cache with the crash, or never written); the device runs S10eIsp 0.2 again (the 0.3 update's registry changes
+  were lost too - oem18.inf 0.3.0.0 is in the store). Stop code: unknown.
+- What can blue-screen here: only kernel code - S10eIspDma (the run maps its pool and keeps the handle; cleanup
+  unmaps in the owner process at handle rundown) or the UMDF reflector reacting to the host (crash / hang during the
+  device restart). The libraries themselves only see fake windows and memory in their process.
+- 0.3.1: front-trace.txt (C:\S10Prov\isp, FILE_FLAG_WRITE_THROUGH + FlushFileBuffers per line: thread start, DMA open
+  / map, isp_front_main call / return); host.log opened "wc" (UCRT commit-on-flush) in driver mode; run.flg
+  "nodma" = bisect switch (plat_win's fake pool, S10eIspDma untouched). isp-s10.ps1 v1.4 front [-NoDma], prints the
+  trace. Plan: front -NoDma first; if that survives, the DMA driver path is the suspect.
