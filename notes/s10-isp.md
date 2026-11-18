@@ -977,3 +977,19 @@ Plan (each a task, each waits for the result before it):
   over it. FIX (own commit): S10eIsp refuses hw3aashot with nodma (FrontRun "not run: ..."). Checked otherwise: the
   DMA-register list excludes +0x110 (accidental match) and +0x4084 / +0xc084 (constant); the init-only path is
   unchanged (qemu); the stop is reached only after the watch; ps1 -Hw3aaShot wins over -Hw3aa (run.flg holds one).
+- 2026-11-18 20:59 RESULT (S10eIsp 0.5, front -Hw3aaShot; notes/data/isphost-win-20261118/hw3aashot-0.5/): the REAL
+  3AA0 went through init, tune sets, set_param, set_ctrl F1, shot F1 (8.9 ms) and the DDK's stop, all -> 0, no fault.
+  - All 56 DMA-address registers read back = pool PA 0xF5832000 + the expected offset (before_bds dva 0xF82F6000,
+    after_bds 0xF8F5C000): 56 / 56.
+  - Android's shot F1 writes (1564 offsets, dvas translated to the pool): 1549 read back exactly. The 15 others:
+    write-only words reading 0xdeadc0de (+0x34, +0x110, +0x120, +0x1a64..+0x1a70), +0x451c (self-clearing), +0x10c
+    (status, below), +0x1a3c / +0x1a40 / +0x1a5c / +0x1a60 and +0x9a3c / +0x9a40 (different values - the Android run
+    had rom1_cal.bin, this one not: calibration / AE-dependent, inferred, not checked).
+  - After shot: +0x00 = 1 (armed), +0x10c = 0x00100000 (IRQ0 status bit 20 set at once on the hardware; +0x104 /
+    +0x4604 0x00100800 too), +0x11c 0. Nothing changed in the 200 ms watch (no input frame - as expected). Bit 20's
+    meaning is unknown (the 2026-11-17 emulator scan: IRQ0 bit 20 handled "ok" with no message).
+  - The DDK's stop: +0x00 1 -> 0 (and its +0x8000 copy), +0x108 enables -> 0, +0x10c 0x00100000 -> 0, +0x104 /
+    +0x4604 bit 20 cleared: the 3AA0 is left disarmed.
+  - Init this time changed 1 word only: 0.4's register state survived (no reset of the block between the runs).
+- So far on the real 3AA0: register programming from Windows = Android's, DMA addresses in the pool. Missing for a
+  real frame: interrupts (the DDK's ISR + tasks need them) and the input (CSIS -> 3AA OTF).

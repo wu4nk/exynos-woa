@@ -1,0 +1,40 @@
+run.flg found ("run hw3aashot
+"), nodma 0, hw3aa 1, hw3aashot 1
+S10eIsp 0.5 front thread: process 8580, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_fd2317f0ed9ea4bb, nodma 0, hw3aa 1, hw3aashot 1
+hw3aa: the libraries get the REAL 3AA0 window 0000017240950000 for the init steps + 3AA set_param / shot F1 / stop
+S10eIspDma open: ok (0)
+pool mapped: 128 MiB PA 0xF5832000 va 0x17240980000 cache 1
+calling isp_front_main, argc 5
+3996007097 us  front: isp_front_main entered
+3996015758 us  front: logs open, reading the libraries
+3996034750 us  front: libraries read
+3996039634 us  isp_load: exec alloc
+3996044827 us  isp_load: exec alloc ok
+3996069305 us  isp_load: copied + relocated
+3996073579 us  isp_load: icache flushed
+3996076767 us  isp_load: threads starting
+3996079367 us  isp_load: threads registered
+3996082701 us  isp_start: DDK start_up
+3996097642 us  isp_start: RTA start_up
+3996147886 us  hw3aa: reading all 3AA0 registers (before)
+3996168982 us  hw3aa: 3AA0 read (before)
+3996188737 us  3AA chain_create
+3996194689 us  3AA set_system_config
+3996201322 us  3AA object_create
+3996216595 us  ISP chain_create
+3996222807 us  ISP set_system_config
+3996230485 us  ISP object_create
+3996246086 us  hw3aa: reading all 3AA0 registers (after)
+3996285393 us  front: hw3aa init steps done
+3996307944 us  3AA apply_tune_set 6
+3996313729 us  3AA load_cal_data
+3996320434 us  3AA get_cal_data type 2
+3996324804 us  3AA set_param
+3996328779 us  3AA set_ctrl F1
+3996334678 us  3AA shot F1
+3996347943 us  hw3aa: shot F1 done, watching the interrupt status 200 ms
+3996552943 us  hw3aa: reading all 3AA0 registers (after shot)
+3996601703 us  3AA stop
+3996658574 us  front: hw3aa shot + stop done
+3996661305 us  front: done
+isp_front_main returned 0

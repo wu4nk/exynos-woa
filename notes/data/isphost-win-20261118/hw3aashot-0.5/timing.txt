@@ -1,0 +1,13 @@
+3AA chain_create                    2.0 ms
+3AA set_system_config               1.1 ms
+3AA object_create                  10.2 ms
+ISP chain_create                    1.3 ms
+ISP set_system_config               0.8 ms
+ISP object_create                  10.3 ms
+3AA apply_tune_set 6                2.1 ms
+3AA load_cal_data                   1.2 ms
+3AA get_cal_data type 2             0.5 ms
+3AA set_param                       0.5 ms
+3AA set_ctrl F1                     1.5 ms
+3AA shot F1                         8.9 ms
+3AA stop                            0.8 ms
