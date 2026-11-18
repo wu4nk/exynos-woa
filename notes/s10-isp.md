@@ -993,3 +993,29 @@ Plan (each a task, each waits for the result before it):
   - Init this time changed 1 word only: 0.4's register state survived (no reset of the block between the runs).
 - So far on the real 3AA0: register programming from Windows = Android's, DMA addresses in the pool. Missing for a
   real frame: interrupts (the DDK's ISR + tasks need them) and the input (CSIS -> 3AA OTF).
+
+## Plan item 6 step 4a: UEFI beyond1lte v0.2.4 - 3AA0's interrupts in the CISP _CRS (2026-11-18)
+- Docs first (AGENTS.md 13), learn.microsoft.com:
+  - wdf/creating-an-interrupt-object: "UMDF supports the following types of interrupts: Level-triggered (shared or
+    exclusive), Edge-triggered (exclusive only), MSI (exclusive by definition)"; "A driver typically creates framework
+    interrupt objects in its EvtDriverDeviceAdd callback function. A driver can also create interrupt objects from
+    its EvtDevicePrepareHardware callback function."
+  - ddi wdfinterrupt WDF_INTERRUPT_CONFIG: "Starting with UMDF version 2.0, UMDF always uses passive-level interrupt
+    handling" (SpinLock NULL); "Starting in UMDF version 2.0, WDF_INTERRUPT_CONFIG_INIT always sets [PassiveHandling]
+    to TRUE".
+  - wdf/supporting-passive-level-interrupts: the ISR and other interrupt callbacks run "at IRQL = PASSIVE_LEVEL while
+    holding a passive-level interrupt lock"; EvtInterruptWorkItem via WdfInterruptQueueWorkItemForIsr.
+  - wdf/accessing-hardware-and-handling-interrupts: UMDF drivers can "connect and service hardware interrupts"
+    (since UMDF 1.11).
+  Not found in the docs fetched: how the reflector keeps a level line quiet while the user-mode ISR runs - the ISR
+  has to clear the source before returning (the libraries' handler does: read +0x10c, write +0x110).
+- Trigger: the live DT gives fimc_is's interrupts flags 0 (IRQ_TYPE_NONE = keep the GIC's configuration); the 3AA
+  status word stays set until written (0.5: +0x10c held 0x00100000 for 200 ms) = level behaviour. Declared Level /
+  ActiveHigh / Exclusive, like every other Exynos SPI in this DSDT (UFS, MFC, GPU - all validated on device).
+- Dsdt.asl CISP _CRS += Interrupt {351} (INTR_HWIP1, SPI 0x13F) and {352} (INTR_HWIP2, SPI 0x140) after the 4
+  memory ranges (Exynos9820.h EXYNOS_ISP_3AA0_GSIV1/2, SOURCE-ONLY). With S10eIsp <= 0.5 nothing connects them (no
+  interrupt object): the SPIs stay disabled in the GIC.
+- Build Beyond1 DEBUG rc 0 (FVMAIN_COMPACT 99 %, 3472 B free), iasl -d of the built Dsdt.aml: the two Interrupt
+  descriptors 0x15F / 0x160 in SAMS982C's _CRS; FD carries "beyond1lte-uefi v0.2.4". Beyond0 (S10e) DEBUG rc 0, no
+  SAMS982C. Image beyond1lte-uefi-v0.2.4.img 7716864 B sha256
+  98e170d0647ce1f52bac459c75de2b628890758f74f4a0ac2c852ac81ddf3c01. NOT FLASHED.

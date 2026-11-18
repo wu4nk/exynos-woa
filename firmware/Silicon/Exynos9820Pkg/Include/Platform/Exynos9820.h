@@ -1049,6 +1049,8 @@
 #define EXYNOS_ISP_ISPLP_BASE     0x0000000017430000ULL   // SOURCE-ONLY (live DT fimc_is@17190000 reg #3; Android dump read)
 #define EXYNOS_ISP_MCSC_BASE      0x0000000017440000ULL   // SOURCE-ONLY (live DT fimc_is@17190000 reg #5; Android dump read)
 #define EXYNOS_ISP_BLOCK_SIZE     0x0000000000010000ULL   // SOURCE-ONLY (each of the reg entries above)
+#define EXYNOS_ISP_3AA0_GSIV1     351u   // SOURCE-ONLY (live DT fimc_is@17190000 interrupts #0 = SPI 0x13F, + 32)
+#define EXYNOS_ISP_3AA0_GSIV2     352u   // SOURCE-ONLY (live DT fimc_is@17190000 interrupts #1 = SPI 0x140, + 32)
 #define EXYNOS_PMU_ISPPRE_STATUS_OFFSET  0x2504u          // LIVE-READ (S10eCam stage 3, bit 0 = ON)
 #define EXYNOS_PMU_ISPLP_STATUS_OFFSET   0x2484u          // SOURCE-ONLY (flexpmu_cal_local_exynos9820.h isplp_status)
 //
