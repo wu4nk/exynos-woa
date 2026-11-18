@@ -648,3 +648,14 @@ Plan (each a task, each waits for the result before it):
   Android's own "[S0][3AA0] Valid Time / Frame Time" lines appear with real numbers here too.
 - Conclusion: the libraries run as ordinary AArch64 user code on this phone and are fast enough for 30 fps with
   margin. Remaining unknowns for Windows: x18 (x18test), Wudfhost RWX, hardware access (S10eCam 0.12 isp).
+
+## Stage 4 option A: x18 on Windows ARM64 (2026-11-18 14:15) - plan item 1a done
+- x18test.exe v1.0 on the S10 under Windows (user, isphost-s10.ps1 x18; notes/data/isphost-win-20261118/
+  x18test.txt): 16 threads x 2e9 checks on 6 logical processors (Windows reports 6), ~6.8 s per thread, all running
+  at once, so every thread was preempted and rescheduled many times: "X18 PRESERVED (0 of 16 threads saw x18
+  change)". Observed behaviour: Windows' kernel keeps a user thread's x18 across interrupts / preemption /
+  migration even when it does not hold the TEB. The main unknown of option A on Windows is closed (behavioural
+  test only, AGENTS.md 11; what it does NOT cover: exceptions or APCs delivered while the libraries' x18 is live -
+  the host never lets that happen on purpose).
+- The host test (isphost-test.exe) was not in this zip: the libraries were not yet in C:\S10Prov\isp (s10cam.zip
+  sent back to the user for that).

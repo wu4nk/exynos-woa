@@ -1,0 +1,18 @@
+x18test v1.0: 16 threads x 2000000000 iterations, 6 logical processors
+thread  0: x18 kept for all iterations (6859 ms)
+thread  1: x18 kept for all iterations (6766 ms)
+thread  2: x18 kept for all iterations (6844 ms)
+thread  3: x18 kept for all iterations (6844 ms)
+thread  4: x18 kept for all iterations (6812 ms)
+thread  5: x18 kept for all iterations (6828 ms)
+thread  6: x18 kept for all iterations (6766 ms)
+thread  7: x18 kept for all iterations (6875 ms)
+thread  8: x18 kept for all iterations (6844 ms)
+thread  9: x18 kept for all iterations (6812 ms)
+thread 10: x18 kept for all iterations (6859 ms)
+thread 11: x18 kept for all iterations (6843 ms)
+thread 12: x18 kept for all iterations (6828 ms)
+thread 13: x18 kept for all iterations (6843 ms)
+thread 14: x18 kept for all iterations (6829 ms)
+thread 15: x18 kept for all iterations (6782 ms)
+RESULT: X18 PRESERVED (0 of 16 threads saw x18 change), 6938 ms total
