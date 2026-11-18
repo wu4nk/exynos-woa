@@ -1195,3 +1195,7 @@ Plan (each a task, each waits for the result before it):
 - Checks: test_front (zig linux / windows-gnu) clean; HW3AA_SELFTEST + HW3AA_PIPE reaches "pipe: ready" without
   errors (then waits for Want, as designed); S10eIspDma.c / S10eCamera.c kcheck-wdm: only pre-existing warnings;
   S10eIsp.c ucheck: only the known _set_invalid_parameter_handler. Not built with EWDK, not run.
+- 2026-11-18 22:39 S10eIsp 0.9 installed: pipe.flg -> "pipe: ready (libraries up, 3AA0 + ISP0 chains on the real
+  hardware), waiting for S10eCamera" after ~0.33 s of setup (front-trace + host.log). The camera-avs.txt sent with it
+  has no camera start after that (its last three starts, before 0.9, said "pipeline not up (magic 0)"): waiting for
+  a camera open with the pipeline up.
