@@ -231,6 +231,9 @@
 #define   IP_Q_SYSREG         0x30BCu
 #define SYSREG_ISPPRE_PAGE  0x17020000ULL
 #define   ISPPRE_PHY_RST      0x500u        /* bit 1: CSIS2 D-PHY, 1 = reset released */
+#define   ISPPRE_SC_CON0      0x404u        /* 0.14 OTF: GLUEMUX_PDP0_VAL [1:0] = CSIS feeding PDP0 (2 = CSIS2) */
+#define   ISPPRE_SC_CON14     0x43Cu        /*           GLUEMUX_3AA0_VAL b0: 0 = 3AA0 input from PDP0 */
+#define   ISPPRE_SC_PDP_IN_EN 0x448u        /*           b2 PDP_CORE0_IN_CSIS2_EN */
 #define CSIS2_BASE          0x17050000ULL
 #define   CSIS_VERSION        0x000u
 #define   CSIS_CMN_CTRL       0x004u
@@ -1162,7 +1165,8 @@ typedef struct _SHOT {
     const SHOT_MODE *Mode;                               /* 0.9: gModes[0] (mode 8) or gModes[1] (mode 11) */
     ULONG           RingBytes;                           /* 0.9: each Ring[] buffer's size */
     ULONG           TopDiv, Iso, PhyRst, CdmaSaved[4], DmacMask, CsisMsk0, CsisMsk1, CsisCmn;
-    BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming;
+    ULONG           OtfSaved[3];                         /* 0.14: SC_CON0, SC_CON14, SC_PDP_IN_EN as found */
+    BOOLEAN         DivSet, PhyOn, CsisOn, DmaOn, SensorOn, Streaming, OtfSet;
 } SHOT;
 
 static VOID ShotUnmap(SHOT *x)
@@ -1214,6 +1218,15 @@ static VOID ShotTeardown(MAPS *m, FOUND *f, SHOT *x, REPORT *r)
         W32(x->Cdma, CDMA_SRAM_SPLIT, x->CdmaSaved[2]);
         W32(x->Cdma, CDMA_MATRIX, x->CdmaSaved[3]);
         x->DmaOn = FALSE;
+    }
+    if (x->OtfSet) {                                     /* 0.14: CSIS2 -> 3AA0 OTF route back as found (stream off
+                                                            clears PDP_IN_EN in Linux too: pdp_in_enable(false)) */
+        W32(x->Sys, ISPPRE_SC_PDP_IN_EN, x->OtfSaved[2]);
+        W32(x->Sys, ISPPRE_SC_CON14, x->OtfSaved[1]);
+        W32(x->Sys, ISPPRE_SC_CON0, x->OtfSaved[0]);
+        Log(r, "  OTF route back: SC_CON0 %08X SC_CON14 %08X PDP_IN_EN %08X\r\n", R32(x->Sys, ISPPRE_SC_CON0),
+            R32(x->Sys, ISPPRE_SC_CON14), R32(x->Sys, ISPPRE_SC_PDP_IN_EN));
+        x->OtfSet = FALSE;
     }
     if (x->PhyOn) {                                      /* phy power_off: reset, then isolation (found values back) */
         W32(x->Sys, ISPPRE_PHY_RST, R32(x->Sys, ISPPRE_PHY_RST) & ~ISPPRE_PHY_RST_CSIS2);
@@ -1558,6 +1571,20 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
         R32(x.Cdma, CDMA_MATRIX));
     if (phaseMax == 4) { Log(r, "  phase limit 4 (DMA armed, CSIS2 not enabled, no stream): stopping\r\n"); return s; }
 
+    /* --- 0.14: CSIS2 -> PDP0 -> 3AA0 OTF route (S10eIsp's libraries run the 3AA0) */
+    if (in->Flags & S10ECAM_SHOT_OTF) {
+        x.OtfSaved[0] = R32(x.Sys, ISPPRE_SC_CON0);
+        x.OtfSaved[1] = R32(x.Sys, ISPPRE_SC_CON14);
+        x.OtfSaved[2] = R32(x.Sys, ISPPRE_SC_PDP_IN_EN);
+        x.OtfSet = TRUE;
+        W32(x.Sys, ISPPRE_SC_CON14, x.OtfSaved[1] & ~0x1u);               /* 3AA0 <- PDP0 (ischain_cfg) */
+        W32(x.Sys, ISPPRE_SC_CON0, (x.OtfSaved[0] & ~0x3u) | 2u);         /* PDP0 <- CSIS2 (camif_fix_up) */
+        W32(x.Sys, ISPPRE_SC_PDP_IN_EN, x.OtfSaved[2] | (1u << 2));       /* CORE0_IN_CSIS2_EN (pdp_in_enable) */
+        Log(r, "  OTF route: SC_CON0 %08X -> %08X, SC_CON14 %08X -> %08X, PDP_IN_EN %08X -> %08X\r\n", x.OtfSaved[0],
+            R32(x.Sys, ISPPRE_SC_CON0), x.OtfSaved[1], R32(x.Sys, ISPPRE_SC_CON14), x.OtfSaved[2],
+            R32(x.Sys, ISPPRE_SC_PDP_IN_EN));
+    }
+
     /* --- csi_hw_enable */
     RmwField(x.Csis, CSIS_CMN_CTRL, CSIS_CMN_SHADOW_SHIFT, 4, 0xF);
     W32(x.Csis, CSIS_CMN_CTRL, R32(x.Csis, CSIS_CMN_CTRL) & ~CSIS_CMN_PHY_SEL);
@@ -1875,7 +1902,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.13 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.14 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1945,7 +1972,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.13 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.14 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1979,7 +2006,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.13 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.14 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

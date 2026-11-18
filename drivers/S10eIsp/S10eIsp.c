@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.6) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.7) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -43,6 +43,10 @@
  *      nobody can take it (no hw3aa run yet, or more than IRQ_STORM of them) the ISR masks 3AA0 at the source:
  *      +0x108 = 0 and +0x118 = 0, the first two writes the libraries' own chain_create makes (Android trace).
  *      Counts go to the registry value "Irq". With UEFI v0.2.3 (no interrupt resource) the objects stay unused.
+ *  11. (0.7) run.flg "hw3aaotf": item 9 with the libraries told the sensor runs S10eCam's mode 11 (912 x 684, PD_NONE);
+ *      after shot F1 the run waits (OTF_WAIT 40 s, mark "armed, waiting for OTF frames") for REAL frames from
+ *      CSIS2 (isp-s10.ps1 starts cam-s10 shot -Bin -Otf), queues set_ctrl / shot per frame end, then saves the 3AA's
+ *      before / after-BDS buffers (out\otf-*.raw) and stops.
  * The result goes to the registry, value "Probe" under
  *   HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp
  * (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE: the only device key a UMDF driver may
@@ -55,10 +59,10 @@
 #include "../S10eIspDma/S10eIspDmaIoctl.h"
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
-void isp_front_set_hw3aa(volatile void *va, int shot); /* 0.4/0.5: the REAL 3AA0 window (test_front.c) */
+void isp_front_set_hw3aa(volatile void *va, int mode); /* 0.4/0.5/0.7: the REAL 3AA0 window (test_front.c) */
 int isp_front_irq(unsigned int id);          /* 0.6: a real 3AA0 interrupt to the libraries' handler (test_front.c) */
 
-#define S10EISP_VERSION L"0.6"
+#define S10EISP_VERSION L"0.7"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -296,7 +300,7 @@ static void Trace(const char *fmt, ...)
     CloseHandle(f);
 }
 
-static BOOL g_nodma, g_hw3aa, g_hw3aashot;
+static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf;
 static volatile UCHAR *g_taa_va;   /* 0.4: 3AA0's user-mode mapping, set only after its ID read = Android's */
 
 /* 0.3.3: a CRT invalid-parameter report must not fast-fail Wudfhost (the default handler does: the 0.3.x front runs
@@ -351,7 +355,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
     _set_invalid_parameter_handler(InvalidParameter);
     Trace("S10eIsp %S front thread: process %lu, data %s, nodma %d, hw3aa %d, hw3aashot %d", S10EISP_VERSION,
           GetCurrentProcessId(), data, g_nodma, g_hw3aa, g_hw3aashot);
-    if (g_hw3aashot && g_nodma) {
+    if ((g_hw3aashot || g_hw3aaotf) && g_nodma) {
         /* the fake pool's dvas (plat_win.c, 0x80000000 + offset) are REAL DRAM addresses on this phone: an armed 3AA
            must only ever hold addresses inside S10eIspDma's pool */
         Trace("hw3aashot with nodma refused: the fake pool's addresses are real DRAM - not run");
@@ -364,7 +368,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
             SetValue(L"FrontRun", L"not run: hw3aa asked, 3AA0 mapping not verified");
             return 1;
         }
-        isp_front_set_hw3aa(g_taa_va, g_hw3aashot);
+        isp_front_set_hw3aa(g_taa_va, g_hw3aaotf ? 2 : g_hw3aashot ? 1 : 0);
         Trace("hw3aa: the libraries get the REAL 3AA0 window %p for the init steps%s", (void *)g_taa_va,
               g_hw3aashot ? " + 3AA set_param / shot F1 / stop" : "");
     }
@@ -431,7 +435,8 @@ static void MaybeFrontRun(void)
     DeleteFileW(L"" ISP_DIR "\\run.flg");
     g_nodma = strstr(flg, "nodma") != NULL;          /* 0.3.1: run.flg containing "nodma" = without S10eIspDma */
     g_hw3aa = strstr(flg, "hw3aa") != NULL;          /* 0.4: the init steps on the REAL 3AA0 */
-    g_hw3aashot = strstr(flg, "hw3aashot") != NULL;  /* 0.5: + 3AA set_param / shot F1 / stop on it */
+    g_hw3aaotf = strstr(flg, "hw3aaotf") != NULL;    /* 0.7: + real frames from CSIS2 (OTF) */
+    g_hw3aashot = g_hw3aaotf || strstr(flg, "hw3aashot") != NULL;  /* 0.5: + 3AA set_param / shot F1 / stop on it */
     Trace("run.flg found (\"%s\"), nodma %d, hw3aa %d, hw3aashot %d", flg, g_nodma, g_hw3aa, g_hw3aashot);
     if (InterlockedExchange(&g_front_started, 1)) {
         Log(L"front run: already ran in this process (one per Wudfhost: isp-s10.ps1 restart starts a new one)");

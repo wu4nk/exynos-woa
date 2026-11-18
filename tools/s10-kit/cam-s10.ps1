@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.8) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.9) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -39,6 +39,8 @@
          270 = upright, found 2026-11-16) -Mirror (v1.5: flip the SAVED PICTURE left-right after rotating; whether the
          sensor's readout is mirrored is not verified yet - hold up some text) -Wc (S10eCam 0.7: the frame ring
          write-combined instead of non-cached - compare the "copy ... us" column with and without it)
+         -Otf (v1.9, S10eCam 0.14): shot / stream also route CSIS2's OTF output to 3AA0 (ISPPRE sysreg muxes) for
+              S10eIsp's libraries (isp-s10.ps1 front -Hw3aaOtf runs this itself)
          -Bin (v1.6, S10eCam 0.9: the sensor's own 912 x 684 mode, 4 x 4 binned, at 30 fps - 1/4 of the data; for
          shot and stream)
       .\cam-s10.ps1 remove      unregister the driver
@@ -49,7 +51,7 @@ param([Parameter(Position = 0)][ValidateSet('install', 'remove', '1', '2', '3', 
       [Parameter(Position = 1)][string]$Opt = '',
       [int]$Coarse = 0, [int]$AGain = 0, [int]$IspDiv = 0, [int]$Frames = 0, [ValidateRange(0, 4)][int]$Phase = 0,
       [ValidateRange(1, 60)][int]$Seconds = 4, [ValidateSet(0, 90, 180, 270)][int]$Rotate = 0, [switch]$Mirror,
-      [switch]$Wc, [switch]$Bin)
+      [switch]$Wc, [switch]$Bin, [switch]$Otf)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\cam-s10-$Action.txt"
 $Dir = 'C:\S10Prov\cam'
@@ -69,7 +71,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.8  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.9  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {
@@ -274,13 +276,13 @@ public static class S10Cam16 {
 $svc = (sc.exe query S10eCam | Out-String)
 W ("driver: " + $(if ($svc -match 'RUNNING') { 'running' } else { "NOT running:`n$svc" }))
 if ($Action -eq 'shot') {
-  $rep = [S10Cam16]::Shot($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor $(if ($Bin) { 4 } else { 0 }) -bor ($Phase -shl 8), $Coarse, $AGain, $IspDiv, $Frames,
+  $rep = [S10Cam16]::Shot($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor $(if ($Bin) { 4 } else { 0 }) -bor $(if ($Otf) { 0x10 } else { 0 }) -bor ($Phase -shl 8), $Coarse, $AGain, $IspDiv, $Frames,
                           'C:\S10Prov\cam-shot.raw', 'C:\S10Prov\cam-shot.bmp')
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
   if (Test-Path 'C:\S10Prov\cam-shot.bmp') { W 'open C:\S10Prov\cam-shot.bmp to look at it' }
 } elseif ($Action -eq 'stream') {
   [S10Cam16]::SetMode($Bin.IsPresent)
-  $rep = [S10Cam16]::StreamStart($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor $(if ($Bin) { 4 } else { 0 }), $Coarse, $AGain, $IspDiv)
+  $rep = [S10Cam16]::StreamStart($(if ($Opt -eq 'bars') { 1 } else { 0 }) -bor $(if ($Wc) { 2 } else { 0 }) -bor $(if ($Bin) { 4 } else { 0 }) -bor $(if ($Otf) { 0x10 } else { 0 }), $Coarse, $AGain, $IspDiv)
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
   $buf = New-Object byte[] ([S10Cam16]::FHDR + [S10Cam16]::MAXBYTES)
   $last = $null; $lastSeq = 0; $applied = 0; $settled = $false

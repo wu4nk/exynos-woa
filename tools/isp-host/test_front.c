@@ -39,6 +39,7 @@ int isp_front_main(int argc, char **argv);
 extern int isp_trace, isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;
 static isp_host *H;
 static const char *OUTDIR;
+static int OTF;   /* S10eIsp 0.7 hw3aaotf: the sensor runs S10eCam's mode 11 (912 x 684 binned, 30 fps, PD_NONE) */
 static FILE *itf_log;
 
 static void *readfile(const char *dir, const char *name, size_t *n)
@@ -104,7 +105,11 @@ static u64 sensor_op(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64
     else if (IS("get_max_digital_gain")) r = 128000;
     else if (IS("get_initial_exposure_gain_of_sensor")) {
         w32(a1, 2360); w32(a2, 1000); w32(a3, 1000); w32(a4, 2360); w32(a5, 1000); w32(a6, 1000);
-    } else if (IS("get_sensor_frame_timing")) { w32(a1, 807720000); w32(a2, 9384); w32(a3, 2864); w32(a4, 0); }
+    } else if (IS("get_sensor_frame_timing") && OTF) {   /* mode 11: pclk 201.81 MHz x 4, LLP 0x2318, FLL 2994 */
+        w32(a1, 807240000); w32(a2, 8984); w32(a3, 2994); w32(a4, 0);
+    }
+    else if (IS("get_sensor_frame_timing")) { w32(a1, 807720000); w32(a2, 9384); w32(a3, 2864); w32(a4, 0); }
+    else if (IS("get_sensor_cur_size") && OTF) { w32(a1, 912); w32(a2, 684); }
     else if (IS("get_sensor_cur_size")) { w32(a1, 3648); w32(a2, 2736); }
     else if (IS("get_sensor_max_fps")) w32(a1, 30);
     else if (IS("get_hdr_ratio_ctl_by_again")) w32(a1, 0);
@@ -114,7 +119,8 @@ static u64 sensor_op(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64
     else if (IS("get_vc_dma_buf_info") && a2) {
         /* Android's preview "[IspObject_InitPdafLib] requestType" lines; other types INVALID (-1), GPL :2732 */
         struct vc_buf_info v = {-1, -1, 0, 0, 0};
-        if ((u32)a1 == 1) v = (struct vc_buf_info){500, 102, 1756, 1, 1};
+        if (OTF) { }                                            /* mode 11 is PD_NONE: no PDAF VC */
+        else if ((u32)a1 == 1) v = (struct vc_buf_info){500, 102, 1756, 1, 1};
         if ((u32)a1 == 3) v = (struct vc_buf_info){501, 102, 39424, 1, 1};
         memcpy((void *)(uintptr_t)a2, &v, sizeof(v));
     }
@@ -167,20 +173,23 @@ static volatile u32 *W3, *WI;
    (no interrupt is connected), then the DDK's own stop (GPL fimc_is_lib_isp_stop: stop(object, instance)). */
 static volatile u32 *HW3;
 static int HW3_SHOT;
-void isp_front_set_hw3aa(volatile void *va, int shot) { HW3 = (volatile u32 *)va; HW3_SHOT = shot; }
+/* mode: 0 init only (0.4), 1 + shot F1 / stop (0.5), 2 = 0.7 OTF: + real frames from CSIS2 (S10eCam -Otf) */
+void isp_front_set_hw3aa(volatile void *va, int mode) { HW3 = (volatile u32 *)va; HW3_SHOT = mode >= 1; OTF = mode == 2; }
 
 /* S10eIsp 0.6: a REAL 3AA0 interrupt (UMDF passive ISR, GSIV 351 = id 0 / 352 = id 1) handed to the libraries'
    handler (registered by 3AA chain_create: chain 0, ids 0 / 1), as the kernel's fimc_is_isr1_ddk / isr2 do. Returns
    -1 when there is nothing to hand it to (no hw3aa run, or chain_create not done yet): the driver then masks the
    source. The first 64 are logged with the status words before / after. */
 static volatile int hw_irq_ready;
-static u64 hw_irq_n;
+static u64 hw_irq_n, hw_fs, hw_fe;   /* 0.7: frame start (IRQ0 b0) / frame end (IRQ0 b1) seen before the handler */
 int isp_front_irq(u32 id)
 {
     if (!HW3 || !hw_irq_ready || !H || id > 1) return -1;
     ISP_ADD64(&hw_irq_n, 1);
     u64 n = hw_irq_n;
     u32 a1 = HW3[0x10c / 4], a2 = HW3[0x11c / 4];
+    if (id == 0 && (a1 & 1)) ISP_ADD64(&hw_fs, 1);
+    if (id == 0 && (a1 & 2)) ISP_ADD64(&hw_fe, 1);
     u64 t0 = plat_usec();
     u64 r = isp_irq_sync(H, 0, id);
     u64 dt = plat_usec() - t0;
@@ -390,7 +399,8 @@ int main(int argc, char **argv)
     if (getenv("HW3AA_SELFTEST")) {   /* build-machine check of the hw3aa path: plain memory, so the SW reset poll
                                          (+0x0c) times out here - real hardware clears it */
         HW3 = window(DUMP, "3AA0");
-        HW3_SHOT = getenv("HW3AA_SHOT") != NULL;
+        HW3_SHOT = getenv("HW3AA_SHOT") != NULL || getenv("HW3AA_OTF") != NULL;
+        OTF = getenv("HW3AA_OTF") != NULL;
     }
 #endif
     if (HW3) {
@@ -497,14 +507,26 @@ int main(int argc, char **argv)
 
     /* first preview frame: taa_param_set (param_layouts.txt), values = Android's own preview log */
     unsigned char *P = zalloc(1776);
-    PUT(P, 0, 33333, 7, 30, 3648, 2736, 1000, 1000, 1000, 1000, 0, 0, 3648, 2736, 3968, 2736);   /* sensor_config */
-    PUT(P, 128, 1, 0, 10, 0, 3648, 2736, 352, 264, 2944, 2208);                                 /* otf_input */
-    PUT(P, 640, 1, 5, 12, 0, 1, 2944, 2208, 0, 0, 2944, 2208, 0, 11);    /* dma_output_before_bds, packed */
-    PUT(P, 768, 1, 5, 12, 0, 1, 2432, 1824, 0, 0, 2432, 1824, 0, 11);    /* dma_output_after_bds */
+    u32 bw = 2944, bh = 2208, aw = 2432, ah = 1824;
+    if (OTF) {   /* 0.7: S10eCam mode 11 = 912 x 684, the sensor's 4 x 4 binning; no crop, no BDS scaling */
+        bw = aw = 912;
+        bh = ah = 684;
+        PUT(P, 0, 33333, 7, 30, 912, 684, 4000, 4000, 1000, 1000, 0, 0, 912, 684, 3968, 2736);
+        PUT(P, 128, 1, 0, 10, 0, 912, 684, 0, 0, 912, 684);
+    } else {
+        PUT(P, 0, 33333, 7, 30, 3648, 2736, 1000, 1000, 1000, 1000, 0, 0, 3648, 2736, 3968, 2736);   /* sensor_config */
+        PUT(P, 128, 1, 0, 10, 0, 3648, 2736, 352, 264, 2944, 2208);                                 /* otf_input */
+    }
+    PUT(P, 640, 1, 5, 12, 0, 1, bw, bh, 0, 0, bw, bh, 0, 11);            /* dma_output_before_bds, packed */
+    PUT(P, 768, 1, 5, 12, 0, 1, aw, ah, 0, 0, aw, ah, 0, 11);            /* dma_output_after_bds */
     void *k1, *k2;
     u32 d1, d2;
-    isp_dma_alloc(H, 2944 * 2208 * 2, &k1, &d1);
-    isp_dma_alloc(H, 2432 * 1824 * 2, &k2, &d2);
+    isp_dma_alloc(H, bw * bh * 2, &k1, &d1);
+    isp_dma_alloc(H, aw * ah * 2, &k2, &d2);
+    if (OTF) {   /* 0.7: a fill the 3AA overwrites, so a written frame shows */
+        memset(k1, 0xEE, bw * bh * 2);
+        memset(k2, 0xEE, aw * ah * 2);
+    }
     PUT(P, 1348, d1);
     PUT(P, 1416, d2);
     PUT(P, 1760, 0, 1);                                     /* instance 0, fcount 1 */
@@ -527,6 +549,50 @@ int main(int argc, char **argv)
         snprintf(b, sizeof(b), "hw3aa: after shot F1: +0x00 0x%08x +0x10c 0x%08x +0x11c 0x%08x +0x108 0x%08x "
                  "+0x118 0x%08x", HW3[0], s1, s2, HW3[0x108 / 4], HW3[0x118 / 4]);
         plat_log(b);
+        if (OTF) {   /* 0.7: wait for real frames (isp-s10.ps1 starts S10eCam -Otf on this mark) */
+            int wait_s = getenv("OTF_WAIT") ? atoi(getenv("OTF_WAIT")) : 40;
+            u64 t0 = plat_usec(), last_fe = 0, last_n = 0;
+            u32 fc = 1;
+            plat_mark("hw3aa: armed, waiting for OTF frames");
+            while (plat_usec() - t0 < (u64)wait_s * 1000000u && fc < 30) {
+                plat_sleep_us(2000);
+                if (hw_fe != last_fe) {          /* a frame ended: queue the next one, as the camera HAL does */
+                    last_fe = hw_fe;
+                    fc++;
+                    PUT(P, 1764, fc);
+                    char l[64];
+                    snprintf(l, sizeof(l), "3AA set_ctrl F%u", fc);
+                    STEP(l, FN3[SET_CTRL], r64(obj3), 0, fc, SHP);
+                    snprintf(l, sizeof(l), "3AA shot F%u", fc);
+                    STEP(l, FN3[SHOT], r64(obj3), PP, SHP, 1);
+                }
+                if (hw_irq_n != last_n && (hw_irq_n < 8 || hw_irq_n % 50 == 0)) {
+                    last_n = hw_irq_n;
+                    snprintf(b, sizeof(b), "hw3aa otf: +%llu ms: interrupts %llu, frame starts %llu, frame ends %llu",
+                             (unsigned long long)((plat_usec() - t0) / 1000), (unsigned long long)hw_irq_n,
+                             (unsigned long long)hw_fs, (unsigned long long)hw_fe);
+                    plat_log(b);
+                }
+            }
+            snprintf(b, sizeof(b), "hw3aa otf: done after %llu ms: interrupts %llu, frame starts %llu, frame ends %llu, "
+                     "shots %u", (unsigned long long)((plat_usec() - t0) / 1000), (unsigned long long)hw_irq_n,
+                     (unsigned long long)hw_fs, (unsigned long long)hw_fe, fc);
+            plat_log(b);
+            const unsigned char *bufs[2] = {k1, k2};
+            const char *names[2] = {"before_bds", "after_bds"};
+            u32 sizes[2] = {bw * bh * 2, aw * ah * 2};
+            for (int i = 0; i < 2; i++) {
+                u32 changed = 0;
+                for (u32 o = 0; o < sizes[i]; o++) changed += bufs[i][o] != 0xEE;
+                char p2[1024];
+                snprintf(p2, sizeof(p2), "%s/otf-%s-%ux%u.raw", OUTDIR, names[i], i ? aw : bw, i ? ah : bh);
+                FILE *f = fopen(p2, "wb");
+                if (f) { fwrite(bufs[i], 1, sizes[i], f); fclose(f); }
+                snprintf(b, sizeof(b), "hw3aa otf: %s buffer (dva 0x%x): %u of %u bytes written by the 3AA -> %s",
+                         names[i], i ? d2 : d1, changed, sizes[i], p2);
+                plat_log(b);
+            }
+        }
         plat_mark("hw3aa: shot F1 done, watching the interrupt status 200 ms");
 #ifndef ISPHOST_DRIVER
         if (getenv("HW3AA_SELFTEST")) {   /* build machine: what the phone showed after shot F1 (+0x10c bit 20), as

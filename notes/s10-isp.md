@@ -1089,3 +1089,23 @@ Plan (each a task, each waits for the result before it):
   abort is possible): first a read-only stage of its gate + 3 words. (b) S10eIsp 0.7 "hw3aaotf": the libraries'
   parameters for 912x684, init + shot F1 on the real 3AA0, then wait for real interrupts for N seconds while
   S10eCam streams; dump the before/after-BDS buffers. (c) isp-s10.ps1 orchestrates both.
+
+## Plan item 6 step 5: first real frames into the 3AA0 - S10eCam 0.14 -Otf + S10eIsp 0.7 hw3aaotf (2026-11-18 21:40)
+- User: "đẩy nhanh tiến độ" - one combined step.
+- S10eCam 0.14: flag S10ECAM_SHOT_OTF 0x10 (shot and stream): before csi_hw_enable it saves and sets ISPPRE sysreg
+  SC_CON14 b0 = 0 (3AA0 <- PDP0), SC_CON0 [1:0] = 2 (PDP0 <- CSIS2), SC_PDP_IN_EN |= b2 (CORE0_IN_CSIS2); teardown
+  writes the found values back (after CSIS off, before the PHY). PDP0 itself is NOT touched (reset value: core off =
+  PD_NONE pass-through, inferred). cam-s10.ps1 v1.9 -Otf.
+- test_front / S10eIsp 0.7 (run.flg "hw3aaotf", isp_front_set_hw3aa mode 2): the libraries are told the sensor is
+  mode 11 - get_sensor_cur_size 912x684, frame timing pclk 807240000 / LLP 8984 / FLL 2994 (S10eCam's mode 11 at
+  30 fps), no PDAF VC; params sensor_config 912x684 binning 4000/4000, calibrated 3968x2736; otf_input 912x684 no crop;
+  before / after-BDS DMA 912x684 (no scaling), buffers filled 0xEE. After shot F1: mark "armed, waiting for OTF
+  frames", wait up to OTF_WAIT (40 s) or 30 shots: every frame end seen by the ISR (IRQ0 b1 before the handler)
+  queues set_ctrl + shot for the next frame (the HAL's rhythm); progress logged; then both buffers are counted (bytes
+  not 0xEE) and saved to out/otf-before_bds-912x684.raw / otf-after_bds-912x684.raw, then stop as in 0.5.
+- isp-s10.ps1 v1.8 front -Hw3aaOtf: waits for the "armed" mark, runs cam-s10.ps1 shot -Bin -Otf -Frames 30, copies
+  its log into out\, waits for FrontRun.
+- Build machine (HW3AA_SELFTEST HW3AA_OTF OTF_WAIT=2, qemu): the libraries accept the 912x684 setup - set_param /
+  set_ctrl / shot F1 -> 0 (same "Invalid iso / edge / noiseReduction mode 0" lines as the normal run), wait loop and
+  buffer dump run (no interrupts on plain memory). Syntax: S10eCam.c clean (kcheck-wdm), S10eIsp.c clean but the
+  known _set_invalid_parameter_handler.

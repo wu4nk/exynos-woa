@@ -53,6 +53,9 @@ typedef struct _S10ECAM_SHOT_IN {
 #define S10ECAM_SHOT_BIN      0x4u   /* 0.9: sensor mode 11 = 912 x 684 (the sensor's own 4 x 4 binning; setfile A
                                        912x684_120fps, its frame length set to 30 fps): 1/4 of the data a frame */
 #define S10ECAM_SHOT_FPS60    0x8u   /* 0.10: with S10ECAM_SHOT_BIN: frame length for 60 fps (FLL 1497) instead of 30 */
+#define S10ECAM_SHOT_OTF      0x10u  /* 0.14: also route CSIS2's OTF output to 3AA0 (ISPPRE sysreg: SC_CON0 PDP0 <- CSIS2,
+                                       PDP_IN_EN CORE0_IN_CSIS2, SC_CON14 3AA0 <- PDP0; K fimc-is-hw-chain.c v7_0_0
+                                       camif_fix_up / pdp_in_enable / ischain_cfg). Found values back at teardown. */
 #define S10ECAM_BIN_W         912u
 #define S10ECAM_BIN_H         684u
 #define S10ECAM_BIN_STRIDE    (S10ECAM_BIN_W * 2u)
