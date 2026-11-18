@@ -27,6 +27,7 @@
                               3AA0 registers read before / after; the changed ones are listed. Camera apps closed.
   The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
   S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
+  Only "front -Hw3aa" writes registers (3AA0, by Samsung's libraries' init steps).
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
 param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front')][string]$Action = 'status',

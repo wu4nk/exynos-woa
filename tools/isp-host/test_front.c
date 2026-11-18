@@ -348,7 +348,9 @@ int main(int argc, char **argv)
 #endif
     if (HW3) {
         hw_before = malloc(0x10000);
+        plat_mark("hw3aa: reading all 3AA0 registers (before)");   /* a bus hang here leaves this as the last mark */
         snap(HW3, hw_before);
+        plat_mark("hw3aa: 3AA0 read (before)");
         write_regs(hw_before, "3AA0-hw-before", "3AA0 0x17190000 REAL registers before chain_create (S10eIsp hw3aa)");
         snprintf(b, sizeof(b), "hw3aa: REAL 3AA0 window %p for the init steps: +0xF0 0x%08x +0xF4 0x%08x", (void *)HW3,
                  hw_before[0xF0 / 4], hw_before[0xF4 / 4]);
@@ -385,6 +387,7 @@ int main(int argc, char **argv)
     plat_log(b);
     if (HW3) {
         u32 *after = malloc(0x10000);
+        plat_mark("hw3aa: reading all 3AA0 registers (after)");
         snap(HW3, after);
         write_regs(after, "3AA0-hw-after", "3AA0 0x17190000 REAL registers after the init steps (S10eIsp hw3aa)");
         int nch = 0;

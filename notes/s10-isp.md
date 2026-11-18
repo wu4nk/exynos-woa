@@ -920,3 +920,12 @@ Plan (each a task, each waits for the result before it):
   ISP object_create. The normal run is unchanged (FRAMES=3: 39 steps all 0).
 - Expected on the phone: sw_reset NOT timing out (the hardware clears +0x0c), the changed words = the last writes of
   mmio-3AA_chain_create.txt except self-clearing / status ones.
+- Review of 21b961e (adversarial): (1) the full 64 KiB snapshot reads more of 3AA0 than the libraries do (they read
+  the ID / version words of the sub-blocks); Android's regdump read all of it while previewing, and under Windows the
+  3AA0 gate is in automatic (Q-channel) mode (0x00200000 = VAL, not MAN), so reads should be served - but a bus hang
+  would freeze the phone with no log: FIX = plat_mark before / after each snapshot so front-trace.txt tells a hang in
+  the snapshot from one in chain_create. (2) isp-s10.ps1's header still said the kit never writes a register: FIX =
+  "Only front -Hw3aa writes registers". (3) checked: g_taa_va is set only when the ID matched and cleared in
+  EvtReleaseHardware; the reset model thread polls the fake W3 only (window 0 shadow = W3, T3 replaced after
+  trap_window); fire() is never reached in hw mode (return before the frame loop); finish() closes all files on both
+  paths; the normal run still gives 39 steps all 0 (FRAMES=3, qemu).
