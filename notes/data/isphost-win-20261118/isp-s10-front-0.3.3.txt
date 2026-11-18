@@ -1,0 +1,104 @@
+isp-s10.ps1 v1.4  front  2026-11-01T23:36:38
+firmware: 
+icacls C:\S10Prov\isp /grant *S-1-5-19:(OI)(CI)M   (LocalService = Wudfhost)
+  processed file: C:\S10Prov\isp
+  Successfully processed 1 files; Failed processing 0 files
+run.flg: run nodma
+pnputil /restart-device ACPI\SAMS982C\0
+  Microsoft PnP Utility
+  
+  Restarting device:         ACPI\SAMS982C\0
+  Device restarted successfully.
+  
+FrontRun: finished (nodma): rc 0  (3 s)
+front-trace.txt:
+  run.flg found ("run nodma
+  "), nodma 1
+  S10eIsp 0.3.3 front thread: process 5684, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_530c2612484a07ea, nodma 1
+  nodma: S10eIspDma not used, fake pool
+  calling isp_front_main (nodma)
+  1192279069 us  front: isp_front_main entered
+  1192287187 us  front: logs open, reading the libraries
+  1192460580 us  front: libraries read
+  1192464759 us  isp_load: exec alloc
+  1192470303 us  isp_load: exec alloc ok
+  1192510502 us  isp_load: copied + relocated
+  1192515045 us  isp_load: icache flushed
+  1192520177 us  isp_load: threads starting
+  1192527345 us  isp_load: threads registered
+  1192532746 us  isp_start: DDK start_up
+  1192557907 us  isp_start: RTA start_up
+  1192625632 us  3AA chain_create
+  1192642464 us  3AA set_system_config
+  1192653263 us  3AA object_create
+  1192722601 us  ISP chain_create
+  1192738696 us  ISP set_system_config
+  1192750650 us  ISP object_create
+  1192939454 us  3AA apply_tune_set 6
+  1192966309 us  3AA load_cal_data
+  1192982686 us  3AA get_cal_data type 2
+  1192992825 us  3AA set_param
+  1193000144 us  3AA set_ctrl F1
+  1193028913 us  3AA shot F1
+  1193133206 us  F1 irq V SYNC
+  1193142162 us  F1 irq CIN ROW
+  1193156285 us  F1 irq FRAME END
+  1193170577 us  ISP set_param
+  1193176786 us  ISP set_ctrl F1
+  1193187966 us  ISP shot F1
+  1193211144 us  F1 ISP irq V SYNC
+  1193219979 us  F1 ISP irq FRAME END
+  1193227255 us  3AA set_ctrl F2
+  1193241229 us  3AA shot F2
+  1193247084 us  F2 irq V SYNC
+  1193269150 us  F2 irq CIN ROW
+  1193276621 us  F2 irq FRAME END
+  1193286694 us  ISP set_ctrl F2
+  1193298962 us  ISP shot F2
+  1193310565 us  F2 ISP irq V SYNC
+  1193330561 us  F2 ISP irq FRAME END
+  1193336663 us  3AA set_ctrl F3
+  1193348690 us  3AA shot F3
+  1193356158 us  F3 irq V SYNC
+  1193371900 us  F3 irq CIN ROW
+  1193379400 us  F3 irq FRAME END
+  1193391801 us  ISP set_ctrl F3
+  1193402860 us  ISP shot F3
+  1193419015 us  F3 ISP irq V SYNC
+  1193425668 us  F3 ISP irq FRAME END
+  isp_front_main returned 0
+host.log: 545 lines, steps 39, not 0: 0
+  isphost: image at 000001CC39000000 (delta 0x24b3f020000), 12005 pointers relocated; DDK '5E9820 10705-2021/04/05 16:59:12]L12XLOD01GM' RTA 'S5E9820 b18e67877-09/26 04:52:21]L12XLOD01GM'
+  [@][WRAP]start_up_ddk:
+  isphost: DDK start_up -> 0x0
+  isphost: RTA start_up -> 0x0
+  steady frames 3..3: 38.27 ms per frame wall (3AA + ISP calls, interrupts, tasks), 0 register accesses = ~0.00 ms trapping -> ~38.27 ms without the test's trapping
+  done: traced OS calls 120, tasks 17, timers 0, irqs 15
+zip: C:\S10Prov\isp-front.zip
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem22.inf 0.3.3.0
+probe report (S10eIsp 0.3.3):
+  S10eIsp 0.3.3 probe, process 5684
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFFBC01A5F0C000, user-mode mapping 000001CC37770000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFFBC01A5F10000, user-mode mapping 000001CC37790000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFFBC01A5F20000, user-mode mapping 000001CC377A0000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFFBC01A5F30000, user-mode mapping 000001CC377B0000
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 000001CC377C0000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+  DMA: pool 128 MiB at PA 0xF5832000..0xFD831FFF, write-combined, mapped at 000001CC37D40000 (S10eIspDma v1)
+  DCZID_EL0 = 0x4 (DZP 0, block 64 bytes)
+  DMA test: aligned 8-byte store + load -> ok
+  DMA test: unaligned 8-byte store + load (+0x1003) -> ok
+  DMA test: memset 64 KiB + check -> ok
+  DMA test: DC ZVA on a dirty block + check -> ok
+  DMA test: last byte store + load -> ok
+  DMA: handle closed (pool unmapped)
+  front run: started (FrontRun value, C:\S10Prov\isp\out\host.log)
+S10eIspDma service: RUNNING
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-front.txt

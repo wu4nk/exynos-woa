@@ -870,3 +870,15 @@ Plan (each a task, each waits for the result before it):
   files - two cl runs (the files from another directory compile in their own batch) sharing one PDB; the earlier
   LNK4209 was the same contention. S10eIsp.vcxproj: DebugInformationFormat OldStyle (/Z7, debug info in each .obj,
   no shared compiler PDB).
+
+## The libraries run INSIDE the driver host (S10eIsp 0.3.3, 2026-11-18 20:12) - plan item 6 step 1 done (nodma)
+- isp-s10.ps1 v1.4 front -NoDma (notes/data/isphost-win-20261118/isp-s10-front-0.3.3.txt): FrontRun "finished
+  (nodma): rc 0" after 3 s; front-trace marks from isp_front_main through isp_load (exec alloc ok, copied +
+  relocated, icache flushed, 9 threads registered), DDK / RTA start_up, chain / object create, tune set 6,
+  calibration, and 3 frames of 3AA + ISP calls and interrupts; host.log 39 steps, all -> 0; 17 tasks, 15 interrupts;
+  no crash. Image in Wudfhost at 0x1CC39000000, 12005 pointers relocated.
+- Only 3 frames, not 30: SetEnvironmentVariableA does not change the CRT's environment copy that getenv() reads ->
+  _putenv_s. host.log missing from the zip: still open in Wudfhost -> closed at the end of the run. Frame times
+  (38 ms) are distorted by the write-through marks (one disk flush per step) and host.log's commit-per-line mode ->
+  marks only until frame 1, host.log opened "w" again.
+- 0.3.4 = these three fixes. Next run: front WITHOUT -NoDma (the real S10eIspDma pool).

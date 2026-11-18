@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.3.3) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.3.4) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -41,7 +41,7 @@
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 
-#define S10EISP_VERSION L"0.3.3"
+#define S10EISP_VERSION L"0.3.4"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -303,8 +303,8 @@ static DWORD WINAPI FrontThread(LPVOID p)
         /* bisect switch: the libraries get plat_win's own (fake, VirtualAlloc) DMA pool - S10eIspDma is not opened */
         Trace("nodma: S10eIspDma not used, fake pool");
         plat_win_set_thread_fatal(1);
-        SetEnvironmentVariableA("FRAMES", "30");
-        SetEnvironmentVariableA("QUIET", "1");
+        _putenv_s("FRAMES", "30");   /* 0.3.4: the CRT's getenv() reads its own copy: SetEnvironmentVariable left 3 */
+        _putenv_s("QUIET", "1");
         SetValue(L"FrontRun", L"started (nodma)");
         char *argv0[6] = {"isp_front", ISP_DIR, data, ISP_DIR "\\out", layout, NULL};
         plat_win_set_mark_file(ISP_DIR "\\front-trace.txt");   /* 0.3.2: marks inside the core too */
@@ -328,8 +328,8 @@ static DWORD WINAPI FrontThread(LPVOID p)
     Trace("pool mapped: %llu MiB PA 0x%08llX va 0x%llX cache %u", m.Bytes >> 20, m.Pa, m.UserVa, m.Cache);
     plat_win_dma_pool((void *)(ULONG_PTR)m.UserVa, m.Pa, m.Bytes);
     plat_win_set_thread_fatal(1);
-    SetEnvironmentVariableA("FRAMES", "30");
-    SetEnvironmentVariableA("QUIET", "1");
+    _putenv_s("FRAMES", "30");   /* 0.3.4: the CRT's getenv() reads its own copy: SetEnvironmentVariable left 3 */
+    _putenv_s("QUIET", "1");
     char *argv[6] = {"isp_front", ISP_DIR, data, ISP_DIR "\\out", layout, NULL};
     int argc = 5;
     StringCchPrintfA(cal, MAX_PATH, "%s\\rom1_cal.bin", ISP_DIR);

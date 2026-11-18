@@ -186,6 +186,7 @@ static void dump_window(volatile u32 *w, const char *name)
 
 /* ---------------- steps ---------------- */
 static FILE *timing;
+static int marks_on = 1;      /* plat_mark per step until frame 1 is done (write-through marks cost ms) */
 static double trap_cost_us;
 static u64 frame_us, frame_acc;
 static u64 FN3[20], FNI[20];
@@ -213,7 +214,7 @@ static u64 step(const char *label, u64 fn, int n, const u64 *a)
 {
     char b[64];
     plat_log("");
-    plat_mark(label);
+    if (marks_on) plat_mark(label);
     FILE *mf = mmio_open(label);
     u64 t0 = plat_usec();
     u64 r = isp_call(H, fn, n, a);
@@ -232,7 +233,7 @@ static u64 fire(const char *label, volatile u32 *w, u32 reg, int bit, u32 chain,
 {
     char b[96];
     plat_log("");
-    plat_mark(label);
+    if (marks_on) plat_mark(label);
     FILE *mf = mmio_open(label);
     u64 t0 = plat_usec();
     w[reg / 4] = 1u << bit;
@@ -262,11 +263,8 @@ int main(int argc, char **argv)
     mkdir(OUTDIR, 0755);
     char p[1024];
     snprintf(p, sizeof(p), "%s/host.log", OUTDIR);
-#ifdef ISPHOST_DRIVER
-    FILE *lf = fopen(p, "wc");   /* "c": every fflush commits to disk (UCRT) - the last line survives a crash */
-#else
-    FILE *lf = fopen(p, "w");
-#endif
+    FILE *lf = fopen(p, "w");     /* 0.3.4: no "c" (commit per line) any more - plat_mark covers crashes, and a
+                                     disk commit per log line distorted the frame times */
     plat_posix_log_to(lf, getenv("QUIET") != NULL);
     snprintf(p, sizeof(p), "%s/interface-calls.txt", OUTDIR);
     itf_log = fopen(p, "w");
@@ -466,6 +464,7 @@ int main(int argc, char **argv)
         STEP(l, FNI[SHOT], r64(obji), (u64)(uintptr_t)PI, SHP, 1);
         snprintf(l, sizeof(l), "F%u ISP irq V SYNC", fc);   fire(l, WI, 0x10c, 0, 2, isp_irq_id);
         snprintf(l, sizeof(l), "F%u ISP irq FRAME END", fc); fire(l, WI, 0x10c, 1, 2, isp_irq_id);
+        if (fc == 1) { plat_mark("frame 1 done - no more per-step marks"); marks_on = 0; }
         u64 acc = trap_count() - frame_acc;
         fprintf(timing, "FRAME %-3u %10.1f ms, %llu register accesses (~%.1f ms of it trapping)\n", fc,
                 frame_us / 1000.0, (unsigned long long)acc, acc * trap_cost_us / 1000.0);
@@ -488,7 +487,10 @@ int main(int argc, char **argv)
              (unsigned long long)st.traced_calls, (unsigned long long)st.tasks_run, (unsigned long long)st.timers_fired,
              (unsigned long long)st.irqs_run);
     plat_log(b);
+    plat_mark("front: done");
     fclose(timing);
     fclose(itf_log);
+    plat_posix_log_to(NULL, 1);   /* host.log closed: the run's files can be zipped while the host lives on */
+    fclose(lf);
     return 0;
 }
