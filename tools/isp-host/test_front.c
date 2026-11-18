@@ -40,6 +40,10 @@ extern int isp_trace, isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;
 static isp_host *H;
 static const char *OUTDIR;
 static int OTF;   /* S10eIsp 0.7 hw3aaotf: the sensor runs S10eCam's mode 11 (912 x 684 binned, 30 fps, PD_NONE) */
+#include "S10eIspDmaIoctl.h"   /* S10EISP_SHM (drivers/S10eIspDma; include path set by the vcxproj / build scripts) */
+/* S10eIsp 0.9 camera pipeline: the control block shared with S10eCamera (the S10eIspDma pool's last 64 KiB) */
+static S10EISP_SHM *PIPE;
+void isp_front_set_pipe(void *shm) { PIPE = (S10EISP_SHM *)shm; }
 static FILE *itf_log;
 
 static void *readfile(const char *dir, const char *name, size_t *n)
@@ -116,6 +120,17 @@ static u64 sensor_op(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64
     else if (IS("get_sensor_use_dgain")) w32(a1, 1);
     else if (IS("get_sensor_initial_aperture")) w32(a1, 190);
     else if (IS("is_actuator_available")) r = 1;                /* Android: "Ext AF is selected!" */
+    else if (PIPE && IS("request_exposure")) {                  /* (itf, long us, short us) -> S10eCamera applies it */
+        PIPE->AeExpUs = (u32)a1;
+        PIPE->AeSeq++;
+    } else if (PIPE && IS("request_gain")) {                    /* (itf, long total, long analog, long digital) x1000 */
+        PIPE->AeAGain1000 = (u32)a2;
+        PIPE->AeDGain1000 = (u32)a3;
+        PIPE->AeSeq++;
+    } else if (PIPE && IS("request_analog_gain")) {             /* (itf, long, short) x1000 */
+        PIPE->AeAGain1000 = (u32)a1;
+        PIPE->AeSeq++;
+    }
     else if (IS("get_vc_dma_buf_info") && a2) {
         /* Android's preview "[IspObject_InitPdafLib] requestType" lines; other types INVALID (-1), GPL :2732 */
         struct vc_buf_info v = {-1, -1, 0, 0, 0};
@@ -195,12 +210,14 @@ int isp_front_irq(u32 chain, u32 id)
     ISP_ADD64(&hw_irq_n, 1);
     u64 n = hw_irq_n;
     u32 a1 = w[0x10c / 4], a2 = w[0x11c / 4];
-    if (chain == 0 && id == 0 && (a1 & 1)) ISP_ADD64(&hw_fs, 1);
-    if (chain == 0 && id == 0 && (a1 & 2)) ISP_ADD64(&hw_fe, 1);
-    if (chain == 2 && id == 6 && (a1 & 2)) ISP_ADD64(&hw_isp_fe, 1);
     u64 t0 = plat_usec();
     u64 r = isp_irq_sync(H, chain, id);
     u64 dt = plat_usec() - t0;
+    /* 0.9: counted AFTER the libraries' handler ran (0.8 counted before: the main loop could start ISP set_ctrl Fn
+       before the 3AA's frame-end handler had finished Fn - "getIspFrameDesc fail") */
+    if (chain == 0 && id == 0 && (a1 & 1)) ISP_ADD64(&hw_fs, 1);
+    if (chain == 0 && id == 0 && (a1 & 2)) ISP_ADD64(&hw_fe, 1);
+    if (chain == 2 && id == 6 && (a1 & 2)) ISP_ADD64(&hw_isp_fe, 1);
     if (n <= 64 || (chain == 2 && hw_isp_fe <= 3)) {
         char b[192];
         snprintf(b, sizeof(b), "hw irq #%llu %s id %u: +0x10c 0x%08x +0x11c 0x%08x -> handler 0x%llx in %llu us -> "
@@ -336,6 +353,111 @@ static void put(unsigned char *base, u32 off, int n, const u32 *v) { memcpy(base
 
 static int finish(FILE *lf);
 
+/* ---------------- 0.9: the camera pipeline (S10eIsp + S10eCamera) ---------------- */
+static int pcall(const char *what, u64 fn, int n, const u64 *a)   /* a library call without the test's per-step files */
+{
+    u64 r = isp_call(H, fn, n, a);
+    isp_drain(H);
+    if ((u32)r != 0) {
+        char b[96];
+        snprintf(b, sizeof(b), "pipe: %s -> 0x%x", what, (u32)r);
+        plat_log(b);
+        PIPE->Errors++;
+    }
+    return (int)(u32)r;
+}
+#define PCALL(what, fn, ...) pcall((what), (fn), (int)(sizeof((u64[]){__VA_ARGS__}) / sizeof(u64)), (u64[]){__VA_ARGS__})
+
+static void pipe_status(const char *t)
+{
+    snprintf(PIPE->Status, sizeof(PIPE->Status), "%s", t);
+    plat_log(t);
+    plat_mark(t);
+}
+
+/* Serves S10eCamera for the process's lifetime: Want 1 -> arm the 3AA0 (the sensor is started by S10eCamera with
+   S10eCam's OTF route), then per real 3AA frame end the ISP0 M2M into the next YUY2 slot, published at the ISP0 frame
+   end; Want 0 -> the libraries' stop for both. host.log is closed after the first 90 frames (it would grow ~3000
+   lines a second). Never returns. */
+static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char *PIO, u32 aw, u32 ah, u64 o3, u64 oi)
+{
+    S10EISP_SHM *m = PIPE;
+    char b[160];
+    u32 slot[S10EISP_SHM_SLOTS], fc = 0;
+    u64 total = 0;
+    int log_open = 1;
+    for (u32 i = 0; i < S10EISP_SHM_SLOTS; i++) {
+        void *k;
+        isp_dma_alloc(H, aw * ah * 2, &k, &slot[i]);
+        memset(k, 0, aw * ah * 2);
+        m->SlotPa[i] = slot[i];
+    }
+    m->W = aw; m->H = ah; m->Stride = aw * 2; m->NSlots = S10EISP_SHM_SLOTS;
+    m->Version = 1; m->Latest = -1; m->Seq = 0;
+    m->Magic = S10EISP_SHM_MAGIC;
+    PCALL("3AA set_param", FN3[SET_PARAM], o3, PP);
+    PUT(PIO, 912, slot[0]);
+    PUT(PIO, 1120, 0, 1);
+    PCALL("ISP set_param", FNI[SET_PARAM], oi, (u64)(uintptr_t)PIO);
+    m->State = 1;
+    pipe_status("pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), waiting for S10eCamera");
+    for (;;) {
+        while (!m->Want) plat_sleep_us(20000);
+        m->Sessions++;
+        fc++;
+        PUT(P, 1764, fc);
+        PCALL("3AA set_ctrl", FN3[SET_CTRL], o3, 0, fc, SHP);
+        PCALL("3AA shot", FN3[SHOT], o3, PP, SHP, 1);
+        m->State = 2;
+        snprintf(b, sizeof(b), "pipe: session %ld armed at F%u", m->Sessions, fc);
+        pipe_status(b);
+        u64 last_fe = hw_fe, last_ife = hw_isp_fe;
+        int pend = -1;
+        u32 s = 0;
+        while (m->Want) {
+            plat_sleep_us(1000);
+            if (hw_isp_fe != last_ife) {             /* ISP0 finished the frame it was given: publish its slot */
+                last_ife = hw_isp_fe;
+                if (pend >= 0) {
+                    m->Latest = pend;
+                    m->Seq++;
+                    s = ((u32)pend + 1) % S10EISP_SHM_SLOTS;
+                    pend = -1;
+                    total++;
+                    if (log_open && total == 90) {
+                        pipe_status("pipe: 90 frames delivered - host.log closed from here on (pipe status in the "
+                                    "shared block)");
+                        plat_posix_log_to(NULL, 1);
+                        fclose(lf);
+                        log_open = 0;
+                    }
+                }
+            }
+            if (hw_fe != last_fe) {                  /* the 3AA0 wrote frame fc: ISP0 on it, then the next 3AA shot */
+                last_fe = hw_fe;
+                m->State = 3;
+                PUT(PIO, 912, slot[s]);
+                PUT(PIO, 1120, 0, fc);
+                PCALL("ISP set_ctrl", FNI[SET_CTRL], oi, 0, fc, SHP);
+                PCALL("ISP shot", FNI[SHOT], oi, (u64)(uintptr_t)PIO, SHP, 1);
+                pend = (int)s;
+                fc++;
+                PUT(P, 1764, fc);
+                PCALL("3AA set_ctrl", FN3[SET_CTRL], o3, 0, fc, SHP);
+                PCALL("3AA shot", FN3[SHOT], o3, PP, SHP, 1);
+            }
+        }
+        PCALL("ISP stop", FNI[STOP], oi, 0);
+        PCALL("3AA stop", FN3[STOP], o3, 0);
+        PCALL("3AA set_param", FN3[SET_PARAM], o3, PP);
+        PCALL("ISP set_param", FNI[SET_PARAM], oi, (u64)(uintptr_t)PIO);
+        m->State = 1;
+        snprintf(b, sizeof(b), "pipe: session %ld stopped after frame %u, %llu frames delivered in all, errors %ld",
+                 m->Sessions, fc, (unsigned long long)total, m->Errors);
+        pipe_status(b);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 5) {
@@ -408,6 +530,7 @@ int main(int argc, char **argv)
                                          (+0x0c) times out here - real hardware clears it */
         HW3 = window(DUMP, "3AA0");
         if (getenv("HW3AA_ISP")) HWI = window(DUMP, "ISPLP");
+        if (getenv("HW3AA_PIPE")) PIPE = zalloc(sizeof(S10EISP_SHM));   /* waits for Want forever: run with timeout */
         HW3_SHOT = getenv("HW3AA_SHOT") != NULL || getenv("HW3AA_OTF") != NULL;
         OTF = getenv("HW3AA_OTF") != NULL;
     }
@@ -573,6 +696,10 @@ int main(int argc, char **argv)
     plat_log(b);
     u64 PP = (u64)(uintptr_t)P, SHP = (u64)(uintptr_t)SH;
     if (PIO) memcpy(PIO, &PP, 8);                           /* taa_param */
+    if (PIPE && HW3 && HWI && OTF && PIO) {   /* 0.9: S10eIsp's camera pipeline - never returns */
+        pipe_run(lf, P, PP, SHP, PIO, aw, ah, r64(obj3), r64(obji));
+        return 0;
+    }
     STEP("3AA set_param", FN3[SET_PARAM], r64(obj3), PP);
     STEP("3AA set_ctrl F1", FN3[SET_CTRL], r64(obj3), 0, 1, SHP);
     STEP("3AA shot F1", FN3[SHOT], r64(obj3), PP, SHP, 1);

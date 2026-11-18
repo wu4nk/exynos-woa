@@ -38,7 +38,7 @@
       <Optimization>MinSpace</Optimization>
       <AdditionalOptions>%(AdditionalOptions) /DUMDF_DRIVER /Brepro</AdditionalOptions>
       <PreprocessorDefinitions>ISPHOST_DRIVER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IspHostDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IspHostDir);$(MSBuildThisFileDirectory)..\S10eIspDma;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <!-- 0.3.3: debug info inside each .obj (/Z7): the four tools\isp-host sources compile in a separate cl run
            and two cl processes on one vc145.pdb gave C1033 / LNK4209 (2026-11-18) -->

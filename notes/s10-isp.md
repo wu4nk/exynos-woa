@@ -1171,3 +1171,27 @@ Plan (each a task, each waits for the result before it):
 - Next (fast): (1) streaming: S10eCam stream -Bin -Otf + S10eIsp loop producing YUY2 into a ring in the S10eIspDma
   pool, S10eCamera (AVStream) taking frames from there instead of its CPU demosaic; (2) AE: forward the libraries'
   sensor exposure / gain requests to S10eCam (STREAM_EXPOSURE).
+
+## Plan item 7: the camera pipeline - Samsung's ISP frames in the Windows camera (2026-11-18 22:10)
+- S10eIspDma 0.2: IRP_MJ_INTERNAL_DEVICE_CONTROL IOCTL_S10EISPDMA_KVA (kernel callers only) -> the pool's kernel VA /
+  PA / size. The pool's LAST 64 KiB = S10EISP_SHM (S10eIspDmaIoctl.h): Want (S10eCamera), State 1 ready / 2 armed /
+  3 frames, Seq / Latest, 3 YUY2 slot PAs, W / H / Stride, the libraries' AE requests (AeExpUs, AeAGain1000,
+  AeDGain1000, AeSeq), Sessions, Errors, Status text. The pool is zeroed when S10eIsp's mapping goes = Magic 0.
+- S10eIsp 0.9: C:\S10Prov\isp\pipe.flg (persistent, isp-s10.ps1 v1.10 pipe [-Off]) and no run.flg -> at device start
+  the run thread does 0.8's setup (real 3AA0 + ISPLP, 4 interrupts), gives the libraries the pool minus the SHM, and
+  test_front's pipe_run serves for the process's lifetime: 3 YUY2 slots; 3AA set_param + ISP set_param once ->
+  State 1; Want 1 -> 3AA set_ctrl / shot -> State 2; per real 3AA frame end (counted AFTER the libraries' handler
+  now - the 0.8 "getIspFrameDesc fail" fix): ISP set_ctrl / shot into the next slot, then the next 3AA shot; per ISP0
+  frame end: Latest = that slot, Seq++; Want 0 -> ISP stop, 3AA stop, set_params again -> State 1. No per-step files
+  (pcall); host.log closed after 90 frames. sensor_op: cis request_exposure / request_gain / request_analog_gain ->
+  SHM (AeSeq++).
+- S10eCamera 0.10: setting IspPipe (default 1). CamStart (binned 30 fps only): PipeOpen (IoGetDeviceObjectPointer
+  \Device\S10eIspDma + the internal IOCTL), if Magic + State >= 1: Want = 1, wait <= 3 s for State 2, then the
+  sensor starts with S10ECAM_SHOT_OTF. PinProcess: when Seq advanced, slot -> 2 rows at a time copied to cached memory,
+  full -> limited range, through the existing Emit (rotation / mirror / YUY2 or NV12); the libraries' AE request ->
+  StreamExposure (us x 807.24 MHz / LLP 8984 -> lines; again x1000 x 32 / 1000 -> 0x0204). Fallback to the CPU path
+  when the pipeline is not up / not armed / no ISP frame for 60 sensor frames. CamStop: Want 0 first, StreamStop,
+  PipeClose.
+- Checks: test_front (zig linux / windows-gnu) clean; HW3AA_SELFTEST + HW3AA_PIPE reaches "pipe: ready" without
+  errors (then waits for Want, as designed); S10eIspDma.c / S10eCamera.c kcheck-wdm: only pre-existing warnings;
+  S10eIsp.c ucheck: only the known _set_invalid_parameter_handler. Not built with EWDK, not run.

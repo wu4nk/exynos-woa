@@ -43,6 +43,12 @@
  * 0.9: setting FrameRate (30 default, 60 = S10eCam 0.10 S10ECAM_SHOT_FPS60 on the binned mode: half the longest
  *   exposure, so darker in dim rooms); the ranges advertise the configured rate only. NV12 output by pointer stepping
  *   like EmitRows (0.8 called MapOut for every pixel).
+ * 0.10: setting IspPipe (default 1): when S10eIsp's camera pipeline is up (S10eIsp 0.9, pipe.flg; its control block =
+ *   the S10eIspDma pool's last 64 KiB, reached through S10eIspDma 0.2's internal IOCTL_S10EISPDMA_KVA), a start asks
+ *   it for frames (Want), waits until Samsung's 3AA0 is armed, starts the sensor with S10eCam's OTF route
+ *   (CSIS2 -> PDP0 -> 3AA0), and delivers the ISP0's YUY2 frames (demosaic / white balance / noise reduction / AE by
+ *   Samsung's libraries on the real ISP) instead of the CPU conversion; the libraries' exposure / gain requests are
+ *   applied to the sensor. Without the pipeline (or if it stops answering) the CPU path runs as before.
  *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
@@ -58,6 +64,7 @@
 #include <ks.h>
 #include <ksmedia.h>
 #include "S10eCameraLut.h"
+#include "..\S10eIspDma\S10eIspDmaIoctl.h"   /* 0.10: S10EISP_SHM, IOCTL_S10EISPDMA_KVA */
 
 #define CAM_SW          (S10ECAM_SHOT_W / 2)             /* 912: the binned image, sensor orientation */
 #define CAM_SH          (S10ECAM_SHOT_H / 2)             /* 684 */
@@ -83,6 +90,11 @@ typedef struct _CAMPIN {
     ULONG   WbR, WbB;       /* white balance gains, Q8 (256 = x1) */
     ULONG   AeWait;         /* frames to wait before the next AE decision */
     BOOLEAN Running;
+    LONG    PipeSeq;        /* 0.10: S10eIsp pipeline frame last delivered */
+    LONG    PipeAeSeq;      /* 0.10: the libraries' sensor request last applied */
+    LONG    PipeRawSeq;     /* 0.10: engine frame number when the last pipeline frame came */
+    ULONG64 PipeFrames;     /* 0.10: frames delivered from the ISP */
+    ULONG   PipeAeApplied;
 } CAMPIN;
 
 static FAST_MUTEX gCamMutex;                             /* Process vs start / stop (the ring must not go away) */
@@ -95,6 +107,13 @@ static BOOLEAN    gNv12;                                 /* 0.8: the running pin
 static ULONG      gFps = 30;                             /* 0.9: FrameRate setting (30 / 60), read at device start */
 static LONGLONG   gInterval = CAM_INTERVAL;              /* its frame time, 100 ns units */
 static WCHAR      gParamPath[260];                       /* <service key>\Parameters */
+/* 0.10: S10eIsp's camera pipeline */
+static ULONG        gIspPipe = 1;                        /* setting IspPipe */
+static BOOLEAN      gPipeOn;                             /* this stream takes the ISP's frames */
+static PFILE_OBJECT gPipeFo;
+static PUCHAR       gPipeKva;
+static ULONGLONG    gPipePa, gPipeBytes;
+static S10EISP_SHM *gShm;
 
 /* ---------------------------------------------------------------------------------------------- the report file */
 
@@ -424,6 +443,141 @@ static VOID AutoExposure(CAMPIN *c, ULONG MeanG)
         c->AeWait = 3;
 }
 
+/* ---------------------------------------------------------------------------------------------- 0.10 pipeline */
+
+static VOID PipeClose(VOID)
+{
+    gShm = NULL;
+    gPipeKva = NULL;
+    if (gPipeFo != NULL)
+        ObDereferenceObject(gPipeFo);
+    gPipeFo = NULL;
+}
+
+/* S10eIspDma's pool through its internal IOCTL (kernel callers only): the control block at the last 64 KiB. */
+static NTSTATUS PipeOpen(REPORT *r)
+{
+    UNICODE_STRING     n;
+    PDEVICE_OBJECT     dev;
+    S10EISPDMA_KVA_OUT o;
+    IO_STATUS_BLOCK    iosb;
+    KEVENT             ev;
+    PIRP               irp;
+    NTSTATUS           s;
+
+    RtlInitUnicodeString(&n, S10EISPDMA_DEVICE_NAME);
+    s = IoGetDeviceObjectPointer(&n, FILE_READ_DATA, &gPipeFo, &dev);
+    if (!NT_SUCCESS(s)) {
+        gPipeFo = NULL;
+        Log(r, "pipe: S10eIspDma not there (0x%08X): CPU conversion\r\n", s);
+        return s;
+    }
+    KeInitializeEvent(&ev, NotificationEvent, FALSE);
+    RtlZeroMemory(&o, sizeof(o));
+    irp = IoBuildDeviceIoControlRequest(IOCTL_S10EISPDMA_KVA, dev, NULL, 0, &o, sizeof(o), TRUE, &ev, &iosb);
+    if (irp == NULL) {
+        PipeClose();
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    s = IoCallDriver(dev, irp);
+    if (s == STATUS_PENDING) {
+        KeWaitForSingleObject(&ev, Executive, KernelMode, FALSE, NULL);
+        s = iosb.Status;
+    }
+    if (!NT_SUCCESS(s) || o.KernelVa == 0 || o.Bytes < 2ull * S10EISP_SHM_BYTES) {
+        Log(r, "pipe: S10eIspDma KVA 0x%08X (version %u): CPU conversion\r\n", s, o.Version);
+        PipeClose();
+        return NT_SUCCESS(s) ? STATUS_NOT_SUPPORTED : s;
+    }
+    gPipeKva = (PUCHAR)(ULONG_PTR)o.KernelVa;
+    gPipePa = o.Pa;
+    gPipeBytes = o.Bytes;
+    gShm = (S10EISP_SHM *)(gPipeKva + o.Bytes - S10EISP_SHM_BYTES);
+    return STATUS_SUCCESS;
+}
+
+static UCHAR LimY(ULONG v) { return (UCHAR)(16u + v * 219u / 255u); }          /* full -> BT.601 limited range */
+static UCHAR LimC(ULONG v) { return (UCHAR)(128 + ((LONG)v - 128) * 224 / 255); }
+
+/* The newest ISP0 frame (YUY2 912 x 684, sensor orientation) -> the pin's buffer, through Emit (rotation / mirror /
+   NV12 as the CPU path). Called with gCamMutex held. Returns FALSE when there is nothing new. */
+static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
+{
+    S10EISP_SHM       *m = gShm;
+    PKSSTREAM_POINTER  lead;
+    PKSSTREAM_HEADER   hdr;
+    PIKSREFERENCECLOCK clock;
+    LONG               seq = m->Seq, slot = m->Latest;
+    ULONG              j, k, x, stride = CAM_SW * 2;
+    PUCHAR             src, row;
+
+    if (seq == c->PipeSeq || slot < 0 || slot >= (LONG)S10EISP_SHM_SLOTS || m->W != CAM_SW || m->H != CAM_SH)
+        return FALSE;
+    if (m->SlotPa[slot] < gPipePa || m->SlotPa[slot] + (ULONGLONG)stride * CAM_SH > gPipePa + gPipeBytes)
+        return FALSE;
+    src = gPipeKva + (m->SlotPa[slot] - gPipePa);
+    lead = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
+    if (lead == NULL) {
+        c->Drops++;
+        c->PipeSeq = seq;
+        return TRUE;
+    }
+    if (lead->OffsetOut.Remaining < (gNv12 ? CAM_BYTES_NV12 : CAM_BYTES)) {
+        KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, 0, TRUE);
+        c->PipeSeq = seq;
+        return TRUE;
+    }
+    for (j = 0; j < CAM_SH / 2; j++) {
+        RtlCopyMemory(gRows, src + (SIZE_T)(2 * j) * stride, 2 * stride);   /* uncached -> cached, 2 rows at once */
+        for (k = 0; k < 2; k++) {
+            row = gRows + k * stride;
+            for (x = 0; x < CAM_SW; x += 2) {
+                PUCHAR q = row + x * 2;                  /* Y0 U Y1 V */
+                gY[k][x] = LimY(q[0]);
+                gY[k][x + 1] = LimY(q[2]);
+                gU[k][x] = gU[k][x + 1] = LimC(q[1]);
+                gV[k][x] = gV[k][x + 1] = LimC(q[3]);
+            }
+        }
+        Emit((PUCHAR)lead->OffsetOut.Data, j);
+    }
+    if (seq - c->PipeSeq > 1)
+        c->Drops += (ULONG)(seq - c->PipeSeq - 1);
+    c->PipeSeq = seq;
+    c->PipeRawSeq = gS.Seq;
+    c->Frames++;
+    c->PipeFrames++;
+    hdr = lead->StreamHeader;
+    hdr->Duration = gInterval;
+    hdr->OptionsFlags |= KSSTREAM_HEADER_OPTIONSF_DURATIONVALID;
+    if (NT_SUCCESS(KsPinGetReferenceClockInterface(Pin, &clock))) {
+        hdr->PresentationTime.Time = clock->lpVtbl->GetTime(clock);
+        hdr->PresentationTime.Numerator = hdr->PresentationTime.Denominator = 1;
+        hdr->OptionsFlags |= KSSTREAM_HEADER_OPTIONSF_TIMEVALID;
+        clock->lpVtbl->Release(clock);
+    }
+    if (hdr->Size >= sizeof(KSSTREAM_HEADER) + sizeof(KS_FRAME_INFO)) {
+        PKS_FRAME_INFO fi = (PKS_FRAME_INFO)(hdr + 1);
+        fi->ExtendedHeaderSize = sizeof(KS_FRAME_INFO);
+        fi->dwFrameFlags = KS_VIDEO_FLAG_FRAME;
+        fi->PictureNumber = (LONGLONG)c->Frames;
+        fi->DropCount = (LONGLONG)c->Drops;
+    }
+    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, gNv12 ? CAM_BYTES_NV12 : CAM_BYTES, TRUE);
+    /* the libraries' AE: exposure in us -> lines (mode 11: pclk 807.24 MHz, LLP 8984), analog gain x1000 -> 0x0204
+       (0x20 = x1); StreamExposure clamps both */
+    if (m->AeSeq != c->PipeAeSeq && m->AeExpUs != 0 && m->AeAGain1000 != 0) {
+        S10ECAM_EXPOSURE_IN e;
+        c->PipeAeSeq = m->AeSeq;
+        e.Coarse = (ULONG)((ULONG64)m->AeExpUs * 80724u / 898400u);
+        e.AGain = m->AeAGain1000 * 32u / 1000u;
+        if (e.Coarse < 2) e.Coarse = 2;
+        if (NT_SUCCESS(StreamExposure(&e)))
+            c->PipeAeApplied++;
+    }
+    return TRUE;
+}
+
 /* ---------------------------------------------------------------------------------------------- pin */
 
 static VOID OnFrame(PVOID Ctx)                           /* the engine's poll thread, PASSIVE_LEVEL */
@@ -446,6 +600,16 @@ static NTSTATUS PinProcess(PKSPIN Pin)
     if (!c->Running || !gS.Active) {
         ExReleaseFastMutex(&gCamMutex);
         return STATUS_PENDING;
+    }
+    if (gPipeOn) {                                       /* 0.10: Samsung's ISP output */
+        if (gShm->Magic == S10EISP_SHM_MAGIC && gShm->State >= 2 && gS.Seq - c->PipeRawSeq < 60) {
+            (VOID)PipeProcess(Pin, c);
+            ExReleaseFastMutex(&gCamMutex);
+            return STATUS_PENDING;
+        }
+        gPipeOn = FALSE;                                 /* the pipeline went away or stalled 2 s: CPU path */
+        Trace("pipe: no ISP frame for 60 sensor frames (magic %08X state %ld): CPU conversion from here\r\n",
+              gShm->Magic, gShm->State);
     }
     seq = gS.Seq;
     i = gS.Latest;
@@ -530,7 +694,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     if (gBin && gFps == 60)
         in.Flags |= S10ECAM_SHOT_FPS60;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.9 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
+    Log(&r, "S10eCamera 0.10 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
         gOutW, gOutH, gFps, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
         gBin == 2 ? "912 x 684 (binned) + bilinear demosaic" : gBin ? "912 x 684 (binned) + 2x2-block conversion" :
@@ -541,7 +705,38 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     c->ConvUsMax = 0;
     c->WbR = c->WbB = 256;
     c->AeWait = 2;
+    c->PipeFrames = 0;
+    c->PipeAeApplied = 0;
+    c->PipeRawSeq = 0;
     ExReleaseFastMutex(&gCamMutex);
+    /* 0.10: S10eIsp's pipeline (binned 30 fps mode only: the libraries are set up for mode 11) */
+    gPipeOn = FALSE;
+    if (gIspPipe && gBin && gFps == 30 && NT_SUCCESS(PipeOpen(&r))) {
+        LARGE_INTEGER d;
+        ULONG t;
+        if (gShm->Magic != S10EISP_SHM_MAGIC || gShm->State < 1) {
+            Log(&r, "pipe: S10eIsp pipeline not up (magic %08X state %ld): CPU conversion\r\n", gShm->Magic,
+                gShm->State);
+            PipeClose();
+        } else {
+            InterlockedExchange(&gShm->Want, 1);
+            d.QuadPart = -10LL * 10000;                  /* 10 ms */
+            for (t = 0; t < 300 && gShm->State < 2; t++)
+                KeDelayExecutionThread(KernelMode, FALSE, &d);
+            if (gShm->State >= 2) {
+                in.Flags |= S10ECAM_SHOT_OTF;
+                gPipeOn = TRUE;
+                c->PipeSeq = gShm->Seq;
+                c->PipeAeSeq = gShm->AeSeq;
+                Log(&r, "pipe: 3AA0 armed after %u ms (session %ld): Samsung ISP frames, sensor with the OTF route\r\n",
+                    t * 10, gShm->Sessions);
+            } else {
+                InterlockedExchange(&gShm->Want, 0);
+                Log(&r, "pipe: 3AA0 not armed in 3 s (state %ld): CPU conversion\r\n", gShm->State);
+                PipeClose();
+            }
+        }
+    }
     /* not under gCamMutex: StreamStart sleeps for ~1 s and calls back into OnFrame -> Process, which takes it */
     s = StreamStart(&in, NULL, OnFrame, Pin, &r);
     Log(&r, "start: 0x%08X\r\n", s);
@@ -566,13 +761,20 @@ static VOID CamStop(CAMPIN *c)
     if (!active)
         return;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.9 stop: %I64u frames delivered, %I64u dropped, %I64u torn; conversion avg %I64u us, max %u us\r\n",
-        c->Frames, c->Drops, c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
+    Log(&r, "S10eCamera 0.10 stop: %I64u frames delivered (%I64u from the ISP, %u AE requests applied), %I64u dropped, "
+        "%I64u torn; conversion avg %I64u us, max %u us\r\n", c->Frames, c->PipeFrames, c->PipeAeApplied, c->Drops,
+        c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
+    if (gShm != NULL)                                    /* 0.10: the pipeline stops its 3AA0 / ISP0 */
+        InterlockedExchange(&gShm->Want, 0);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
     ExAcquireFastMutex(&gCamMutex);
     ExReleaseFastMutex(&gCamMutex);
     StreamStop(&r);
+    ExAcquireFastMutex(&gCamMutex);
+    gPipeOn = FALSE;
+    PipeClose();
+    ExReleaseFastMutex(&gCamMutex);
     WriteReport(gLog, r.Used);
 }
 
@@ -846,6 +1048,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gRingKeep = RegDword(h, L"RingKeep", 1) ? 1u : 0u;
     gFps = RegDword(h, L"FrameRate", 30) == 60 ? 60u : 30u;
     gBin = RegDword(h, L"SensorBin", 1);
+    gIspPipe = RegDword(h, L"IspPipe", 1) ? 1u : 0u;      /* 0.10 */
     if (gBin > 2)
         gBin = 1;
     rb = gBin ? S10ECAM_BIN_BYTES + 0x10000u : SHOT_RING_BYTES;
@@ -866,7 +1069,7 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
         Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", rb);
-    Trace("S10eCamera 0.9 device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gOutW, gOutH,
+    Trace("S10eCamera 0.10 (IspPipe %u) device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gIspPipe, gOutW, gOutH,
           gFps, gRot,
           gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached", gBin ? "binned 912 x 684" : "1824 x 1368");
     return STATUS_SUCCESS;

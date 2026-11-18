@@ -1,5 +1,5 @@
 /*
- * S10eIspDma.c (v0.1) - DMA memory for the camera ISP's user-mode host (notes/s10-isp.md, Stage 4 option A, item 5).
+ * S10eIspDma.c (v0.2) - DMA memory for the camera ISP's user-mode host (notes/s10-isp.md, Stage 4 option A, item 5).
  * SPDX-License-Identifier: GPL-2.0
  *
  * Why a kernel driver: UMDF 2 has no DMA ("the following features are available only to KMDF drivers ... Direct
@@ -23,6 +23,8 @@
  * the front path's own allocations were 45 MiB in the native run (notes), the 3AA output buffers ~22 MiB more.
  * Security: device ACL SYSTEM + Administrators + LocalService (the account Wudfhost runs as,
  * wdf/umdf-driver-host-process). Nothing here touches a hardware register.
+ * 0.2: IRP_MJ_INTERNAL_DEVICE_CONTROL IOCTL_S10EISPDMA_KVA for kernel callers (S10eCamera): the pool's kernel VA /
+ * PA / size; the last 64 KiB of the pool are the S10EISP_SHM control block (S10eIspDmaIoctl.h).
  */
 #include <ntddk.h>
 #include <wdmsec.h>
@@ -48,6 +50,7 @@ DRIVER_UNLOAD S10eIspDmaUnload;
 _Dispatch_type_(IRP_MJ_CREATE) _Dispatch_type_(IRP_MJ_CLOSE) _Dispatch_type_(IRP_MJ_CLEANUP)
 DRIVER_DISPATCH S10eIspDmaCreateClose;
 _Dispatch_type_(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH S10eIspDmaIoctl;
+_Dispatch_type_(IRP_MJ_INTERNAL_DEVICE_CONTROL) DRIVER_DISPATCH S10eIspDmaInternal;
 
 static ULONG PoolMiB(PUNICODE_STRING RegistryPath)
 {
@@ -195,6 +198,36 @@ NTSTATUS S10eIspDmaIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     return st;
 }
 
+/* 0.2: kernel callers only (an internal IOCTL cannot come from user mode) */
+NTSTATUS S10eIspDmaInternal(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+    PIO_STACK_LOCATION sp = IoGetCurrentIrpStackLocation(Irp);
+    NTSTATUS st = STATUS_INVALID_DEVICE_REQUEST;
+    ULONG_PTR info = 0;
+    UNREFERENCED_PARAMETER(DeviceObject);
+    if (sp->Parameters.DeviceIoControl.IoControlCode == IOCTL_S10EISPDMA_KVA) {
+        if (sp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(S10EISPDMA_KVA_OUT)) {
+            st = STATUS_BUFFER_TOO_SMALL;
+        } else if (gPool == NULL) {
+            st = STATUS_NO_MEMORY;
+        } else {
+            S10EISPDMA_KVA_OUT *o = (S10EISPDMA_KVA_OUT *)Irp->AssociatedIrp.SystemBuffer;
+            RtlZeroMemory(o, sizeof(*o));
+            o->Version = S10EISPDMA_VERSION;
+            o->Cache = gCache == MmWriteCombined ? 1u : 0u;
+            o->KernelVa = (unsigned long long)(ULONG_PTR)gPool;
+            o->Pa = (unsigned long long)gPa.QuadPart;
+            o->Bytes = (unsigned long long)gBytes;
+            info = sizeof(*o);
+            st = STATUS_SUCCESS;
+        }
+    }
+    Irp->IoStatus.Status = st;
+    Irp->IoStatus.Information = info;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return st;
+}
+
 VOID S10eIspDmaUnload(PDRIVER_OBJECT DriverObject)
 {
     UNICODE_STRING dos;
@@ -235,6 +268,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = S10eIspDmaCreateClose;
     DriverObject->MajorFunction[IRP_MJ_CLEANUP] = S10eIspDmaCreateClose;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = S10eIspDmaIoctl;
+    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = S10eIspDmaInternal;
     gDevice->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;
 }

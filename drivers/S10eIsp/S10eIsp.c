@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.8) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.9) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -51,6 +51,10 @@
  *      them on Windows); four interrupt objects: GSIV 351 / 352 = 3AA0 (chain 0, ids 0 / 1), 328 / 329 = ISP0 (chain
  *      2, ids 6 / 7). run.flg "hw3aaotfisp": item 11 plus ISP0 on the REAL ISPLP: per 3AA frame end, ISP0 M2M from
  *      the after-BDS buffer to its YUV DMA (YUV422 1-plane YCbYCr = YUY2, 912 x 684) -> out\otf-isp-yuy2-*.raw.
+ *  13. (0.9) CAMERA PIPELINE: when C:\S10Prov\isp\pipe.flg exists (persistent; isp-s10.ps1 pipe on / off) and no
+ *      run.flg, the run thread starts at device start as item 12's setup, then serves S10eCamera through the
+ *      S10EISP_SHM block (the S10eIspDma pool's last 64 KiB): Want -> arm the 3AA0, per real frame ISP0 into one of
+ *      3 YUY2 slots, published as Seq / Latest; the libraries' sensor requests (exposure / gain) go there too.
  * The result goes to the registry, value "Probe" under
  *   HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp
  * (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE: the only device key a UMDF driver may
@@ -66,8 +70,9 @@ int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c buil
 void isp_front_set_hw3aa(volatile void *va, int mode); /* 0.4/0.5/0.7: the REAL 3AA0 window (test_front.c) */
 int isp_front_irq(unsigned int chain, unsigned int id); /* 0.6/0.8: a real interrupt to the libraries' handler */
 void isp_front_set_hwisp(volatile void *va);  /* 0.8: the REAL ISPLP (ISP0) window (test_front.c) */
+void isp_front_set_pipe(void *shm);           /* 0.9: the camera pipeline's control block (test_front.c) */
 
-#define S10EISP_VERSION L"0.8"
+#define S10EISP_VERSION L"0.9"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -309,7 +314,7 @@ static void Trace(const char *fmt, ...)
     CloseHandle(f);
 }
 
-static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf, g_hwisp;
+static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf, g_hwisp, g_pipe;
 static volatile UCHAR *g_taa_va;   /* 0.4: 3AA0's user-mode mapping, set only after its ID read = Android's */
 
 /* 0.3.3: a CRT invalid-parameter report must not fast-fail Wudfhost (the default handler does: the 0.3.x front runs
@@ -424,7 +429,14 @@ static DWORD WINAPI FrontThread(LPVOID p)
     }
     /* the handle stays open for the process's lifetime: the libraries' pools live in the mapping */
     Trace("pool mapped: %llu MiB PA 0x%08llX va 0x%llX cache %u", m.Bytes >> 20, m.Pa, m.UserVa, m.Cache);
-    plat_win_dma_pool((void *)(ULONG_PTR)m.UserVa, m.Pa, m.Bytes);
+    if (g_pipe) {   /* 0.9: the last 64 KiB are the control block shared with S10eCamera, not the libraries' */
+        PUCHAR shm = (PUCHAR)(ULONG_PTR)m.UserVa + m.Bytes - S10EISP_SHM_BYTES;
+        RtlZeroMemory(shm, S10EISP_SHM_BYTES);
+        isp_front_set_pipe(shm);
+        plat_win_dma_pool((void *)(ULONG_PTR)m.UserVa, m.Pa, m.Bytes - S10EISP_SHM_BYTES);
+        Trace("pipe: control block at pool offset 0x%llX", m.Bytes - S10EISP_SHM_BYTES);
+    } else
+        plat_win_dma_pool((void *)(ULONG_PTR)m.UserVa, m.Pa, m.Bytes);
     plat_win_set_thread_fatal(1);
     _putenv_s("FRAMES", "30");   /* 0.3.4: the CRT's getenv() reads its own copy: SetEnvironmentVariable left 3 */
     _putenv_s("QUIET", "1");
@@ -451,7 +463,17 @@ static void MaybeFrontRun(void)
     char flg[64] = {0};
     DWORD n = 0;
     HANDLE f = CreateFileW(L"" ISP_DIR "\\run.flg", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    if (f == INVALID_HANDLE_VALUE) return;
+    if (f == INVALID_HANDLE_VALUE) {
+        /* 0.9: no one-off run requested: the camera pipeline, if switched on (pipe.flg stays) */
+        if (GetFileAttributesW(L"" ISP_DIR "\\pipe.flg") == INVALID_FILE_ATTRIBUTES) return;
+        g_pipe = g_hw3aa = g_hw3aashot = g_hw3aaotf = g_hwisp = TRUE;
+        Trace("pipe.flg found: camera pipeline");
+        if (InterlockedExchange(&g_front_started, 1)) return;
+        HANDLE pt = CreateThread(NULL, 1u << 20, FrontThread, NULL, 0, NULL);
+        Log(L"camera pipeline: %s", pt ? L"started (value FrontRun, " ISP_DIR L"\\out\\host.log)" : L"CreateThread failed");
+        if (pt) CloseHandle(pt);
+        return;
+    }
     ReadFile(f, flg, sizeof(flg) - 1, &n, NULL);
     CloseHandle(f);
     DeleteFileW(L"" ISP_DIR "\\run.flg");

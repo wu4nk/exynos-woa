@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.9.1) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.10) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -36,19 +36,22 @@
                               in the zip). Camera apps closed (the stream must be free).
                               v1.9 (S10eIsp 0.8 + UEFI v0.2.5): -Hw3aaOtfIsp = -Hw3aaOtf + ISP0 on the real ISPLP,
                               M2M per frame to a YUY2 buffer (out\otf-isp-yuy2-912x684.raw).
+      .\isp-s10.ps1 pipe      (v1.10, S10eIsp 0.9 + S10eIspDma 0.2 + S10eCamera 0.10) switch the CAMERA PIPELINE on:
+                              C:\S10Prov\isp\pipe.flg (kept: every device start / boot), restart the device, show
+                              its trace. The Windows camera then gets Samsung's ISP frames. -Off switches it off.
   The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
   S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
   Only "front -Hw3aa / -Hw3aaShot" write registers (3AA0, by Samsung's libraries' init steps).
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
-param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front')][string]$Action = 'status',
-      [switch]$NoDma, [switch]$Hw3aa, [switch]$Hw3aaShot, [switch]$Hw3aaOtf, [switch]$Hw3aaOtfIsp)
+param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front', 'pipe')][string]$Action = 'status',
+      [switch]$NoDma, [switch]$Hw3aa, [switch]$Hw3aaShot, [switch]$Hw3aaOtf, [switch]$Hw3aaOtfIsp, [switch]$Off)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.9.1  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.10  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -165,6 +168,29 @@ switch ($Action) {
             Compress-Archive -Force -Path "$isp\out\*" -DestinationPath 'C:\S10Prov\isp-front.zip'
             W 'zip: C:\S10Prov\isp-front.zip'
         } else { W "no $log" }
+        Status
+    }
+    'pipe' {
+        $isp = 'C:\S10Prov\isp'
+        if ($Off) {
+            Remove-Item "$isp\pipe.flg" -ErrorAction SilentlyContinue
+            W 'pipe.flg removed: the camera pipeline is off (CPU conversion in S10eCamera)'
+        } else {
+            $miss = @('fimc_is_lib.bin', 'fimc_is_rta.bin', 'setfile_3j1.bin') | Where-Object { -not (Test-Path "$isp\$_") }
+            if ($miss) { W "missing in ${isp}: $($miss -join ', ')"; break }
+            (icacls $isp /grant '*S-1-5-19:(OI)(CI)M' 2>&1) | Out-Null
+            Set-Content -Path "$isp\pipe.flg" -Value 'on' -Encoding ascii
+            W 'pipe.flg written: the camera pipeline starts with the device (and at every boot)'
+        }
+        Remove-Item "$isp\front-trace.txt" -ErrorAction SilentlyContinue
+        if (Test-Path "$isp\out") { Remove-Item -Recurse -Force "$isp\out" -ErrorAction SilentlyContinue }
+        $d = Dev
+        if (-not $d) { Status; break }
+        W "pnputil /restart-device $(@($d)[0].InstanceId)"
+        (pnputil /restart-device "$(@($d)[0].InstanceId)" 2>&1) | ForEach-Object { W "  $_" }
+        Start-Sleep -Seconds 8
+        if (Test-Path "$isp\front-trace.txt") { W 'front-trace.txt:'; Get-Content "$isp\front-trace.txt" | ForEach-Object { W "  $_" } }
+        if (Test-Path "$isp\out\host.log") { Get-Content "$isp\out\host.log" | Where-Object { $_ -match '^pipe:|ERROR\]\[|start_up' } | Select-Object -Last 15 | ForEach-Object { W "  $_" } }
         Status
     }
     'dmaremove' {

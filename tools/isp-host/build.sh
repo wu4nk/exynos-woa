@@ -6,6 +6,6 @@ set -e
 cd "$(dirname "$0")"
 ZIG=${ZIG:-zig}
 OUT=${1:-test_front}
-$ZIG cc -target aarch64-linux-musl -O2 -g -static -fno-omit-frame-pointer -Wall -Wextra -Wshadow \
+$ZIG cc -target aarch64-linux-musl -O2 -g -static -fno-omit-frame-pointer -Wall -Wextra -Wshadow -I../../drivers/S10eIspDma \
     -o "$OUT" isphost.c plat_posix.c mmio_trap.c test_front.c
 python3 -I check_tramp.py
