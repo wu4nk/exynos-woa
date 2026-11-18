@@ -40,6 +40,9 @@ extern int isp_trace, isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;
 static isp_host *H;
 static const char *OUTDIR;
 static int OTF;   /* S10eIsp 0.7 hw3aaotf: the sensor runs S10eCam's mode 11 (912 x 684 binned, 30 fps, PD_NONE) */
+static int FULLRES;   /* S10eIsp 0.10: the sensor runs mode 12 (3648 x 2736 @30, PD_NONE) - Android's own preview
+                         parameters below (sensor 3648x2736, crop 2944x2208, BDS 2432x1824), no PDAF VC */
+#define LIVE (OTF || FULLRES)   /* real frames over the OTF route */
 #include "S10eIspDmaIoctl.h"   /* S10EISP_SHM (drivers/S10eIspDma; include path set by the vcxproj / build scripts) */
 /* S10eIsp 0.9 camera pipeline: the control block shared with S10eCamera (the S10eIspDma pool's last 64 KiB) */
 static S10EISP_SHM *PIPE;
@@ -134,7 +137,7 @@ static u64 sensor_op(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64
     else if (IS("get_vc_dma_buf_info") && a2) {
         /* Android's preview "[IspObject_InitPdafLib] requestType" lines; other types INVALID (-1), GPL :2732 */
         struct vc_buf_info v = {-1, -1, 0, 0, 0};
-        if (OTF) { }                                            /* mode 11 is PD_NONE: no PDAF VC */
+        if (LIVE) { }                                           /* modes 11 / 12 are PD_NONE: no PDAF VC */
         else if ((u32)a1 == 1) v = (struct vc_buf_info){500, 102, 1756, 1, 1};
         if ((u32)a1 == 3) v = (struct vc_buf_info){501, 102, 39424, 1, 1};
         memcpy((void *)(uintptr_t)a2, &v, sizeof(v));
@@ -189,7 +192,13 @@ static volatile u32 *W3, *WI;
 static volatile u32 *HW3;
 static int HW3_SHOT;
 /* mode: 0 init only (0.4), 1 + shot F1 / stop (0.5), 2 = 0.7 OTF: + real frames from CSIS2 (S10eCam -Otf) */
-void isp_front_set_hw3aa(volatile void *va, int mode) { HW3 = (volatile u32 *)va; HW3_SHOT = mode >= 1; OTF = mode == 2; }
+void isp_front_set_hw3aa(volatile void *va, int mode)   /* 3 = 0.10 full-resolution OTF */
+{
+    HW3 = (volatile u32 *)va;
+    HW3_SHOT = mode >= 1;
+    OTF = mode == 2;
+    FULLRES = mode == 3;
+}
 /* S10eIsp 0.8: the REAL ISPLP (ISP0) window too (only with OTF): ISP0 M2M per 3AA frame, YUV DMA out */
 static volatile u32 *HWI;
 void isp_front_set_hwisp(volatile void *va) { HWI = (volatile u32 *)va; }
@@ -400,7 +409,9 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
     PUT(PIO, 1120, 0, 1);
     PCALL("ISP set_param", FNI[SET_PARAM], oi, (u64)(uintptr_t)PIO);
     m->State = 1;
-    pipe_status("pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), waiting for S10eCamera");
+    snprintf(b, sizeof(b), "pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), %ux%u YUY2 for sensor "
+             "mode %s, waiting for S10eCamera", aw, ah, FULLRES ? "12 (3648x2736)" : "11 (912x684)");
+    pipe_status(b);
     for (;;) {
         long cam_stage = m->CamStage;
         while (!m->Want) plat_sleep_us(20000);
@@ -572,6 +583,8 @@ int main(int argc, char **argv)
         if (getenv("HW3AA_PIPE")) PIPE = zalloc(sizeof(S10EISP_SHM));   /* waits for Want forever: run with timeout */
         HW3_SHOT = getenv("HW3AA_SHOT") != NULL || getenv("HW3AA_OTF") != NULL;
         OTF = getenv("HW3AA_OTF") != NULL;
+        FULLRES = getenv("HW3AA_FULL") != NULL;
+        if (FULLRES) { OTF = 0; HW3_SHOT = 1; }
     }
 #endif
     if (HW3) {
@@ -586,7 +599,7 @@ int main(int argc, char **argv)
         plat_log(b);
         T3 = (void *)HW3;            /* the reset model below keeps polling the fake W3 (window 0): nothing is
                                         written to the hardware but by the libraries */
-        if (HWI && OTF) {
+        if (HWI && LIVE) {
             snprintf(b, sizeof(b), "hwisp: REAL ISPLP window %p: +0xF0 0x%08x +0xF4 0x%08x", (void *)HWI, HWI[0xF0 / 4],
                      HWI[0xF4 / 4]);
             plat_log(b);
@@ -616,7 +629,7 @@ int main(int argc, char **argv)
     snprintf(b, sizeof(b), "3AA object = %s", isp_img(H, r64(obj3), (char[48]){0}, 48));
     plat_log(b);
     STEP("ISP chain_create", FNI[CHAIN_CREATE], 0, wi, 0, cb);
-    if (HWI && OTF) hw_isp_ready = 1;   /* 0.8: the libraries' ISP0 handlers (ids 6 / 7) exist now */
+    if (HWI && LIVE) hw_isp_ready = 1;   /* 0.8: the libraries' ISP0 handlers (ids 6 / 7) exist now */
     STEP("ISP set_system_config", FNI[SET_SYSTEM_CONFIG], cfg);
     u64 obji = (u64)(uintptr_t)zalloc(8);
     STEP("ISP object_create", FNI[OBJECT_CREATE], obji, (38u << 16) | (1u << 12), hw);   /* 0x00261000 = M2M */
@@ -710,7 +723,7 @@ int main(int argc, char **argv)
     unsigned char *PIO = NULL;
     void *k3 = NULL;
     u32 d3 = 0;
-    if (HWI && OTF) {
+    if (HWI && LIVE) {
         PIO = zalloc(1136);
         isp_dma_alloc(H, aw * ah * 2, &k3, &d3);
         memset(k3, 0xEE, aw * ah * 2);
@@ -735,7 +748,7 @@ int main(int argc, char **argv)
     plat_log(b);
     u64 PP = (u64)(uintptr_t)P, SHP = (u64)(uintptr_t)SH;
     if (PIO) memcpy(PIO, &PP, 8);                           /* taa_param */
-    if (PIPE && HW3 && HWI && OTF && PIO) {   /* 0.9: S10eIsp's camera pipeline - never returns */
+    if (PIPE && HW3 && HWI && LIVE && PIO) {   /* 0.9: S10eIsp's camera pipeline - never returns */
         pipe_run(lf, P, PP, SHP, PIO, aw, ah, r64(obj3), r64(obji));
         return 0;
     }

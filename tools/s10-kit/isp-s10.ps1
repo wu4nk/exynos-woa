@@ -45,13 +45,13 @@
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
 param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front', 'pipe')][string]$Action = 'status',
-      [switch]$NoDma, [switch]$Hw3aa, [switch]$Hw3aaShot, [switch]$Hw3aaOtf, [switch]$Hw3aaOtfIsp, [switch]$Off)
+      [switch]$NoDma, [switch]$Hw3aa, [switch]$Hw3aaShot, [switch]$Hw3aaOtf, [switch]$Hw3aaOtfIsp, [switch]$Off, [switch]$Bin)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.10  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.11  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -179,8 +179,8 @@ switch ($Action) {
             $miss = @('fimc_is_lib.bin', 'fimc_is_rta.bin', 'setfile_3j1.bin') | Where-Object { -not (Test-Path "$isp\$_") }
             if ($miss) { W "missing in ${isp}: $($miss -join ', ')"; break }
             (icacls $isp /grant '*S-1-5-19:(OI)(CI)M' 2>&1) | Out-Null
-            Set-Content -Path "$isp\pipe.flg" -Value 'on' -Encoding ascii
-            W 'pipe.flg written: the camera pipeline starts with the device (and at every boot)'
+            Set-Content -Path "$isp\pipe.flg" -Value $(if ($Bin) { 'on bin' } else { 'on' }) -Encoding ascii
+            W "pipe.flg written ($(Get-Content "$isp\pipe.flg")): the camera pipeline starts with the device (and at every boot); full sensor unless -Bin"
         }
         Remove-Item "$isp\front-trace.txt" -ErrorAction SilentlyContinue
         if (Test-Path "$isp\out") { Remove-Item -Recurse -Force "$isp\out" -ErrorAction SilentlyContinue }

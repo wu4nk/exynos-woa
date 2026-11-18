@@ -56,6 +56,14 @@ typedef struct _S10ECAM_SHOT_IN {
 #define S10ECAM_SHOT_OTF      0x10u  /* 0.14: also route CSIS2's OTF output to 3AA0 (ISPPRE sysreg: SC_CON0 PDP0 <- CSIS2,
                                        PDP_IN_EN CORE0_IN_CSIS2, SC_CON14 3AA0 <- PDP0; K fimc-is-hw-chain.c v7_0_0
                                        camif_fix_up / pdp_in_enable / ischain_cfg). Found values back at teardown. */
+#define S10ECAM_SHOT_NODMA    0x20u  /* 0.15: no CSIS VC0 DMA (no frame buffers at all): the frame goes only over the OTF
+                                       route (with S10ECAM_SHOT_OTF); stream frames are counted from CSIS2's frame-end
+                                       interrupt status instead of a buffer's canary */
+#define S10ECAM_SHOT_FULL     0x40u  /* 0.15: sensor mode 12 = 3648 x 2736 @30, no PDAF (setfile A
+                                       3648x2736_30fps_nonPD): the full sensor; only with S10ECAM_SHOT_NODMA (20 MB a
+                                       frame would not fit the ring) */
+#define S10ECAM_FULL_W        3648u
+#define S10ECAM_FULL_H        2736u
 #define S10ECAM_BIN_W         912u
 #define S10ECAM_BIN_H         684u
 #define S10ECAM_BIN_STRIDE    (S10ECAM_BIN_W * 2u)

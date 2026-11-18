@@ -14,7 +14,8 @@ import re, sys
 
 TABLES = [('S10eCam3j1Global', 'sensor_3j1_setfile_A_Global'),
           ('S10eCam3j1Mode1824', 'sensor_3j1_setfile_A_1824x1368_30fps'),
-          ('S10eCam3j1Mode912', 'sensor_3j1_setfile_A_912x684_120fps')]     # mode 11 (2026-11-17)
+          ('S10eCam3j1Mode912', 'sensor_3j1_setfile_A_912x684_120fps'),     # mode 11 (2026-11-17)
+          ('S10eCam3j1Mode3648', 'sensor_3j1_setfile_A_3648x2736_30fps_nonPD')]   # mode 12, full res, no PDAF (2026-11-18)
 
 src = open(sys.argv[1]).read()
 

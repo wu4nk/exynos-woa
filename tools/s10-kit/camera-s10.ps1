@@ -18,7 +18,8 @@
 param([Parameter(Position = 0)][ValidateSet('install', 'status', 'set', 'remove')][string]$Action = 'status',
       [ValidateSet(-1, 0, 90, 180, 270)][int]$Rotation = -1, [ValidateSet(-1, 0, 1)][int]$Mirror = -1,
       [ValidateSet(-1, 0, 1)][int]$RingWc = -1, [ValidateSet(-1, 0, 1)][int]$RingKeep = -1,
-      [ValidateSet(-1, 0, 1, 2)][int]$SensorBin = -1, [ValidateSet(-1, 30, 60)][int]$FrameRate = -1)
+      [ValidateSet(-1, 0, 1, 2)][int]$SensorBin = -1, [ValidateSet(-1, 30, 60)][int]$FrameRate = -1,
+      [ValidateSet(-1, 0, 1)][int]$Resolution = -1, [ValidateSet(-1, 0, 90, 180, 270)][int]$DriverRotation = -1)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\camera-s10-$Action.txt"
 $HwId = 'ROOT\S10eCamera'
@@ -98,7 +99,7 @@ function Show-Status {
   $cams = Get-PnpDevice -Class Camera -PresentOnly -ErrorAction SilentlyContinue
   W ("cameras present: " + (($cams | ForEach-Object { $_.FriendlyName }) -join ', '))
   $pv = Get-ItemProperty $Params -ErrorAction SilentlyContinue
-  if ($pv) { W ("settings: Rotation {0}  Mirror {1}  RingWc {2}  RingKeep {3}  SensorBin {4}  FrameRate {5}  (driver defaults when absent: 270 / 1 / 1 / 1 / 1 / 30)" -f $pv.Rotation, $pv.Mirror, $pv.RingWc, $pv.RingKeep, $pv.SensorBin, $pv.FrameRate) }
+  if ($pv) { W ("settings: DriverRotation {0}  Mirror {1}  RingWc {2}  RingKeep {3}  SensorBin {4}  FrameRate {5}  Resolution {6}  IspPipe {7}  (defaults when absent: 0 / 1 / 1 / 1 / 1 / 30 / 1 / 1)" -f $pv.DriverRotation, $pv.Mirror, $pv.RingWc, $pv.RingKeep, $pv.SensorBin, $pv.FrameRate, $pv.Resolution, $pv.IspPipe) }
   if (Test-Path 'C:\S10Prov\camera-avs.txt') {
     W '--- C:\S10Prov\camera-avs.txt (last 60 lines) ---'
     Get-Content 'C:\S10Prov\camera-avs.txt' -Tail 60 | ForEach-Object { W $_ }
@@ -138,6 +139,8 @@ switch ($Action) {
     if ($RingKeep -ge 0) { Set-ItemProperty $Params RingKeep $RingKeep -Type DWord }   # v1.2, S10eCamera 0.5+
     if ($SensorBin -ge 0) { Set-ItemProperty $Params SensorBin $SensorBin -Type DWord }  # v1.4, S10eCamera 0.6+
     if ($FrameRate -ge 0) { Set-ItemProperty $Params FrameRate $FrameRate -Type DWord }  # v1.5, S10eCamera 0.9+
+    if ($Resolution -ge 0) { Set-ItemProperty $Params Resolution $Resolution -Type DWord }  # v1.6, S10eCamera 0.12+: 1 full (ISP), 0 binned
+    if ($DriverRotation -ge 0) { Set-ItemProperty $Params DriverRotation $DriverRotation -Type DWord }  # v1.6, S10eCamera 0.11+
     W 'restarting the camera device so the driver reads them (close the Camera app first)'
     Restart-Cam
     Show-Status

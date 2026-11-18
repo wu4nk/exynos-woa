@@ -1247,3 +1247,24 @@ Plan (each a task, each waits for the result before it):
   node ... AddReg directive during the AddInterface directive". 90 CCW = the 270 CW the driver did. New setting
   DriverRotation (default 0) replaces Rotation (NOCLOBBER kept old installs at 270 - so the old name is no longer
   read); Mirror becomes a vertical flip in sensor orientation (= left-right after the pipeline's rotation).
+
+## Full resolution through Samsung's ISP (2026-11-18 23:40) - user: "why so low, push it to the max"
+- S10eCam 0.15: S10eCam3j1.h + mode 12 (setfile A 3648x2736_30fps_nonPD, 359 writes; gen-3j1-setfile.py extended);
+  gModes[2] = mode 12 (W 3648, H 2736, no PDAF VC); flags S10ECAM_SHOT_FULL (mode 12, only with NODMA) and
+  S10ECAM_SHOT_NODMA (stream only): no ring, no CSIS VC0 DMA programmed at all - the image goes only over the OTF
+  route; the stream thread counts frames from CSIS2 INT_SRC0 b20 (VC0 frame end) and calls OnFrame there.
+- S10eIsp 0.10: pipe.flg "on" (default) = full sensor: isp_front_set_hw3aa mode 3 = FULLRES: the sensor answers of
+  the original Android run (cur size 3648x2736, pclk 807.72 MHz / LLP 9384 / FLL 2864 = GPL pllinfo
+  3648x2736_30fps, which the nonPD setfile uses too) without PDAF VCs; params = Android's own preview (otf_input
+  3648x2736 crop 352,264 2944x2208, before_bds 2944x2208, after_bds 2432x1824); ISP0 2432x1824 -> YUY2 slots
+  (3 x 8.9 MB). "on bin" = 0.9's 912x684. Build machine (HW3AA_FULL + PIPE): "pipe: ready ... 2432x1824 YUY2 for
+  sensor mode 12", no step errors.
+- S10eCamera 0.12: setting Resolution (default 1): output 2432x1824 in sensor orientation (FS rotates), sensor
+  flags FULL | NODMA (+ OTF once armed); requires the pipeline (same size in the SHM) - else the start fails with a
+  report line (no CPU path at full resolution); runtime gSrcW/H, frame byte sizes, range SampleSize / biSizeImage,
+  framing max = a 2432x1824 YUY2 frame; AE lines for mode 12 = us x 807.72 MHz / 9384. PipeProcess now timed (the
+  stop line's conversion avg / max). Resolution 0 = 0.11.
+- Expected costs (not measured yet): ISP0 at 4.4 MP vs 15-18 ms at 0.6 MP; S10eCamera copy + NV12 of 4.4 MP from
+  write-combined memory. Frames ISP0 cannot take are skipped by the pipeline (0.9.2 gating), so the rate may drop
+  below 30 fps; the stop line and the pipe's session line will tell.
+- isp-s10.ps1 v1.11 pipe [-Bin]; camera-s10.ps1 set -Resolution 0/1 -DriverRotation.

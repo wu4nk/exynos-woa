@@ -1133,11 +1133,14 @@ typedef struct _SHOT_MODE {
     ULONG             PdafLines;                         /* VC1 (PD_MOD3) lines, 0 = no PDAF VC */
 } SHOT_MODE;
 
-static const SHOT_MODE gModes[2] = {
+static const SHOT_MODE gModes[3] = {
     { S10ECAM_SHOT_W, S10ECAM_SHOT_H, S10ECAM_SHOT_STRIDE, S10ECAM_SHOT_BYTES, S10eCam3j1Mode1824,
       RTL_NUMBER_OF(S10eCam3j1Mode1824), "mode 8 1824x1368@30", 0, 342 },
     { S10ECAM_BIN_W, S10ECAM_BIN_H, S10ECAM_BIN_STRIDE, S10ECAM_BIN_BYTES, S10eCam3j1Mode912,
       RTL_NUMBER_OF(S10eCam3j1Mode912), "mode 11 912x684 (120 fps setfile, FLL 2994 = 30 fps)", 2994, 0 },
+    /* 0.15: mode 12, the full sensor, PD_NONE (fimc-is-device-module-3j1.c cfg #12); OTF only (S10ECAM_SHOT_NODMA) */
+    { S10ECAM_FULL_W, S10ECAM_FULL_H, S10ECAM_FULL_W * 2u, S10ECAM_FULL_W * 2u * S10ECAM_FULL_H, S10eCam3j1Mode3648,
+      RTL_NUMBER_OF(S10eCam3j1Mode3648), "mode 12 3648x2736@30 (nonPD)", 0, 0 },
 };
 
 /* 0.8: a frame ring allocated ONCE by a long-lived owner and lent to every stream. S10eCamera (0.4) fills it at
@@ -1349,7 +1352,11 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
 
     RtlZeroMemory(&x, sizeof(x));
     x.NBuf = nbuf;
-    x.Mode = (in->Flags & S10ECAM_SHOT_BIN) ? &gModes[1] : &gModes[0];
+    x.Mode = (in->Flags & S10ECAM_SHOT_FULL) ? &gModes[2] : (in->Flags & S10ECAM_SHOT_BIN) ? &gModes[1] : &gModes[0];
+    if (((in->Flags & S10ECAM_SHOT_FULL) && !(in->Flags & S10ECAM_SHOT_NODMA)) || ((in->Flags & S10ECAM_SHOT_NODMA) && nbuf == 1)) {
+        Log(r, "  refused: the full mode only without DMA (S10ECAM_SHOT_NODMA), and no-DMA only for a stream\r\n");
+        return STATUS_INVALID_PARAMETER;
+    }
     x.RingBytes = x.Mode->Bytes + 0x10000u;
 
     /* --- preconditions: the domain and the clocks stage 3 saw, mapped */
@@ -1392,7 +1399,9 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     lo.QuadPart = 0;
     hi.QuadPart = 0xFFFFFFFFLL;
     bnd.QuadPart = 0;
-    if (nbuf == 1) {
+    if (in->Flags & S10ECAM_SHOT_NODMA) {
+        Log(r, "  no frame buffers: OTF only (S10ECAM_SHOT_NODMA)\r\n");
+    } else if (nbuf == 1) {
         x.Buf = (PUCHAR)MmAllocateContiguousMemorySpecifyCache(SHOT_ALLOC, lo, hi, bnd, x.Cache);
         if (x.Buf == NULL) {
             Log(r, "  no %u MiB contiguous below 4 GB\r\n", SHOT_ALLOC >> 20);
@@ -1532,43 +1541,47 @@ static NTSTATUS ShotStart(MAPS *m, FOUND *f, SHOT *px, const S10ECAM_SHOT_IN *in
     W32(x.Csis, CSIS_INT_SRC1, 0xFFFFFFFFu);
     if (phaseMax == 3) { Log(r, "  phase limit 3 (CSIS2 configured, not enabled): stopping\r\n"); return s; }
 
-    /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address. The common block 0x170E0000
-       was never read before this phase (stage 3 did not): its first read is here, after phase 3, so -Phase 3
-       vs 4 tells it apart if it aborts like the SysMMU did. */
-    x.CdmaSaved[0] = R32(x.Cdma, CDMA_ARB_PRI);
-    x.CdmaSaved[1] = R32(x.Cdma, CDMA_CTRL);
-    x.CdmaSaved[2] = R32(x.Cdma, CDMA_SRAM_SPLIT);
-    x.CdmaSaved[3] = R32(x.Cdma, CDMA_MATRIX);
-    Log(r, "== DMA (common found %08X %08X %08X %08X)\r\n", x.CdmaSaved[0], x.CdmaSaved[1], x.CdmaSaved[2],
-        x.CdmaSaved[3]);
-    W32(x.Cdma, CDMA_ARB_PRI, (x.CdmaSaved[0] & ~0xFu) | (1u << 2) | 2u);
-    W32(x.Cdma, CDMA_CTRL, x.CdmaSaved[1] | (1u << 1));
-    W32(x.Cdma, CDMA_SRAM_SPLIT, (x.CdmaSaved[2] & ~((0xFFFu << 16) | 0xFFFu)) | (0x480u << 16) | 0x480u);
-    W32(x.Cdma, CDMA_MATRIX, x.CdmaSaved[3] & ~0x1Fu);
-    x.DmaOn = TRUE;
-    W32(x.Dma, DMA0_FMT, R32(x.Dma, DMA0_FMT) & ~0x3Fu);                   /* RAW10, NORMAL, legacy, 2D */
-    W32(x.Dma, DMA0_RESOL, (R32(x.Dma, DMA0_RESOL) & ~DMA0_RESOL_MASK) | x.Mode->W);
-    W32(x.Dma, DMA0_FCNTSEQ, 0);
-    W32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT, R32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT) & ~0x3u);
-    W32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL, R32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL) & ~0x1u);   /* input path OTF */
-    W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) & ~DMA0_UPDT_FRAMEPTR(0));
-    if (nbuf == 1) {
-        W32(x.Dma, DMA0_ADDR1, (ULONG)x.Pa.QuadPart);
-        W32(x.Dma, DMA0_FCNTSEQ, R32(x.Dma, DMA0_FCNTSEQ) | 1u);
+    if (in->Flags & S10ECAM_SHOT_NODMA) {
+        Log(r, "== DMA: not used (S10ECAM_SHOT_NODMA: the OTF route only)\r\n");
     } else {
-        /* frame pointer n (0..31) -> ADDR(n + 1) = Ring[n % 3]; every pointer armed. The stream thread finds the
-           finished buffer by its canary, not by the pointer (FCNTSEQ's exact semantics are not documented here). */
-        for (i = 0; i < 32; i++)
-            W32(x.Dma, DMA0_ADDR1 + 4 * i, (ULONG)x.RingPa[i % SHOT_RING].QuadPart);
-        W32(x.Dma, DMA0_FCNTSEQ, 0xFFFFFFFFu);
+        /* --- DMA: common (csi_hw_s_dma_common_dynamic), VC0 legacy RAW10 2D, one address. The common block 0x170E0000
+           was never read before this phase (stage 3 did not): its first read is here, after phase 3, so -Phase 3
+           vs 4 tells it apart if it aborts like the SysMMU did. */
+        x.CdmaSaved[0] = R32(x.Cdma, CDMA_ARB_PRI);
+        x.CdmaSaved[1] = R32(x.Cdma, CDMA_CTRL);
+        x.CdmaSaved[2] = R32(x.Cdma, CDMA_SRAM_SPLIT);
+        x.CdmaSaved[3] = R32(x.Cdma, CDMA_MATRIX);
+        Log(r, "== DMA (common found %08X %08X %08X %08X)\r\n", x.CdmaSaved[0], x.CdmaSaved[1], x.CdmaSaved[2],
+            x.CdmaSaved[3]);
+        W32(x.Cdma, CDMA_ARB_PRI, (x.CdmaSaved[0] & ~0xFu) | (1u << 2) | 2u);
+        W32(x.Cdma, CDMA_CTRL, x.CdmaSaved[1] | (1u << 1));
+        W32(x.Cdma, CDMA_SRAM_SPLIT, (x.CdmaSaved[2] & ~((0xFFFu << 16) | 0xFFFu)) | (0x480u << 16) | 0x480u);
+        W32(x.Cdma, CDMA_MATRIX, x.CdmaSaved[3] & ~0x1Fu);
+        x.DmaOn = TRUE;
+        W32(x.Dma, DMA0_FMT, R32(x.Dma, DMA0_FMT) & ~0x3Fu);                   /* RAW10, NORMAL, legacy, 2D */
+        W32(x.Dma, DMA0_RESOL, (R32(x.Dma, DMA0_RESOL) & ~DMA0_RESOL_MASK) | x.Mode->W);
+        W32(x.Dma, DMA0_FCNTSEQ, 0);
+        W32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT, R32(x.Dma, DMAC_BASE + DMAC_OTF_FORMAT) & ~0x3u);
+        W32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL, R32(x.Dma, DMAC_BASE + DMAC_DATA_CTRL) & ~0x1u);   /* input path OTF */
+        W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) & ~DMA0_UPDT_FRAMEPTR(0));
+        if (nbuf == 1) {
+            W32(x.Dma, DMA0_ADDR1, (ULONG)x.Pa.QuadPart);
+            W32(x.Dma, DMA0_FCNTSEQ, R32(x.Dma, DMA0_FCNTSEQ) | 1u);
+        } else {
+            /* frame pointer n (0..31) -> ADDR(n + 1) = Ring[n % 3]; every pointer armed. The stream thread finds the
+               finished buffer by its canary, not by the pointer (FCNTSEQ's exact semantics are not documented here). */
+            for (i = 0; i < 32; i++)
+                W32(x.Dma, DMA0_ADDR1 + 4 * i, (ULONG)x.RingPa[i % SHOT_RING].QuadPart);
+            W32(x.Dma, DMA0_FCNTSEQ, 0xFFFFFFFFu);
+        }
+        W32(x.Dma, DMAC_BASE + DMAC_INT_MASK, CSIS_DMA_IRQ_MASK_DBG);
+        W32(x.Dma, DMAC_BASE + DMAC_INT_SRC, 0xFFFFFFFFu);
+        W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) | DMA0_EN | DMA0_UPDT_PTR_EN);
+        Log(r, "  DMA0 CTRL %08X FMT %08X ADDR1 %08X RESOL %08X FCNTSEQ %08X; common %08X %08X %08X %08X\r\n",
+            R32(x.Dma, DMA0_CTRL), R32(x.Dma, DMA0_FMT), R32(x.Dma, DMA0_ADDR1), R32(x.Dma, DMA0_RESOL),
+            R32(x.Dma, DMA0_FCNTSEQ), R32(x.Cdma, CDMA_ARB_PRI), R32(x.Cdma, CDMA_CTRL), R32(x.Cdma, CDMA_SRAM_SPLIT),
+            R32(x.Cdma, CDMA_MATRIX));
     }
-    W32(x.Dma, DMAC_BASE + DMAC_INT_MASK, CSIS_DMA_IRQ_MASK_DBG);
-    W32(x.Dma, DMAC_BASE + DMAC_INT_SRC, 0xFFFFFFFFu);
-    W32(x.Dma, DMA0_CTRL, R32(x.Dma, DMA0_CTRL) | DMA0_EN | DMA0_UPDT_PTR_EN);
-    Log(r, "  DMA0 CTRL %08X FMT %08X ADDR1 %08X RESOL %08X FCNTSEQ %08X; common %08X %08X %08X %08X\r\n",
-        R32(x.Dma, DMA0_CTRL), R32(x.Dma, DMA0_FMT), R32(x.Dma, DMA0_ADDR1), R32(x.Dma, DMA0_RESOL),
-        R32(x.Dma, DMA0_FCNTSEQ), R32(x.Cdma, CDMA_ARB_PRI), R32(x.Cdma, CDMA_CTRL), R32(x.Cdma, CDMA_SRAM_SPLIT),
-        R32(x.Cdma, CDMA_MATRIX));
     if (phaseMax == 4) { Log(r, "  phase limit 4 (DMA armed, CSIS2 not enabled, no stream): stopping\r\n"); return s; }
 
     /* --- 0.14: CSIS2 -> PDP0 -> 3AA0 OTF route (S10eIsp's libraries run the 3AA0) */
@@ -1684,6 +1697,7 @@ typedef struct _STREAM {
     volatile LONG  Rearms, Stalls;
     volatile LONG  Src0, DmaSrc;
     VOID         (*OnFrame)(PVOID Ctx);          /* called from the poll thread (PASSIVE) after each finished frame */
+    BOOLEAN        NoDma;                        /* 0.15: S10ECAM_SHOT_NODMA: no ring, frames from INT_SRC0 */
     PVOID          OnFrameCtx;
 } STREAM;
 
@@ -1707,6 +1721,16 @@ static VOID StreamThread(PVOID Ctx)
     while (KeWaitForSingleObject(&gS.Stop, Executive, KernelMode, FALSE, &t) == STATUS_TIMEOUT) {
         v = R32(gS.x.Csis, CSIS_INT_SRC0);
         if (v) { W32(gS.x.Csis, CSIS_INT_SRC0, v); InterlockedOr(&gS.Src0, (LONG)v); }
+        if (gS.NoDma) {                                  /* 0.15: frames = CSIS2 VC0 frame ends (INT_SRC0 b20) */
+            if (v & (1u << 20)) {
+                InterlockedExchange64(&gS.LatestTime, (LONG64)KeQueryInterruptTime());
+                InterlockedIncrement(&gS.Seq);
+                lastDone = (LONG64)KeQueryInterruptTime();
+                if (gS.OnFrame != NULL)
+                    gS.OnFrame(gS.OnFrameCtx);
+            }
+            continue;
+        }
         v = R32(gS.x.Dma, DMAC_BASE + DMAC_INT_SRC);
         if (v) { W32(gS.x.Dma, DMAC_BASE + DMAC_INT_SRC, v); InterlockedOr(&gS.DmaSrc, (LONG)v); }
         /* scanned from the expected next one around the ring: with a 2 ms poll and 33 ms frames two finishing in
@@ -1784,7 +1808,8 @@ static NTSTATUS StreamStart(const S10ECAM_SHOT_IN *in, PFILE_OBJECT Owner, VOID 
         StreamStop(r);
         return s;
     }
-    for (i = 0; i < SHOT_RING; i++) {
+    gS.NoDma = (in->Flags & S10ECAM_SHOT_NODMA) ? TRUE : FALSE;
+    for (i = 0; i < SHOT_RING && !gS.NoDma; i++) {
         Canary(i)[0] = SHOT_CANARY;
         Canary(i)[1] = SHOT_CANARY;
     }
@@ -1902,7 +1927,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.14 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.15 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1972,7 +1997,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.14 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.15 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -2006,7 +2031,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.14 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.15 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

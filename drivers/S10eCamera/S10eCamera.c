@@ -54,7 +54,12 @@
  *   stream/camera-device-orientation: "The camera pipeline will correct the resulting video frame by counter rotating
  *   the video by the same amount counter clockwise"; 90 CCW = the 270 CW 0.2-0.10 did here). The driver's per-pixel
  *   rotated writes (cache-hostile) are gone. Setting DriverRotation (default 0) replaces Rotation (no longer read:
- *   any value but 0 rotates twice). Mirror (left-right of the upright picture) is now a vertical flip here. *
+ *   any value but 0 rotates twice). Mirror (left-right of the upright picture) is now a vertical flip here.
+ * 0.12: setting Resolution (default 1 = FULL): with S10eIsp 0.10's full-sensor pipeline the sensor runs mode 12
+ *   (3648 x 2736, S10eCam 0.15 S10ECAM_SHOT_FULL) over the OTF route only (S10ECAM_SHOT_NODMA: no raw ring, frames
+ *   counted from CSIS2's frame end), and the picture is ISP0's 2432 x 1824 (Android's own preview size: crop
+ *   2944 x 2208, Bayer downscaled by the 3AA) - 7x the pixels of the binned 912 x 684. The full resolution has no CPU
+ *   path: without the pipeline the start fails. Resolution 0 = 0.11 (912 x 684, CPU fallback). *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
  * SPDX-License-Identifier: GPL-2.0
@@ -75,6 +80,10 @@
 #define CAM_SH          (S10ECAM_SHOT_H / 2)             /* 684 */
 #define CAM_BYTES       (CAM_SW * CAM_SH * 2)            /* YUY2: 2 bytes a pixel, whichever way round (the larger) */
 #define CAM_BYTES_NV12  (CAM_SW * CAM_SH * 3 / 2)        /* NV12: Y plane + half-height interleaved UV plane */
+#define CAM_FULLW       2432u                            /* 0.12: ISP0's output with the full sensor (Android preview) */
+#define CAM_FULLH       1824u
+#define CAM_MAXW        CAM_FULLW
+#define CAM_MAX_BYTES   (CAM_FULLW * CAM_FULLH * 2)
 #define CAM_INTERVAL    333333                           /* 100 ns units: 30 fps (the ranges' built-in value) */
 #define CAM_AE_TARGET   110u                             /* black-subtracted green mean (of 959): mid grey after gamma */
 #define CAM_TAG         'mCeS'
@@ -105,7 +114,10 @@ typedef struct _CAMPIN {
 
 static FAST_MUTEX gCamMutex;                             /* Process vs start / stop (the ring must not go away) */
 static UCHAR      gRows[4 * S10ECAM_SHOT_STRIDE];        /* 4 raw lines (0.6 binned: 4 slots of 912), cached */
-static UCHAR      gY[2][CAM_SW], gU[2][CAM_SW], gV[2][CAM_SW];   /* 2 binned rows as Y, U, V (under gCamMutex) */
+static UCHAR      gY[2][CAM_MAXW], gU[2][CAM_MAXW], gV[2][CAM_MAXW];   /* 2 source rows as Y, U, V (under gCamMutex) */
+static ULONG      gSrcW = CAM_SW, gSrcH = CAM_SH;        /* 0.12: the source picture (sensor orientation) */
+static ULONG      gOutBytes = CAM_BYTES, gOutBytesNv12 = CAM_BYTES_NV12;   /* 0.12: a frame of the configured size */
+static ULONG      gFull = 1;                             /* 0.12: setting Resolution */
 static CHAR       gLog[8192];                            /* the engine's report of the last start / stop */
 static ULONG      gRot = 0, gMirror, gRingWc = 1, gRingKeep = 1, gBin = 1;   /* settings (Parameters), read at device start */
 static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
@@ -183,9 +195,9 @@ static UCHAR Clamp8(LONG v)
 static VOID MapOut(ULONG sx, ULONG sy, ULONG *ox, ULONG *oy)
 {
     switch (gRot) {
-    case 90:  *ox = CAM_SH - 1 - sy; *oy = sx;               break;
-    case 180: *ox = CAM_SW - 1 - sx; *oy = CAM_SH - 1 - sy;  break;
-    case 270: *ox = sy;              *oy = CAM_SW - 1 - sx;  break;
+    case 90:  *ox = gSrcH - 1 - sy; *oy = sx;               break;
+    case 180: *ox = gSrcW - 1 - sx; *oy = gSrcH - 1 - sy;   break;
+    case 270: *ox = sy;             *oy = gSrcW - 1 - sx;   break;
     default:  *ox = sx;              *oy = sy;               break;
     }
     if (gMirror && gRot == 0)                            /* 0.11: the pipeline rotates 90 CCW afterwards: a left-right
@@ -212,7 +224,7 @@ static VOID EmitRows(PUCHAR Out, ULONG j)
         step = ((LONG_PTR)oy1 - (LONG_PTR)oy0) * (LONG_PTR)gOutW * 2;
         p = Out + ((SIZE_T)oy0 * gOutW + (ox0 & ~1u)) * 2;
         ia = (ox0 & 1u) * 2;                             /* row 2j's Y slot; row 2j+1 (ox0 ^ 1) takes the other */
-        for (x = 0; x < CAM_SW; x++, p += step) {
+        for (x = 0; x < gSrcW; x++, p += step) {
             p[ia] = gY[0][x];
             p[ia ^ 2u] = gY[1][x];
             p[1] = (UCHAR)((gU[0][x] + gU[1][x] + 1u) / 2u);
@@ -226,7 +238,7 @@ static VOID EmitRows(PUCHAR Out, ULONG j)
         step = ((LONG_PTR)ox1 - (LONG_PTR)ox0) * 4;      /* one pair = 2 pixels = 4 bytes, either direction */
         p = Out + ((SIZE_T)oy0 * gOutW + (ox0 & ~1u)) * 2;
         ia = (ox0 & 1u) * 2;                             /* x even's Y slot; x + 1 takes the other */
-        for (x = 0; x < CAM_SW; x += 2, p += step) {
+        for (x = 0; x < gSrcW; x += 2, p += step) {
             p[ia] = gY[k][x];
             p[ia ^ 2u] = gY[k][x + 1];
             p[1] = (UCHAR)((gU[k][x] + gU[k][x + 1] + 1u) / 2u);
@@ -249,7 +261,7 @@ static VOID EmitRowsNv12(PUCHAR Out, ULONG j)
         MapOut(1, 2 * j + k, &ox1, &oy1);
         step = ((LONG_PTR)oy1 - (LONG_PTR)oy0) * (LONG_PTR)gOutW + ((LONG_PTR)ox1 - (LONG_PTR)ox0);
         p = Out + (SIZE_T)oy0 * gOutW + ox0;
-        for (x = 0; x < CAM_SW; x++, p += step)
+        for (x = 0; x < gSrcW; x++, p += step)
             *p = gY[k][x];
     }
     /* UV: block x's top-left = min of MapOut(x, 2j) and MapOut(x+1, 2j+1); linear in x too (blocks 0 and 2) */
@@ -263,7 +275,7 @@ static VOID EmitRowsNv12(PUCHAR Out, ULONG j)
     by1 = oy0 < oy1 ? oy0 : oy1;
     step = (((LONG_PTR)by1 - (LONG_PTR)by0) / 2) * (LONG_PTR)gOutW + ((LONG_PTR)bx1 - (LONG_PTR)bx0);
     p = uv + (SIZE_T)(by0 / 2) * gOutW + bx0;
-    for (x = 0; x < CAM_SW; x += 2, p += step) {
+    for (x = 0; x < gSrcW; x += 2, p += step) {
         p[0] = (UCHAR)((gU[0][x] + gU[0][x + 1] + gU[1][x] + gU[1][x + 1] + 2u) / 4u);
         p[1] = (UCHAR)((gV[0][x] + gV[0][x + 1] + gV[1][x] + gV[1][x + 1] + 2u) / 4u);
     }
@@ -529,12 +541,13 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
     PKSSTREAM_HEADER   hdr;
     PIKSREFERENCECLOCK clock;
     LONG               seq = m->Seq, slot = m->Latest;
-    ULONG              j, k, x, stride = CAM_SW * 2;
+    ULONG              j, k, x, stride = gSrcW * 2, us;
     PUCHAR             src, row;
+    LARGE_INTEGER      t0, t1, fq;
 
-    if (seq == c->PipeSeq || slot < 0 || slot >= (LONG)S10EISP_SHM_SLOTS || m->W != CAM_SW || m->H != CAM_SH)
+    if (seq == c->PipeSeq || slot < 0 || slot >= (LONG)S10EISP_SHM_SLOTS || m->W != gSrcW || m->H != gSrcH)
         return FALSE;
-    if (m->SlotPa[slot] < gPipePa || m->SlotPa[slot] + (ULONGLONG)stride * CAM_SH > gPipePa + gPipeBytes)
+    if (m->SlotPa[slot] < gPipePa || m->SlotPa[slot] + (ULONGLONG)stride * gSrcH > gPipePa + gPipeBytes)
         return FALSE;
     src = gPipeKva + (m->SlotPa[slot] - gPipePa);
     lead = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
@@ -543,16 +556,17 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
         c->PipeSeq = seq;
         return TRUE;
     }
-    if (lead->OffsetOut.Remaining < (gNv12 ? CAM_BYTES_NV12 : CAM_BYTES)) {
+    if (lead->OffsetOut.Remaining < (gNv12 ? gOutBytesNv12 : gOutBytes)) {
         KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, 0, TRUE);
         c->PipeSeq = seq;
         return TRUE;
     }
-    for (j = 0; j < CAM_SH / 2; j++) {
+    t0 = KeQueryPerformanceCounter(&fq);
+    for (j = 0; j < gSrcH / 2; j++) {
         RtlCopyMemory(gRows, src + (SIZE_T)(2 * j) * stride, 2 * stride);   /* uncached -> cached, 2 rows at once */
         for (k = 0; k < 2; k++) {
             row = gRows + k * stride;
-            for (x = 0; x < CAM_SW; x += 2) {
+            for (x = 0; x < gSrcW; x += 2) {
                 PUCHAR q = row + x * 2;                  /* Y0 U Y1 V */
                 gY[k][x] = LimY(q[0]);
                 gY[k][x + 1] = LimY(q[2]);
@@ -562,6 +576,11 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
         }
         Emit((PUCHAR)lead->OffsetOut.Data, j);
     }
+    t1 = KeQueryPerformanceCounter(NULL);              /* 0.12: the copy + conversion time, as the CPU path's */
+    us = (ULONG)((t1.QuadPart - t0.QuadPart) * 1000000 / fq.QuadPart);
+    c->ConvUs += us;
+    if (us > c->ConvUsMax)
+        c->ConvUsMax = us;
     if (seq - c->PipeSeq > 1)
         c->Drops += (ULONG)(seq - c->PipeSeq - 1);
     c->PipeSeq = seq;
@@ -587,13 +606,14 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
         fi->PictureNumber = (LONGLONG)c->Frames;
         fi->DropCount = (LONGLONG)c->Drops;
     }
-    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, gNv12 ? CAM_BYTES_NV12 : CAM_BYTES, TRUE);
-    /* the libraries' AE: exposure in us -> lines (mode 11: pclk 807.24 MHz, LLP 8984), analog gain x1000 -> 0x0204
+    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, gNv12 ? gOutBytesNv12 : gOutBytes, TRUE);
+    /* the libraries' AE: exposure in us -> lines (pclk / LLP of the running mode), analog gain x1000 -> 0x0204
        (0x20 = x1); StreamExposure clamps both */
     if (m->AeSeq != c->PipeAeSeq && m->AeExpUs != 0 && m->AeAGain1000 != 0) {
         S10ECAM_EXPOSURE_IN e;
         c->PipeAeSeq = m->AeSeq;
-        e.Coarse = (ULONG)((ULONG64)m->AeExpUs * 80724u / 898400u);
+        e.Coarse = gFull ? (ULONG)((ULONG64)m->AeExpUs * 80772u / 938400u)   /* mode 12: 807.72 MHz, LLP 9384 */
+                         : (ULONG)((ULONG64)m->AeExpUs * 80724u / 898400u);  /* mode 11: 807.24 MHz, LLP 8984 */
         e.AGain = m->AeAGain1000 * 32u / 1000u;
         if (e.Coarse < 2) e.Coarse = 2;
         if (NT_SUCCESS(StreamExposure(&e)) && ++c->PipeAeApplied == 1)
@@ -639,6 +659,10 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         }
         gPipeFellBack = TRUE;                            /* traced at stop: no file I/O under the fast mutex */
         c->PipeCpuFrames++;
+        if (gFull) {                                     /* 0.12: no raw frames at full resolution: nothing to show */
+            ExReleaseFastMutex(&gCamMutex);
+            return STATUS_PENDING;
+        }
     }
     seq = gS.Seq;
     i = gS.Latest;
@@ -653,7 +677,7 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         ExReleaseFastMutex(&gCamMutex);
         return STATUS_PENDING;
     }
-    if (lead->OffsetOut.Remaining < (gNv12 ? CAM_BYTES_NV12 : CAM_BYTES)) {   /* smaller than a frame: return it empty */
+    if (lead->OffsetOut.Remaining < (gNv12 ? gOutBytesNv12 : gOutBytes)) {   /* smaller than a frame: return it empty */
         KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, 0, TRUE);
         c->LastSeq = seq;
         ExReleaseFastMutex(&gCamMutex);
@@ -694,7 +718,7 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         fi->PictureNumber = (LONGLONG)c->Frames;
         fi->DropCount = (LONGLONG)c->Drops;
     }
-    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, gNv12 ? CAM_BYTES_NV12 : CAM_BYTES, TRUE);
+    KsStreamPointerAdvanceOffsetsAndUnlock(lead, 0, gNv12 ? gOutBytesNv12 : gOutBytes, TRUE);
 
     /* gray-world white balance (smoothed, x1/4 .. x4) and auto exposure from this frame */
     if (sr > 0 && sb > 0) {
@@ -718,14 +742,17 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     RtlZeroMemory(&in, sizeof(in));                      /* setfile exposure, ISPPRE 400 MHz (the defaults) */
     if (gRingWc)
         in.Flags |= S10ECAM_SHOT_WC;
-    if (gBin)
+    if (gFull)
+        in.Flags |= S10ECAM_SHOT_FULL | S10ECAM_SHOT_NODMA;   /* 0.12: + S10ECAM_SHOT_OTF once the pipeline is armed */
+    else if (gBin)
         in.Flags |= S10ECAM_SHOT_BIN;
-    if (gBin && gFps == 60)
+    if (!gFull && gBin && gFps == 60)
         in.Flags |= S10ECAM_SHOT_FPS60;
     gLog[0] = 0;
-    Log(&r, "S10eCamera 0.10 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
+    Log(&r, "S10eCamera 0.12 start: %s %u x %u @ %u fps, rotation %u%s, ring %s, sensor %s\r\n", gNv12 ? "NV12" : "YUY2",
         gOutW, gOutH, gFps, gRot,
         gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
+        gFull ? "3648 x 2736 (mode 12) -> Samsung ISP 2432 x 1824" :
         gBin == 2 ? "912 x 684 (binned) + bilinear demosaic" : gBin ? "912 x 684 (binned) + 2x2-block conversion" :
                     "1824 x 1368 + 2 x 2 binning");
     ExAcquireFastMutex(&gCamMutex);
@@ -741,12 +768,12 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     ExReleaseFastMutex(&gCamMutex);
     /* 0.10: S10eIsp's pipeline (binned 30 fps mode only: the libraries are set up for mode 11) */
     gPipeOn = FALSE;
-    if (gIspPipe && gBin && gFps == 30 && NT_SUCCESS(PipeOpen(&r))) {
+    if (gIspPipe && (gFull || gBin) && gFps == 30 && NT_SUCCESS(PipeOpen(&r))) {
         LARGE_INTEGER d;
         ULONG t;
-        if (gShm->Magic != S10EISP_SHM_MAGIC || gShm->State < 1) {
-            Log(&r, "pipe: S10eIsp pipeline not up (magic %08X state %ld): CPU conversion\r\n", gShm->Magic,
-                gShm->State);
+        if (gShm->Magic != S10EISP_SHM_MAGIC || gShm->State < 1 || gShm->W != gSrcW || gShm->H != gSrcH) {
+            Log(&r, "pipe: S10eIsp pipeline not up or another size (magic %08X state %ld, %u x %u, here %u x %u)\r\n",
+                gShm->Magic, gShm->State, gShm->W, gShm->H, gSrcW, gSrcH);
             PipeClose();
         } else {
             PIPE_STAGE(1);
@@ -775,6 +802,12 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
     }
     /* not under gCamMutex: StreamStart sleeps for ~1 s and calls back into OnFrame -> Process, which takes it */
     gPipeFellBack = FALSE;
+    if (gFull && !gPipeOn) {                             /* 0.12: the full resolution exists only through the ISP */
+        Log(&r, "full resolution needs S10eIsp's pipeline (isp-s10.ps1 pipe; camera-s10.ps1 set -Resolution 0 = the "
+                "binned CPU picture): not started\r\n");
+        WriteReport(gLog, r.Used);
+        return STATUS_DEVICE_NOT_READY;
+    }
     s = StreamStart(&in, NULL, OnFrame, Pin, &r);
     Log(&r, "start: 0x%08X\r\n", s);
     if (gPipeOn) {
@@ -959,6 +992,8 @@ static VOID SetRangeSize(ULONG W, ULONG H, LONGLONG Interval)
         c->InputSize = c->MinCroppingSize = c->MaxCroppingSize = c->MinOutputSize = c->MaxOutputSize = z;
         r[k]->VideoInfoHeader.bmiHeader.biWidth = (LONG)W;
         r[k]->VideoInfoHeader.bmiHeader.biHeight = (LONG)H;
+        r[k]->DataRange.SampleSize = k == 0 ? W * H * 2 : W * H * 3 / 2;   /* 0.12: the size is a setting now */
+        r[k]->VideoInfoHeader.bmiHeader.biSizeImage = r[k]->DataRange.SampleSize;
         c->MinFrameInterval = c->MaxFrameInterval = Interval;          /* 0.9: one rate, the configured one */
         r[k]->VideoInfoHeader.AvgTimePerFrame = Interval;
         c->MinBitsPerSecond = c->MaxBitsPerSecond = (LONG)((ULONGLONG)r[k]->DataRange.SampleSize * 8u * 10000000u /
@@ -1007,7 +1042,7 @@ static const KSPIN_DISPATCH gPinDispatch = {
 
 DECLARE_SIMPLE_FRAMING_EX(gFraming, STATICGUIDOF(KSMEMORY_TYPE_KERNEL_NONPAGED),
                           KSALLOCATOR_REQUIREMENTF_SYSTEM_MEMORY | KSALLOCATOR_REQUIREMENTF_PREFERENCES_ONLY,
-                          2, 0, CAM_BYTES, CAM_BYTES);
+                          2, 0, CAM_BYTES, CAM_MAX_BYTES);   /* 0.12: up to a full-resolution YUY2 frame */
 
 /* PINNAME_VIDEO_CAPTURE (ksmedia.h) and DirectShow's PIN_CATEGORY_CAPTURE (uuids.h, user-mode) are the same GUID,
    FB6C4281-0353-11d1-905F-0000C0CC16BA: the pin's category and its name. */
@@ -1094,13 +1129,20 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     gFps = RegDword(h, L"FrameRate", 30) == 60 ? 60u : 30u;
     gBin = RegDword(h, L"SensorBin", 1);
     gIspPipe = RegDword(h, L"IspPipe", 1) ? 1u : 0u;      /* 0.10 */
+    gFull = RegDword(h, L"Resolution", 1) ? 1u : 0u;     /* 0.12: 1 = full sensor through the ISP */
+    if (!gIspPipe)
+        gFull = 0;
     if (gBin > 2)
         gBin = 1;
     rb = gBin ? S10ECAM_BIN_BYTES + 0x10000u : SHOT_RING_BYTES;
     if (h != NULL)
         ZwClose(h);
-    gOutW = (gRot == 90 || gRot == 270) ? CAM_SH : CAM_SW;
-    gOutH = (gRot == 90 || gRot == 270) ? CAM_SW : CAM_SH;
+    gSrcW = gFull ? CAM_FULLW : CAM_SW;                   /* 0.12 */
+    gSrcH = gFull ? CAM_FULLH : CAM_SH;
+    gOutBytes = gSrcW * gSrcH * 2;
+    gOutBytesNv12 = gSrcW * gSrcH * 3 / 2;
+    gOutW = (gRot == 90 || gRot == 270) ? gSrcH : gSrcW;
+    gOutH = (gRot == 90 || gRot == 270) ? gSrcW : gSrcH;
     if (!gBin)
         gFps = 30;                                       /* mode 8 runs 30 fps only */
     gInterval = gFps == 60 ? 166667 : CAM_INTERVAL;
@@ -1114,9 +1156,10 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
               gPool.Cache == MmWriteCombined ? "write-combined" : "non-cached");
     else
         Trace("frame ring: no 3 x %u bytes contiguous below 4 GB now; each start will try its own\r\n", rb);
-    Trace("S10eCamera 0.10 (IspPipe %u) device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gIspPipe, gOutW, gOutH,
-          gFps, gRot,
-          gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached", gBin ? "binned 912 x 684" : "1824 x 1368");
+    Trace("S10eCamera 0.12 (IspPipe %u, Resolution %u) device start: %u x %u @ %u fps (NV12, YUY2), rotation %u%s, ring %s, sensor %s\r\n", gIspPipe, gFull, gOutW,
+          gOutH, gFps, gRot,
+          gMirror ? " + mirror" : "", gRingWc ? "write-combined" : "non-cached",
+          gFull ? "3648 x 2736 -> ISP 2432 x 1824" : gBin ? "binned 912 x 684" : "1824 x 1368");
     return STATUS_SUCCESS;
 }
 

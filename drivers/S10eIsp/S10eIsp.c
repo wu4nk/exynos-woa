@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.9) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.10) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -55,6 +55,9 @@
  *      run.flg, the run thread starts at device start as item 12's setup, then serves S10eCamera through the
  *      S10EISP_SHM block (the S10eIspDma pool's last 64 KiB): Want -> arm the 3AA0, per real frame ISP0 into one of
  *      3 YUY2 slots, published as Seq / Latest; the libraries' sensor requests (exposure / gain) go there too.
+ *  14. (0.10) the pipeline's default is the FULL sensor: mode 12 3648x2736 (S10eCam 0.15 S10ECAM_SHOT_FULL, OTF only,
+ *      no CSIS DMA) with Android's own preview parameters (crop 2944x2208, BDS 2432x1824), ISP0 out 2432x1824 YUY2;
+ *      pipe.flg containing "bin" keeps 0.9's 912x684.
  * The result goes to the registry, value "Probe" under
  *   HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp
  * (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE: the only device key a UMDF driver may
@@ -72,7 +75,7 @@ int isp_front_irq(unsigned int chain, unsigned int id); /* 0.6/0.8: a real inter
 void isp_front_set_hwisp(volatile void *va);  /* 0.8: the REAL ISPLP (ISP0) window (test_front.c) */
 void isp_front_set_pipe(void *shm);           /* 0.9: the camera pipeline's control block (test_front.c) */
 
-#define S10EISP_VERSION L"0.9.2"
+#define S10EISP_VERSION L"0.10"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -314,7 +317,7 @@ static void Trace(const char *fmt, ...)
     CloseHandle(f);
 }
 
-static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf, g_hwisp, g_pipe;
+static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf, g_hwisp, g_pipe, g_pipebin;
 static volatile UCHAR *g_taa_va;   /* 0.4: 3AA0's user-mode mapping, set only after its ID read = Android's */
 
 /* 0.3.3: a CRT invalid-parameter report must not fast-fail Wudfhost (the default handler does: the 0.3.x front runs
@@ -386,7 +389,9 @@ static DWORD WINAPI FrontThread(LPVOID p)
             SetValue(L"FrontRun", L"not run: hw3aa asked, 3AA0 mapping not verified");
             return 1;
         }
-        isp_front_set_hw3aa(g_taa_va, g_hw3aaotf ? 2 : g_hw3aashot ? 1 : 0);
+        /* 0.10: the pipeline runs the full sensor (mode 12, Android's preview parameters, 2432x1824 out) unless
+           pipe.flg says "bin" (0.9's mode 11, 912x684) */
+        isp_front_set_hw3aa(g_taa_va, (g_pipe && !g_pipebin) ? 3 : g_hw3aaotf ? 2 : g_hw3aashot ? 1 : 0);
         if (g_hwisp) {
             if (!g_isplp_va) {
                 Trace("hw3aaotfisp: no verified ISPLP mapping - not run");
@@ -467,7 +472,17 @@ static void MaybeFrontRun(void)
         /* 0.9: no one-off run requested: the camera pipeline, if switched on (pipe.flg stays) */
         if (GetFileAttributesW(L"" ISP_DIR "\\pipe.flg") == INVALID_FILE_ATTRIBUTES) return;
         g_pipe = g_hw3aa = g_hw3aashot = g_hw3aaotf = g_hwisp = TRUE;
-        Trace("pipe.flg found: camera pipeline");
+        {
+            char pf[32] = {0};
+            DWORD pn = 0;
+            HANDLE ph = CreateFileW(L"" ISP_DIR "\\pipe.flg", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+            if (ph != INVALID_HANDLE_VALUE) {
+                ReadFile(ph, pf, sizeof(pf) - 1, &pn, NULL);
+                CloseHandle(ph);
+            }
+            g_pipebin = strstr(pf, "bin") != NULL;
+        }
+        Trace("pipe.flg found: camera pipeline, %s", g_pipebin ? "binned 912x684 (mode 11)" : "full sensor 3648x2736 -> 2432x1824 (mode 12)");
         if (InterlockedExchange(&g_front_started, 1)) return;
         HANDLE pt = CreateThread(NULL, 1u << 20, FrontThread, NULL, 0, NULL);
         Log(L"camera pipeline: %s", pt ? L"started (value FrontRun, " ISP_DIR L"\\out\\host.log)" : L"CreateThread failed");
