@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.3.1) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.3.2) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -40,7 +40,7 @@
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 
-#define S10EISP_VERSION L"0.3.1"
+#define S10EISP_VERSION L"0.3.2"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -292,6 +292,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
         SetEnvironmentVariableA("QUIET", "1");
         SetValue(L"FrontRun", L"started (nodma)");
         char *argv0[6] = {"isp_front", ISP_DIR, data, ISP_DIR "\\out", layout, NULL};
+        plat_win_set_mark_file(ISP_DIR "\\front-trace.txt");   /* 0.3.2: marks inside the core too */
         Trace("calling isp_front_main (nodma)");
         int rc0 = isp_front_main(5, argv0);
         Trace("isp_front_main returned %d", rc0);
@@ -322,6 +323,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
                      L"started: pool %llu MiB at PA 0x%08llX (%s), data %S, log " ISP_DIR "\\out\\host.log",
                      m.Bytes >> 20, m.Pa, m.Cache ? L"write-combined" : L"non-cached", data);
     SetValue(L"FrontRun", msg);
+    plat_win_set_mark_file(ISP_DIR "\\front-trace.txt");
     Trace("calling isp_front_main, argc %d", argc);
     int rc = isp_front_main(argc, argv);      /* an exit() / library assert inside ends this thread only */
     Trace("isp_front_main returned %d", rc);

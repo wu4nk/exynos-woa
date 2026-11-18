@@ -869,7 +869,9 @@ isp_host *isp_load(const void *ddk, size_t ddk_size, const void *rta, size_t rta
     isp_host *h = calloc(1, sizeof(*h));
     G = h;
     /* 2 MiB alignment: LIB_START is 128 KiB aligned on Android; any alignment the image assumes up to that holds */
+    plat_mark("isp_load: exec alloc");
     h->base = plat_exec_alloc(ISP_SPAN + TRAMP_AREA, 0x200000);
+    plat_mark(h->base ? "isp_load: exec alloc ok" : "isp_load: exec alloc FAILED");
     if (!h->base) { plat_log("isphost: no memory for the image span"); return NULL; }
     h->delta = (u64)(uintptr_t)h->base - ISP_LIB_START;
     memcpy(h->base, ddk, ddk_size);
@@ -878,7 +880,11 @@ isp_host *isp_load(const void *ddk, size_t ddk_size, const void *rta, size_t rta
     if (rta) h->nreloc += relocate(h, ISP_RTA_OFF, rta_size);
     version(h->ver_ddk, ddk, ddk_size);
     if (rta) version(h->ver_rta, rta, rta_size);
-    plat_flush_icache(h->base, ISP_SPAN);
+    plat_mark("isp_load: copied + relocated");
+    /* only the two files hold code: flush their ranges (0.3.2; was the whole 112 MiB span) */
+    plat_flush_icache(h->base, ddk_size);
+    if (rta) plat_flush_icache(h->base + ISP_RTA_OFF, rta_size);
+    plat_mark("isp_load: icache flushed");
 
     h->code = h->base + ISP_SPAN;
     memcpy(h->code, code_block, CODE_BYTES);
@@ -916,6 +922,7 @@ isp_host *isp_load(const void *ddk, size_t ddk_size, const void *rta, size_t rta
         if (plat_thread_start(worker, ta, STK)) { plat_log("isphost: thread start failed"); return NULL; }
     }
     if (plat_thread_start(timer_thread, h, STK)) { plat_log("isphost: thread start failed"); return NULL; }
+    plat_mark("isp_load: threads starting");
     for (;;) {                       /* every blob thread must be in the table before blob code runs */
         plat_mutex_lock(h->lock);
         int n = h->started_threads;
@@ -926,6 +933,7 @@ isp_host *isp_load(const void *ddk, size_t ddk_size, const void *rta, size_t rta
 
     /* the tables */
 #define H(f) ((isp_host_fn)(f))
+    plat_mark("isp_load: threads registered");
     u64 *t = h->os_tab;
     t[0] = tramp(h, H(os_log_console), 0);
     t[3] = tramp(h, H(os_assert), 0);
@@ -1004,11 +1012,13 @@ isp_host *isp_load(const void *ddk, size_t ddk_size, const void *rta, size_t rta
 int isp_start(isp_host *h)
 {
     u64 b = (u64)(uintptr_t)h->base;
+    plat_mark("isp_start: DDK start_up");
     u64 r = ISP_CALL(h, b + ISP_DDK_OFF, (u64)(uintptr_t)h->os_tab);
     logf_("isphost: DDK start_up -> 0x%llx", (unsigned long long)r);
     if ((u32)r) return -1;
     r = ISP_CALL(h, b + ISP_VRA_OFF, (u64)(uintptr_t)h->vra_tab);
     logf_("isphost: VRA set_os_funcs -> 0x%llx", (unsigned long long)r);
+    plat_mark("isp_start: RTA start_up");
     r = ISP_CALL(h, b + ISP_RTA_OFF, 0, (u64)(uintptr_t)h->rta_tab);
     logf_("isphost: RTA start_up -> 0x%llx", (unsigned long long)r);
     return (u32)r ? -1 : 0;

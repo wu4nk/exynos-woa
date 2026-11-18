@@ -48,6 +48,8 @@ void plat_log(const char *line)
     pthread_mutex_unlock(&log_m);
 }
 
+void plat_mark(const char *what) { (void)what; }
+
 void plat_fatal(const char *why)
 {
     plat_log(why);

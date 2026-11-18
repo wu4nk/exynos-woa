@@ -52,6 +52,24 @@ void plat_log(const char *line)
     ReleaseSRWLockExclusive(&log_m);
 }
 
+/* progress marks written through to disk (S10eIsp 0.3.2: a blue screen left no dump and no event): appended to
+   plat_win_set_mark_file()'s file, FILE_FLAG_WRITE_THROUGH + FlushFileBuffers per mark - slow, only for bring-up */
+static char mark_path[MAX_PATH];
+void plat_win_set_mark_file(const char *path) { lstrcpynA(mark_path, path, MAX_PATH); }
+void plat_mark(const char *what)
+{
+    char b[300];
+    DWORD n;
+    if (!mark_path[0]) return;
+    snprintf(b, sizeof(b), "%10llu us  %s\r\n", (unsigned long long)plat_usec(), what);
+    HANDLE f = CreateFileA(mark_path, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    WriteFile(f, b, (DWORD)strlen(b), &n, NULL);
+    FlushFileBuffers(f);
+    CloseHandle(f);
+}
+
 /* inside a driver host process (S10eIsp) a library assert must not take the whole Wudfhost down with it: the calling
    thread ends instead (the run is lost, the device stays up) - plat_win_set_thread_fatal(1) */
 static int fatal_thread_only;

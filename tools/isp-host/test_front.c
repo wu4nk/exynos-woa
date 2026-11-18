@@ -213,6 +213,7 @@ static u64 step(const char *label, u64 fn, int n, const u64 *a)
 {
     char b[64];
     plat_log("");
+    plat_mark(label);
     FILE *mf = mmio_open(label);
     u64 t0 = plat_usec();
     u64 r = isp_call(H, fn, n, a);
@@ -231,6 +232,7 @@ static u64 fire(const char *label, volatile u32 *w, u32 reg, int bit, u32 chain,
 {
     char b[96];
     plat_log("");
+    plat_mark(label);
     FILE *mf = mmio_open(label);
     u64 t0 = plat_usec();
     w[reg / 4] = 1u << bit;
@@ -256,6 +258,7 @@ int main(int argc, char **argv)
     }
     const char *BIN = argv[1], *DUMP = argv[2], *layout = argv[4], *calp = argc > 5 ? argv[5] : NULL;
     OUTDIR = argv[3];
+    plat_mark("front: isp_front_main entered");
     mkdir(OUTDIR, 0755);
     char p[1024];
     snprintf(p, sizeof(p), "%s/host.log", OUTDIR);
@@ -276,7 +279,9 @@ int main(int argc, char **argv)
     isp_diag_random0 = getenv("DIAG_RANDOM0") != NULL;
 
     size_t nd, nr;
+    plat_mark("front: logs open, reading the libraries");
     void *ddk = readfile(BIN, "fimc_is_lib.bin", &nd), *rta = readfile(BIN, "fimc_is_rta.bin", &nr);
+    plat_mark("front: libraries read");
     H = isp_load(ddk, nd, rta, nr);
     if (!H) return 1;
     u64 B = isp_base(H), DDK = B + ISP_DDK_OFF, RTA = B + ISP_RTA_OFF;

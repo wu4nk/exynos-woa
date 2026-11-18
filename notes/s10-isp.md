@@ -841,3 +841,14 @@ Plan (each a task, each waits for the result before it):
   / map, isp_front_main call / return); host.log opened "wc" (UCRT commit-on-flush) in driver mode; run.flg
   "nodma" = bisect switch (plat_win's fake pool, S10eIspDma untouched). isp-s10.ps1 v1.4 front [-NoDma], prints the
   trace. Plan: front -NoDma first; if that survives, the DMA driver path is the suspect.
+- 19:32 second crash, with -NoDma (S10eIsp 0.3.1): front-trace.txt ends at "calling isp_front_main (nodma)"; no
+  host.log lines. So S10eIspDma is NOT needed for the crash, and it happens early in isp_front_main: log files
+  opened, the libraries read (malloc), isp_load (VirtualAlloc reserve + commit 112 MiB RWX, copy, relocate,
+  FlushInstructionCache over the WHOLE 112 MiB span, threads) - before isp_load's first plat_log line. The same
+  code ran fine in isphost-test.exe (an ordinary process) before S10eIspDma existed.
+- 0.3.2: plat_mark() (core API; plat_win: write-through append to C:\S10Prov\isp\front-trace.txt, enabled by the
+  driver) at: isp_front_main entry, libraries read, isp_load exec alloc / ok, copied + relocated, icache flushed,
+  threads starting / registered, DDK / RTA start_up, and every step / interrupt label. isp_load now flushes the
+  instruction cache over the two files' ranges only (ddk_size + rta_size, ~8 MiB) instead of the 112 MiB span
+  (only they hold code). Next experiments: isphost-test.exe again (same code, ordinary process, S10eIspDma now
+  present) and front -NoDma with 0.3.2's marks.

@@ -9,5 +9,6 @@ void plat_posix_crash_report(u64 lib_base);       /* diagnosis: log registers on
 #ifdef _WIN32
 void plat_win_dma_pool(void *va, u64 pa, u64 bytes);   /* plat_win.c: S10eIspDma's pool */
 void plat_win_set_thread_fatal(int on);
+void plat_win_set_mark_file(const char *path);
 #endif
 #endif
