@@ -1153,3 +1153,10 @@ Plan (each a task, each waits for the result before it):
   frame start / CIN ROW the real hardware sends first (inferred cause; watch for it on the phone). Normal run
   unchanged (FRAMES=3: 39 steps 0).
 - isp-s10.ps1 v1.9 front -Hw3aaOtfIsp. Needs UEFI v0.2.5.
+- 2026-11-18 21:55 RESULT (UEFI v0.2.5 + S10eIsp 0.8 front -Hw3aaOtfIsp; notes/data/isphost-win-20261118/isp-0.8/):
+  ISP0 ON THE REAL ISPLP, fed by the real 3AA0 frames. Probe: ISPLP ID = Android's (no fault); 4 interrupt resources
+  328 -> vector 2050, 329 -> 2819, all resolved by GSIV. 132 steps all 0: per 3AA frame end ISP set_ctrl / shot Fn;
+  ISP0 interrupts (GSIV 328, chain 2 id 6) 58: per frame 0x00000801 (b0 + b11, at shot) then 0x00000022 (b1 FRAME
+  END + b5); "ISP0 frame ends 28"; GSIV 329 none. 3AA as in 0.7 (29 / 29). The YUY2 buffer line was cut by the
+  script's 80-line filter and the zip sent was the old isphost.zip: result of the YUY2 buffer pending (v1.9.1 prints
+  the result lines separately).

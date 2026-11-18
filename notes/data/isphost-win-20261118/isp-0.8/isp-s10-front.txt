@@ -1,0 +1,353 @@
+isp-s10.ps1 v1.9  front  2026-11-01T23:20:17
+firmware: 
+icacls C:\S10Prov\isp /grant *S-1-5-19:(OI)(CI)M   (LocalService = Wudfhost)
+  processed file: C:\S10Prov\isp
+  Successfully processed 1 files; Failed processing 0 files
+run.flg: run hw3aaotfisp
+pnputil /restart-device ACPI\SAMS982C\0
+  Microsoft PnP Utility
+  
+  Restarting device:         ACPI\SAMS982C\0
+  Device restarted successfully.
+  
+3AA0 armed: True  (1 s)
+cam-s10.ps1 shot -Bin -Otf -Frames 30
+  cam: S10eCam 0.14 stage 4 (shot) flags 00000014 coarse 0 again 0 ispdiv 0 frames 30
+  cam:   OTF route: SC_CON0 00000000 -> 00000002, SC_CON14 00000000 -> 00000000, PDP_IN_EN 00000000 -> 00000004
+  cam:   waiting for 30 frames (2 s at most)
+  cam:   30 frames counted on CH0 in 476 ms (first at 3 ms, last at 476 ms)
+  cam:   INT_SRC0 seen 01100000 (FS 1 FE 1 errors 000), INT_SRC1 00000000, DMA cmn INT_SRC 00000111
+  cam:   OTF route back: SC_CON0 00000000 SC_CON14 00000000 PDP_IN_EN 00000000
+FrontRun: finished: rc 0, log C:\S10Prov\isp\out\host.log  (9 s)
+front-trace.txt:
+  run.flg found ("run hw3aaotfisp
+  "), nodma 0, hw3aa 1, hw3aashot 1
+  S10eIsp 0.8 front thread: process 9796, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_152ee76b1aeba769, nodma 0, hw3aa 1, hw3aashot 1
+  hwisp: the libraries get the REAL ISPLP window 000001D60B1F0000
+  hw3aa: the libraries get the REAL 3AA0 window 000001D60B1E0000 for the init steps + 3AA set_param / shot F1 / stop
+  S10eIspDma open: ok (0)
+  pool mapped: 128 MiB PA 0xF5824000 va 0x1D60B750000 cache 1
+  calling isp_front_main, argc 5
+   203843269 us  front: isp_front_main entered
+   203852381 us  front: logs open, reading the libraries
+   204034560 us  front: libraries read
+   204038398 us  isp_load: exec alloc
+   204043423 us  isp_load: exec alloc ok
+   204065778 us  isp_load: copied + relocated
+   204069177 us  isp_load: icache flushed
+   204072265 us  isp_load: threads starting
+   204074873 us  isp_load: threads registered
+   204077330 us  isp_start: DDK start_up
+   204089003 us  isp_start: RTA start_up
+   204146299 us  hw3aa: reading all 3AA0 registers (before)
+   204165892 us  hw3aa: 3AA0 read (before)
+   204185415 us  3AA chain_create
+   204190665 us  3AA set_system_config
+   204195663 us  3AA object_create
+   204207732 us  ISP chain_create
+   204214080 us  ISP set_system_config
+   204220430 us  ISP object_create
+   204233694 us  hw3aa: reading all 3AA0 registers (after)
+   204275182 us  front: hw3aa init steps done
+   204356407 us  3AA apply_tune_set 6
+   204361463 us  3AA load_cal_data
+   204369005 us  3AA get_cal_data type 2
+   204374890 us  3AA set_param
+   204379474 us  3AA set_ctrl F1
+   204386728 us  3AA shot F1
+   204398713 us  hw3aa: armed, waiting for OTF frames
+   206957132 us  ISP set_param
+   206961717 us  ISP set_ctrl F1
+   206968356 us  ISP shot F1
+   206976575 us  3AA set_ctrl F2
+   206981902 us  3AA shot F2
+   206990102 us  ISP set_ctrl F2
+   206995371 us  ISP shot F2
+   207005505 us  3AA set_ctrl F3
+   207010025 us  3AA shot F3
+   207023104 us  ISP set_ctrl F3
+   207029959 us  ISP shot F3
+   207038955 us  3AA set_ctrl F4
+   207043498 us  3AA shot F4
+   207057127 us  ISP set_ctrl F4
+   207062526 us  ISP shot F4
+   207070469 us  3AA set_ctrl F5
+   207076768 us  3AA shot F5
+   207090104 us  ISP set_ctrl F5
+   207096662 us  ISP shot F5
+   207104824 us  3AA set_ctrl F6
+   207109010 us  3AA shot F6
+   207125126 us  ISP set_ctrl F6
+   207130305 us  ISP shot F6
+   207138879 us  3AA set_ctrl F7
+   207143500 us  3AA shot F7
+   207156163 us  ISP set_ctrl F7
+   207160987 us  ISP shot F7
+   207169876 us  3AA set_ctrl F8
+   207174466 us  3AA shot F8
+   207191136 us  ISP set_ctrl F8
+   207196132 us  ISP shot F8
+   207204916 us  3AA set_ctrl F9
+   207208850 us  3AA shot F9
+   207225182 us  ISP set_ctrl F9
+   207230270 us  ISP shot F9
+   207239292 us  3AA set_ctrl F10
+   207244153 us  3AA shot F10
+   207256146 us  ISP set_ctrl F10
+   207261353 us  ISP shot F10
+   207270911 us  3AA set_ctrl F11
+   207276325 us  3AA shot F11
+   207290108 us  ISP set_ctrl F11
+   207295952 us  ISP shot F11
+   207304305 us  3AA set_ctrl F12
+   207310187 us  3AA shot F12
+   207323144 us  ISP set_ctrl F12
+   207328006 us  ISP shot F12
+   207336996 us  3AA set_ctrl F13
+   207342582 us  3AA shot F13
+   207357151 us  ISP set_ctrl F13
+   207362199 us  ISP shot F13
+   207370947 us  3AA set_ctrl F14
+   207375665 us  3AA shot F14
+   207390141 us  ISP set_ctrl F14
+   207394043 us  ISP shot F14
+   207403373 us  3AA set_ctrl F15
+   207408167 us  3AA shot F15
+   207424130 us  ISP set_ctrl F15
+   207428434 us  ISP shot F15
+   207437562 us  3AA set_ctrl F16
+   207444844 us  3AA shot F16
+   207456137 us  ISP set_ctrl F16
+   207462563 us  ISP shot F16
+   207470825 us  3AA set_ctrl F17
+   207475971 us  3AA shot F17
+   207490137 us  ISP set_ctrl F17
+   207496364 us  ISP shot F17
+   207505210 us  3AA set_ctrl F18
+   207511356 us  3AA shot F18
+   207524135 us  ISP set_ctrl F18
+   207529167 us  ISP shot F18
+   207539586 us  3AA set_ctrl F19
+   207545315 us  3AA shot F19
+   207556142 us  ISP set_ctrl F19
+   207561865 us  ISP shot F19
+   207569709 us  3AA set_ctrl F20
+   207575179 us  3AA shot F20
+   207589131 us  ISP set_ctrl F20
+   207593551 us  ISP shot F20
+   207601692 us  3AA set_ctrl F21
+   207608900 us  3AA shot F21
+   207633127 us  ISP set_ctrl F21
+   207638997 us  ISP shot F21
+   207648537 us  3AA set_ctrl F22
+   207653881 us  3AA shot F22
+   207661149 us  ISP set_ctrl F22
+   207666851 us  ISP shot F22
+   207675675 us  3AA set_ctrl F23
+   207680090 us  3AA shot F23
+   207689114 us  ISP set_ctrl F23
+   207693205 us  ISP shot F23
+   207703001 us  3AA set_ctrl F24
+   207709701 us  3AA shot F24
+   207723206 us  ISP set_ctrl F24
+   207730107 us  ISP shot F24
+   207737647 us  3AA set_ctrl F25
+   207744675 us  3AA shot F25
+   207756372 us  ISP set_ctrl F25
+   207762370 us  ISP shot F25
+   207772998 us  3AA set_ctrl F26
+   207779340 us  3AA shot F26
+   207790167 us  ISP set_ctrl F26
+   207796530 us  ISP shot F26
+   207805442 us  3AA set_ctrl F27
+   207811695 us  3AA shot F27
+   207823152 us  ISP set_ctrl F27
+   207828672 us  ISP shot F27
+   207839630 us  3AA set_ctrl F28
+   207845608 us  3AA shot F28
+   207857157 us  ISP set_ctrl F28
+   207862455 us  ISP shot F28
+   207871627 us  3AA set_ctrl F29
+   207877201 us  3AA shot F29
+   207889134 us  ISP set_ctrl F29
+   207893369 us  ISP shot F29
+   207901499 us  3AA set_ctrl F30
+   207907885 us  3AA shot F30
+   208041382 us  ISP stop
+   208290252 us  hw3aa: shot F1 done, watching the interrupt status 200 ms
+   208493722 us  hw3aa: reading all 3AA0 registers (after shot)
+   208582082 us  3AA stop
+   208639939 us  front: hw3aa shot + stop done
+   208644425 us  front: done
+  isp_front_main returned 0
+  interrupts: GSIV 351 (chain 0 id 0): 94, to the libraries 94, masked 0; GSIV 352 (chain 0 id 1): 31, to the libraries 31, masked 0; GSIV 328 (chain 2 id 6): 58, to the libraries 58, masked 0; GSIV 329 (chain 2 id 7): 0, to the libraries 0, masked 0; object 0: vector 2562 GSIV 351 -> slot 0 (by GSIV); object 1: vector 2306 GSIV 352 -> slot 1 (by GSIV); object 2: vector 2050 GSIV 328 -> slot 2 (by GSIV); object 3: vector 2819 GSIV 329 -> slot 3 (by GSIV)
+host.log: 3465 lines, steps 132, not 0: 0
+  hw3aa: REAL 3AA0 window 000001D60B1E0000 for the init steps + 3AA set_param / shot F1 / stop: +0xF0 0x07010000 +0xF4 0x0000cc22
+  hw3aa: init: 87 REAL 3AA0 registers changed
+  hw3aa: after shot F1: +0x00 0x00000001 +0x10c 0x00000000 +0x11c 0x00000000 +0x108 0xfff0005f +0x118 0x00000000
+  hw3aa otf: +5 ms: interrupts 1, frame starts 0, frame ends 0
+  hw3aa otf: +2552 ms: interrupts 2, frame starts 1, frame ends 0
+  hw3aa otf: +2555 ms: interrupts 3, frame starts 1, frame ends 0
+  hw3aa otf: done after 3513 ms: interrupts 174, frame starts 29, frame ends 29, shots 30, ISP0 frame ends 28
+  hw3aa otf: before_bds buffer (dva 0xf82e8000): 935431 of 1247616 bytes written by the 3AA -> C:\S10Prov\isp\out/otf-before_bds-912x684.raw
+  hw3aa otf: after_bds buffer (dva 0xf8419000): 935431 of 1247616 bytes written by the 3AA -> C:\S10Prov\isp\out/otf-after_bds-912x684.raw
+  hw3aa: shot: 1684 REAL 3AA0 registers changed
+  hw3aa: real interrupts handed to the libraries so far: 183
+  hw3aa: stop: 9 REAL 3AA0 registers changed
+  hw3aa: stopping here (no ISP step, no interrupt delivered)
+  done: traced OS calls 535, tasks 210, timers 0, irqs 183
+REAL 3AA0 register changes: 1780 (all in host.log)
+  hw 3AA0 init +0x0008 0x00000000 -> 0x00000001
+  hw 3AA0 init +0x0040 0x00000010 -> 0x00000000
+  hw 3AA0 init +0x004c 0x00000000 -> 0x000003ff
+  hw 3AA0 init +0x0054 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0058 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0078 0x00000000 -> 0x000003ff
+  hw 3AA0 init +0x007c 0x00000000 -> 0x00000001
+  hw 3AA0 init +0x0084 0x00000000 -> 0x00000001
+  hw 3AA0 init +0x0100 0x00000000 -> 0x00000003
+  hw 3AA0 init +0x0104 0x00000800 -> 0x00100800
+  hw 3AA0 init +0x1428 0x00000002 -> 0x00000001
+  hw 3AA0 init +0x1528 0x00000003 -> 0x00000001
+  hw 3AA0 init +0x1534 0x00000003 -> 0x00000009
+  hw 3AA0 init +0x17fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x18fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x19fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x1afc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x1b5c 0x00000100 -> 0x00000000
+  hw 3AA0 init +0x1dfc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x1efc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x1ffc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x22fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x23fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x24fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x2564 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x2664 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x29fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x2bfc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x2dfc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x2ffc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x30fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x31fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x32fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x33fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x34fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x36fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x37fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x39fc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x3afc 0x00000000 -> 0x00000037
+  hw 3AA0 init +0x3b08 0x00000000 -> 0x20402000
+  hwisp: REAL ISPLP window 000001D60B1F0000: +0xF0 0x07110000 +0xF4 0x0000c2ad
+  == ISP chain_create -> 0x0
+  == ISP set_system_config -> 0x0
+  == ISP object_create -> 0x0
+  hw irq #1 3AA0 id 0: +0x10c 0x00100000 +0x11c 0x00000000 -> handler 0x0 in 62 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw3aa: after shot F1: +0x00 0x00000001 +0x10c 0x00000000 +0x11c 0x00000000 +0x108 0xfff0005f +0x118 0x00000000
+  hw3aa otf: +5 ms: interrupts 1, frame starts 0, frame ends 0
+  hw irq #2 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 411 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw3aa otf: +2552 ms: interrupts 2, frame starts 1, frame ends 0
+  hw3aa otf: +2555 ms: interrupts 3, frame starts 1, frame ends 0
+  hw irq #3 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 707 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #4 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 59 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #5 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 362 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_param -> 0x0
+  == ISP set_ctrl F1 -> 0x0
+  hw irq #6 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 202 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F1 -> 0x0
+  hw irq #7 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 404 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #8 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 762 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #9 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 62 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #10 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 555 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #11 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 137 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F2 -> 0x0
+  hw irq #12 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 396 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F2 -> 0x0
+  hw irq #13 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 215 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #14 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 91 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #15 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 497 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #16 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 68 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #17 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 261 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F3 -> 0x0
+  hw irq #18 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 100 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F3 -> 0x0
+  hw irq #19 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 282 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #20 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 90 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #21 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 461 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #22 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 47 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #23 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 257 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F4 -> 0x0
+  hw irq #24 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 98 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F4 -> 0x0
+  hw irq #25 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 189 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #26 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 187 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #27 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 552 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #28 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 61 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #29 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 259 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F5 -> 0x0
+  hw irq #30 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 90 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F5 -> 0x0
+  hw irq #31 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 196 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #32 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 83 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #33 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 651 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #34 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 100 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #35 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 244 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F6 -> 0x0
+  hw irq #36 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 91 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F6 -> 0x0
+  hw irq #37 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 190 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #38 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 83 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #39 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 512 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #40 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 57 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #41 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 223 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F7 -> 0x0
+  hw irq #42 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 95 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F7 -> 0x0
+  hw irq #43 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 248 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #44 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 79 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #45 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 538 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #46 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 59 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #47 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 208 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F8 -> 0x0
+  hw irq #48 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 93 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP shot F8 -> 0x0
+  hw irq #49 3AA0 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 310 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #50 ISP0 id 6: +0x10c 0x00000022 +0x11c 0x00000000 -> handler 0x0 in 83 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #51 3AA0 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 492 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #52 3AA0 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 55 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #53 3AA0 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 237 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  == ISP set_ctrl F9 -> 0x0
+  hw irq #54 ISP0 id 6: +0x10c 0x00000801 +0x11c 0x00000000 -> handler 0x0 in 92 us -> +0x10c 0x00000000 +0x11c 0x00000000
+zip: C:\S10Prov\isp-front.zip
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem28.inf 0.8.0.0
+probe report (S10eIsp 0.8):
+  S10eIsp 0.8 probe, process 9796
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFFAB815F392000, user-mode mapping 000001D60B1C0000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFFAB815F396000, user-mode mapping 000001D60B1E0000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFFAB815F3A6000, user-mode mapping 000001D60B1F0000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFFAB815F62A000, user-mode mapping 000001D60B740000
+  resource 4: interrupt raw vector 351 (GSIV), translated vector 2562 level 10 flags 0x0 (level)
+  resource 5: interrupt raw vector 352 (GSIV), translated vector 2306 level 9 flags 0x0 (level)
+  resource 6: interrupt raw vector 328 (GSIV), translated vector 2050 level 8 flags 0x0 (level)
+  resource 7: interrupt raw vector 329 (GSIV), translated vector 2819 level 11 flags 0x0 (level)
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP via the user-mode mapping: +0xF0 07110000 +0xF4 0000C2AD -> = Android's
+  MCSC: mapped only, never read
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 000001D60B750000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+  DMA: pool 128 MiB at PA 0xF5824000..0xFD823FFF, write-combined, mapped at 000001D60B750000 (S10eIspDma v1)
+  DCZID_EL0 = 0x4 (DZP 0, block 64 bytes)
+  DMA test: aligned 8-byte store + load -> ok
+  DMA test: unaligned 8-byte store + load (+0x1003) -> ok
+  DMA test: memset 64 KiB + check -> ok
+  DMA test: DC ZVA on a dirty block + check -> ok
+  DMA test: last byte store + load -> ok
+  DMA: handle closed (pool unmapped)
+  front run: started (FrontRun value, C:\S10Prov\isp\out\host.log)
+interrupts (value Irq): GSIV 351 (chain 0 id 0): 94, to the libraries 94, masked 0; GSIV 352 (chain 0 id 1): 31, to the libraries 31, masked 0; GSIV 328 (chain 2 id 6): 58, to the libraries 58, masked 0; GSIV 329 (chain 2 id 7): 0, to the libraries 0, masked 0; object 0: vector 2562 GSIV 351 -> slot 0 (by GSIV); object 1: vector 2306 GSIV 352 -> slot 1 (by GSIV); object 2: vector 2050 GSIV 328 -> slot 2 (by GSIV); object 3: vector 2819 GSIV 329 -> slot 3 (by GSIV)
+S10eIspDma service: RUNNING
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-front.txt

@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.9) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.9.1) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -48,7 +48,7 @@ $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.9  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.9.1  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -161,6 +161,7 @@ switch ($Action) {
             $hw = @($l | Where-Object { $_ -match '^hw 3AA0 ' })
             if ($hw.Count) { W "REAL 3AA0 register changes: $($hw.Count) (all in host.log)"; $hw | Select-Object -First 40 | ForEach-Object { W "  $_" } }
             $l | Where-Object { $_ -match '^hw3aa: (after shot|\+|real interrupts)|^hw 3AA0 stop|^hw irq|^hw3aa otf|^hwisp|^== ISP' } | Select-Object -First 80 | ForEach-Object { W "  $_" }
+            $l | Where-Object { $_ -match '^hw3aa otf: (done|before|after)|^hwisp: ISP0 YUY2|getIspFrameDesc' } | Select-Object -First 10 | ForEach-Object { W "  result: $_" }
             Compress-Archive -Force -Path "$isp\out\*" -DestinationPath 'C:\S10Prov\isp-front.zip'
             W 'zip: C:\S10Prov\isp-front.zip'
         } else { W "no $log" }
