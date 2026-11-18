@@ -1,5 +1,5 @@
 <#
-  cam-s10.ps1 (v1.7) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
+  cam-s10.ps1 (v1.8) - Galaxy S10: front camera bring-up, step by step (S10eCam.sys; notes/s10-camera.md).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (with out\S10eCam\ from build-s10.cmd v1.17+):
       .\cam-s10.ps1 install     copy S10eCam.sys to C:\S10Prov\cam and register it (demand start: it only runs when
                                 this script asks; nothing happens at boot)
@@ -17,6 +17,9 @@
                                 is on - is the Samsung ISP block reachable from Windows? Android's values: 0x07010000 /
                                 0x0000CC22. A blue screen here (bugcheck 0x124) = the block refuses Windows' reads (as
                                 the ISPPRE SysMMU did): send WINPRAM / the log. Writes nothing.
+      .\cam-s10.ps1 isplp       (v1.8, S10eCam 0.13) with pd-isplp ON: CMU_ISPLP gates, then - only if they are on -
+                                the ISPLP (ISP0) ID registers +0xF0/+0xF4 and MCSC +0x1C. Same risk as isp (an abort =
+                                bugcheck 0x124 + reboot). Android: 0x07110000 / 0x0000C2AD, 0x05010000.
       .\cam-s10.ps1 shot        stage 4 ("3b"): ONE PICTURE from the front camera. The camera is powered up, streams
                                 1824 x 1368 for a few frames into memory, and everything is stopped and powered down
                                 again. Saves C:\S10Prov\cam-shot.raw (the raw frame) and C:\S10Prov\cam-shot.bmp (a
@@ -42,7 +45,7 @@
   Writes C:\S10Prov\cam-s10-<action>.txt (e.g. cam-s10-shot.txt) - send it back, with cam-shot.bmp for 'shot'.
   Touches nothing of touch / USB / display / storage. Run the stages in order and send each log before the next.
 #>
-param([Parameter(Position = 0)][ValidateSet('install', 'remove', '1', '2', '3', '3step', 'isp', 'shot', 'stream')][string]$Action = '1',
+param([Parameter(Position = 0)][ValidateSet('install', 'remove', '1', '2', '3', '3step', 'isp', 'isplp', 'shot', 'stream')][string]$Action = '1',
       [Parameter(Position = 1)][string]$Opt = '',
       [int]$Coarse = 0, [int]$AGain = 0, [int]$IspDiv = 0, [int]$Frames = 0, [ValidateRange(0, 4)][int]$Phase = 0,
       [ValidateRange(1, 60)][int]$Seconds = 4, [ValidateSet(0, 90, 180, 270)][int]$Rotate = 0, [switch]$Mirror,
@@ -66,7 +69,7 @@ function W($m) {
   $fs = New-Object IO.FileStream($Out, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
   try { $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
 }
-W "cam-s10.ps1 v1.7  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
+W "cam-s10.ps1 v1.8  $Action $Opt$(if ($Action -eq '3step') { " from $From" })  $(Get-Date -Format s)"
 
 switch ($Action) {
   'install' {
@@ -89,7 +92,7 @@ switch ($Action) {
   }
 }
 
-$stage = if ($Action -in 'shot', 'stream') { 4 } elseif ($Action -eq 'isp') { 3 } else { [int]$Action.Substring(0, 1) }
+$stage = if ($Action -in 'shot', 'stream') { 4 } elseif ($Action -in 'isp', 'isplp') { 3 } else { [int]$Action.Substring(0, 1) }
 sc.exe start S10eCam 2>&1 | Out-Null
 # v1.3+: a new type name per version (S10Cam16): a window that loaded an older one keeps that old type.
 if (-not ('S10Cam16' -as [type])) {
@@ -321,6 +324,11 @@ if ($Action -eq 'shot') {
   # v1.7: deep step 8 alone (S10eCam 0.11) - the 'calling' line is on disk before the read, as for 3step
   W 'step 8 (3AA0 ID registers): calling the driver ...'
   $rep = [S10Cam16]::Run(3, 1 -bor (8 -shl 8))   # S10ECAM_FLAG_DEEP | step 8
+  $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
+} elseif ($Action -eq 'isplp') {
+  # v1.8: deep step 9 alone (S10eCam 0.13): ISPLP (ISP0) + MCSC version registers, gates checked first
+  W 'step 9 (ISPLP + MCSC version registers): calling the driver ...'
+  $rep = [S10Cam16]::Run(3, 1 -bor (9 -shl 8))   # S10ECAM_FLAG_DEEP | step 9
   $rep -split "`r?`n" | ForEach-Object { if ($_) { W $_ } }
 } elseif ($Action -ne '3step') {
   $rep = [S10Cam16]::Run($stage, 0)

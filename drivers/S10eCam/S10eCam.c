@@ -208,6 +208,21 @@
 #define TAA0_BASE           0x17190000ULL
 #define   TAA_ID_VERSION      0x0F0u
 #define   TAA_ID_CODE         0x0F4u
+/* 0.13: pd-isplp (ON on this phone, S10eCam 0.12 log 2026-11-18): CMU_ISPLP (K cal-if/exynos9820/cmucal-sfr.c:30
+   SFR_BLOCK(CMU_ISPLP, 0x17400000, 0x8000); gates :1312 ISPLP_ACLK 0x202c, :1314 MC_SCALER_ACLK 0x2034, :1282
+   LHM_AXI_P_ISPLP 0x2088; Q-channels :2343 ISPLP 0x3040, :2342 MC_SCALER 0x3048). ISPLP = ISP0 of the library
+   (live DT reg #3), MCSC (reg #5). Android's values with the camera on (notes/data/isp-dump-20261117): ISPLP +0xF0
+   0x07110000, +0xF4 0x0000C2AD (ISP_FimcIspChainV7P11P0); MCSC +0x1C 0x05010000 (its +0xF0 reads 0xDEADC0DE). */
+#define CMU_ISPLP           0x17400000ULL
+#define CMU_ISPLP_SIZE      0x4000u
+#define   LP_ISPLP_ACLK       0x202Cu
+#define   LP_MCSC_ACLK        0x2034u
+#define   LP_LHM_AXI_P        0x2088u
+#define   LP_Q_ISPLP          0x3040u
+#define   LP_Q_MCSC           0x3048u
+#define ISPLP_BASE          0x17430000ULL
+#define MCSC_BASE           0x17440000ULL
+#define   MCSC_VERSION        0x01Cu
 #define   IP_Q_CSIS2          0x3054u
 #define   IP_Q_CSISDMA        0x305Cu
 #define   IP_Q_PDPDMA         0x3064u
@@ -794,7 +809,7 @@ static NTSTATUS Stage2(MAPS *m, FOUND *f, REPORT *r)
    3b programs it from scratch anyway. Its PMU isolation bit is read (PMU = always on). */
 static NTSTATUS Stage3(REPORT *r, ULONG Flags)
 {
-    volatile UCHAR *pmu = NULL, *top = NULL, *cmu = NULL, *sys = NULL, *csis = NULL, *dma = NULL;
+    volatile UCHAR *pmu = NULL, *top = NULL, *cmu = NULL, *sys = NULL, *csis = NULL, *dma = NULL, *lp = NULL;
     ULONG    dpuSt, ispSt, iso, tg, g, i, step;
     NTSTATUS s = STATUS_SUCCESS;
     static const struct { PCSTR Name; ULONG Reg; } gates[] = {
@@ -947,6 +962,38 @@ static NTSTATUS Stage3(REPORT *r, ULONG Flags)
             (g == 0x07010000u && i == 0xCC22u) ? "= Android's (3AA v7.1, the library's ISP_Fimc3aaChainV7P1P0)" :
             "NOT Android's 0x07010000 / 0x0000CC22");
         break;
+    case 9:
+        /* 0.13: ISPLP (ISP0) + MCSC version registers - only with pd-isplp ON and their aclk + LHM_AXI_P_ISPLP on.
+           Same RISK as step 8: an external abort here = bugcheck 0x124 + reboot. */
+        g = R32(pmu, PMU_ISPLP_STAT);
+        if ((g & PD_ON) == 0) { Log(r, "  pd-isplp is off (%08X): nothing read\r\n", g); break; }
+        lp = Map(CMU_ISPLP, CMU_ISPLP_SIZE);
+        if (!lp) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+        g = R32(lp, LP_ISPLP_ACLK);
+        i = R32(lp, LP_LHM_AXI_P);
+        Log(r, "  CMU_ISPLP: ISPLP aclk [+%04X] %08X, MC_SCALER aclk [+%04X] %08X, LHM_AXI_P_ISPLP [+%04X] %08X,\r\n"
+               "  QCH ISPLP %08X MC_SCALER %08X\r\n", LP_ISPLP_ACLK, g, LP_MCSC_ACLK, R32(lp, LP_MCSC_ACLK), LP_LHM_AXI_P, i,
+            R32(lp, LP_Q_ISPLP), R32(lp, LP_Q_MCSC));
+        if (!ClkOn(i)) { Log(r, "  LHM_AXI_P_ISPLP gated: nothing read\r\n"); break; }
+        if (ClkOn(g)) {
+            csis = Map(ISPLP_BASE, PAGE_4K);
+            if (!csis) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+            g = R32(csis, TAA_ID_VERSION);
+            i = R32(csis, TAA_ID_CODE);
+            Log(r, "  ISPLP +0xF0 %08X +0xF4 %08X -> %s\r\n", g, i, (g == 0x07110000u && i == 0xC2ADu) ?
+                "= Android's (ISP v7.11, the library's ISP_FimcIspChainV7P11P0)" : "NOT Android's 0x07110000 / 0x0000C2AD");
+        } else {
+            Log(r, "  ISPLP not read: aclk gated\r\n");
+        }
+        if (ClkOn(R32(lp, LP_MCSC_ACLK))) {
+            sys = Map(MCSC_BASE, PAGE_4K);    /* the sys pointer reused: unmapped at out */
+            if (!sys) { s = STATUS_INSUFFICIENT_RESOURCES; break; }
+            g = R32(sys, MCSC_VERSION);
+            Log(r, "  MCSC +0x1C %08X -> %s\r\n", g, g == 0x05010000u ? "= Android's" : "NOT Android's 0x05010000");
+        } else {
+            Log(r, "  MCSC not read: aclk gated\r\n");
+        }
+        break;
     }
     Log(r, "step %u done\r\n", step);
 
@@ -954,6 +1001,7 @@ out:
     if (dma)  MmUnmapIoSpace((PVOID)dma, PAGE_4K);
     if (csis) MmUnmapIoSpace((PVOID)csis, PAGE_4K);
     if (sys)  MmUnmapIoSpace((PVOID)sys, PAGE_4K);
+    if (lp)   MmUnmapIoSpace((PVOID)lp, CMU_ISPLP_SIZE);
     if (cmu)  MmUnmapIoSpace((PVOID)cmu, CMU_ISPPRE_SIZE);
     if (top)  MmUnmapIoSpace((PVOID)top, CMU_TOP_MAP_SIZE);
     if (pmu)  MmUnmapIoSpace((PVOID)pmu, PMU_SIZE);
@@ -1827,7 +1875,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
         if (start) {
-            Log(&r, "S10eCam 0.12 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
+            Log(&r, "S10eCam 0.13 stream start flags %08X coarse %u again %u ispdiv %X\r\n", si.Flags, si.Coarse, si.AGain,
                 si.IspDiv);
             s = StreamStart(&si, sp->FileObject, NULL, NULL, &r);
             Log(&r, "stream start: 0x%08X\r\n", s);
@@ -1897,7 +1945,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         r.Buf[0] = 0;
         RtlZeroMemory(&m, sizeof(m));
         (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-        Log(&r, "S10eCam 0.12 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
+        Log(&r, "S10eCam 0.13 stage 4 (shot) flags %08X coarse %u again %u ispdiv %X frames %u\r\n", shot.Flags,
             shot.Coarse, shot.AGain, shot.IspDiv, shot.Frames);
         s = Stage1(&m, &f, &r);
         Log(&r, "stage 1: 0x%08X\r\n", s);
@@ -1931,7 +1979,7 @@ static NTSTATUS S10eCamIoctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     RtlZeroMemory(&m, sizeof(m));
 
     (VOID)KeWaitForSingleObject(&gLock, Executive, KernelMode, FALSE, NULL);
-    Log(&r, "S10eCam 0.12 stage %u flags %08X\r\n", in.Stage, in.Flags);
+    Log(&r, "S10eCam 0.13 stage %u flags %08X\r\n", in.Stage, in.Flags);
     if (in.Stage == 3) {                                 /* independent of 1/2: touches neither PERIC1 nor the PMIC */
         s = Stage3(&r, in.Flags);
         Log(&r, "stage 3: 0x%08X\r\n", s);

@@ -791,3 +791,13 @@ Plan (each a task, each waits for the result before it):
   The libraries can use it like the Android kernel's DMA pools.
 - Every Windows-side prerequisite of option A is now verified on the phone: x18, RWX in Wudfhost, user-mode register
   mapping, 3AA0 reachable, DMA memory below 4 GiB in the host. Next (plan 6): the libraries inside S10eIsp.
+
+## pd-isplp / pd-isphq are ON under Windows (2026-11-18 18:07)
+- S10eCam 0.12 (installed this time), cam-s10 isp (notes/data/isphost-win-20261118/cam-s10-isp-012.txt):
+  pd-isplp CONF 1 STATUS 1 ON, pd-isphq CONF 1 STATUS 1 ON (with pd-isppre, pd-dpu). No power-on / TZPC SMC is
+  needed for ISP0 + MCSC: the domains stay as sboot leaves them. (The earlier "0.11" results: S10eCam.c 0.12 had
+  never been sent to the user's kit - only pushed.)
+- S10eCam 0.13 + cam-s10.ps1 v1.8 isplp: deep step 9 = CMU_ISPLP 0x17400000 (cal-if cmucal-sfr.c:30) gates ISPLP_ACLK
+  +0x202c, MC_SCALER_ACLK +0x2034, LHM_AXI_P_ISPLP +0x2088, Q-channels +0x3040 / +0x3048; then only with the gates
+  on: ISPLP +0xF0 / +0xF4 (Android 0x07110000 / 0x0000C2AD) and MCSC +0x1C (Android 0x05010000; its +0xF0 is
+  0xDEADC0DE). pd-isplp re-checked first. kcheck-wdm clean, psparse 0. NOT RUN.

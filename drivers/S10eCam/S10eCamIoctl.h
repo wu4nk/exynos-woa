@@ -26,7 +26,8 @@ typedef struct _S10ECAM_STAGE_IN {
 
 #define S10ECAM_FLAG_DEEP   0x1u   /* stage 3: read inside ISPPRE - one step per call, the step in bits 15:8 */
 #define S10ECAM_STEP(f)     (((f) >> 8) & 0xFFu)
-#define S10ECAM_STEP_MAX    8u   /* 0.4's 8 (SysMMU) removed: it aborted (2026-11-16); 0.11: 8 = 3AA0 ID registers */
+#define S10ECAM_STEP_MAX    9u   /* 0.4's 8 (SysMMU) removed: it aborted (2026-11-16); 0.11: 8 = 3AA0 ID registers;
+                                    0.13: 9 = ISPLP + MCSC version registers */
 
 #define S10ECAM_REPORT_MAX  16384u
 
