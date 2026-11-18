@@ -1,52 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- S10eIsp.vcxproj (v0.1): UMDF 2.15 driver DLL, ARM64 only (notes/s10-isp.md). Modelled on
-     drivers/S10eIdd/IddSampleDriver/IddSampleDriver.vcxproj (WindowsUserModeDriver10.0 toolset) without IddCx / WPP. -->
-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<!-- S10eIsp.vcxproj (v0.1.1): UMDF 2.15 driver DLL, ARM64 only (notes/s10-isp.md). Same shape as the kit's working
+     KMDF projects (S10eBattery.vcxproj: ToolsVersion Current, Microsoft.Cpp.Default.props first) - v0.1's
+     IddSample-style header failed in the EWDK (MSB4019, Microsoft.Cpp.Redirect.18.props). -->
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Release|ARM64">
-      <Configuration>Release</Configuration>
-      <Platform>ARM64</Platform>
-    </ProjectConfiguration>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="S10eIsp.c" />
+    <ProjectConfiguration Include="Release|ARM64"><Configuration>Release</Configuration><Platform>ARM64</Platform></ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6B1E0C47-3F7A-4C1B-9E52-1D0A5C9F2B61}</ProjectGuid>
-    <TemplateGuid>{32909489-7be5-497b-aafa-db6669d9b44b}</TemplateGuid>
-    <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
-    <Configuration>Release</Configuration>
-    <Platform Condition="'$(Platform)' == ''">ARM64</Platform>
-    <RootNamespace>S10eIsp</RootNamespace>
+    <ProjectName>S10eIsp</ProjectName>
+    <TargetName>S10eIsp</TargetName>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
+    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
+    <UMDF_VERSION_MINOR>15</UMDF_VERSION_MINOR>
+    <SignMode>Off</SignMode>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" Label="Configuration">
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
     <TargetVersion>Windows10</TargetVersion>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>WindowsUserModeDriver10.0</PlatformToolset>
     <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <DriverType>UMDF</DriverType>
     <DriverTargetPlatform>Universal</DriverTargetPlatform>
-    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
-    <UMDF_VERSION_MINOR>15</UMDF_VERSION_MINOR>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
-    <RunCodeAnalysis>false</RunCodeAnalysis>
-  </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+  <ItemDefinitionGroup>
     <ClCompile>
+      <WppEnabled>false</WppEnabled>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>false</TreatWarningAsError>
       <CompileAs>CompileAsC</CompileAs>
-      <AdditionalOptions>/DUMDF_DRIVER %(AdditionalOptions)</AdditionalOptions>
+      <Optimization>MinSpace</Optimization>
+      <AdditionalOptions>%(AdditionalOptions) /DUMDF_DRIVER /Brepro</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);OneCoreUAP.lib</AdditionalDependencies>
+      <AdditionalOptions>/Brepro %(AdditionalOptions)</AdditionalOptions>
     </Link>
-    <DriverSign>
-      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
-    </DriverSign>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="S10eIsp.c" />
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

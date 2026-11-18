@@ -719,3 +719,9 @@ Plan (each a task, each waits for the result before it):
   make-windows take everything in out\: S10eIsp would be installed by them too; harmless (binds only CISP, reads only
   the gates and the 3AA0 IDs; ~0.2 s x18 check at each start). (3) DSDT/_CRS order and S10eIsp.c RES_* agree
   (CMU_ISPPRE 0, 3AA0 1, ISPLP 2, MCSC 3), and S10eIsp.c also checks the two physical addresses before reading.
+- 14:36 user build (EWDK, build-s10.cmd v1.19): S10eIsp.vcxproj failed MSB4019 "The imported project
+  C:\Microsoft.Cpp.Redirect.18.props was not found" ($(CurrentVCTargetsPath) empty): the IddSample-style header
+  (ToolsVersion 12.0, no Microsoft.Cpp.Default.props before the configuration group). Fix: the shape of the kit's
+  KMDF projects that build in the same EWDK (S10eBattery.vcxproj: ToolsVersion Current, WindowsTargetPlatformVersion
+  $(LatestTargetPlatformVersion), Microsoft.Cpp.Default.props, then PlatformToolset WindowsUserModeDriver10.0 /
+  DynamicLibrary / DriverType UMDF).
