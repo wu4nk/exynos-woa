@@ -1068,3 +1068,24 @@ Plan (each a task, each waits for the result before it):
     threads - same as before.
 - Status of the 3AA0 path on Windows: registers, DMA addresses and interrupts all work with the real block. What is
   missing for a real frame is the INPUT: CSIS -> 3AA0 OTF (sensor streaming via S10eCam) - next.
+
+## Next: the INPUT - CSIS2 -> PDP0 -> 3AA0 OTF (research, 2026-11-18 21:30; nothing written yet)
+- Path (K fimc-is-v7_0_0/fimc-is-hw-chain.c, CONFIG = USE_CAMIF_FIX_UP 1 in fimc-is-config.h:215):
+  - SYSREG_ISPPRE 0x17020000 (the page S10eCam already maps for +0x500): SC_CON0 +0x404 GLUEMUX_PDP0_VAL [1:0] = CSI
+    channel feeding PDP0 (fimc_is_hw_camif_init writes 0 at init, fimc_is_hw_camif_fix_up writes csi_ch at stream:
+    front = CSIS2 -> 2); SC_PDP_IN_EN +0x448 bit (pdp_ch * 4 + csi_ch): PDP_CORE0_IN_CSIS2_EN = bit 2
+    (fimc_is_hw_camif_pdp_in_enable, called by fimc-is-device-sensor_v2.c:3342 at stream on, cleared at off);
+    SC_CON14 +0x43C GLUEMUX_3AA0_VAL b0 = 0 = 3AA0 input from PDP0 (fimc_is_hw_ischain_cfg).
+  - PDP0 = sensor-paf-pdp@17160000 (+0x2000, live DT, SPI 0x139): for PD_NONE sensor modes pdp_s_stream ->
+    pdp_hw_s_core(false): PDP_INT +0x910 = 0, PDP_INT_MASK +0x914 = 0x1F, PDP_CORE_ENABLE +0x900 b0 = 0 (reset value 0
+    per the field table). Android's PD_NONE modes (3J1 mode 9 / 10 / 11 / 12 / 13 / 14) still reach the 3AA, so PDP
+    with the core off passes the image through (inferred from the driver's flow, not read).
+  - CSIS2 always drives its OTF output; S10eCam's CSIS DMA taps the same stream (INPUT_PATH_CH0 = OTF).
+- Clock: S10eCam runs ISPPRE at /4 = 100 MHz (no DVFS voltage change); mode 8 (1824x1368@30) overflowed the CSIS DMA
+  there, the working camera uses binned mode 11 (912x684, PD_NONE). So the first OTF test uses mode 11, and the
+  library's parameters / sensor answers must describe 912x684 instead of Android's 3648x2736 preview.
+- Plan (each its own task): (a) S10eCam: an opt-in OTF flag on shot/stream - log then set SC_CON14 0, SC_CON0 2,
+  PDP_IN_EN bit 2, PDP0 core off; restore at stop. PDP0 0x17160000 has never been read on Windows (a SysMMU-style
+  abort is possible): first a read-only stage of its gate + 3 words. (b) S10eIsp 0.7 "hw3aaotf": the libraries'
+  parameters for 912x684, init + shot F1 on the real 3AA0, then wait for real interrupts for N seconds while
+  S10eCam streams; dump the before/after-BDS buffers. (c) isp-s10.ps1 orchestrates both.
