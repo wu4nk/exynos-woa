@@ -402,6 +402,7 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
     m->State = 1;
     pipe_status("pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), waiting for S10eCamera");
     for (;;) {
+        long cam_stage = m->CamStage;
         while (!m->Want) plat_sleep_us(20000);
         m->Sessions++;
         fc++;
@@ -414,8 +415,15 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
         u64 last_fe = hw_fe, last_ife = hw_isp_fe;
         int pend = -1;
         u32 s = 0;
+        u32 marks = 0;
         while (m->Want) {
             plat_sleep_us(1000);
+            if (m->CamStage != cam_stage) {          /* diagnosis: S10eCamera's progress, written through */
+                cam_stage = m->CamStage;
+                snprintf(b, sizeof(b), "pipe: S10eCamera stage %ld (3AA frame ends %llu, ISP0 frame ends %llu, "
+                         "published %ld)", cam_stage, (unsigned long long)hw_fe, (unsigned long long)hw_isp_fe, m->Seq);
+                plat_mark(b);
+            }
             if (hw_isp_fe != last_ife) {             /* ISP0 finished the frame it was given: publish its slot */
                 last_ife = hw_isp_fe;
                 if (pend >= 0) {
@@ -436,6 +444,12 @@ static void pipe_run(FILE *lf, unsigned char *P, u64 PP, u64 SHP, unsigned char 
             if (hw_fe != last_fe) {                  /* the 3AA0 wrote frame fc: ISP0 on it, then the next 3AA shot */
                 last_fe = hw_fe;
                 m->State = 3;
+                if (marks < 6) {                     /* diagnosis: the first frames, written through */
+                    marks++;
+                    snprintf(b, sizeof(b), "pipe: F%u 3AA frame end -> ISP0 into slot %u (published %ld, errors %ld)",
+                             fc, s, m->Seq, m->Errors);
+                    plat_mark(b);
+                }
                 PUT(PIO, 912, slot[s]);
                 PUT(PIO, 1120, 0, fc);
                 PCALL("ISP set_ctrl", FNI[SET_CTRL], oi, 0, fc, SHP);

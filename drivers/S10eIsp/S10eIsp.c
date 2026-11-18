@@ -72,7 +72,7 @@ int isp_front_irq(unsigned int chain, unsigned int id); /* 0.6/0.8: a real inter
 void isp_front_set_hwisp(volatile void *va);  /* 0.8: the REAL ISPLP (ISP0) window (test_front.c) */
 void isp_front_set_pipe(void *shm);           /* 0.9: the camera pipeline's control block (test_front.c) */
 
-#define S10EISP_VERSION L"0.9"
+#define S10EISP_VERSION L"0.9.1"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0

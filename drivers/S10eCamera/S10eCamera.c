@@ -114,6 +114,8 @@ static PFILE_OBJECT gPipeFo;
 static PUCHAR       gPipeKva;
 static ULONGLONG    gPipePa, gPipeBytes;
 static S10EISP_SHM *gShm;
+static BOOLEAN      gPipeFellBack;                       /* set at APC_LEVEL (PinProcess), traced at stop */
+#define PIPE_STAGE(n) do { if (gShm != NULL) InterlockedExchange(&gShm->CamStage, (n)); } while (0)
 
 /* ---------------------------------------------------------------------------------------------- the report file */
 
@@ -547,6 +549,8 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
     c->PipeRawSeq = gS.Seq;
     c->Frames++;
     c->PipeFrames++;
+    if (c->PipeFrames == 1)
+        PIPE_STAGE(6);
     hdr = lead->StreamHeader;
     hdr->Duration = gInterval;
     hdr->OptionsFlags |= KSSTREAM_HEADER_OPTIONSF_DURATIONVALID;
@@ -572,8 +576,8 @@ static BOOLEAN PipeProcess(PKSPIN Pin, CAMPIN *c)
         e.Coarse = (ULONG)((ULONG64)m->AeExpUs * 80724u / 898400u);
         e.AGain = m->AeAGain1000 * 32u / 1000u;
         if (e.Coarse < 2) e.Coarse = 2;
-        if (NT_SUCCESS(StreamExposure(&e)))
-            c->PipeAeApplied++;
+        if (NT_SUCCESS(StreamExposure(&e)) && ++c->PipeAeApplied == 1)
+            PIPE_STAGE(7);
     }
     return TRUE;
 }
@@ -602,14 +606,15 @@ static NTSTATUS PinProcess(PKSPIN Pin)
         return STATUS_PENDING;
     }
     if (gPipeOn) {                                       /* 0.10: Samsung's ISP output */
+        if (c->PipeFrames == 0 && gShm->CamStage < 5)
+            PIPE_STAGE(5);
         if (gShm->Magic == S10EISP_SHM_MAGIC && gShm->State >= 2 && gS.Seq - c->PipeRawSeq < 60) {
             (VOID)PipeProcess(Pin, c);
             ExReleaseFastMutex(&gCamMutex);
             return STATUS_PENDING;
         }
         gPipeOn = FALSE;                                 /* the pipeline went away or stalled 2 s: CPU path */
-        Trace("pipe: no ISP frame for 60 sensor frames (magic %08X state %ld): CPU conversion from here\r\n",
-              gShm->Magic, gShm->State);
+        gPipeFellBack = TRUE;                            /* traced at stop: no file I/O under the fast mutex */
     }
     seq = gS.Seq;
     i = gS.Latest;
@@ -719,11 +724,17 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
                 gShm->State);
             PipeClose();
         } else {
+            PIPE_STAGE(1);
+            Trace("pipe: control block found (state %ld, sessions %ld): asking for frames\r\n", gShm->State,
+                  gShm->Sessions);
             InterlockedExchange(&gShm->Want, 1);
+            PIPE_STAGE(2);
             d.QuadPart = -10LL * 10000;                  /* 10 ms */
             for (t = 0; t < 300 && gShm->State < 2; t++)
                 KeDelayExecutionThread(KernelMode, FALSE, &d);
             if (gShm->State >= 2) {
+                PIPE_STAGE(3);
+                Trace("pipe: 3AA0 armed after %u ms\r\n", t * 10);
                 in.Flags |= S10ECAM_SHOT_OTF;
                 gPipeOn = TRUE;
                 c->PipeSeq = gShm->Seq;
@@ -738,8 +749,13 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
         }
     }
     /* not under gCamMutex: StreamStart sleeps for ~1 s and calls back into OnFrame -> Process, which takes it */
+    gPipeFellBack = FALSE;
     s = StreamStart(&in, NULL, OnFrame, Pin, &r);
     Log(&r, "start: 0x%08X\r\n", s);
+    if (gPipeOn) {
+        PIPE_STAGE(4);
+        Trace("pipe: stream started with the OTF route: 0x%08X\r\n", s);
+    }
     if (NT_SUCCESS(s)) {
         ExAcquireFastMutex(&gCamMutex);
         c->Running = TRUE;
@@ -764,6 +780,9 @@ static VOID CamStop(CAMPIN *c)
     Log(&r, "S10eCamera 0.10 stop: %I64u frames delivered (%I64u from the ISP, %u AE requests applied), %I64u dropped, "
         "%I64u torn; conversion avg %I64u us, max %u us\r\n", c->Frames, c->PipeFrames, c->PipeAeApplied, c->Drops,
         c->Torn, c->Frames ? c->ConvUs / c->Frames : 0, c->ConvUsMax);
+    if (gPipeFellBack)
+        Log(&r, "pipe: no ISP frame for 60 sensor frames during the stream: fell back to the CPU conversion\r\n");
+    PIPE_STAGE(8);
     if (gShm != NULL)                                    /* 0.10: the pipeline stops its 3AA0 / ISP0 */
         InterlockedExchange(&gShm->Want, 0);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
@@ -771,6 +790,7 @@ static VOID CamStop(CAMPIN *c)
     ExAcquireFastMutex(&gCamMutex);
     ExReleaseFastMutex(&gCamMutex);
     StreamStop(&r);
+    PIPE_STAGE(9);
     ExAcquireFastMutex(&gCamMutex);
     gPipeOn = FALSE;
     PipeClose();

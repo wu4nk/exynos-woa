@@ -61,5 +61,10 @@ typedef struct _S10EISP_SHM {
     unsigned int AeExpUs, AeAGain1000, AeDGain1000;
     volatile long Sessions;              /* Want 0 -> 1 cycles served */
     volatile long Errors;                /* library steps that did not return 0 */
-    char Status[128];
+    volatile long CamStage;              /* S10eCamera's progress (diagnosis, 2026-11-18 blue screen at camera open):
+                                            1 control block found, 2 Want set, 3 armed seen, 4 stream started with
+                                            OTF, 5 first PinProcess on the pipe, 6 first ISP frame delivered, 7 first
+                                            AE request applied, 8 stop begun, 9 stream stopped; S10eIsp marks every
+                                            change in front-trace.txt (written through) */
+    char Status[124];
 } S10EISP_SHM;

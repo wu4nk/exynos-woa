@@ -1199,3 +1199,13 @@ Plan (each a task, each waits for the result before it):
   hardware), waiting for S10eCamera" after ~0.33 s of setup (front-trace + host.log). The camera-avs.txt sent with it
   has no camera start after that (its last three starts, before 0.9, said "pipeline not up (magic 0)"): waiting for
   a camera open with the pipeline up.
+- 2026-11-18 22:39 phone: S10eIsp 0.9 pipeline came up at device start ("pipe: ready ...", host.log: all setup steps
+  0, isp-s10.ps1 pipe). Opening the Camera app then gave a BLUE SCREEN at once (user). camera-avs.txt has nothing of
+  that start (the report is written after StreamStart). Unknown where: kernel (S10eCamera 0.10's pipe path) or a
+  Wudfhost failure (the 0.3 runs showed a Wudfhost fast-fail ends in a blue screen on this phone). The earlier
+  sessions (pipeline not up) passed PipeOpen / the KVA IOCTL / PipeClose fine three times.
+- Diagnosis build S10eCamera 0.10.1 + S10eIsp 0.9.1: SHM CamStage (1 found, 2 Want, 3 armed seen, 4 stream started,
+  5 first PinProcess on the pipe, 6 first ISP frame, 7 first AE applied, 8 / 9 stop) set by S10eCamera, marked by the
+  pipe thread in front-trace.txt (written through) with its counters; the pipe marks its first 6 3AA frame ends too.
+  Also: 0.10's PinProcess called Trace (ZwCreateFile / ZwWriteFile) under gCamMutex = APC_LEVEL on fallback - file
+  I/O needs PASSIVE_LEVEL: now a flag logged at stop. Bugcheck code still wanted (s10-log).
