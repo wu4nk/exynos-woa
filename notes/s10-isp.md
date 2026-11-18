@@ -675,3 +675,12 @@ Plan (each a task, each waits for the result before it):
   ms per frame over 30 frames on 6 CPUs; one-time ISP object_create 35.8 ms. Fits 30 fps (33.3 ms).
 - => Option A works on Windows ARM64 in an ordinary process: relocation, x18 trampolines, threads, timers, tasks.
   Next: hardware access (S10eCam 0.12 isp pending), then the UMDF probe (plan item 4).
+
+## Windows reaches the ISP: 3AA0 ID read (2026-11-18 14:21) - plan item 3 (first half) done
+- cam-s10.ps1 v1.7 isp with S10eCam 0.11 (the 0.12 build with the pd-isplp line was not installed yet);
+  notes/data/isphost-win-20261118/cam-s10-isp.txt: pd-isppre ON (as sboot leaves it), ISPPRE_BUS gate on,
+  3AA0 aclk gate [+201C] 00200000 on, QCH [+3034] 003F0002, LHM_AXI_P on;
+  3AA0 +0xF0 = 0x07010000, +0xF4 = 0x0000CC22 = exactly Android's values (3AA v7.1, ISP_Fimc3aaChainV7P1P0). No
+  abort, no bugcheck: the 3AA0 register block is readable from Windows with the clocks as sboot leaves them, no SMC.
+  (The phone's clock said 2026-11-01 in the log header: RTC, irrelevant.)
+- Still open: pd-isplp state (ISP0 + MCSC) -> S10eCam 0.12.

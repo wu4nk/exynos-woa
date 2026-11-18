@@ -1,0 +1,16 @@
+cam-s10.ps1 v1.7  isp   2026-11-01T23:31:48
+driver: running
+step 8 (3AA0 ID registers): calling the driver ...
+S10eCam 0.11 stage 3 flags 00000801
+== PMU (power domains)
+  pd-dpu    CONF 00000001 STATUS 00000001 -> ON
+  pd-isppre CONF 00000001 STATUS 00000001 -> ON
+  CSIS2 D-PHY isolation (PMU +0x730) 00000000 -> isolated (PHY not powered for use)
+== CMU_TOP -> ISPPRE bus clock
+  ISPPRE_BUS mux 00000003 div 0000000F (/16) gate 00200000 -> on
+== deep step 8
+  3AA0 aclk gate [+201C] 00200000 -> on, QCH [+3034] 003F0002, LHM_AXI_P 00200000
+  3AA0 +0xF0 07010000 +0xF4 0000CC22 -> = Android's (3AA v7.1, the library's ISP_Fimc3aaChainV7P1P0)
+step 8 done
+stage 3: 0x00000000
+log: C:\S10Prov\cam-s10-isp.txt
