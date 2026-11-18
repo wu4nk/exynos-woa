@@ -897,3 +897,26 @@ Plan (each a task, each waits for the result before it):
 - Next (0.4): the 3AA0 window REAL for the init steps only (chain_create / set_system_config / object_create), no
   set_param / shot (no DMA enabled), no interrupt connected; register snapshot before / after through the probe's
   mapping. First write to ISP hardware from Windows.
+
+## Plan item 6 step 2: S10eIsp 0.4 "hw3aa" - the init steps on the REAL 3AA0 (2026-11-18)
+- What touches the 3AA in the init steps (Android native run, notes/data/isphost-android-20261118/
+  mmio-3AA_chain_create.txt, now committed): 3AA chain_create = 333 accesses (97 R, 236 W); set_system_config,
+  object_create, apply_tune_set, load_cal_data = 0 accesses. The writes: +0x00 0, +0x08 1, +0x0c 1 (SW reset, polled
+  until 0), +0x28 / +0xc8, +0x100..+0x120 (+0x108 / +0x118 0, +0x120 0x07ffffff), the +0x14xx / +0x15xx / +0x45xx
+  blocks, 0x37 into the +0x?fc words of ~30 sub-blocks, the same blocks again at +0x8000. No DMA address, no
+  frame start: those come with set_param / shot.
+- 0.4 (test_front.c + S10eIsp.c, isp-s10.ps1 v1.5 front -Hw3aa, run.flg "run hw3aa"): the libraries get the REAL
+  3AA0 user-mode mapping as window 0 (only if probe step 3 read Android's ID through it), run 3AA chain_create /
+  set_system_config / object_create on it, ISP chain / object on the fake ISPLP window, then STOP. All 64 KiB of 3AA0
+  is read (32-bit loads, as Android's regdump did) before and after -> out/regs-3AA0-hw-before.txt / -after.txt, and
+  every changed word is logged ("hw 3AA0 +off before -> after"). The reset model thread keeps polling the FAKE W3:
+  nothing but the libraries writes the hardware.
+- Hazards considered: no interrupt is connected (GIC SPIs 351/352 never enabled by Windows - a raised line goes
+  nowhere); no DMA address is programmed (all zero after chain_create on Android) and no frame comes in (CSIS idle -
+  camera apps must be closed so S10eCam does not stream); EvtReleaseHardware during the run would fault the run thread
+  (Wudfhost), the run lasts ~1 s.
+- Build-machine check (HW3AA_SELFTEST=1, plain memory as the "real" window, qemu-aarch64): path runs, 3AA chain_create
+  -> 0 with "[ERROR][3AA]sw_reset is time-out" (plain memory does not self-clear), 33 words changed, run stops after
+  ISP object_create. The normal run is unchanged (FRAMES=3: 39 steps all 0).
+- Expected on the phone: sw_reset NOT timing out (the hardware clears +0x0c), the changed words = the last writes of
+  mmio-3AA_chain_create.txt except self-clearing / status ones.

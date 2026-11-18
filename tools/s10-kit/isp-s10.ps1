@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.4) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.5) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -21,18 +21,22 @@
                               v1.4 (S10eIsp 0.3.1): -NoDma = the libraries get a fake pool, S10eIspDma is not used
                               (bisect switch after the blue screen of 2026-11-18). C:\S10Prov\isp\front-trace.txt
                               (written through to disk) shows how far the run thread got, even after a crash.
+                              v1.5 (S10eIsp 0.4): -Hw3aa = the libraries' INIT steps (3AA chain_create /
+                              set_system_config / object_create) on the REAL 3AA0 - the first ISP register writes
+                              from Windows; the run stops after them (no frame, no DMA address, no interrupt). All
+                              3AA0 registers read before / after; the changed ones are listed. Camera apps closed.
   The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
   S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
 param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front')][string]$Action = 'status',
-      [switch]$NoDma)
+      [switch]$NoDma, [switch]$Hw3aa)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.4  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.5  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -99,7 +103,10 @@ switch ($Action) {
         (icacls $isp /grant '*S-1-5-19:(OI)(CI)M' 2>&1) | ForEach-Object { W "  $_" }
         if (Test-Path "$isp\out") { Remove-Item -Recurse -Force "$isp\out" }
         Remove-Item "$isp\front-trace.txt" -ErrorAction SilentlyContinue
-        Set-Content -Path "$isp\run.flg" -Value $(if ($NoDma) { 'run nodma' } else { 'run' }) -Encoding ascii
+        $flg = 'run'
+        if ($NoDma) { $flg += ' nodma' }
+        if ($Hw3aa) { $flg += ' hw3aa' }
+        Set-Content -Path "$isp\run.flg" -Value $flg -Encoding ascii
         W "run.flg: $(Get-Content "$isp\run.flg")"
         $id = @($d)[0].InstanceId
         $k = "HKLM:\SYSTEM\CurrentControlSet\Enum\$id\Device Parameters\S10eIsp"
@@ -118,7 +125,9 @@ switch ($Action) {
         if (Test-Path $log) {
             $l = Get-Content $log
             W "host.log: $(@($l).Count) lines, steps $(@($l | Where-Object { $_ -match '^== ' }).Count), not 0: $(@($l | Where-Object { $_ -match '^== ' -and $_ -notmatch '-> 0x0$' }).Count)"
-            $l | Where-Object { $_ -match 'isphost: image|start_up|CRASH|ASSERT|time-out|steady|done:' } | Select-Object -Last 12 | ForEach-Object { W "  $_" }
+            $l | Where-Object { $_ -match 'isphost: image|start_up|CRASH|ASSERT|time-out|steady|done:|^hw3aa' } | Select-Object -Last 14 | ForEach-Object { W "  $_" }
+            $hw = @($l | Where-Object { $_ -match '^hw 3AA0 ' })
+            if ($hw.Count) { W "REAL 3AA0 registers changed: $($hw.Count)"; $hw | Select-Object -First 60 | ForEach-Object { W "  $_" } }
             Compress-Archive -Force -Path "$isp\out\*" -DestinationPath 'C:\S10Prov\isp-front.zip'
             W 'zip: C:\S10Prov\isp-front.zip'
         } else { W "no $log" }

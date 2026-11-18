@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.3.4) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.4) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -26,8 +26,14 @@
  *      the driver) and the REAL DMA pool of S10eIspDma (dva = physical address). The ISP hardware is not touched:
  *      the dvas only land in the fake windows. Output: C:\S10Prov\isp\out (isp-s10.ps1 front grants LocalService
  *      write access there), registry value FrontRun.
+ *   8. (0.4) run.flg containing "hw3aa": the same front run, but the 3AA0 window the libraries get for the INIT steps
+ *      is the REAL one (the user-mode mapping of 0x17190000, only when step 3 read Android's ID) - chain_create /
+ *      set_system_config / object_create, the first writes to ISP hardware from Windows; the run stops after them
+ *      (no tune set, set_param, shot, DMA address or interrupt reaches the hardware). Every 3AA0 register is read
+ *      before and after (32-bit reads, as Android's regdump read all 64 KiB): out\regs-3AA0-hw-before/after.txt.
  * ISPLP (ISP0) and MCSC are mapped but NEVER READ: pd-isplp's state is not known yet (S10eCam 0.12 prints it).
- * Nothing is written to any register. No interrupt is connected (none is declared in the DSDT node).
+ * Up to 0.3.4 nothing was written to any register; 0.4 writes to 3AA0 only in the hw3aa run (item 8).
+ * No interrupt is connected (none is declared in the DSDT node).
  * The result goes to the registry, value "Probe" under
  *   HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp
  * (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE: the only device key a UMDF driver may
@@ -40,8 +46,9 @@
 #include "../S10eIspDma/S10eIspDmaIoctl.h"
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
+void isp_front_set_hw3aa(volatile void *va); /* 0.4: the REAL 3AA0 window for the init steps (test_front.c) */
 
-#define S10EISP_VERSION L"0.3.4"
+#define S10EISP_VERSION L"0.4"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -262,7 +269,8 @@ static void Trace(const char *fmt, ...)
     CloseHandle(f);
 }
 
-static BOOL g_nodma;
+static BOOL g_nodma, g_hw3aa;
+static volatile UCHAR *g_taa_va;   /* 0.4: 3AA0's user-mode mapping, set only after its ID read = Android's */
 
 /* 0.3.3: a CRT invalid-parameter report must not fast-fail Wudfhost (the default handler does: the 0.3.x front runs
    died in setvbuf(size 0) - test_front.c). This handler records it and returns, so the CRT call fails with EINVAL. */
@@ -294,8 +302,17 @@ static DWORD WINAPI FrontThread(LPVOID p)
     StringCchPrintfA(layout, MAX_PATH, "%s\\sensor_itf_layout.txt", dir);
 
     _set_invalid_parameter_handler(InvalidParameter);
-    Trace("S10eIsp %S front thread: process %lu, data %s, nodma %d", S10EISP_VERSION, GetCurrentProcessId(), data,
-          g_nodma);
+    Trace("S10eIsp %S front thread: process %lu, data %s, nodma %d, hw3aa %d", S10EISP_VERSION, GetCurrentProcessId(),
+          data, g_nodma, g_hw3aa);
+    if (g_hw3aa) {
+        if (!g_taa_va) {
+            Trace("hw3aa: no verified 3AA0 mapping (probe step 3 did not read Android's ID) - not run");
+            SetValue(L"FrontRun", L"not run: hw3aa asked, 3AA0 mapping not verified");
+            return 1;
+        }
+        isp_front_set_hw3aa(g_taa_va);
+        Trace("hw3aa: the libraries get the REAL 3AA0 window %p for the init steps", (void *)g_taa_va);
+    }
     S10EISPDMA_MAP_OUT m;
     DWORD got = 0;
     RtlZeroMemory(&m, sizeof(m));
@@ -357,7 +374,8 @@ static void MaybeFrontRun(void)
     CloseHandle(f);
     DeleteFileW(L"" ISP_DIR "\\run.flg");
     g_nodma = strstr(flg, "nodma") != NULL;          /* 0.3.1: run.flg containing "nodma" = without S10eIspDma */
-    Trace("run.flg found (\"%s\"), nodma %d", flg, g_nodma);
+    g_hw3aa = strstr(flg, "hw3aa") != NULL;          /* 0.4: the init steps on the REAL 3AA0 */
+    Trace("run.flg found (\"%s\"), nodma %d, hw3aa %d", flg, g_nodma, g_hw3aa);
     if (InterlockedExchange(&g_front_started, 1)) {
         Log(L"front run: already ran in this process (one per Wudfhost: isp-s10.ps1 restart starts a new one)");
         return;
@@ -419,6 +437,7 @@ NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Tra
             Log(L"3AA0 via the user-mode mapping: +0xF0 %08lX +0xF4 %08lX -> %s", v, k,
                 (v == 0x07010000u && k == 0xCC22u) ? L"= Android's: the libraries can reach the 3AA from this process"
                                                    : L"NOT Android's 0x07010000 / 0x0000CC22");
+            g_taa_va = (v == 0x07010000u && k == 0xCC22u) ? taa->mapped : NULL;
         } else if (taa->pseudo) {
             ULONG v = WDF_READ_REGISTER_ULONG(Device, (PULONG)((PUCHAR)taa->pseudo + TAA_ID_VERSION));
             ULONG k = WDF_READ_REGISTER_ULONG(Device, (PULONG)((PUCHAR)taa->pseudo + TAA_ID_CODE));
@@ -452,6 +471,7 @@ NTSTATUS EvtReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
 {
     DEVCTX *c = GetCtx(Device);
     UNREFERENCED_PARAMETER(Translated);
+    g_taa_va = NULL;   /* a hw3aa run still in its init steps would now fault: the run lasts ~1 s after start */
     for (ULONG i = 0; i < c->nres; i++) {
         if (c->res[i].pseudo) WdfDeviceUnmapIoSpace(Device, c->res[i].pseudo, c->res[i].len);
         c->res[i].pseudo = NULL;
