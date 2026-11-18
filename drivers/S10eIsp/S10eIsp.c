@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.1) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.2) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -15,6 +15,10 @@
  *   4. the process's dynamic-code policy (GetProcessMitigationPolicy) and whether VirtualAlloc(PAGE_EXECUTE_READWRITE)
  *      + running generated code work here (the host generates its trampolines at run time);
  *   5. x18 kept in this process: 8 threads x 100 M checks with a foreign value in x18 (x18test's code).
+ *   6. (0.2) the DMA pool of S10eIspDma (\\.\S10eIspDma, IOCTL_S10EISPDMA_MAP) mapped into this process: PA /
+ *      size / caching, then the access kinds the libraries use on DMA memory, each under __try: aligned and
+ *      unaligned 8-byte stores / loads, memset, DC ZVA (generated code). How Windows ARM64 maps MmWriteCombined /
+ *      MmNonCached (Normal-NC or Device) is not documented; Device memory would fault on the unaligned ones.
  * ISPLP (ISP0) and MCSC are mapped but NEVER READ: pd-isplp's state is not known yet (S10eCam 0.12 prints it).
  * Nothing is written to any register. No interrupt is connected (none is declared in the DSDT node).
  * The result goes to the registry, value "Probe" under
@@ -25,8 +29,9 @@
 #include <windows.h>
 #include <wdf.h>
 #include <strsafe.h>
+#include "../S10eIspDma/S10eIspDmaIoctl.h"
 
-#define S10EISP_VERSION L"0.1"
+#define S10EISP_VERSION L"0.2"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -141,6 +146,74 @@ static void ProbeCode(void)
     VirtualFree(code, 0, MEM_RELEASE);
 }
 
+/* ---- 0.2: the DMA pool (S10eIspDma) ---- */
+typedef ULONG64 (*FN1)(ULONG64);
+static const ULONG g_zva[] = { 0xd50b7420, 0xd65f03c0 };     /* dc zva, x0 ; ret */
+static const ULONG g_dczid[] = { 0xd53b00e0, 0xd65f03c0 };   /* mrs x0, dczid_el0 ; ret */
+
+static void ProbeDma(void)
+{
+    HANDLE h = CreateFileW(S10EISPDMA_USER_PATH, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        Log(L"DMA: open %s failed %lu (S10eIspDma not installed / not started: isp-s10.ps1 dma)", S10EISPDMA_USER_PATH,
+            GetLastError());
+        return;
+    }
+    S10EISPDMA_MAP_OUT m;
+    DWORD got = 0;
+    RtlZeroMemory(&m, sizeof(m));
+    if (!DeviceIoControl(h, IOCTL_S10EISPDMA_MAP, NULL, 0, &m, sizeof(m), &got, NULL) || got < sizeof(m)) {
+        Log(L"DMA: IOCTL_S10EISPDMA_MAP failed %lu", GetLastError());
+        CloseHandle(h);
+        return;
+    }
+    volatile UCHAR *va = (volatile UCHAR *)(ULONG_PTR)m.UserVa;
+    Log(L"DMA: pool %llu MiB at PA 0x%08llX..0x%08llX, %s, mapped at %p (S10eIspDma v%lu)", m.Bytes >> 20, m.Pa,
+        m.Pa + m.Bytes - 1, m.Cache ? L"write-combined" : L"non-cached", (PVOID)va, m.Version);
+    if (m.Pa + m.Bytes > 0x100000000ull) Log(L"DMA: NOT below 4 GiB - unusable for the ISP's 32-bit addresses");
+
+    PUCHAR code = (PUCHAR)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    ULONG64 z = 0;
+    if (code) {
+        RtlCopyMemory(code, g_zva, sizeof(g_zva));
+        RtlCopyMemory(code + 64, g_dczid, sizeof(g_dczid));
+        FlushInstructionCache(GetCurrentProcess(), code, 128);
+        z = ((FN1)(code + 64))(0);
+        Log(L"DCZID_EL0 = 0x%llX (DZP %llu, block %lu bytes)", z, (z >> 4) & 1, 4ul << (z & 15));
+    }
+    struct { PCWSTR what; int kind; } t[] = {
+        {L"aligned 8-byte store + load", 0}, {L"unaligned 8-byte store + load (+0x1003)", 1},
+        {L"memset 64 KiB + check", 2}, {L"DC ZVA on a dirty block + check", 3}, {L"last byte store + load", 4},
+    };
+    for (int i = 0; i < (int)ARRAYSIZE(t); i++) {
+        DWORD code_ = 0;
+        BOOL ok = FALSE;
+        __try {
+            switch (t[i].kind) {
+            case 0: *(volatile ULONG64 *)(va + 0x1000) = 0x1122334455667788ull;
+                    ok = *(volatile ULONG64 *)(va + 0x1000) == 0x1122334455667788ull; break;
+            case 1: *(volatile ULONG64 UNALIGNED *)(va + 0x1003) = 0x8877665544332211ull;
+                    ok = *(volatile ULONG64 UNALIGNED *)(va + 0x1003) == 0x8877665544332211ull; break;
+            case 2: memset((void *)(va + 0x10000), 0xA5, 0x10000);
+                    ok = va[0x10000] == 0xA5 && va[0x1FFFF] == 0xA5; break;
+            case 3: if (!code || (z & 16)) { ok = FALSE; break; }
+                    memset((void *)(va + 0x20000), 0x5A, 4096);
+                    ((FN1)code)((ULONG64)(ULONG_PTR)(va + 0x20000));
+                    ok = va[0x20000] == 0 && va[0x20000 + (4u << (z & 15)) - 1] == 0 &&
+                         va[0x20000 + (4u << (z & 15))] == 0x5A; break;
+            case 4: va[m.Bytes - 1] = 0x3C; ok = va[m.Bytes - 1] == 0x3C; break;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            code_ = GetExceptionCode();
+        }
+        if (code_) Log(L"DMA test: %s -> EXCEPTION 0x%08lX", t[i].what, code_);
+        else Log(L"DMA test: %s -> %s", t[i].what, ok ? L"ok" : L"WRONG VALUE (or not run)");
+    }
+    if (code) VirtualFree(code, 0, MEM_RELEASE);
+    CloseHandle(h);                                     /* unmaps (S10eIspDma CLEANUP) and re-zeroes the pool */
+    Log(L"DMA: handle closed (pool unmapped)");
+}
+
 /* ---- PnP ---- */
 NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Translated)
 {
@@ -204,6 +277,7 @@ NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Tra
     Log(L"ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)");
 
     ProbeCode();
+    ProbeDma();
 
     WDFKEY key;
     NTSTATUS s = WdfDeviceOpenRegistryKey(Device, PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY,

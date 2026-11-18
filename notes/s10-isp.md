@@ -765,3 +765,8 @@ Plan (each a task, each waits for the result before it):
   build-s10.cmd v1.20 :ispdma, make-kit ships it, isp-s10.ps1 v1.1 dma / dmaremove (sc create start= system).
   kcheck-wdm clean. Known gap: if the last handle to the owning file object is closed in ANOTHER process
   (duplicated handle), CLEANUP does not unmap (wrong context) - the host never duplicates it.
+- S10eIsp 0.2 (same day): after the 0.1 probe, opens \\.\S10eIspDma, maps the pool, logs PA / size / caching, and
+  runs under __try the access kinds the libraries use on DMA memory: aligned and unaligned (+0x1003) 8-byte store +
+  load, memset 64 KiB, DC ZVA (generated code; DCZID_EL0 read the same way, DZP checked), last-byte access; then
+  closes the handle (unmaps). Device memory would fault on the unaligned / DC ZVA ones; Normal-NC would not.
+  ucheck-umdf clean. INF DriverVer 0.2.0.0.
