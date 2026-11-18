@@ -862,3 +862,7 @@ Plan (each a task, each waits for the result before it):
   here is not explained yet - noted, no dump to read).
 - 0.3.3: setvbuf size 4096; S10eIsp installs an invalid-parameter handler for the front run that only records
   "CRT invalid parameter" in front-trace.txt and returns (the CRT call fails with EINVAL instead of killing Wudfhost).
+- 20:04 user build of 0.3.3: LNK4209 "S10eIsp.obj: debugging information corrupt" -> LNK1218 (warnings are errors
+  in the toolset) - stale intermediates from the earlier builds; plus C4702 (unreachable return after plat_fatal)
+  and C4701 ('ir' maybe uninitialised) in isphost.c. Fixes: build-s10.cmd v1.22 deletes drivers\S10eIsp\ARM64
+  before msbuild; plat_fatal is declared noreturn (ISP_NORETURN), os_assert has no return after it; ir = {0}.

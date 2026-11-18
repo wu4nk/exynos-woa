@@ -262,7 +262,7 @@ static void worker(void *p)
         u64 r;
         if (kind == 1) {           /* irq: fn = chain << 32 | id */
             u32 chain = (u32)(j->fn >> 32), id = (u32)j->fn;
-            struct isp_irq ir;
+            struct isp_irq ir = {0};
             int found = 0;
             plat_mutex_lock(h->lock);
             for (int i = 0; i < h->nirq; i++)
@@ -403,7 +403,6 @@ static u64 os_assert(A8)                 /* void fimc_is_assert(void) :809 = BUG
 {
     UNUSED8;
     plat_fatal("isphost: library ASSERT (kernel BUG_ON) - stopping");
-    return 0;
 }
 
 static u64 os_sema_init(A8)              /* int fimc_is_sema_init(void **sema, int sema_count) :817 */

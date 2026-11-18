@@ -74,7 +74,7 @@ void plat_mark(const char *what)
    thread ends instead (the run is lost, the device stays up) - plat_win_set_thread_fatal(1) */
 static int fatal_thread_only;
 void plat_win_set_thread_fatal(int on) { fatal_thread_only = on; }
-void plat_fatal(const char *why)
+ISP_NORETURN void plat_fatal(const char *why)
 {
     plat_log(why);
     if (fatal_thread_only) ExitThread(0xDEAD);

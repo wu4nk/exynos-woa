@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.21) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.22) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
@@ -278,6 +278,9 @@ set "DST=%OUT%\S10eIsp"
 echo.
 echo ==== S10eIsp (camera ISP, UMDF 2 probe) ====
 pushd "%SRC%" || exit /b 1
+rem v1.22: always from clean intermediates - a stale S10eIsp.obj / pdb pair gave LNK4209 "debugging information
+rem corrupt" (a linker warning the toolset treats as error, LNK1218) on 2026-11-18
+if exist "%SRC%\ARM64" rmdir /s /q "%SRC%\ARM64"
 msbuild S10eIsp.vcxproj /nologo /m /v:minimal /p:Configuration=Release /p:Platform=ARM64 /p:SignMode=Off /p:EnableInf2cat=false /p:SkipPackageVerification=true /p:ApiValidator_Enable=false
 if errorlevel 1 (popd & echo [FAIL] build S10eIsp & exit /b 1)
 set "DLL="

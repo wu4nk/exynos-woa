@@ -34,7 +34,12 @@ void *plat_exec_alloc(size_t size, size_t align);   /* zeroed, read/write/execut
 void plat_flush_icache(void *p, size_t n);
 void plat_log(const char *line);                     /* one line, no newline */
 void plat_mark(const char *what);                    /* progress mark that survives a crash (driver build; else a no-op) */
-void plat_fatal(const char *why);                    /* never returns: process (test) or thread (driver) ends */
+#if defined(_MSC_VER) && !defined(__clang__)
+#define ISP_NORETURN __declspec(noreturn)
+#else
+#define ISP_NORETURN __attribute__((noreturn))
+#endif
+ISP_NORETURN void plat_fatal(const char *why);                    /* never returns: process (test) or thread (driver) ends */
 u64 plat_usec(void);                                 /* monotonic microseconds */
 void plat_sleep_us(u64 us);
 void *plat_mutex_new(void);

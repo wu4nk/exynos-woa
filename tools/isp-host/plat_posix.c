@@ -50,7 +50,7 @@ void plat_log(const char *line)
 
 void plat_mark(const char *what) { (void)what; }
 
-void plat_fatal(const char *why)
+ISP_NORETURN void plat_fatal(const char *why)
 {
     plat_log(why);
     abort();
