@@ -115,7 +115,17 @@ static PUCHAR       gPipeKva;
 static ULONGLONG    gPipePa, gPipeBytes;
 static S10EISP_SHM *gShm;
 static BOOLEAN      gPipeFellBack;                       /* set at APC_LEVEL (PinProcess), traced at stop */
-#define PIPE_STAGE(n) do { if (gShm != NULL) InterlockedExchange(&gShm->CamStage, (n)); } while (0)
+/* 0.10.2: the control block lives in the S10eIspDma pool = write-combined (Normal non-cacheable) memory. 0.10 / 0.10.1
+   wrote it with InterlockedExchange - an exclusive / atomic access, which the Arm architecture does not guarantee on
+   non-cacheable memory (whether such memory supports exclusives is IMPLEMENTATION DEFINED): the blue screen at camera
+   open came exactly at the first one (front-trace: pipe ready, no stage ever seen). Plain stores + a barrier now; every
+   field has a single writer, so nothing needs an atomic read-modify-write. */
+static VOID ShmPut(volatile LONG *p, LONG v)
+{
+    *p = v;
+    KeMemoryBarrier();
+}
+#define PIPE_STAGE(n) do { if (gShm != NULL) ShmPut(&gShm->CamStage, (n)); } while (0)
 
 /* ---------------------------------------------------------------------------------------------- the report file */
 
@@ -727,7 +737,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
             PIPE_STAGE(1);
             Trace("pipe: control block found (state %ld, sessions %ld): asking for frames\r\n", gShm->State,
                   gShm->Sessions);
-            InterlockedExchange(&gShm->Want, 1);
+            ShmPut(&gShm->Want, 1);
             PIPE_STAGE(2);
             d.QuadPart = -10LL * 10000;                  /* 10 ms */
             for (t = 0; t < 300 && gShm->State < 2; t++)
@@ -742,7 +752,7 @@ static NTSTATUS CamStart(PKSPIN Pin, CAMPIN *c)
                 Log(&r, "pipe: 3AA0 armed after %u ms (session %ld): Samsung ISP frames, sensor with the OTF route\r\n",
                     t * 10, gShm->Sessions);
             } else {
-                InterlockedExchange(&gShm->Want, 0);
+                ShmPut(&gShm->Want, 0);
                 Log(&r, "pipe: 3AA0 not armed in 3 s (state %ld): CPU conversion\r\n", gShm->State);
                 PipeClose();
             }
@@ -784,7 +794,7 @@ static VOID CamStop(CAMPIN *c)
         Log(&r, "pipe: no ISP frame for 60 sensor frames during the stream: fell back to the CPU conversion\r\n");
     PIPE_STAGE(8);
     if (gShm != NULL)                                    /* 0.10: the pipeline stops its 3AA0 / ISP0 */
-        InterlockedExchange(&gShm->Want, 0);
+        ShmPut(&gShm->Want, 0);
     /* StreamStop waits for the poll thread (whose OnFrame only queues work) and then frees the ring: take the mutex so
        a Process that already got in finishes first */
     ExAcquireFastMutex(&gCamMutex);

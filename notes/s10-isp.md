@@ -1209,3 +1209,13 @@ Plan (each a task, each waits for the result before it):
   pipe thread in front-trace.txt (written through) with its counters; the pipe marks its first 6 3AA frame ends too.
   Also: 0.10's PinProcess called Trace (ZwCreateFile / ZwWriteFile) under gCamMutex = APC_LEVEL on fallback - file
   I/O needs PASSIVE_LEVEL: now a flag logged at stop. Bugcheck code still wanted (s10-log).
+- 2026-11-18 22:55 front-trace of the 0.9.1 boot that blue-screened at camera open (pipe-0.9.1/front-trace.txt): "pipe:
+  ready" then NOTHING - no "S10eCamera stage", no "session armed": the pipe thread never saw Want = 1 or a stage
+  change. In S10eCamera that is exactly the first write to the control block: InterlockedExchange(&gShm->CamStage /
+  Want) on the S10eIspDma pool = MmWriteCombined (Normal non-cacheable) memory. The earlier "pipeline not up" sessions
+  never wrote it (closed before) and did not crash. Arm ARM: exclusive / atomic accesses to non-cacheable memory are
+  IMPLEMENTATION DEFINED (may abort) - consistent with an SError / data abort -> bugcheck. (Cause inferred from the
+  trace; no stop code seen.)
+- FIX S10eCamera 0.10.2: ShmPut = plain volatile store + KeMemoryBarrier for Want / CamStage (each SHM field has one
+  writer, no read-modify-write needed). S10eIsp's side already used plain stores. Rule for this project: no
+  Interlocked* / atomics on the S10eIspDma pool or any other uncached mapping.

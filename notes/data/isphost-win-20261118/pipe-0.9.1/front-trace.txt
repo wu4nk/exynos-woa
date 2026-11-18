@@ -1,0 +1,66 @@
+pipe.flg found: camera pipeline
+S10eIsp 0.9.1 front thread: process 988, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_4e2f7ffa4ffb8151, nodma 0, hw3aa 1, hw3aashot 1
+hwisp: the libraries get the REAL ISPLP window 00000242D0460000
+hw3aa: the libraries get the REAL 3AA0 window 00000242D0450000 for the init steps + 3AA set_param / shot F1 / stop
+S10eIspDma open: ok (0)
+pool mapped: 128 MiB PA 0xF56E3000 va 0x242D0480000 cache 1
+pipe: control block at pool offset 0x7FF0000
+calling isp_front_main, argc 5
+ 334679541 us  front: isp_front_main entered
+ 334684065 us  front: logs open, reading the libraries
+ 334699361 us  front: libraries read
+ 334701356 us  isp_load: exec alloc
+ 334704558 us  isp_load: exec alloc ok
+ 334725501 us  isp_load: copied + relocated
+ 334729245 us  isp_load: icache flushed
+ 334732655 us  isp_load: threads starting
+ 334734399 us  isp_load: threads registered
+ 334736339 us  isp_start: DDK start_up
+ 334749521 us  isp_start: RTA start_up
+ 334797137 us  hw3aa: reading all 3AA0 registers (before)
+ 334817280 us  hw3aa: 3AA0 read (before)
+ 334836028 us  3AA chain_create
+ 334839647 us  3AA set_system_config
+ 334844700 us  3AA object_create
+ 334852306 us  ISP chain_create
+ 334857806 us  ISP set_system_config
+ 334860469 us  ISP object_create
+ 334876421 us  hw3aa: reading all 3AA0 registers (after)
+ 334914038 us  front: hw3aa init steps done
+ 334928205 us  3AA apply_tune_set 6
+ 334931950 us  3AA load_cal_data
+ 334935182 us  3AA get_cal_data type 2
+ 334940169 us  pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), waiting for S10eCamera
+pipe.flg found: camera pipeline
+S10eIsp 0.9.1 front thread: process 808, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_4e2f7ffa4ffb8151, nodma 0, hw3aa 1, hw3aashot 1
+hwisp: the libraries get the REAL ISPLP window 0000020E04050000
+hw3aa: the libraries get the REAL 3AA0 window 0000020E04040000 for the init steps + 3AA set_param / shot F1 / stop
+S10eIspDma open: ok (0)
+pool mapped: 128 MiB PA 0xF5824000 va 0x20E04070000 cache 1
+pipe: control block at pool offset 0x7FF0000
+calling isp_front_main, argc 5
+  30027547 us  front: isp_front_main entered
+  30042956 us  front: logs open, reading the libraries
+  30321884 us  front: libraries read
+  30331545 us  isp_load: exec alloc
+  30343713 us  isp_load: exec alloc ok
+  30367689 us  isp_load: copied + relocated
+  30373899 us  isp_load: icache flushed
+  30378929 us  isp_load: threads starting
+  30383802 us  isp_load: threads registered
+  30396410 us  isp_start: DDK start_up
+  30416583 us  isp_start: RTA start_up
+  30476582 us  hw3aa: reading all 3AA0 registers (before)
+  30499610 us  hw3aa: 3AA0 read (before)
+  30528803 us  3AA chain_create
+  30544203 us  3AA set_system_config
+  30577520 us  3AA object_create
+  30603872 us  ISP chain_create
+  30619076 us  ISP set_system_config
+  30630339 us  ISP object_create
+  30645894 us  hw3aa: reading all 3AA0 registers (after)
+  30695230 us  front: hw3aa init steps done
+  30791674 us  3AA apply_tune_set 6
+  30806547 us  3AA load_cal_data
+  30826717 us  3AA get_cal_data type 2
+  30840341 us  pipe: ready (libraries up, 3AA0 + ISP0 chains on the real hardware), waiting for S10eCamera
