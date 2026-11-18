@@ -775,3 +775,7 @@ Plan (each a task, each waits for the result before it):
   out\S10eIspDma\S10eIspDma.sys (not built or not copied with the kit: build log needed). The restart report shows
   the same process 6836 and the same mapping addresses as install 15 s earlier: probably the install run's report
   (Disable-PnpDevice errors are silenced in v1.1) - to check. cam-s10 isp still 0.11 (install not run).
+- 17:47: S10eIspDma built (out\S10eIspDma\S10eIspDma.sys 30064 B) and the service RUNNING after isp-s10 dma, but
+  the S10eIsp report is still process 6836's from the first 0.2 start: PrepareHardware has not run since.
+  isp-s10.ps1 v1.2: restart = pnputil /restart-device <instance> with its output logged (Disable / Enable-PnpDevice
+  only as the fallback, errors shown).

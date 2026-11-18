@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.1) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.2) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -22,7 +22,7 @@ $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.1  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.2  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -88,10 +88,14 @@ switch ($Action) {
         $d = Dev
         if (-not $d) { Status; break }
         foreach ($x in $d) {
-            W "restarting $($x.InstanceId)"
-            Disable-PnpDevice -InstanceId $x.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-            Enable-PnpDevice -InstanceId $x.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
+            # v1.2: pnputil /restart-device (v1.1's silenced Disable/Enable-PnpDevice left the old report in place)
+            W "pnputil /restart-device $($x.InstanceId)"
+            (pnputil /restart-device "$($x.InstanceId)" 2>&1) | ForEach-Object { W "  $_" }
+            if ($LASTEXITCODE -ne 0) {
+                W "  pnputil exit $LASTEXITCODE - Disable / Enable-PnpDevice instead"
+                try { Disable-PnpDevice -InstanceId $x.InstanceId -Confirm:$false -ErrorAction Stop; Start-Sleep -Seconds 2
+                      Enable-PnpDevice -InstanceId $x.InstanceId -Confirm:$false -ErrorAction Stop } catch { W "  $_" }
+            }
         }
         Start-Sleep -Seconds 3
         Status
