@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.8) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.9) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -34,19 +34,21 @@
                               mode 11 (912x684); when the 3AA0 is armed this script runs .\cam-s10.ps1 shot -Bin -Otf
                               -Frames 30 (CSIS2 -> PDP0 -> 3AA0), the run saves the 3AA's output buffers (out\otf-*.raw,
                               in the zip). Camera apps closed (the stream must be free).
+                              v1.9 (S10eIsp 0.8 + UEFI v0.2.5): -Hw3aaOtfIsp = -Hw3aaOtf + ISP0 on the real ISPLP,
+                              M2M per frame to a YUY2 buffer (out\otf-isp-yuy2-912x684.raw).
   The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
   S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
   Only "front -Hw3aa / -Hw3aaShot" write registers (3AA0, by Samsung's libraries' init steps).
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
 param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front')][string]$Action = 'status',
-      [switch]$NoDma, [switch]$Hw3aa, [switch]$Hw3aaShot, [switch]$Hw3aaOtf)
+      [switch]$NoDma, [switch]$Hw3aa, [switch]$Hw3aaShot, [switch]$Hw3aaOtf, [switch]$Hw3aaOtfIsp)
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.8  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.9  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -116,7 +118,7 @@ switch ($Action) {
         Remove-Item "$isp\front-trace.txt" -ErrorAction SilentlyContinue
         $flg = 'run'
         if ($NoDma) { $flg += ' nodma' }
-        if ($Hw3aaOtf) { $flg += ' hw3aaotf' } elseif ($Hw3aaShot) { $flg += ' hw3aashot' } elseif ($Hw3aa) { $flg += ' hw3aa' }
+        if ($Hw3aaOtfIsp) { $flg += ' hw3aaotfisp'; $Hw3aaOtf = [switch]$true } elseif ($Hw3aaOtf) { $flg += ' hw3aaotf' } elseif ($Hw3aaShot) { $flg += ' hw3aashot' } elseif ($Hw3aa) { $flg += ' hw3aa' }
         Set-Content -Path "$isp\run.flg" -Value $flg -Encoding ascii
         W "run.flg: $(Get-Content "$isp\run.flg")"
         $id = @($d)[0].InstanceId
@@ -158,7 +160,7 @@ switch ($Action) {
             $l | Where-Object { $_ -match 'isphost: image|start_up|CRASH|ASSERT|time-out|steady|done:|^hw3aa' } | Select-Object -Last 14 | ForEach-Object { W "  $_" }
             $hw = @($l | Where-Object { $_ -match '^hw 3AA0 ' })
             if ($hw.Count) { W "REAL 3AA0 register changes: $($hw.Count) (all in host.log)"; $hw | Select-Object -First 40 | ForEach-Object { W "  $_" } }
-            $l | Where-Object { $_ -match '^hw3aa: (after shot|\+|real interrupts)|^hw 3AA0 stop|^hw irq|^hw3aa otf' } | Select-Object -First 60 | ForEach-Object { W "  $_" }
+            $l | Where-Object { $_ -match '^hw3aa: (after shot|\+|real interrupts)|^hw 3AA0 stop|^hw irq|^hw3aa otf|^hwisp|^== ISP' } | Select-Object -First 80 | ForEach-Object { W "  $_" }
             Compress-Archive -Force -Path "$isp\out\*" -DestinationPath 'C:\S10Prov\isp-front.zip'
             W 'zip: C:\S10Prov\isp-front.zip'
         } else { W "no $log" }

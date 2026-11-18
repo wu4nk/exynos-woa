@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.7) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.8) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -47,6 +47,10 @@
  *      after shot F1 the run waits (OTF_WAIT 40 s, mark "armed, waiting for OTF frames") for REAL frames from
  *      CSIS2 (isp-s10.ps1 starts cam-s10 shot -Bin -Otf), queues set_ctrl / shot per frame end, then saves the 3AA's
  *      before / after-BDS buffers (out\otf-*.raw) and stops.
+ *  12. (0.8, UEFI v0.2.5) the probe reads ISPLP's ID (+0xF0 / +0xF4, Android 0x07110000 / 0xC2AD; S10eCam 0.13 read
+ *      them on Windows); four interrupt objects: GSIV 351 / 352 = 3AA0 (chain 0, ids 0 / 1), 328 / 329 = ISP0 (chain
+ *      2, ids 6 / 7). run.flg "hw3aaotfisp": item 11 plus ISP0 on the REAL ISPLP: per 3AA frame end, ISP0 M2M from
+ *      the after-BDS buffer to its YUV DMA (YUV422 1-plane YCbYCr = YUY2, 912 x 684) -> out\otf-isp-yuy2-*.raw.
  * The result goes to the registry, value "Probe" under
  *   HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp
  * (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE: the only device key a UMDF driver may
@@ -60,9 +64,10 @@
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 void isp_front_set_hw3aa(volatile void *va, int mode); /* 0.4/0.5/0.7: the REAL 3AA0 window (test_front.c) */
-int isp_front_irq(unsigned int id);          /* 0.6: a real 3AA0 interrupt to the libraries' handler (test_front.c) */
+int isp_front_irq(unsigned int chain, unsigned int id); /* 0.6/0.8: a real interrupt to the libraries' handler */
+void isp_front_set_hwisp(volatile void *va);  /* 0.8: the REAL ISPLP (ISP0) window (test_front.c) */
 
-#define S10EISP_VERSION L"0.7"
+#define S10EISP_VERSION L"0.8"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -91,7 +96,7 @@ typedef struct _DEVCTX {
     ULONG nres;
     ULONG nint;                /* 0.6: interrupt resources, raw (GSIV) + translated vector, resource-list order */
     ULONG rvec[4], tvec[4];
-    WDFINTERRUPT irq[2];
+    WDFINTERRUPT irq[4];
 } DEVCTX;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVCTX, GetCtx)
 
@@ -105,7 +110,11 @@ WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(IRQCTX, GetIrqCtx)
 #define TAA_INT1_ENABLE 0x108u /* written 0 first by the libraries' chain_create; 0xfff0005f after shot F1 */
 #define TAA_INT2_ENABLE 0x118u
 #define IRQ_STORM 200000       /* interrupts per id handed to the libraries before the ISR gives up and masks */
-static volatile LONG g_irq_n[2], g_irq_lib[2], g_irq_masked[2];
+#define NIRQ 4                 /* slots: 0 / 1 = 3AA0 GSIV 351 / 352, 2 / 3 = ISP0 GSIV 328 / 329 (0.8) */
+static const ULONG g_irq_gsiv[NIRQ] = {351, 352, 328, 329};
+static const ULONG g_irq_chain[NIRQ] = {0, 0, 2, 2}, g_irq_libid[NIRQ] = {0, 1, 6, 7};
+static volatile LONG g_irq_n[NIRQ], g_irq_lib[NIRQ], g_irq_masked[NIRQ];
+static volatile UCHAR *g_isplp_va;   /* 0.8: ISPLP's mapping, set only after its ID read = Android's */
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD EvtDeviceAdd;
@@ -300,7 +309,7 @@ static void Trace(const char *fmt, ...)
     CloseHandle(f);
 }
 
-static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf;
+static BOOL g_nodma, g_hw3aa, g_hw3aashot, g_hw3aaotf, g_hwisp;
 static volatile UCHAR *g_taa_va;   /* 0.4: 3AA0's user-mode mapping, set only after its ID read = Android's */
 
 /* 0.3.3: a CRT invalid-parameter report must not fast-fail Wudfhost (the default handler does: the 0.3.x front runs
@@ -318,18 +327,22 @@ static void __cdecl InvalidParameter(const wchar_t *expr, const wchar_t *func, c
 
 static void IrqReport(void)
 {
-    WCHAR m[512];
+    WCHAR m[1024];
     size_t n;
-    StringCchPrintfW(m, ARRAYSIZE(m), L"id 0 (GSIV 351): %ld, to the libraries %ld, masked %ld; id 1 (GSIV 352): %ld, "
-                     L"to the libraries %ld, masked %ld", g_irq_n[0], g_irq_lib[0], g_irq_masked[0], g_irq_n[1],
-                     g_irq_lib[1], g_irq_masked[1]);
+    m[0] = 0;
+    for (ULONG k = 0; k < NIRQ; k++) {
+        n = wcslen(m);
+        StringCchPrintfW(m + n, ARRAYSIZE(m) - n, L"%sGSIV %lu (chain %lu id %lu): %ld, to the libraries %ld, masked %ld",
+                         k ? L"; " : L"", g_irq_gsiv[k], g_irq_chain[k], g_irq_libid[k], g_irq_n[k], g_irq_lib[k],
+                         g_irq_masked[k]);
+    }
     DEVCTX *c = g_dev ? GetCtx(g_dev) : NULL;
-    for (ULONG i = 0; c && i < 2; i++) {
+    for (ULONG i = 0; c && i < NIRQ; i++) {
         if (!c->irq[i] || !c->nint) continue;
         LONG id = IrqId(c->irq[i]);
         IRQCTX *x = GetIrqCtx(c->irq[i]);
         n = wcslen(m);
-        StringCchPrintfW(m + n, ARRAYSIZE(m) - n, L"; object %lu: vector %lu GSIV %lu -> id %ld (%s)", i, x->vec,
+        StringCchPrintfW(m + n, ARRAYSIZE(m) - n, L"; object %lu: vector %lu GSIV %lu -> slot %ld (%s)", i, x->vec,
                          x->gsiv, id, x->by_gsiv ? L"by GSIV" : L"by creation order");
     }
     SetValue(L"Irq", m);
@@ -369,6 +382,15 @@ static DWORD WINAPI FrontThread(LPVOID p)
             return 1;
         }
         isp_front_set_hw3aa(g_taa_va, g_hw3aaotf ? 2 : g_hw3aashot ? 1 : 0);
+        if (g_hwisp) {
+            if (!g_isplp_va) {
+                Trace("hw3aaotfisp: no verified ISPLP mapping - not run");
+                SetValue(L"FrontRun", L"not run: ISPLP mapping not verified");
+                return 1;
+            }
+            isp_front_set_hwisp(g_isplp_va);
+            Trace("hwisp: the libraries get the REAL ISPLP window %p", (void *)g_isplp_va);
+        }
         Trace("hw3aa: the libraries get the REAL 3AA0 window %p for the init steps%s", (void *)g_taa_va,
               g_hw3aashot ? " + 3AA set_param / shot F1 / stop" : "");
     }
@@ -436,6 +458,7 @@ static void MaybeFrontRun(void)
     g_nodma = strstr(flg, "nodma") != NULL;          /* 0.3.1: run.flg containing "nodma" = without S10eIspDma */
     g_hw3aa = strstr(flg, "hw3aa") != NULL;          /* 0.4: the init steps on the REAL 3AA0 */
     g_hw3aaotf = strstr(flg, "hw3aaotf") != NULL;    /* 0.7: + real frames from CSIS2 (OTF) */
+    g_hwisp = strstr(flg, "hw3aaotfisp") != NULL;    /* 0.8: + ISP0 on the real ISPLP */
     g_hw3aashot = g_hw3aaotf || strstr(flg, "hw3aashot") != NULL;  /* 0.5: + 3AA set_param / shot F1 / stop on it */
     Trace("run.flg found (\"%s\"), nodma %d, hw3aa %d, hw3aashot %d", flg, g_nodma, g_hw3aa, g_hw3aashot);
     if (InterlockedExchange(&g_front_started, 1)) {
@@ -521,7 +544,19 @@ NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Tra
     } else {
         Log(L"resources not as expected (CMU_ISPPRE 0x17000000, 3AA0 0x17190000 first): no register read");
     }
-    Log(L"ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)");
+    /* 0.8: ISPLP (ISP0) ID through the user-mode mapping. pd-isplp is ON as sboot leaves it and S10eCam 0.13 read
+       these two words on Windows with CMU_ISPLP's gates on (cam-s10 isplp, 2026-11-18); this driver has no CMU_ISPLP
+       resource to re-check the gates - recorded as the remaining risk of this read. */
+    RES *lp = &c->res[RES_ISPLP];
+    if (c->nres > RES_ISPLP && lp->pa.QuadPart == 0x17430000 && lp->mapped) {
+        ULONG v = *(volatile ULONG *)(lp->mapped + TAA_ID_VERSION);
+        ULONG k = *(volatile ULONG *)(lp->mapped + TAA_ID_CODE);
+        BOOLEAN ok = (v == 0x07110000u && k == 0xC2ADu);
+        Log(L"ISPLP via the user-mode mapping: +0xF0 %08lX +0xF4 %08lX -> %s", v, k,
+            ok ? L"= Android's" : L"NOT Android's 0x07110000 / 0x0000C2AD");
+        g_isplp_va = ok ? lp->mapped : NULL;
+    }
+    Log(L"MCSC: mapped only, never read");
 
     ProbeCode();
     ProbeDma();
@@ -546,6 +581,7 @@ NTSTATUS EvtReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
 {
     DEVCTX *c = GetCtx(Device);
     UNREFERENCED_PARAMETER(Translated);
+    g_isplp_va = NULL;
     g_taa_va = NULL;   /* a hw3aa run still in its init steps would now fault: the run lasts ~1 s after start */
     for (ULONG i = 0; i < c->nres; i++) {
         if (c->res[i].pseudo) WdfDeviceUnmapIoSpace(Device, c->res[i].pseudo, c->res[i].len);
@@ -556,10 +592,9 @@ NTSTATUS EvtReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
     return STATUS_SUCCESS;
 }
 
-/* which of 3AA0's interrupts an object got: the docs fetched do not say how the framework matches resources to
-   objects, so the object's own vector (WdfInterruptGetInfo, valid after EvtDevicePrepareHardware) is looked up in the
-   translated list and the raw entry next to it gives the GSIV: 351 -> id 0, 352 -> id 1. Creation order only as the
-   fallback (recorded). */
+/* which interrupt an object got: the docs fetched do not say how the framework matches resources to objects, so the
+   object's own vector (WdfInterruptGetInfo, valid after EvtDevicePrepareHardware) is looked up in the translated list
+   and the raw entry next to it gives the GSIV -> slot (g_irq_gsiv). Creation order only as the fallback (recorded). */
 static LONG IrqId(WDFINTERRUPT Interrupt)
 {
     IRQCTX *x = GetIrqCtx(Interrupt);
@@ -573,7 +608,8 @@ static LONG IrqId(WDFINTERRUPT Interrupt)
     for (ULONG k = 0; k < c->nint; k++)
         if (c->tvec[k] == info.Vector) {
             x->gsiv = c->rvec[k];
-            if (x->gsiv == 351 || x->gsiv == 352) { id = (LONG)(x->gsiv - 351); x->by_gsiv = TRUE; }
+            for (ULONG j = 0; j < NIRQ; j++)
+                if (x->gsiv == g_irq_gsiv[j]) { id = (LONG)j; x->by_gsiv = TRUE; }
         }
     x->id = id;
     return id;
@@ -585,15 +621,17 @@ BOOLEAN IspIsr(WDFINTERRUPT Interrupt, ULONG MessageID)
 {
     LONG id = IrqId(Interrupt);
     UNREFERENCED_PARAMETER(MessageID);
-    if (id < 0 || id > 1) return FALSE;
+    if (id < 0 || id >= NIRQ) return FALSE;
     LONG n = InterlockedIncrement(&g_irq_n[id]);
-    if (n <= IRQ_STORM && isp_front_irq(id) == 0) {
+    if (n <= IRQ_STORM && isp_front_irq(g_irq_chain[id], g_irq_libid[id]) == 0) {
         InterlockedIncrement(&g_irq_lib[id]);
         return TRUE;
     }
+    /* mask at the source: 3AA0 or ISP0 (both: +0x108 / +0x118 = 0 are the first writes of their chain_create) */
     DEVCTX *c = GetCtx(WdfInterruptGetDevice(Interrupt));
-    RES *taa = &c->res[RES_3AA0];
-    if (c->nres > RES_3AA0 && taa->pa.QuadPart == 0x17190000) {
+    ULONG ri = id < 2 ? RES_3AA0 : RES_ISPLP;
+    RES *taa = &c->res[ri];
+    if (c->nres > ri && taa->pa.QuadPart == (id < 2 ? 0x17190000 : 0x17430000)) {
         if (taa->mapped) {
             *(volatile ULONG *)(taa->mapped + TAA_INT1_ENABLE) = 0;
             *(volatile ULONG *)(taa->mapped + TAA_INT2_ENABLE) = 0;
@@ -619,9 +657,9 @@ NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT Init)
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr, DEVCTX);
     NTSTATUS s = WdfDeviceCreate(&Init, &attr, &dev);
     if (!NT_SUCCESS(s)) return s;
-    /* 0.6: one interrupt object per 3AA0 interrupt (WdfInterruptCreate docs: "once for each interrupt vector");
-       which one each gets is resolved by its vector (IrqId); unused without UEFI v0.2.4 */
-    for (ULONG i = 0; i < 2; i++) {
+    /* 0.6: one interrupt object per interrupt (WdfInterruptCreate docs: "once for each interrupt vector"); which one
+       each gets is resolved by its vector (IrqId); 0.8: four (UEFI v0.2.5), unused ones stay unused */
+    for (ULONG i = 0; i < NIRQ; i++) {
         WDF_INTERRUPT_CONFIG ic;
         WDF_OBJECT_ATTRIBUTES ia;
         WDFINTERRUPT irq;

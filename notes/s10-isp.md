@@ -1137,3 +1137,19 @@ Plan (each a task, each waits for the result before it):
 - ISP0 shot F1's DMA registers (base trick as for the 3AA): +0x8404 / +0x8504 / +0x8b04 / +0x8e04 / +0xbb5c / +0xbb7c,
   all pool addresses. Its shot ends with +0x0034 = 1, +0x0004 = 1 (M2M start). ISP params offer dma_output_yuv
   (fimc-is-v7_0_0/fimc-is-param.h: format 2 YUV422, plane 1, order 7 YCbYCr = YUY2, bitwidth 8).
+
+## Plan item 6 step 6b: S10eIsp 0.8 hw3aaotfisp - ISP0 on the REAL ISPLP after each real 3AA frame (2026-11-18)
+- S10eIsp 0.8: probe reads ISPLP +0xF0 / +0xF4 through its mapping (= Android's 0x07110000 / 0xC2AD -> g_isplp_va;
+  S10eCam 0.13 read them on Windows, CMU_ISPLP gates on - this driver cannot re-check those gates: recorded risk);
+  4 interrupt objects, slot by GSIV: 351 / 352 -> chain 0 ids 0 / 1, 328 / 329 -> chain 2 ids 6 / 7; masking per
+  block (ISP0: ISPLP +0x108 / +0x118 = 0, its chain_create's first writes too). run.flg "hw3aaotfisp".
+- test_front: HWI = real ISPLP window (only with OTF); ISP chain_create on it; ISP0 interrupts handed over only after
+  ISP chain_create (else masked). Per real 3AA frame end: ISP set_param (once) / set_ctrl Fn / shot Fn with params:
+  dma_input = after-BDS buffer (912x684 packed 12-bit), otf_output OFF (MCSC is not run), dma_output_yuv = YUV422
+  (2) 1-plane YCbYCr (7) 8-bit 912x684 into a third pool buffer (0xEE fill); ISP0 frame ends counted (its IRQ0 b1).
+  After the wait: YUY2 buffer counted + saved (out/otf-isp-yuy2-912x684.raw), ISP stop, then as 0.7.
+- Build machine (HW3AA_SELFTEST HW3AA_OTF HW3AA_ISP, two fake 3AA frame ends): ISP set_param / set_ctrl / shot -> 0;
+  new library line "getIspFrameDesc fail: [F:n][Index:n]" at ISP set_ctrl - the fake frame end comes without the
+  frame start / CIN ROW the real hardware sends first (inferred cause; watch for it on the phone). Normal run
+  unchanged (FRAMES=3: 39 steps 0).
+- isp-s10.ps1 v1.9 front -Hw3aaOtfIsp. Needs UEFI v0.2.5.

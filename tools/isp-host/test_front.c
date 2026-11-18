@@ -175,29 +175,37 @@ static volatile u32 *HW3;
 static int HW3_SHOT;
 /* mode: 0 init only (0.4), 1 + shot F1 / stop (0.5), 2 = 0.7 OTF: + real frames from CSIS2 (S10eCam -Otf) */
 void isp_front_set_hw3aa(volatile void *va, int mode) { HW3 = (volatile u32 *)va; HW3_SHOT = mode >= 1; OTF = mode == 2; }
+/* S10eIsp 0.8: the REAL ISPLP (ISP0) window too (only with OTF): ISP0 M2M per 3AA frame, YUV DMA out */
+static volatile u32 *HWI;
+void isp_front_set_hwisp(volatile void *va) { HWI = (volatile u32 *)va; }
 
 /* S10eIsp 0.6: a REAL 3AA0 interrupt (UMDF passive ISR, GSIV 351 = id 0 / 352 = id 1) handed to the libraries'
    handler (registered by 3AA chain_create: chain 0, ids 0 / 1), as the kernel's fimc_is_isr1_ddk / isr2 do. Returns
    -1 when there is nothing to hand it to (no hw3aa run, or chain_create not done yet): the driver then masks the
    source. The first 64 are logged with the status words before / after. */
-static volatile int hw_irq_ready;
+static volatile int hw_irq_ready, hw_isp_ready;
 static u64 hw_irq_n, hw_fs, hw_fe;   /* 0.7: frame start (IRQ0 b0) / frame end (IRQ0 b1) seen before the handler */
-int isp_front_irq(u32 id)
+static u64 hw_isp_fe;                /* 0.8: ISP0 frame ends (its IRQ0 b1, as the test's fake ISP FRAME END) */
+int isp_front_irq(u32 chain, u32 id)
 {
-    if (!HW3 || !hw_irq_ready || !H || id > 1) return -1;
+    volatile u32 *w = chain == 2 ? HWI : HW3;
+    if (!w || !H || (chain == 0 && (!hw_irq_ready || id > 1)) || (chain == 2 && (!hw_isp_ready || id < 6 || id > 7)) ||
+        (chain != 0 && chain != 2))
+        return -1;
     ISP_ADD64(&hw_irq_n, 1);
     u64 n = hw_irq_n;
-    u32 a1 = HW3[0x10c / 4], a2 = HW3[0x11c / 4];
-    if (id == 0 && (a1 & 1)) ISP_ADD64(&hw_fs, 1);
-    if (id == 0 && (a1 & 2)) ISP_ADD64(&hw_fe, 1);
+    u32 a1 = w[0x10c / 4], a2 = w[0x11c / 4];
+    if (chain == 0 && id == 0 && (a1 & 1)) ISP_ADD64(&hw_fs, 1);
+    if (chain == 0 && id == 0 && (a1 & 2)) ISP_ADD64(&hw_fe, 1);
+    if (chain == 2 && id == 6 && (a1 & 2)) ISP_ADD64(&hw_isp_fe, 1);
     u64 t0 = plat_usec();
-    u64 r = isp_irq_sync(H, 0, id);
+    u64 r = isp_irq_sync(H, chain, id);
     u64 dt = plat_usec() - t0;
-    if (n <= 64) {
+    if (n <= 64 || (chain == 2 && hw_isp_fe <= 3)) {
         char b[192];
-        snprintf(b, sizeof(b), "hw irq #%llu id %u: +0x10c 0x%08x +0x11c 0x%08x -> handler 0x%llx in %llu us -> "
-                 "+0x10c 0x%08x +0x11c 0x%08x", (unsigned long long)n, id, a1, a2, (unsigned long long)r,
-                 (unsigned long long)dt, HW3[0x10c / 4], HW3[0x11c / 4]);
+        snprintf(b, sizeof(b), "hw irq #%llu %s id %u: +0x10c 0x%08x +0x11c 0x%08x -> handler 0x%llx in %llu us -> "
+                 "+0x10c 0x%08x +0x11c 0x%08x", (unsigned long long)n, chain == 2 ? "ISP0" : "3AA0", id, a1, a2,
+                 (unsigned long long)r, (unsigned long long)dt, w[0x10c / 4], w[0x11c / 4]);
         plat_log(b);
     }
     return 0;
@@ -399,6 +407,7 @@ int main(int argc, char **argv)
     if (getenv("HW3AA_SELFTEST")) {   /* build-machine check of the hw3aa path: plain memory, so the SW reset poll
                                          (+0x0c) times out here - real hardware clears it */
         HW3 = window(DUMP, "3AA0");
+        if (getenv("HW3AA_ISP")) HWI = window(DUMP, "ISPLP");
         HW3_SHOT = getenv("HW3AA_SHOT") != NULL || getenv("HW3AA_OTF") != NULL;
         OTF = getenv("HW3AA_OTF") != NULL;
     }
@@ -415,6 +424,12 @@ int main(int argc, char **argv)
         plat_log(b);
         T3 = (void *)HW3;            /* the reset model below keeps polling the fake W3 (window 0): nothing is
                                         written to the hardware but by the libraries */
+        if (HWI && OTF) {
+            snprintf(b, sizeof(b), "hwisp: REAL ISPLP window %p: +0xF0 0x%08x +0xF4 0x%08x", (void *)HWI, HWI[0xF0 / 4],
+                     HWI[0xF4 / 4]);
+            plat_log(b);
+            TI = (void *)HWI;        /* the COREX model keeps polling the fake WI */
+        }
     }
     plat_posix_set_window(0, T3);                           /* ID_3AA_0 */
     plat_posix_set_window(2, TI);                           /* ID_ISP_0 */
@@ -439,6 +454,7 @@ int main(int argc, char **argv)
     snprintf(b, sizeof(b), "3AA object = %s", isp_img(H, r64(obj3), (char[48]){0}, 48));
     plat_log(b);
     STEP("ISP chain_create", FNI[CHAIN_CREATE], 0, wi, 0, cb);
+    if (HWI && OTF) hw_isp_ready = 1;   /* 0.8: the libraries' ISP0 handlers (ids 6 / 7) exist now */
     STEP("ISP set_system_config", FNI[SET_SYSTEM_CONFIG], cfg);
     u64 obji = (u64)(uintptr_t)zalloc(8);
     STEP("ISP object_create", FNI[OBJECT_CREATE], obji, (38u << 16) | (1u << 12), hw);   /* 0x00261000 = M2M */
@@ -527,6 +543,21 @@ int main(int argc, char **argv)
         memset(k1, 0xEE, bw * bh * 2);
         memset(k2, 0xEE, aw * ah * 2);
     }
+    /* 0.8: ISP0 M2M from the after-BDS buffer to its YUV DMA: YUV422 (2), 1 plane, YCbYCr (7) = YUY2, 8 bit
+       (fimc-is-v7_0_0/fimc-is-param.h); OTF out to MCSC off (MCSC is not run) */
+    unsigned char *PIO = NULL;
+    void *k3 = NULL;
+    u32 d3 = 0;
+    if (HWI && OTF) {
+        PIO = zalloc(1136);
+        isp_dma_alloc(H, aw * ah * 2, &k3, &d3);
+        memset(k3, 0xEE, aw * ah * 2);
+        PUT(PIO, 136, 1, 5, 12, 0, 1, aw, ah, 0, aw, ah, 0, 0, aw, ah, 0, 11);   /* dma_input: after-BDS, packed 12 */
+        PUT(PIO, 392, 0);                                                        /* otf_output off */
+        PUT(PIO, 648, 1, 2, 8, 7, 1, aw, ah, 0, 0, aw, ah, 0, 7);               /* dma_output_yuv: YUY2 */
+        PUT(PIO, 776, d2);
+        PUT(PIO, 912, d3);
+    }
     PUT(P, 1348, d1);
     PUT(P, 1416, d2);
     PUT(P, 1760, 0, 1);                                     /* instance 0, fcount 1 */
@@ -541,6 +572,7 @@ int main(int argc, char **argv)
     snprintf(b, sizeof(b), "DMA buffers (dva): before_bds 0x%x after_bds 0x%x", d1, d2);
     plat_log(b);
     u64 PP = (u64)(uintptr_t)P, SHP = (u64)(uintptr_t)SH;
+    if (PIO) memcpy(PIO, &PP, 8);                           /* taa_param */
     STEP("3AA set_param", FN3[SET_PARAM], r64(obj3), PP);
     STEP("3AA set_ctrl F1", FN3[SET_CTRL], r64(obj3), 0, 1, SHP);
     STEP("3AA shot F1", FN3[SHOT], r64(obj3), PP, SHP, 1);
@@ -554,10 +586,24 @@ int main(int argc, char **argv)
             u64 t0 = plat_usec(), last_fe = 0, last_n = 0;
             u32 fc = 1;
             plat_mark("hw3aa: armed, waiting for OTF frames");
+            int selftest_fe = 0;
+#ifndef ISPHOST_DRIVER
+            selftest_fe = getenv("HW3AA_SELFTEST") != NULL;   /* build machine: two fake 3AA frame ends */
+#endif
             while (plat_usec() - t0 < (u64)wait_s * 1000000u && fc < 30) {
                 plat_sleep_us(2000);
+                if (selftest_fe && fc < 3 && hw_fe == last_fe) { HW3[0x10c / 4] = 2; isp_front_irq(0, 0); }
                 if (hw_fe != last_fe) {          /* a frame ended: queue the next one, as the camera HAL does */
                     last_fe = hw_fe;
+                    if (PIO) {                   /* 0.8: ISP0 M2M on the frame the 3AA just wrote */
+                        char l[64];
+                        PUT(PIO, 1120, 0, fc);
+                        if (fc == 1) STEP("ISP set_param", FNI[SET_PARAM], r64(obji), (u64)(uintptr_t)PIO);
+                        snprintf(l, sizeof(l), "ISP set_ctrl F%u", fc);
+                        STEP(l, FNI[SET_CTRL], r64(obji), 0, fc, SHP);
+                        snprintf(l, sizeof(l), "ISP shot F%u", fc);
+                        STEP(l, FNI[SHOT], r64(obji), (u64)(uintptr_t)PIO, SHP, 1);
+                    }
                     fc++;
                     PUT(P, 1764, fc);
                     char l[64];
@@ -575,9 +621,23 @@ int main(int argc, char **argv)
                 }
             }
             snprintf(b, sizeof(b), "hw3aa otf: done after %llu ms: interrupts %llu, frame starts %llu, frame ends %llu, "
-                     "shots %u", (unsigned long long)((plat_usec() - t0) / 1000), (unsigned long long)hw_irq_n,
-                     (unsigned long long)hw_fs, (unsigned long long)hw_fe, fc);
+                     "shots %u, ISP0 frame ends %llu", (unsigned long long)((plat_usec() - t0) / 1000),
+                     (unsigned long long)hw_irq_n, (unsigned long long)hw_fs, (unsigned long long)hw_fe, fc,
+                     (unsigned long long)hw_isp_fe);
             plat_log(b);
+            if (PIO) {
+                u32 changed = 0, n3 = aw * ah * 2;
+                const unsigned char *y = k3;
+                for (u32 o = 0; o < n3; o++) changed += y[o] != 0xEE;
+                char p3[1024];
+                snprintf(p3, sizeof(p3), "%s/otf-isp-yuy2-%ux%u.raw", OUTDIR, aw, ah);
+                FILE *f = fopen(p3, "wb");
+                if (f) { fwrite(k3, 1, n3, f); fclose(f); }
+                snprintf(b, sizeof(b), "hwisp: ISP0 YUY2 buffer (dva 0x%x): %u of %u bytes written -> %s", d3, changed, n3,
+                         p3);
+                plat_log(b);
+                STEP("ISP stop", FNI[STOP], r64(obji), 0);
+            }
             const unsigned char *bufs[2] = {k1, k2};
             const char *names[2] = {"before_bds", "after_bds"};
             u32 sizes[2] = {bw * bh * 2, aw * ah * 2};
@@ -599,7 +659,7 @@ int main(int argc, char **argv)
                                              the ISR would hand it over */
             HW3[0x10c / 4] = 1u << 20;
             s1 = HW3[0x10c / 4];
-            isp_front_irq(0);
+            isp_front_irq(0, 0);
         }
 #endif
         u64 t0 = plat_usec();
