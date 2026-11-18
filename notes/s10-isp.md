@@ -866,3 +866,7 @@ Plan (each a task, each waits for the result before it):
   in the toolset) - stale intermediates from the earlier builds; plus C4702 (unreachable return after plat_fatal)
   and C4701 ('ir' maybe uninitialised) in isphost.c. Fixes: build-s10.cmd v1.22 deletes drivers\S10eIsp\ARM64
   before msbuild; plat_fatal is declared noreturn (ISP_NORETURN), os_assert has no return after it; ir = {0}.
+- 20:08 next build: C1033 "cannot open program database ...\ARM64\Release\vc145.pdb" for the three tools\isp-host
+  files - two cl runs (the files from another directory compile in their own batch) sharing one PDB; the earlier
+  LNK4209 was the same contention. S10eIsp.vcxproj: DebugInformationFormat OldStyle (/Z7, debug info in each .obj,
+  no shared compiler PDB).

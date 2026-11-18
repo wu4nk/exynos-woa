@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- S10eIsp.vcxproj (v0.3): UMDF 2.15 driver DLL, ARM64 only (notes/s10-isp.md). Same shape as the kit's working
+<!-- S10eIsp.vcxproj (v0.3.3): UMDF 2.15 driver DLL, ARM64 only (notes/s10-isp.md). Same shape as the kit's working
      KMDF projects (S10eBattery.vcxproj: ToolsVersion Current, Microsoft.Cpp.Default.props first) - v0.1's
      IddSample-style header failed in the EWDK (MSB4019, Microsoft.Cpp.Redirect.18.props). -->
 <Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -40,6 +40,9 @@
       <PreprocessorDefinitions>ISPHOST_DRIVER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IspHostDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <!-- 0.3.3: debug info inside each .obj (/Z7): the four tools\isp-host sources compile in a separate cl run
+           and two cl processes on one vc145.pdb gave C1033 / LNK4209 (2026-11-18) -->
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);OneCoreUAP.lib</AdditionalDependencies>
