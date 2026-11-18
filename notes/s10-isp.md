@@ -1231,3 +1231,19 @@ Plan (each a task, each waits for the result before it):
   frame end) marked for the first 8 frames. S10eCamera 0.10.3: the CPU path only fills in while the ISP has no new
   frame for 60 sensor frames and the ISP takes over again when it publishes (0.10.2 switched for good); raw
   bookkeeping kept in step.
+- 2026-11-18 23:14 S10eIsp 0.9.2 + S10eCamera 0.10.3 (pipe-0.10.3/front-trace.txt): THE WINDOWS CAMERA RUNS ON
+  SAMSUNG'S ISP. Session: 873 3AA0 frame ends, 842 ISP0 frames published, 13 3AA frames skipped for a busy ISP0, 1
+  ISP0 re-arm (one stall of 222 ms at F2-F6, ISPLP status 0 0, then fine), errors 0; S10eCamera: 787 frames delivered,
+  ALL 787 from the ISP, 772 AE requests applied, 54 dropped (no client buffer waiting). ISP0 latency shot -> frame end
+  15-18 ms (one 27 ms) at 912x684 - that is why F4 / F5 overlapped in 0.9.1 at ~33 ms per 3AA frame plus queueing.
+  User: "colours right but a bit soft; recorded video breaks up into blocks on fast motion" (Camera app). Soft =
+  912x684 binned sensor mode, upscaled; blocks = the Camera app's H.264 recording (software encoder) on a
+  CPU-loaded system - the driver's per-pixel ROTATED writes cost most of the conversion time.
+- S10eCamera 0.11: frames leave in the sensor's orientation (912x684) and the INF declares FSSensorOrientation = 90
+  (DWORD, on the device interfaces via the AddInterface AddReg) - docs stream/camera-device-orientation: "Declare the
+  non-0 degree orientation via FSSensorOrientation tag so the Camera Pipeline can correct the captured image"; "The
+  camera pipeline will correct the resulting video frame by counter rotating the video by the same amount counter
+  clockwise"; "the only valid values accepted will be 90, 180, and 270"; "must be published on the Device Interface
+  node ... AddReg directive during the AddInterface directive". 90 CCW = the 270 CW the driver did. New setting
+  DriverRotation (default 0) replaces Rotation (NOCLOBBER kept old installs at 270 - so the old name is no longer
+  read); Mirror becomes a vertical flip in sensor orientation (= left-right after the pipeline's rotation).

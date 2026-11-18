@@ -8,7 +8,7 @@ Class       = Camera
 ClassGuid   = {ca3e7ab9-b4c3-4ae6-8251-579ef933890f}
 Provider    = %ProviderName%
 CatalogFile = S10eCamera.cat
-DriverVer   = 11/18/2026,0.10.3.0
+DriverVer   = 11/18/2026,0.11.0.0
 PnpLockdown = 1
 
 [SourceDisksNames]
@@ -47,6 +47,8 @@ AddReg = S10eCamera.Reader.AddReg
 [S10eCamera.Reader.AddReg]
 HKR,,CLSID,,%Proxy.CLSID%
 HKR,,FriendlyName,,%FriendlyName%
+; 0.11: sensor mounting offset, degrees clockwise: the camera pipeline counter-rotates (stream/camera-device-orientation)
+HKR,,FSSensorOrientation,0x00010001,90
 
 [S10eCamera.Services]
 AddService = S10eCamera, 0x00000002, S10eCamera.Service

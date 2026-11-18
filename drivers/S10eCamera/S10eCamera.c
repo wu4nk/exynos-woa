@@ -49,7 +49,12 @@
  *   (CSIS2 -> PDP0 -> 3AA0), and delivers the ISP0's YUY2 frames (demosaic / white balance / noise reduction / AE by
  *   Samsung's libraries on the real ISP) instead of the CPU conversion; the libraries' exposure / gain requests are
  *   applied to the sensor. Without the pipeline (or if it stops answering) the CPU path runs as before.
- *
+ * 0.11: the frames leave in the SENSOR's orientation (912 x 684) and the INF declares FSSensorOrientation = 90 on the
+ *   device interfaces: the camera pipeline (Frame Server) counter-rotates them (learn.microsoft.com
+ *   stream/camera-device-orientation: "The camera pipeline will correct the resulting video frame by counter rotating
+ *   the video by the same amount counter clockwise"; 90 CCW = the 270 CW 0.2-0.10 did here). The driver's per-pixel
+ *   rotated writes (cache-hostile) are gone. Setting DriverRotation (default 0) replaces Rotation (no longer read:
+ *   any value but 0 rotates twice). Mirror (left-right of the upright picture) is now a vertical flip here. *
  * Written from the WDK documentation (learn.microsoft.com/windows-hardware/drivers/stream/...); the avshws sample
  * was read for the descriptor layout only, no code is taken from it.
  * SPDX-License-Identifier: GPL-2.0
@@ -102,7 +107,7 @@ static FAST_MUTEX gCamMutex;                             /* Process vs start / s
 static UCHAR      gRows[4 * S10ECAM_SHOT_STRIDE];        /* 4 raw lines (0.6 binned: 4 slots of 912), cached */
 static UCHAR      gY[2][CAM_SW], gU[2][CAM_SW], gV[2][CAM_SW];   /* 2 binned rows as Y, U, V (under gCamMutex) */
 static CHAR       gLog[8192];                            /* the engine's report of the last start / stop */
-static ULONG      gRot = 270, gMirror, gRingWc = 1, gRingKeep = 1, gBin = 1;   /* settings (Parameters), read at device start */
+static ULONG      gRot = 0, gMirror, gRingWc = 1, gRingKeep = 1, gBin = 1;   /* settings (Parameters), read at device start */
 static ULONG      gOutW = CAM_SH, gOutH = CAM_SW;        /* the output picture: rotation 90/270 = portrait */
 static BOOLEAN    gNv12;                                 /* 0.8: the running pin's format is NV12 (else YUY2) */
 static ULONG      gFps = 30;                             /* 0.9: FrameRate setting (30 / 60), read at device start */
@@ -183,7 +188,10 @@ static VOID MapOut(ULONG sx, ULONG sy, ULONG *ox, ULONG *oy)
     case 270: *ox = sy;              *oy = CAM_SW - 1 - sx;  break;
     default:  *ox = sx;              *oy = sy;               break;
     }
-    if (gMirror)
+    if (gMirror && gRot == 0)                            /* 0.11: the pipeline rotates 90 CCW afterwards: a left-right
+                                                            flip of its picture = a top-bottom flip here */
+        *oy = gOutH - 1 - *oy;
+    else if (gMirror)
         *ox = gOutW - 1 - *ox;
 }
 
@@ -1078,8 +1086,8 @@ static NTSTATUS DeviceStart(PKSDEVICE Device, PIRP Irp, PCM_RESOURCE_LIST Transl
     InitializeObjectAttributes(&oa, &p, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
     if (p.Length == 0 || !NT_SUCCESS(ZwOpenKey(&h, KEY_READ, &oa)))
         h = NULL;
-    rot = RegDword(h, L"Rotation", 270);
-    gRot = (rot == 0 || rot == 90 || rot == 180 || rot == 270) ? rot : 270;
+    rot = RegDword(h, L"DriverRotation", 0);            /* 0.11: the pipeline rotates (FSSensorOrientation 90) */
+    gRot = (rot == 0 || rot == 90 || rot == 180 || rot == 270) ? rot : 0;
     gMirror = RegDword(h, L"Mirror", 1) ? 1u : 0u;
     gRingWc = RegDword(h, L"RingWc", 1) ? 1u : 0u;
     gRingKeep = RegDword(h, L"RingKeep", 1) ? 1u : 0u;
