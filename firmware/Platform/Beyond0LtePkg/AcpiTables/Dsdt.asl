@@ -573,7 +573,8 @@ DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
         // INTR_HWIP1 / INTR_HWIP2 = live DT fimc_is@17190000 interrupts #0 / #1, SPI 0x13F / 0x140 -> GSIV 351 / 352
         // (K fimc-is-hw-chain.c index map, notes). Level / ActiveHigh like every other Exynos SPI in this file (the
         // DT gives trigger 0 = keep the GIC's level default; the status stays set until the library clears it).
-        // ISP0 328 / 329 and MCSC0 331 later.
+        // v0.2.5: ISP0's two (live DT interrupts #4 / #5, SPI 0x128 / 0x129 -> 328 / 329; the libraries' ids 6 / 7, chain
+        // 2). MCSC0 331 later.
         // Present only while PMU pd-isppre is ON (STATUS 0x15862504 bit 0, K flexpmu_cal_local_exynos9820.h; the
         // S10eCam log of 2026-11-18: ON as sboot leaves it): the driver reads CMU_ISPPRE, which aborts with the
         // domain off. The PMU word is read by AML (no resource claimed: GPU0 owns that PMU page in its _CRS).
@@ -590,6 +591,8 @@ DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
                 Memory32Fixed (ReadWrite, 0x17440000, 0x00010000)  // MCSC - pd-isplp, never read by S10eIsp 0.1
                 Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 351 }  // 3AA0 INTR_HWIP1: SPI 319 + 32
                 Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 352 }  // 3AA0 INTR_HWIP2: SPI 320 + 32
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 328 }  // ISP0 INTR_HWIP1: SPI 296 + 32 (v0.2.5)
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 329 }  // ISP0 INTR_HWIP2: SPI 297 + 32 (v0.2.5)
             })
             OperationRegion (ISPW, SystemMemory, 0x15862504, 4)
             Field (ISPW, DWordAcc, NoLock, Preserve) { ISPS, 32 }

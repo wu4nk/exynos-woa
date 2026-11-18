@@ -1126,3 +1126,14 @@ Plan (each a task, each waits for the result before it):
 - So the whole 3AA0 path - sensor -> D-PHY -> CSIS2 -> PDP0 -> 3AA0 (real registers, real interrupts, real DMA into
   the S10eIspDma pool) - runs on Windows under Samsung's own 3AA library. Next: ISP0 (ISPLP) M2M from the after-BDS
   buffer (its interrupts 328 / 329 into the DSDT), then MCSC (programmed by the kernel's GPL driver, not the library).
+
+## Plan item 6 step 6a: UEFI beyond1lte v0.2.5 - ISP0's interrupts (2026-11-18 21:50)
+- CISP _CRS += Interrupt {328} (ISP0 INTR_HWIP1, live DT #4 SPI 0x128) and {329} (#5, SPI 0x129), Level / ActiveHigh
+  / Exclusive, after 351 / 352 (Exynos9820.h EXYNOS_ISP_ISP0_GSIV1/2 SOURCE-ONLY). The libraries register ISP0 as
+  chain 2, ids 6 / 7. S10eIsp <= 0.7 creates 2 interrupt objects: the extra resources stay unused (WdfInterruptCreate
+  docs: unused objects / resources are tolerated) - 0.8 creates 4.
+- Build Beyond1 DEBUG rc 0 (FVMAIN_COMPACT 99 %, 3392 B free), iasl -d: 4 interrupts 0x15F 0x160 0x148 0x149 in
+  SAMS982C's _CRS. beyond1lte-uefi-v0.2.5.img sha256 568f1827fd7932b39d5602429f172c983028d9544fc9f0f229d1b1132e1ff2d3.
+- ISP0 shot F1's DMA registers (base trick as for the 3AA): +0x8404 / +0x8504 / +0x8b04 / +0x8e04 / +0xbb5c / +0xbb7c,
+  all pool addresses. Its shot ends with +0x0034 = 1, +0x0004 = 1 (M2M start). ISP params offer dma_output_yuv
+  (fimc-is-v7_0_0/fimc-is-param.h: format 2 YUV422, plane 1, order 7 YCbYCr = YUY2, bitwidth 8).
