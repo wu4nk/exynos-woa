@@ -1,0 +1,19 @@
+cam-s10.ps1 v1.8  isplp   (phone clock 2026-11-01T23:47:29; real 2026-11-18 18:20)
+driver: running
+step 9 (ISPLP + MCSC version registers): calling the driver ...
+S10eCam 0.13 stage 3 flags 00000901
+== PMU (power domains)
+  pd-dpu    CONF 00000001 STATUS 00000001 -> ON
+  pd-isppre CONF 00000001 STATUS 00000001 -> ON
+  pd-isplp  CONF 00000001 STATUS 00000001 -> ON
+  pd-isphq  CONF 00000001 STATUS 00000001 -> ON
+  CSIS2 D-PHY isolation (PMU +0x730) 00000000 -> isolated (PHY not powered for use)
+== CMU_TOP -> ISPPRE bus clock
+  ISPPRE_BUS mux 00000003 div 0000000F (/16) gate 00200000 -> on
+== deep step 9
+  CMU_ISPLP: ISPLP aclk [+202C] 00200000, MC_SCALER aclk [+2034] 00200000, LHM_AXI_P_ISPLP [+2088] 00200000,
+  QCH ISPLP 003F0002 MC_SCALER 003F0002
+  ISPLP +0xF0 07110000 +0xF4 0000C2AD -> = Android's (ISP v7.11, the library's ISP_FimcIspChainV7P11P0)
+  MCSC +0x1C 05010000 -> = Android's
+step 9 done
+stage 3: 0x00000000

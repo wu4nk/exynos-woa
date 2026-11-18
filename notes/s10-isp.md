@@ -801,3 +801,8 @@ Plan (each a task, each waits for the result before it):
   +0x202c, MC_SCALER_ACLK +0x2034, LHM_AXI_P_ISPLP +0x2088, Q-channels +0x3040 / +0x3048; then only with the gates
   on: ISPLP +0xF0 / +0xF4 (Android 0x07110000 / 0x0000C2AD) and MCSC +0x1C (Android 0x05010000; its +0xF0 is
   0xDEADC0DE). pd-isplp re-checked first. kcheck-wdm clean, psparse 0. NOT RUN.
+- 18:20 cam-s10.ps1 v1.8 isplp, S10eCam 0.13 (notes/data/isphost-win-20261118/cam-s10-isplp.txt): CMU_ISPLP
+  ISPLP aclk / MC_SCALER aclk / LHM_AXI_P_ISPLP all 00200000 (on), QCH 003F0002 both; ISPLP +0xF0 07110000 +0xF4
+  0000C2AD = Android; MCSC +0x1C 05010000 = Android. No abort. => All three blocks of the front path (3AA0, ISP0 =
+  ISPLP, MCSC) are powered, clocked and readable under Windows as sboot leaves them. Plan item 7 needs no power-on.
+  Next: plan item 6, the libraries inside S10eIsp (0.3 with fake windows + the real DMA pool first).
