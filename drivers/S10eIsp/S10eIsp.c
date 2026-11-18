@@ -307,6 +307,13 @@ static DWORD WINAPI FrontThread(LPVOID p)
     _set_invalid_parameter_handler(InvalidParameter);
     Trace("S10eIsp %S front thread: process %lu, data %s, nodma %d, hw3aa %d, hw3aashot %d", S10EISP_VERSION,
           GetCurrentProcessId(), data, g_nodma, g_hw3aa, g_hw3aashot);
+    if (g_hw3aashot && g_nodma) {
+        /* the fake pool's dvas (plat_win.c, 0x80000000 + offset) are REAL DRAM addresses on this phone: an armed 3AA
+           must only ever hold addresses inside S10eIspDma's pool */
+        Trace("hw3aashot with nodma refused: the fake pool's addresses are real DRAM - not run");
+        SetValue(L"FrontRun", L"not run: hw3aashot needs the S10eIspDma pool (nodma refused)");
+        return 1;
+    }
     if (g_hw3aa) {
         if (!g_taa_va) {
             Trace("hw3aa: no verified 3AA0 mapping (probe step 3 did not read Android's ID) - not run");

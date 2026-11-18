@@ -972,3 +972,8 @@ Plan (each a task, each waits for the result before it):
 - Expected on the phone: no fault; the 56 DMA registers = pool PA + the offsets above (pool PA 0xF5832000 last time);
   +0x10c / +0x11c stay quiet without input (if they move, that is the first hardware event to read); stop clears
   +0x00.
+- Review of d34d432 (adversarial): FOUND - "run nodma hw3aashot" would arm the real 3AA with plat_win's FAKE pool
+  dvas (0x80000000 + offset = real DRAM on this phone, Windows' own memory): a frame arriving later would be DMAed
+  over it. FIX (own commit): S10eIsp refuses hw3aashot with nodma (FrontRun "not run: ..."). Checked otherwise: the
+  DMA-register list excludes +0x110 (accidental match) and +0x4084 / +0xc084 (constant); the init-only path is
+  unchanged (qemu); the stop is reached only after the watch; ps1 -Hw3aaShot wins over -Hw3aa (run.flg holds one).
