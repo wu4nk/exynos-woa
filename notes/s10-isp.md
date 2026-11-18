@@ -779,3 +779,15 @@ Plan (each a task, each waits for the result before it):
   the S10eIsp report is still process 6836's from the first 0.2 start: PrepareHardware has not run since.
   isp-s10.ps1 v1.2: restart = pnputil /restart-device <instance> with its output logged (Disable / Enable-PnpDevice
   only as the fallback, errors shown).
+
+## Plan item 5 DONE: the DMA pool in the host process (2026-11-18 17:53)
+- First try (17:48, sc start long after boot): IOCTL_S10EISPDMA_MAP -> Win32 error 8 = STATUS_NO_MEMORY: no
+  contiguous block below 4 GiB even at 16 MiB, WC or NC, that late (as S10eCam saw).
+- After a reboot (S10eIspDma = system start, so DriverEntry runs early): notes/data/isphost-win-20261118/
+  isp-s10-status-dma.txt: "pool 128 MiB at PA 0xF569B000..0xFD69AFFF, write-combined", mapped into Wudfhost.
+  DCZID_EL0 = 0x4 (DC ZVA allowed, 64-byte blocks). On the write-combined user mapping: aligned 8-byte store/load
+  ok, UNALIGNED 8-byte store/load ok, memset 64 KiB ok, DC ZVA on a dirty block zeroes exactly 64 bytes ok, last byte
+  ok -> Windows ARM64 maps MmWriteCombined as Normal (non-cacheable) memory, not Device (observed, not documented).
+  The libraries can use it like the Android kernel's DMA pools.
+- Every Windows-side prerequisite of option A is now verified on the phone: x18, RWX in Wudfhost, user-mode register
+  mapping, 3AA0 reachable, DMA memory below 4 GiB in the host. Next (plan 6): the libraries inside S10eIsp.
