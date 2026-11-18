@@ -725,3 +725,18 @@ Plan (each a task, each waits for the result before it):
   KMDF projects that build in the same EWDK (S10eBattery.vcxproj: ToolsVersion Current, WindowsTargetPlatformVersion
   $(LatestTargetPlatformVersion), Microsoft.Cpp.Default.props, then PlatformToolset WindowsUserModeDriver10.0 /
   DynamicLibrary / DriverType UMDF).
+
+## S10eIsp 0.1 on the phone (2026-11-18 14:42) - plan item 4 DONE
+- User: UEFI v0.2.3 flashed, kit built with the fixed vcxproj, isp-s10.ps1 install
+  (notes/data/isphost-win-20261118/isp-s10-install.txt): ACPI\SAMS982C\0 present (so the AML read of the PMU word
+  inside GPU0's page works and pd-isppre was ON), status OK, oem10.inf 0.1.0.0, one Wudfhost (process 1332).
+- Every memory resource is mapped into the process: CMU_ISPPRE -> 0x1FA7B0D0000, 3AA0 -> 0x1FA7B430000, ISPLP ->
+  ...440000, MCSC -> ...450000 (kernel pseudo addresses FFFFE401...).
+- CMU_ISPPRE 3AA0 aclk gate 00200000 / LHM_AXI_P 00200000 through WDF_READ_REGISTER_ULONG and through the user
+  mapping: the same. 3AA0 +0xF0 07010000 / +0xF4 0000CC22 read with a plain load from the user mapping = Android.
+- Wudfhost: ProhibitDynamicCode 0; VirtualAlloc(PAGE_EXECUTE_READWRITE) ok; generated code ran on 8 threads,
+  "X18 PRESERVED".
+- => Everything option A needs from Windows for the registers is there, documented path only (UMDF 2 user-mode
+  register mapping). Left: DMA memory (plan item 5, kernel helper), interrupts (after the handler exists),
+  pd-isplp (S10eCam 0.12 not run yet). ("firmware:" empty in the log: isp-s10.ps1 reads HARDWARE\...\BIOS
+  BIOSVersion, absent here - cosmetic.)

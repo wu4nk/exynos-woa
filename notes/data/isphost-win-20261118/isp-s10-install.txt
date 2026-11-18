@@ -1,0 +1,29 @@
+isp-s10.ps1 v1.0  install  2026-11-01T23:20:26
+firmware: 
+pnputil /add-driver C:\Users\s10\Desktop\out\S10eIsp\S10eIsp.inf /install
+  Microsoft PnP Utility
+  
+  Adding driver package:  S10eIsp.inf
+  Driver package added successfully.
+  Published Name:         oem10.inf
+  Driver package installed on device: ACPI\SAMS982C\0
+  
+  Total driver packages:  1
+  Added driver packages:  1
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem10.inf 0.1.0.0
+probe report (S10eIsp 0.1):
+  S10eIsp 0.1 probe, process 1332
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFFE4016D7ED000, user-mode mapping 000001FA7B0D0000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFFE4016D96C000, user-mode mapping 000001FA7B430000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFFE4016DB41000, user-mode mapping 000001FA7B440000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFFE4016DB51000, user-mode mapping 000001FA7B450000
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 000001FA7B460000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-install.txt
