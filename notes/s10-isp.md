@@ -882,3 +882,18 @@ Plan (each a task, each waits for the result before it):
   (38 ms) are distorted by the write-through marks (one disk flush per step) and host.log's commit-per-line mode ->
   marks only until frame 1, host.log opened "w" again.
 - 0.3.4 = these three fixes. Next run: front WITHOUT -NoDma (the real S10eIspDma pool).
+
+## Plan item 6 step 1 DONE: libraries in S10eIsp with the REAL DMA pool (2026-11-18 20:21)
+- isp-s10.ps1 v1.4 front, S10eIsp 0.3.4 (notes/data/isphost-win-20261118/isp-s10-front-0.3.4.txt,
+  host-driver-0.3.4.log): S10eIspDma pool mapped (128 MiB, PA 0xF5832000, write-combined), image at 0x1CD80000000,
+  282 steps all -> 0, 179 tasks, 150 interrupts, FrontRun "finished: rc 0" after 3 s; the libraries' / test's DMA
+  addresses are the real physical ones (before_bds dva 0xF82F6000, after_bds 0xF8F5C000, inside the pool).
+- host.log vs the Android run: identical except the calibration lines (no rom1_cal.bin in C:\S10Prov\isp this time:
+  "FROM CAL. DATA LOAD: FAIL (0x600f)", default centre 1584/1208), the AE numbers that follow from it, and
+  addresses.
+- Steady frames 3..30: 13.2 ms per frame wall inside Wudfhost (isphost-test.exe: 8.0 ms in an ordinary process the
+  same day) - fits 30 fps; the gap is not analysed yet (marks off after frame 1; DMA pool is write-combined, the
+  test exe's was cached).
+- Next (0.4): the 3AA0 window REAL for the init steps only (chain_create / set_system_config / object_create), no
+  set_param / shot (no DMA enabled), no interrupt connected; register snapshot before / after through the probe's
+  mapping. First write to ISP hardware from Windows.
