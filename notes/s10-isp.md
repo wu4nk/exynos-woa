@@ -712,3 +712,10 @@ Plan (each a task, each waits for the result before it):
   iasl -d of the built Dsdt.aml shows the node as written; Beyond0 (S10e) DEBUG rc 0, its Dsdt.aml has no SAMS982C.
   Image beyond1lte-uefi-v0.2.3.img 7716864 B sha256 6b083fc08fdc69b6ded2bf5a268f01d11baf6e07bc3b27cd9515459a48dd2ef3
   (also carries the WINDOWS_WATCHDOG 0 change, next commit). NOT FLASHED.
+- Review of 352bd98 / de7cc6f / e6dd990: (1) the AML OperationRegion reads 0x15862504, inside GPU0's _CRS page
+  0x15862000 - whether Windows' ACPI driver lets AML read a range a loaded driver owns is NOT documented in what was
+  read; if it refuses, ISPS reads 0 and CISP stays hidden (fails safe), the symptom would be "device NOT PRESENT"
+  with pd-isppre ON in cam-s10 - then gate _STA through a UEFI progress word like GPU0. (2) install-in-windows /
+  make-windows take everything in out\: S10eIsp would be installed by them too; harmless (binds only CISP, reads only
+  the gates and the 3AA0 IDs; ~0.2 s x18 check at each start). (3) DSDT/_CRS order and S10eIsp.c RES_* agree
+  (CMU_ISPPRE 0, 3AA0 1, ISPLP 2, MCSC 3), and S10eIsp.c also checks the two physical addresses before reading.
