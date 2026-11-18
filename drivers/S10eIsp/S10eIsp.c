@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.2) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.3) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -19,6 +19,13 @@
  *      size / caching, then the access kinds the libraries use on DMA memory, each under __try: aligned and
  *      unaligned 8-byte stores / loads, memset, DC ZVA (generated code). How Windows ARM64 maps MmWriteCombined /
  *      MmNonCached (Normal-NC or Device) is not documented; Device memory would fault on the unaligned ones.
+ *   7. (0.3) FRONT RUN, only when C:\S10Prov\isp\run.flg exists (deleted at once: one run per request): Samsung's
+ *      libraries (C:\S10Prov\isp\fimc_is_lib.bin / fimc_is_rta.bin / setfile_3j1.bin, rom1_cal.bin optional) run
+ *      INSIDE this process through tools/isp-host (isphost.c + plat_win.c + mmio_plain.c + test_front.c built in) -
+ *      the front path of isphost-test.exe, 30 frames - with FAKE register windows (the Android dump, shipped with
+ *      the driver) and the REAL DMA pool of S10eIspDma (dva = physical address). The ISP hardware is not touched:
+ *      the dvas only land in the fake windows. Output: C:\S10Prov\isp\out (isp-s10.ps1 front grants LocalService
+ *      write access there), registry value FrontRun.
  * ISPLP (ISP0) and MCSC are mapped but NEVER READ: pd-isplp's state is not known yet (S10eCam 0.12 prints it).
  * Nothing is written to any register. No interrupt is connected (none is declared in the DSDT node).
  * The result goes to the registry, value "Probe" under
@@ -30,8 +37,10 @@
 #include <wdf.h>
 #include <strsafe.h>
 #include "../S10eIspDma/S10eIspDmaIoctl.h"
+#include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
+int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 
-#define S10EISP_VERSION L"0.2"
+#define S10EISP_VERSION L"0.3"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -214,6 +223,83 @@ static void ProbeDma(void)
     Log(L"DMA: handle closed (pool unmapped)");
 }
 
+/* ---- 0.3: the front run (tools/isp-host inside this process) ---- */
+static WDFDEVICE g_dev;
+static LONG g_front_started;
+#define ISP_DIR "C:\\S10Prov\\isp"
+
+static void SetValue(PCWSTR name, PCWSTR text)
+{
+    WDFKEY key;
+    UNICODE_STRING n;
+    if (!g_dev) return;
+    if (!NT_SUCCESS(WdfDeviceOpenRegistryKey(g_dev, PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY,
+                                             KEY_READ | KEY_SET_VALUE, WDF_NO_OBJECT_ATTRIBUTES, &key)))
+        return;
+    RtlInitUnicodeString(&n, name);
+    WdfRegistryAssignValue(key, &n, REG_SZ, (ULONG)((wcslen(text) + 1) * sizeof(WCHAR)), (PVOID)text);
+    WdfRegistryClose(key);
+}
+
+static DWORD WINAPI FrontThread(LPVOID p)
+{
+    static char dir[MAX_PATH], data[MAX_PATH], layout[MAX_PATH], cal[MAX_PATH];
+    WCHAR msg[512];
+    HMODULE self = NULL;
+    UNREFERENCED_PARAMETER(p);
+
+    /* the driver's own folder in the driver store: the fake windows' dumps + the sensor-interface layout (INF) */
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)(ULONG_PTR)FrontThread, &self);
+    GetModuleFileNameA(self, dir, MAX_PATH);
+    char *slash = strrchr(dir, '\\');
+    if (slash) *slash = 0;
+    StringCchCopyA(data, MAX_PATH, dir);
+    StringCchPrintfA(layout, MAX_PATH, "%s\\sensor_itf_layout.txt", dir);
+
+    HANDLE h = CreateFileW(S10EISPDMA_USER_PATH, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    S10EISPDMA_MAP_OUT m;
+    DWORD got = 0;
+    RtlZeroMemory(&m, sizeof(m));
+    if (h == INVALID_HANDLE_VALUE ||
+        !DeviceIoControl(h, IOCTL_S10EISPDMA_MAP, NULL, 0, &m, sizeof(m), &got, NULL) || got < sizeof(m)) {
+        StringCchPrintfW(msg, ARRAYSIZE(msg), L"not run: S10eIspDma pool unavailable (error %lu)", GetLastError());
+        SetValue(L"FrontRun", msg);
+        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+        return 1;
+    }
+    /* the handle stays open for the process's lifetime: the libraries' pools live in the mapping */
+    plat_win_dma_pool((void *)(ULONG_PTR)m.UserVa, m.Pa, m.Bytes);
+    plat_win_set_thread_fatal(1);
+    SetEnvironmentVariableA("FRAMES", "30");
+    SetEnvironmentVariableA("QUIET", "1");
+    char *argv[6] = {"isp_front", ISP_DIR, data, ISP_DIR "\\out", layout, NULL};
+    int argc = 5;
+    StringCchPrintfA(cal, MAX_PATH, "%s\\rom1_cal.bin", ISP_DIR);
+    if (GetFileAttributesA(cal) != INVALID_FILE_ATTRIBUTES) argv[argc++] = cal;
+    StringCchPrintfW(msg, ARRAYSIZE(msg),
+                     L"started: pool %llu MiB at PA 0x%08llX (%s), data %S, log " ISP_DIR "\\out\\host.log",
+                     m.Bytes >> 20, m.Pa, m.Cache ? L"write-combined" : L"non-cached", data);
+    SetValue(L"FrontRun", msg);
+    int rc = isp_front_main(argc, argv);      /* an exit() / library assert inside ends this thread only */
+    StringCchPrintfW(msg, ARRAYSIZE(msg), L"finished: rc %d, log " ISP_DIR "\\out\\host.log", rc);
+    SetValue(L"FrontRun", msg);
+    return 0;
+}
+
+static void MaybeFrontRun(void)
+{
+    if (GetFileAttributesW(L"" ISP_DIR "\\run.flg") == INVALID_FILE_ATTRIBUTES) return;
+    DeleteFileW(L"" ISP_DIR "\\run.flg");
+    if (InterlockedExchange(&g_front_started, 1)) {
+        Log(L"front run: already ran in this process (one per Wudfhost: isp-s10.ps1 restart starts a new one)");
+        return;
+    }
+    HANDLE t = CreateThread(NULL, 1u << 20, FrontThread, NULL, 0, NULL);
+    Log(L"front run: %s", t ? L"started (FrontRun value, " ISP_DIR L"\\out\\host.log)" : L"CreateThread failed");
+    if (t) CloseHandle(t);
+}
+
 /* ---- PnP ---- */
 NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Translated)
 {
@@ -278,6 +364,8 @@ NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Tra
 
     ProbeCode();
     ProbeDma();
+    g_dev = Device;
+    MaybeFrontRun();
 
     WDFKEY key;
     NTSTATUS s = WdfDeviceOpenRegistryKey(Device, PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY,

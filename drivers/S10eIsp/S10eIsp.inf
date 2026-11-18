@@ -1,5 +1,5 @@
 ;
-; S10eIsp.inf (v0.2) - Galaxy S10 camera ISP, UMDF 2 probe driver (notes/s10-isp.md, Stage 4 option A).
+; S10eIsp.inf (v0.3) - Galaxy S10 camera ISP, UMDF 2 probe driver (notes/s10-isp.md, Stage 4 option A).
 ; Binds the DSDT node CISP (ACPI\SAMS982C, beyond1lte-uefi v0.2.3+, present only while PMU pd-isppre is ON).
 ; UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping: the framework maps the ISP's registers into this
 ; driver's host process (WdfDeviceGetHardwareRegisterMappedAddress) - the way Samsung's libraries will reach them.
@@ -11,7 +11,7 @@ Class       = System
 ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318}
 Provider    = %ProviderName%
 CatalogFile = S10eIsp.cat
-DriverVer   = 11/18/2026,0.2.0.0
+DriverVer   = 11/18/2026,0.3.0.0
 PnpLockdown = 1
 
 [Manufacturer]
@@ -25,12 +25,20 @@ PnpLockdown = 1
 
 [SourceDisksFiles]
 S10eIsp.dll = 1
+3AA0.txt = 1
+ISPLP.txt = 1
+sensor_itf_layout.txt = 1
 
 [DestinationDirs]
 UMDriverCopy = 13
 
 [UMDriverCopy]
 S10eIsp.dll
+; 0.3: the front run's fake register windows (Android dump 2026-11-17) + sensor-interface layout, read from the
+; driver's own folder
+3AA0.txt
+ISPLP.txt
+sensor_itf_layout.txt
 
 [S10eIsp_Install.NT]
 CopyFiles = UMDriverCopy

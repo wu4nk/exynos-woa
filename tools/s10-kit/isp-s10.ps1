@@ -1,5 +1,5 @@
 <#
-  isp-s10.ps1 (v1.2) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  isp-s10.ps1 (v1.3) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
   Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
   Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
       .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
@@ -12,17 +12,23 @@
                               kernel service, SYSTEM start: its contiguous pool below 4 GiB is taken at boot, when
                               there still is one). Then .\isp-s10.ps1 restart: S10eIsp 0.2 maps the pool and tests it.
       .\isp-s10.ps1 dmaremove stop + delete the S10eIspDma service
+      .\isp-s10.ps1 front     (v1.3, S10eIsp 0.3 + S10eIspDma) Samsung's ISP libraries run INSIDE the driver's Wudfhost:
+                              the front path, 30 frames, FAKE register windows (no ISP register is touched), the REAL
+                              DMA pool. Needs C:\S10Prov\isp\fimc_is_lib.bin, fimc_is_rta.bin, setfile_3j1.bin
+                              (rom1_cal.bin optional). Gives LocalService (Wudfhost's account) write access to
+                              C:\S10Prov\isp, drops run.flg, restarts the device, waits up to 3 min, zips
+                              C:\S10Prov\isp\out to C:\S10Prov\isp-front.zip - send that zip.
   The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
   S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
   Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
 #>
-param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove')][string]$Action = 'status')
+param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove', 'dma', 'dmaremove', 'front')][string]$Action = 'status')
 $ErrorActionPreference = 'Continue'
 $Out = "C:\S10Prov\isp-s10-$Action.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 Remove-Item $Out -Force -ErrorAction SilentlyContinue
 function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
-W "isp-s10.ps1 v1.2  $Action  $(Get-Date -Format s)"
+W "isp-s10.ps1 v1.3  $Action  $(Get-Date -Format s)"
 $fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
 W "firmware: $fw"
 
@@ -77,6 +83,38 @@ switch ($Action) {
         if ($LASTEXITCODE -ne 0) { sc.exe create S10eIspDma type= kernel start= system binPath= "$dir\S10eIspDma.sys" 2>&1 | ForEach-Object { W "  $_" } }
         else { sc.exe config S10eIspDma binPath= "$dir\S10eIspDma.sys" start= system 2>&1 | ForEach-Object { W "  $_" } }
         sc.exe start S10eIspDma 2>&1 | ForEach-Object { W "  $_" }
+        Status
+    }
+    'front' {
+        $isp = 'C:\S10Prov\isp'
+        $miss = @('fimc_is_lib.bin', 'fimc_is_rta.bin', 'setfile_3j1.bin') | Where-Object { -not (Test-Path (Join-Path $isp $_)) }
+        if ($miss) { W "missing in ${isp}: $($miss -join ', ') (from s10cam.zip\files)"; break }
+        $d = Dev
+        if (-not $d) { Status; break }
+        W "icacls $isp /grant *S-1-5-19:(OI)(CI)M   (LocalService = Wudfhost)"
+        (icacls $isp /grant '*S-1-5-19:(OI)(CI)M' 2>&1) | ForEach-Object { W "  $_" }
+        if (Test-Path "$isp\out") { Remove-Item -Recurse -Force "$isp\out" }
+        Set-Content -Path "$isp\run.flg" -Value 'run' -Encoding ascii
+        $id = @($d)[0].InstanceId
+        $k = "HKLM:\SYSTEM\CurrentControlSet\Enum\$id\Device Parameters\S10eIsp"
+        Remove-ItemProperty -Path $k -Name FrontRun -ErrorAction SilentlyContinue
+        W "pnputil /restart-device $id"
+        (pnputil /restart-device "$id" 2>&1) | ForEach-Object { W "  $_" }
+        $t0 = Get-Date; $fr = ''
+        while (((Get-Date) - $t0).TotalSeconds -lt 180) {
+            Start-Sleep -Seconds 3
+            $fr = (Get-ItemProperty $k -ErrorAction SilentlyContinue).FrontRun
+            if ($fr -match '^(finished|not run)') { break }
+        }
+        W "FrontRun: $fr  ($([int]((Get-Date) - $t0).TotalSeconds) s)"
+        $log = "$isp\out\host.log"
+        if (Test-Path $log) {
+            $l = Get-Content $log
+            W "host.log: $(@($l).Count) lines, steps $(@($l | Where-Object { $_ -match '^== ' }).Count), not 0: $(@($l | Where-Object { $_ -match '^== ' -and $_ -notmatch '-> 0x0$' }).Count)"
+            $l | Where-Object { $_ -match 'isphost: image|start_up|CRASH|ASSERT|time-out|steady|done:' } | Select-Object -Last 12 | ForEach-Object { W "  $_" }
+            Compress-Archive -Force -Path "$isp\out\*" -DestinationPath 'C:\S10Prov\isp-front.zip'
+            W 'zip: C:\S10Prov\isp-front.zip'
+        } else { W "no $log" }
         Status
     }
     'dmaremove' {

@@ -20,6 +20,8 @@ cp "$UEFI" "$D/"
 for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag S10ePower S10eCam S10eCamera S10eIsp S10eIspDma Exynos9820Mfc MaliG76Wddm MaliG76Wddm-legacy MaliG76Probe include; do
   (cd "$REPO/drivers" && git ls-files -z "$d" | xargs -0 -I{} cp --parents {} "$D/")
 done
+# S10eIsp 0.3 builds tools/isp-host in: its core goes next to the project (S10eIsp.vcxproj looks in isphost\ first)
+mkdir -p "$D/S10eIsp/isphost" && cp "$REPO"/tools/isp-host/{isphost.c,isphost.h,isp_compat.h,plat_win.c,plat_posix.h,mmio_plain.c,mmio_trap.h,test_front.c} "$D/S10eIsp/isphost/"
 # v2.0: the Linux-built user-mode driver (tools/mesa-build/linux-build-g76.sh collect) goes into umd\ when
 # UMD_DIR points at its out-umd folder; build-s10.cmd puts it into the MaliG76Wddm package.
 # v2.2: UMD_DIR may list several out folders (out-umd out-x86 out-gl, colon separated): every maliumd.dll /

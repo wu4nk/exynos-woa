@@ -1,10 +1,11 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.20) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.21) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
+rem v1.21: S10eIsp 0.3 package carries data\ (fake windows + layout); the project builds tools\isp-host in.
 rem v1.20: S10eIspDma (contiguous DMA pool below 4 GiB mapped into the ISP host; legacy driver) -> out\S10eIspDma\.
 rem v1.19: S10eIsp (UMDF 2 probe for the camera ISP, binds DSDT CISP = ACPI\SAMS982C, UEFI v0.2.3+) -> out\S10eIsp\,
 rem installed by isp-s10.ps1. Never fails the kit.
@@ -286,6 +287,9 @@ if not defined DLL (echo [FAIL] S10eIsp.dll not found under ARM64\ & exit /b 1)
 mkdir "%DST%"
 copy /y "%DLL%" "%DST%\" >nul
 copy /y "%SRC%\S10eIsp.inf" "%DST%\" >nul
+copy /y "%SRC%\data\3AA0.txt" "%DST%\" >nul
+copy /y "%SRC%\data\ISPLP.txt" "%DST%\" >nul
+copy /y "%SRC%\data\sensor_itf_layout.txt" "%DST%\" >nul
 call :sign "%DST%\S10eIsp.dll" || exit /b 1
 inf2cat /driver:"%DST%" /os:%CATOS% /uselocaltime
 if errorlevel 1 (echo [FAIL] inf2cat S10eIsp & exit /b 1)

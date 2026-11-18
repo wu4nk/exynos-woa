@@ -818,3 +818,12 @@ Plan (each a task, each waits for the result before it):
 - Checks: Linux/qemu trapped run unchanged (35 / 38 steps register-identical to the emulator), Windows test exes
   build, every core file + S10eIsp.c pass clang aarch64-pc-windows-msvc against the WDK um / UMDF headers with the
   MSVC branch forced (km/crt has no snprintf / vsnprintf: declared by a check-only stub header).
+- S10eIsp 0.3: PrepareHardware (after the 0.1 / 0.2 probes) starts the FRONT RUN thread if C:\S10Prov\isp\run.flg
+  exists (deleted first; one run per Wudfhost): maps the S10eIspDma pool (handle kept open), plat_win_dma_pool,
+  FRAMES 30, then isp_front_main(C:\S10Prov\isp, <driver store dir>, C:\S10Prov\isp\out, layout, [rom1_cal.bin]).
+  Registry FrontRun = started / finished rc N / not run. The package carries data\3AA0.txt, ISPLP.txt (Android dump)
+  + sensor_itf_layout.txt (INF CopyFiles to DIRID 13). S10eIsp.vcxproj compiles tools/isp-host in
+  ($(IspHostDir): isphost\ next to the project in a kit - make-kit.sh copies it there - else ..\..\tools\isp-host),
+  ISPHOST_DRIVER, C17. build-s10.cmd v1.21 copies data\ into out\S10eIsp. isp-s10.ps1 v1.3 front: icacls grants
+  LocalService (S-1-5-19, Wudfhost's account) modify on C:\S10Prov\isp, run.flg, pnputil /restart-device, waits for
+  FrontRun (180 s), prints the host.log summary, zips out\ to C:\S10Prov\isp-front.zip. NOT BUILT / RUN YET.
