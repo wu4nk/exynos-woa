@@ -48,6 +48,12 @@ void plat_log(const char *line)
     pthread_mutex_unlock(&log_m);
 }
 
+void plat_fatal(const char *why)
+{
+    plat_log(why);
+    abort();
+}
+
 u64 plat_usec(void)
 {
     struct timespec t;

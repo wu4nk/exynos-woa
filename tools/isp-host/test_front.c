@@ -19,6 +19,14 @@
 #include <malloc.h>
 #define mkdir(p, m) _mkdir(p)
 #define aligned_alloc(a, n) _aligned_malloc((n), (a))
+#ifdef ISPHOST_DRIVER
+/* inside S10eIsp's Wudfhost (drivers/S10eIsp): the run is a thread of the driver host; leaving must not end the
+   process - exit() ends this thread only, and main is isp_front_main(), called by S10eIsp.c */
+#include <windows.h>
+#define exit(c) ExitThread((DWORD)(c))
+#define main isp_front_main
+int isp_front_main(int argc, char **argv);
+#endif
 #else
 #include <sys/stat.h>
 #endif
@@ -29,7 +37,7 @@
 
 extern int isp_trace, isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;
 static isp_host *H;
-static const char *OUT;
+static const char *OUTDIR;
 static FILE *itf_log;
 
 static void *readfile(const char *dir, const char *name, size_t *n)
@@ -60,7 +68,11 @@ static u32 r32(u64 a) { u32 v; memcpy(&v, (void *)(uintptr_t)a, 4); return v; }
 static u64 r64(u64 a) { u64 v; memcpy(&v, (void *)(uintptr_t)a, 8); return v; }
 
 /* the blob's return address: isp_common's frame record (x29 chain, -fno-omit-frame-pointer) holds the blob's x30 */
+#if defined(_MSC_VER) && !defined(__clang__)
+#define BLOB_LR() 0ull                       /* MSVC (S10eIsp build): no frame-address builtin - logs show 0x0 */
+#else
 #define BLOB_LR() (((u64 *)((u64 *)__builtin_frame_address(0))[0])[1])
+#endif
 
 /* ---------------- sensor interface (GPL fimc-is-interface-sensor.c) ---------------- */
 #define MAXOPS 160
@@ -165,7 +177,7 @@ static volatile u32 *window(const char *dump_dir, const char *name)
 static void dump_window(volatile u32 *w, const char *name)
 {
     char p[1024];
-    snprintf(p, sizeof(p), "%s/regs-%s.txt", OUT, name);
+    snprintf(p, sizeof(p), "%s/regs-%s.txt", OUTDIR, name);
     FILE *f = fopen(p, "w");
     fprintf(f, "# %s final contents after the native run (isphost test_front)\n", name);
     for (unsigned o = 0; o < 0x10000; o += 4) fprintf(f, "%04x 0x%08x\n", o, w[o / 4]);
@@ -184,8 +196,8 @@ enum { CHAIN_CREATE, OBJECT_CREATE, CHAIN_DESTROY, OBJECT_DESTROY, STOP, RECOVER
 static FILE *mmio_open(const char *label)
 {
     char p[1024];
-    snprintf(p, sizeof(p), "%s/mmio-%s.txt", OUT, label);
-    for (char *c = p + strlen(OUT) + 1; *c; c++) if (*c == ' ') *c = '_';
+    snprintf(p, sizeof(p), "%s/mmio-%s.txt", OUTDIR, label);
+    for (char *c = p + strlen(OUTDIR) + 1; *c; c++) if (*c == ' ') *c = '_';
     FILE *f = fopen(p, "w");
     trap_log_to(f);
     return f;
@@ -243,16 +255,16 @@ int main(int argc, char **argv)
         return 2;
     }
     const char *BIN = argv[1], *DUMP = argv[2], *layout = argv[4], *calp = argc > 5 ? argv[5] : NULL;
-    OUT = argv[3];
-    mkdir(OUT, 0755);
+    OUTDIR = argv[3];
+    mkdir(OUTDIR, 0755);
     char p[1024];
-    snprintf(p, sizeof(p), "%s/host.log", OUT);
+    snprintf(p, sizeof(p), "%s/host.log", OUTDIR);
     FILE *lf = fopen(p, "w");
     plat_posix_log_to(lf, getenv("QUIET") != NULL);
-    snprintf(p, sizeof(p), "%s/interface-calls.txt", OUT);
+    snprintf(p, sizeof(p), "%s/interface-calls.txt", OUTDIR);
     itf_log = fopen(p, "w");
     setvbuf(itf_log, NULL, _IOLBF, 0);
-    snprintf(p, sizeof(p), "%s/timing.txt", OUT);
+    snprintf(p, sizeof(p), "%s/timing.txt", OUTDIR);
     timing = fopen(p, "w");
     isp_trace = getenv("TRACE") != NULL;
     isp_diag_emu_usec = getenv("DIAG_EMU_USEC") != NULL;     /* diagnosis: the emulator's OS models */
@@ -264,7 +276,9 @@ int main(int argc, char **argv)
     H = isp_load(ddk, nd, rta, nr);
     if (!H) return 1;
     u64 B = isp_base(H), DDK = B + ISP_DDK_OFF, RTA = B + ISP_RTA_OFF;
-    plat_posix_crash_report(B);
+#ifndef ISPHOST_DRIVER
+    plat_posix_crash_report(B);               /* not in a driver host: its own exception handling stays */
+#endif
     if (isp_start(H)) { plat_log("start failed"); return 1; }
 
     u64 itf = sensor_itf(layout);
@@ -453,6 +467,7 @@ int main(int argc, char **argv)
         plat_log(b);
         fprintf(timing, "%s\n", b);
     }
+    trap_finish();
     dump_window(W3, "3AA0");
     dump_window(WI, "ISPLP");
     struct isp_stats st;

@@ -9,4 +9,5 @@ void *trap_window(const char *name, volatile u32 *shadow, u64 lib_base);
 void trap_done_after(int wa, u32 oa, int wb, u32 ob);
 void trap_log_to(FILE *f);       /* "R/W window+off value pc" lines; NULL = off */
 u64 trap_count(void);
+void trap_finish(void);          /* end of the run: mmio_plain stops its model thread (it spins on a core) */
 #endif

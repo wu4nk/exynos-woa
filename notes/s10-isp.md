@@ -806,3 +806,15 @@ Plan (each a task, each waits for the result before it):
   0000C2AD = Android; MCSC +0x1C 05010000 = Android. No abort. => All three blocks of the front path (3AA0, ISP0 =
   ISPLP, MCSC) are powered, clocked and readable under Windows as sboot leaves them. Plan item 7 needs no power-on.
   Next: plan item 6, the libraries inside S10eIsp (0.3 with fake windows + the real DMA pool first).
+
+## Plan item 6, step 1: the libraries inside S10eIsp (0.3, fake windows + real DMA pool) (2026-11-18 18:40)
+- tools/isp-host made buildable by MSVC (the EWDK compiles S10eIsp): isp_compat.h (MSVC: __declspec(thread),
+  _InterlockedExchangeAdd64, _InterlockedExchange as the release store; GCC/clang: _Thread_local / __atomic_*;
+  ISP_COMPAT_MSVC forces the MSVC branch for a clang check); plat_fatal() replaces abort() (a library assert inside
+  a driver host ends the calling thread only: plat_win_set_thread_fatal); plat_win_dma_pool() = S10eIspDma's pool
+  (dva = PA + offset); test_front.c with ISPHOST_DRIVER: main -> isp_front_main, exit() -> ExitThread, no crash
+  filter (Wudfhost keeps its own), BLOB_LR 0 under MSVC; OUT renamed OUTDIR (windows.h's SAL macro OUT);
+  trap_finish() stops mmio_plain's TIME_CRITICAL model thread at the end of a run.
+- Checks: Linux/qemu trapped run unchanged (35 / 38 steps register-identical to the emulator), Windows test exes
+  build, every core file + S10eIsp.c pass clang aarch64-pc-windows-msvc against the WDK um / UMDF headers with the
+  MSVC branch forced (km/crt has no snprintf / vsnprintf: declared by a check-only stub header).

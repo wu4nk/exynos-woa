@@ -21,6 +21,9 @@ static volatile u32 *shadow[MAXW];
 static int nwin;
 static struct { int wa; u32 oa; int wb; u32 ob; } rule[MAXRULE];
 static volatile int nrule;
+static volatile int stop;
+
+void trap_finish(void) { stop = 1; }
 
 void trap_log_to(FILE *f)
 {
@@ -36,7 +39,7 @@ static void *model(void *p)
 #endif
 {
     (void)p;
-    for (;;) {
+    while (!stop) {
         for (int r = 0; r < nrule; r++) {
             volatile u32 *a = &shadow[rule[r].wa][rule[r].oa / 4], *b = &shadow[rule[r].wb][rule[r].ob / 4];
             if (*a) { *b = 0; if (a != b) *a = 0; }
@@ -47,7 +50,9 @@ static void *model(void *p)
         sched_yield();
 #endif
     }
-#ifndef _WIN32
+#ifdef _WIN32
+    return 0;
+#else
     return NULL;
 #endif
 }

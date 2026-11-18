@@ -33,6 +33,7 @@ static void unlock(void) { __atomic_store_n(&lk, 0, __ATOMIC_RELEASE); }
 
 void trap_log_to(FILE *f) { lock(); logf_ = f; unlock(); }
 u64 trap_count(void) { return count; }
+void trap_finish(void) { }
 
 void trap_done_after(int wa, u32 oa, int wb, u32 ob)
 {

@@ -52,6 +52,17 @@ void plat_log(const char *line)
     ReleaseSRWLockExclusive(&log_m);
 }
 
+/* inside a driver host process (S10eIsp) a library assert must not take the whole Wudfhost down with it: the calling
+   thread ends instead (the run is lost, the device stays up) - plat_win_set_thread_fatal(1) */
+static int fatal_thread_only;
+void plat_win_set_thread_fatal(int on) { fatal_thread_only = on; }
+void plat_fatal(const char *why)
+{
+    plat_log(why);
+    if (fatal_thread_only) ExitThread(0xDEAD);
+    abort();
+}
+
 u64 plat_usec(void)
 {
     static LARGE_INTEGER f;
@@ -144,15 +155,29 @@ static unsigned char *dma_pool;
 static size_t dma_next;
 static SRWLOCK dma_m = SRWLOCK_INIT;
 
+static u64 dma_pa = DMA_DVA, dma_bytes = DMA_SIZE;
+
+/* S10eIsp: the real pool of S10eIspDma (contiguous, below 4 GiB, mapped into this process) instead of the fake one:
+   dva = its physical address + offset (the ISP's SysMMU is bypassed on Windows) */
+void plat_win_dma_pool(void *va, u64 pa, u64 bytes)
+{
+    AcquireSRWLockExclusive(&dma_m);
+    dma_pool = va;
+    dma_pa = pa;
+    dma_bytes = bytes;
+    dma_next = 0;
+    ReleaseSRWLockExclusive(&dma_m);
+}
+
 int plat_dma_alloc(u32 size, void **kva, u32 *dva)
 {
     AcquireSRWLockExclusive(&dma_m);
     if (!dma_pool) dma_pool = VirtualAlloc(NULL, DMA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     size_t off = (dma_next + 0xfff) & ~(size_t)0xfff;
-    if (!dma_pool || off + size > DMA_SIZE) { ReleaseSRWLockExclusive(&dma_m); return -1; }
+    if (!dma_pool || off + size > dma_bytes) { ReleaseSRWLockExclusive(&dma_m); return -1; }
     dma_next = off + size;
     *kva = dma_pool + off;
-    *dva = DMA_DVA + (u32)off;
+    *dva = (u32)(dma_pa + off);
     ReleaseSRWLockExclusive(&dma_m);
     return 0;
 }

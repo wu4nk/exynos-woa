@@ -4,6 +4,7 @@
  * drivers/media/platform/exynos/fimc-is2/interface/fimc-is-interface-library.c; line numbers below refer to it).
  */
 #include "isphost.h"
+#include "isp_compat.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -93,8 +94,8 @@ struct isp_host {
 };
 
 static isp_host *G;                /* one instance per process: the OS callbacks have no context argument */
-static _Thread_local struct thr_entry *tls_entry;
-static _Thread_local int tls_in_irq;
+static ISP_TLS struct thr_entry *tls_entry;
+static ISP_TLS int tls_in_irq;
 int isp_trace;                     /* 1: log every OS call */
 int isp_diag_emu_usec, isp_diag_in_irq0, isp_diag_random0;  /* DIAGNOSIS: emulator models */             /* DIAGNOSIS: get_usec as front_init.py modelled it (notes/s10-isp.md) */
 
@@ -212,13 +213,13 @@ static void register_thread(isp_host *h)
     plat_thread_stack(&lo, &hi);
     plat_mutex_lock(h->lock);
     u32 i = h->thr->count;
-    if (i >= MAX_THREADS) { plat_log("isphost: thread table full"); abort(); }
+    if (i >= MAX_THREADS) plat_fatal("isphost: thread table full");
     struct thr_entry *e = &h->thr->e[i];
     e->lo = lo;
     e->hi = hi;
     e->x18 = plat_thread_x18();
     e->ctx = 0;
-    __atomic_store_n(&h->thr->count, i + 1, __ATOMIC_RELEASE);
+    ISP_STORE32_REL(&h->thr->count, i + 1);
     tls_entry = e;
     h->started_threads++;
     plat_mutex_unlock(h->lock);
@@ -270,14 +271,14 @@ static void worker(void *p)
             if (found) {
                 u64 a[8] = {ir.id, ir.ctx};
                 r = run(h, ir.handler, a);   /* hwip_handler(u32 id, void *context) (interface-ischain.h:26) */
-                __atomic_add_fetch(&h->st.irqs_run, 1, __ATOMIC_RELAXED);
+                ISP_ADD64(&h->st.irqs_run, 1);
             } else {
                 logf_("isphost: interrupt chain %u id %u has no handler", chain, id);
                 r = (u64)-1;
             }
         } else {
             r = run(h, j->fn, j->args);
-            if (kind == 2) __atomic_add_fetch(&h->st.tasks_run, 1, __ATOMIC_RELAXED);
+            if (kind == 2) ISP_ADD64(&h->st.tasks_run, 1);
         }
 
         plat_mutex_lock(q->m);
@@ -364,7 +365,7 @@ static void timer_thread(void *p)
         plat_mutex_unlock(h->tm_m);
         u64 a[8] = {data};
         run(h, fn, a);                         /* void (*func)(ulong) (fimc_is_timer_create :1002) */
-        __atomic_add_fetch(&h->st.timers_fired, 1, __ATOMIC_RELAXED);
+        ISP_ADD64(&h->st.timers_fired, 1);
         plat_mutex_lock(h->tm_m);
     }
 }
@@ -376,7 +377,7 @@ static void timer_thread(void *p)
 
 static void trace(const char *name, u64 a0, u64 a1, u64 a2, u64 ret)
 {
-    __atomic_add_fetch(&G->st.traced_calls, 1, __ATOMIC_RELAXED);
+    ISP_ADD64(&G->st.traced_calls, 1);
     if (isp_trace) logf_("  os %-22s %llx %llx %llx -> %llx", name, (unsigned long long)a0, (unsigned long long)a1,
                          (unsigned long long)a2, (unsigned long long)ret);
 }
@@ -401,8 +402,7 @@ static u64 os_log_write(A8)              /* int fimc_is_log_write(const char *st
 static u64 os_assert(A8)                 /* void fimc_is_assert(void) :809 = BUG_ON(1) */
 {
     UNUSED8;
-    plat_log("isphost: library ASSERT (kernel BUG_ON) - stopping");
-    abort();
+    plat_fatal("isphost: library ASSERT (kernel BUG_ON) - stopping");
     return 0;
 }
 
