@@ -1,0 +1,312 @@
+3AA chain_create                    3.0 ms
+3AA set_system_config               0.6 ms
+3AA object_create                   7.2 ms
+ISP chain_create                    5.6 ms
+ISP set_system_config               0.1 ms
+ISP object_create                  21.7 ms
+3AA apply_tune_set 6                1.3 ms
+3AA load_cal_data                   0.3 ms
+3AA get_cal_data type 2             0.1 ms
+3AA set_param                       0.1 ms
+3AA set_ctrl F1                     0.5 ms
+3AA shot F1                        26.3 ms
+F1 irq V SYNC                       0.9 ms
+F1 irq CIN ROW                      2.7 ms
+F1 irq FRAME END                    0.4 ms
+ISP set_param                       0.1 ms
+ISP set_ctrl F1                     0.1 ms
+ISP shot F1                         6.4 ms
+F1 ISP irq V SYNC                   0.4 ms
+F1 ISP irq FRAME END                1.7 ms
+FRAME 1         12.7 ms, 1764 register accesses (~3.7 ms of it trapping)
+3AA set_ctrl F2                     0.4 ms
+3AA shot F2                         0.1 ms
+F2 irq V SYNC                       0.9 ms
+F2 irq CIN ROW                      1.7 ms
+F2 irq FRAME END                    0.3 ms
+ISP set_ctrl F2                     0.1 ms
+ISP shot F2                         4.6 ms
+F2 ISP irq V SYNC                   1.1 ms
+F2 ISP irq FRAME END                0.6 ms
+FRAME 2          9.7 ms, 1316 register accesses (~2.8 ms of it trapping)
+3AA set_ctrl F3                     0.1 ms
+3AA shot F3                         0.1 ms
+F3 irq V SYNC                       1.0 ms
+F3 irq CIN ROW                      1.7 ms
+F3 irq FRAME END                    0.4 ms
+ISP set_ctrl F3                     0.1 ms
+ISP shot F3                         5.0 ms
+F3 ISP irq V SYNC                   0.4 ms
+F3 ISP irq FRAME END                0.4 ms
+FRAME 3          9.1 ms, 1458 register accesses (~3.1 ms of it trapping)
+3AA set_ctrl F4                     0.1 ms
+3AA shot F4                         0.0 ms
+F4 irq V SYNC                       1.0 ms
+F4 irq CIN ROW                      1.7 ms
+F4 irq FRAME END                    0.3 ms
+ISP set_ctrl F4                     0.2 ms
+ISP shot F4                         4.9 ms
+F4 ISP irq V SYNC                   0.4 ms
+F4 ISP irq FRAME END                0.7 ms
+FRAME 4          9.2 ms, 1277 register accesses (~2.7 ms of it trapping)
+3AA set_ctrl F5                     0.3 ms
+3AA shot F5                         0.2 ms
+F5 irq V SYNC                       2.1 ms
+F5 irq CIN ROW                      3.6 ms
+F5 irq FRAME END                    0.5 ms
+ISP set_ctrl F5                     0.2 ms
+ISP shot F5                         5.0 ms
+F5 ISP irq V SYNC                   0.3 ms
+F5 ISP irq FRAME END                0.9 ms
+FRAME 5         12.9 ms, 1256 register accesses (~2.7 ms of it trapping)
+3AA set_ctrl F6                     0.2 ms
+3AA shot F6                         0.1 ms
+F6 irq V SYNC                       0.8 ms
+F6 irq CIN ROW                      3.4 ms
+F6 irq FRAME END                    0.3 ms
+ISP set_ctrl F6                     0.1 ms
+ISP shot F6                         4.6 ms
+F6 ISP irq V SYNC                   0.4 ms
+F6 ISP irq FRAME END                0.5 ms
+FRAME 6         10.2 ms, 1575 register accesses (~3.3 ms of it trapping)
+3AA set_ctrl F7                     0.1 ms
+3AA shot F7                         0.2 ms
+F7 irq V SYNC                       1.1 ms
+F7 irq CIN ROW                      1.9 ms
+F7 irq FRAME END                    0.3 ms
+ISP set_ctrl F7                     0.1 ms
+ISP shot F7                         4.6 ms
+F7 ISP irq V SYNC                   0.4 ms
+F7 ISP irq FRAME END                0.6 ms
+FRAME 7          9.3 ms, 1564 register accesses (~3.3 ms of it trapping)
+3AA set_ctrl F8                     0.4 ms
+3AA shot F8                         0.2 ms
+F8 irq V SYNC                       2.7 ms
+F8 irq CIN ROW                      1.8 ms
+F8 irq FRAME END                    0.5 ms
+ISP set_ctrl F8                     0.1 ms
+ISP shot F8                         5.0 ms
+F8 ISP irq V SYNC                   0.3 ms
+F8 ISP irq FRAME END                0.6 ms
+FRAME 8         11.4 ms, 1456 register accesses (~3.1 ms of it trapping)
+3AA set_ctrl F9                     0.3 ms
+3AA shot F9                         0.1 ms
+F9 irq V SYNC                       3.5 ms
+F9 irq CIN ROW                      1.3 ms
+F9 irq FRAME END                    0.9 ms
+ISP set_ctrl F9                     0.1 ms
+ISP shot F9                         5.6 ms
+F9 ISP irq V SYNC                   0.7 ms
+F9 ISP irq FRAME END                1.2 ms
+FRAME 9         13.7 ms, 1417 register accesses (~3.0 ms of it trapping)
+3AA set_ctrl F10                    0.3 ms
+3AA shot F10                        0.6 ms
+F10 irq V SYNC                      2.5 ms
+F10 irq CIN ROW                     1.9 ms
+F10 irq FRAME END                   0.2 ms
+ISP set_ctrl F10                    0.1 ms
+ISP shot F10                        5.2 ms
+F10 ISP irq V SYNC                  0.2 ms
+F10 ISP irq FRAME END               0.5 ms
+FRAME 10        11.4 ms, 1464 register accesses (~3.1 ms of it trapping)
+3AA set_ctrl F11                    0.2 ms
+3AA shot F11                        0.1 ms
+F11 irq V SYNC                      1.0 ms
+F11 irq CIN ROW                     1.3 ms
+F11 irq FRAME END                   0.3 ms
+ISP set_ctrl F11                    0.3 ms
+ISP shot F11                        5.1 ms
+F11 ISP irq V SYNC                  0.2 ms
+F11 ISP irq FRAME END               4.7 ms
+FRAME 11        13.2 ms, 1385 register accesses (~2.9 ms of it trapping)
+3AA set_ctrl F12                    0.1 ms
+3AA shot F12                        1.8 ms
+F12 irq V SYNC                      3.0 ms
+F12 irq CIN ROW                     1.8 ms
+F12 irq FRAME END                   1.6 ms
+ISP set_ctrl F12                    0.4 ms
+ISP shot F12                        4.3 ms
+F12 ISP irq V SYNC                  0.5 ms
+F12 ISP irq FRAME END               0.5 ms
+FRAME 12        13.9 ms, 1329 register accesses (~2.8 ms of it trapping)
+3AA set_ctrl F13                    0.3 ms
+3AA shot F13                        0.1 ms
+F13 irq V SYNC                      0.7 ms
+F13 irq CIN ROW                     1.0 ms
+F13 irq FRAME END                   0.3 ms
+ISP set_ctrl F13                    0.1 ms
+ISP shot F13                        6.1 ms
+F13 ISP irq V SYNC                  0.3 ms
+F13 ISP irq FRAME END               0.4 ms
+FRAME 13         9.3 ms, 1166 register accesses (~2.5 ms of it trapping)
+3AA set_ctrl F14                    0.1 ms
+3AA shot F14                        0.0 ms
+F14 irq V SYNC                      0.6 ms
+F14 irq CIN ROW                     0.8 ms
+F14 irq FRAME END                   0.2 ms
+ISP set_ctrl F14                    0.0 ms
+ISP shot F14                        3.5 ms
+F14 ISP irq V SYNC                  0.4 ms
+F14 ISP irq FRAME END               0.5 ms
+FRAME 14         6.1 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F15                    0.2 ms
+3AA shot F15                        0.4 ms
+F15 irq V SYNC                      4.1 ms
+F15 irq CIN ROW                     3.5 ms
+F15 irq FRAME END                   0.5 ms
+ISP set_ctrl F15                    0.1 ms
+ISP shot F15                        7.5 ms
+F15 ISP irq V SYNC                  0.3 ms
+F15 ISP irq FRAME END               0.6 ms
+FRAME 15        17.2 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F16                    0.2 ms
+3AA shot F16                        0.1 ms
+F16 irq V SYNC                      0.9 ms
+F16 irq CIN ROW                     1.1 ms
+F16 irq FRAME END                   0.2 ms
+ISP set_ctrl F16                    0.1 ms
+ISP shot F16                        4.0 ms
+F16 ISP irq V SYNC                  0.1 ms
+F16 ISP irq FRAME END               0.4 ms
+FRAME 16         7.0 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F17                    0.1 ms
+3AA shot F17                        0.0 ms
+F17 irq V SYNC                      0.7 ms
+F17 irq CIN ROW                     0.9 ms
+F17 irq FRAME END                   0.2 ms
+ISP set_ctrl F17                    0.0 ms
+ISP shot F17                        3.7 ms
+F17 ISP irq V SYNC                  0.2 ms
+F17 ISP irq FRAME END               0.8 ms
+FRAME 17         6.6 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F18                    3.8 ms
+3AA shot F18                        0.3 ms
+F18 irq V SYNC                      1.1 ms
+F18 irq CIN ROW                     1.1 ms
+F18 irq FRAME END                   0.4 ms
+ISP set_ctrl F18                    0.1 ms
+ISP shot F18                        4.0 ms
+F18 ISP irq V SYNC                  0.2 ms
+F18 ISP irq FRAME END               0.6 ms
+FRAME 18        11.5 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F19                    0.1 ms
+3AA shot F19                        0.1 ms
+F19 irq V SYNC                      2.3 ms
+F19 irq CIN ROW                     2.3 ms
+F19 irq FRAME END                   0.5 ms
+ISP set_ctrl F19                    0.2 ms
+ISP shot F19                        3.8 ms
+F19 ISP irq V SYNC                  0.2 ms
+F19 ISP irq FRAME END               0.5 ms
+FRAME 19        10.0 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F20                    0.1 ms
+3AA shot F20                        0.1 ms
+F20 irq V SYNC                      0.9 ms
+F20 irq CIN ROW                     1.1 ms
+F20 irq FRAME END                   0.3 ms
+ISP set_ctrl F20                    0.1 ms
+ISP shot F20                        3.6 ms
+F20 ISP irq V SYNC                  0.2 ms
+F20 ISP irq FRAME END               0.6 ms
+FRAME 20         7.0 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F21                    2.3 ms
+3AA shot F21                        0.7 ms
+F21 irq V SYNC                      1.5 ms
+F21 irq CIN ROW                     2.6 ms
+F21 irq FRAME END                   0.5 ms
+ISP set_ctrl F21                    0.1 ms
+ISP shot F21                       11.6 ms
+F21 ISP irq V SYNC                  0.2 ms
+F21 ISP irq FRAME END               0.4 ms
+FRAME 21        19.8 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F22                    0.1 ms
+3AA shot F22                        0.0 ms
+F22 irq V SYNC                      0.7 ms
+F22 irq CIN ROW                     1.0 ms
+F22 irq FRAME END                   0.2 ms
+ISP set_ctrl F22                    0.0 ms
+ISP shot F22                        3.5 ms
+F22 ISP irq V SYNC                  0.3 ms
+F22 ISP irq FRAME END               1.6 ms
+FRAME 22         7.5 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F23                    0.3 ms
+3AA shot F23                        0.1 ms
+F23 irq V SYNC                      1.1 ms
+F23 irq CIN ROW                     1.0 ms
+F23 irq FRAME END                   0.2 ms
+ISP set_ctrl F23                    0.3 ms
+ISP shot F23                        3.7 ms
+F23 ISP irq V SYNC                  0.2 ms
+F23 ISP irq FRAME END               0.4 ms
+FRAME 23         7.3 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F24                    0.1 ms
+3AA shot F24                        0.0 ms
+F24 irq V SYNC                      0.7 ms
+F24 irq CIN ROW                     0.8 ms
+F24 irq FRAME END                   0.2 ms
+ISP set_ctrl F24                    0.0 ms
+ISP shot F24                        3.3 ms
+F24 ISP irq V SYNC                  0.2 ms
+F24 ISP irq FRAME END               1.3 ms
+FRAME 24         6.5 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F25                    0.1 ms
+3AA shot F25                        0.0 ms
+F25 irq V SYNC                      0.7 ms
+F25 irq CIN ROW                     1.3 ms
+F25 irq FRAME END                   0.2 ms
+ISP set_ctrl F25                    0.0 ms
+ISP shot F25                        3.2 ms
+F25 ISP irq V SYNC                  0.2 ms
+F25 ISP irq FRAME END               0.4 ms
+FRAME 25         6.1 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F26                    0.1 ms
+3AA shot F26                        0.0 ms
+F26 irq V SYNC                      0.7 ms
+F26 irq CIN ROW                     1.6 ms
+F26 irq FRAME END                   0.3 ms
+ISP set_ctrl F26                    0.1 ms
+ISP shot F26                        6.7 ms
+F26 ISP irq V SYNC                  0.2 ms
+F26 ISP irq FRAME END               3.3 ms
+FRAME 26        13.0 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F27                    0.2 ms
+3AA shot F27                        0.1 ms
+F27 irq V SYNC                      0.9 ms
+F27 irq CIN ROW                     0.9 ms
+F27 irq FRAME END                   0.2 ms
+ISP set_ctrl F27                    0.1 ms
+ISP shot F27                        3.5 ms
+F27 ISP irq V SYNC                  0.4 ms
+F27 ISP irq FRAME END               0.4 ms
+FRAME 27         6.7 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F28                    0.4 ms
+3AA shot F28                        0.1 ms
+F28 irq V SYNC                      1.8 ms
+F28 irq CIN ROW                     1.1 ms
+F28 irq FRAME END                   0.4 ms
+ISP set_ctrl F28                    0.1 ms
+ISP shot F28                        3.3 ms
+F28 ISP irq V SYNC                  0.1 ms
+F28 ISP irq FRAME END               0.4 ms
+FRAME 28         7.6 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F29                    0.1 ms
+3AA shot F29                        0.0 ms
+F29 irq V SYNC                      0.6 ms
+F29 irq CIN ROW                     0.7 ms
+F29 irq FRAME END                   0.1 ms
+ISP set_ctrl F29                    0.0 ms
+ISP shot F29                        3.0 ms
+F29 ISP irq V SYNC                  0.6 ms
+F29 ISP irq FRAME END               0.5 ms
+FRAME 29         5.8 ms, 994 register accesses (~2.1 ms of it trapping)
+3AA set_ctrl F30                    0.1 ms
+3AA shot F30                        0.1 ms
+F30 irq V SYNC                      1.1 ms
+F30 irq CIN ROW                     5.5 ms
+F30 irq FRAME END                   0.4 ms
+ISP set_ctrl F30                    0.1 ms
+ISP shot F30                        3.7 ms
+F30 ISP irq V SYNC                  0.3 ms
+F30 ISP irq FRAME END               1.7 ms
+FRAME 30        12.9 ms, 994 register accesses (~2.1 ms of it trapping)
+steady frames 3..30: 10.08 ms per frame wall (3AA + ISP calls, interrupts, tasks), 1151 register accesses = ~2.44 ms trapping -> ~7.64 ms without the test's trapping

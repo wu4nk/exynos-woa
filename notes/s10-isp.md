@@ -631,3 +631,20 @@ Plan (each a task, each waits for the result before it):
   3. S10eCam 0.12 isp: 3AA0 readable? pd-isplp on? (pending)       tests RWX + x18 inside Wudfhost
   5. kernel helper: contiguous DMA buffers mapped into the host  6. host on hardware: 3AA0 only (pd-isppre is on),
   7. pd-isplp power + TZPC SMC if needed, then ISP0 + MCSC        interrupts connected after the handler exists
+
+## Stage 4 option A: the native host ON THE S10 (Android, 2026-11-18 13:58) - plan item 2 done
+- run-isphost-s10.sh v1.0 by the user, FRAMES=30, real front calibration, fake (trapped) windows; result kept in
+  notes/data/isphost-android-20261118/ (host.log, timing.txt; the mmio logs are identical to the qemu ones, below).
+- Real silicon, not qemu: image at 0x761d400000, 12005 pointers relocated, DDK / RTA start_up 0, all 282 steps -> 0,
+  no crash, no sw_reset time-out; 179 tasks, 150 interrupt handler runs, 0 timers fired.
+- Same result as qemu, register for register: final 3AA0 / ISPLP windows after 30 frames identical to the qemu
+  FRAMES=30 run (out4: 0 words differ); mmio logs of 3AA shot F30 and F30 irq CIN ROW identical; vs the emulator
+  the same 35 / 38 steps identical, the same 3 redundant CIN ROW rewrites.
+- Cost on the S10's CPU (wall time per frame = 3AA set_ctrl + shot + V SYNC / CIN ROW / FRAME END, ISP set_ctrl +
+  shot + V SYNC / FRAME END, every task drained; Android running beside it, no core pinning): median 9.7 ms, p90
+  13.7 ms, max 19.8 ms, min 5.8 ms over 30 frames; ~1300 register accesses per frame cost ~2.7 ms of it here
+  (trapping: 2.12 us per access) -> about 7.6 ms per frame for the libraries + host = ~23 % of a 33.3 ms frame at
+  30 fps. Heaviest steps: 3AA shot F1 26.3 ms, ISP object_create 21.7 ms (one-time); steady CIN ROW ~5.5 ms.
+  Android's own "[S0][3AA0] Valid Time / Frame Time" lines appear with real numbers here too.
+- Conclusion: the libraries run as ordinary AArch64 user code on this phone and are fast enough for 30 fps with
+  margin. Remaining unknowns for Windows: x18 (x18test), Wudfhost RWX, hardware access (S10eCam 0.12 isp).
