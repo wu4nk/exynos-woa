@@ -1,0 +1,85 @@
+<#
+  isp-s10.ps1 (v1.0) - Galaxy S10: the camera ISP's UMDF 2 driver S10eIsp (notes/s10-isp.md, Stage 4 option A).
+  Run ON THE PHONE, PowerShell as Administrator, in the kit folder (out\S10eIsp\ from build-s10.cmd v1.19+).
+  Needs beyond1lte-uefi v0.2.3+ (its DSDT has the ISP node CISP = ACPI\SAMS982C, present while pd-isppre is ON).
+      .\isp-s10.ps1 install   install the driver package (pnputil); Windows binds it to ACPI\SAMS982C and the probe
+                              runs once when the device starts. Then: .\isp-s10.ps1 status
+      .\isp-s10.ps1 status    the device, its driver and problem code, and S10eIsp's probe report (registry
+                              Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp, value Probe)
+      .\isp-s10.ps1 restart   disable + enable the device: the probe runs again
+      .\isp-s10.ps1 remove    remove the driver package (the device stays, without a driver)
+  The v0.1 probe READS: CMU_ISPPRE 3AA0 gate + LHM_AXI_P, and (if both on) the 3AA0 ID registers - the reads
+  S10eCam 0.11 already made from the kernel on this phone. It never writes a register, never reads ISP0 / MCSC.
+  Writes C:\S10Prov\isp-s10-<action>.txt - send it back.
+#>
+param([Parameter(Position = 0)][ValidateSet('install', 'status', 'restart', 'remove')][string]$Action = 'status')
+$ErrorActionPreference = 'Continue'
+$Out = "C:\S10Prov\isp-s10-$Action.txt"
+New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
+Remove-Item $Out -Force -ErrorAction SilentlyContinue
+function W($m) { Write-Host $m; "$m" | Add-Content $Out -Encoding ascii }
+W "isp-s10.ps1 v1.0  $Action  $(Get-Date -Format s)"
+$fw = (Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue).BIOSVersion
+W "firmware: $fw"
+
+function Dev { Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'ACPI\SAMS982C\*' } }
+
+function Status {
+    $d = Dev
+    if (-not $d) {
+        W 'device ACPI\SAMS982C: NOT PRESENT - UEFI older than v0.2.3, or pd-isppre was off when ACPI evaluated _STA'
+        return
+    }
+    foreach ($x in $d) {
+        W "device: $($x.InstanceId)  status $($x.Status)  problem $($x.Problem)  '$($x.FriendlyName)'"
+        $drv = (Get-PnpDeviceProperty -InstanceId $x.InstanceId -KeyName 'DEVPKEY_Device_DriverInfPath' -ErrorAction SilentlyContinue).Data
+        $ver = (Get-PnpDeviceProperty -InstanceId $x.InstanceId -KeyName 'DEVPKEY_Device_DriverVersion' -ErrorAction SilentlyContinue).Data
+        W "driver: $drv $ver"
+        $k = "HKLM:\SYSTEM\CurrentControlSet\Enum\$($x.InstanceId)\Device Parameters\S10eIsp"
+        $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
+        if ($p -and $p.Probe) {
+            W "probe report (S10eIsp $($p.Version)):"
+            foreach ($l in ($p.Probe -split "`r`n")) { if ($l) { W "  $l" } }
+        } else {
+            W "no probe report under $k (driver not loaded yet, or it failed before writing)"
+        }
+    }
+    $wudf = Get-Process WUDFHost -ErrorAction SilentlyContinue
+    W "WUDFHost processes: $(@($wudf).Count)"
+}
+
+switch ($Action) {
+    'install' {
+        $inf = Join-Path $PSScriptRoot 'out\S10eIsp\S10eIsp.inf'
+        if (-not (Test-Path $inf)) { $inf = Join-Path $PSScriptRoot 'S10eIsp\S10eIsp.inf' }
+        if (-not (Test-Path $inf)) { W "S10eIsp.inf not found (out\S10eIsp\ from build-s10.cmd v1.19)"; break }
+        W "pnputil /add-driver $inf /install"
+        (pnputil /add-driver $inf /install 2>&1) | ForEach-Object { W "  $_" }
+        Start-Sleep -Seconds 3
+        Status
+    }
+    'status' { Status }
+    'restart' {
+        $d = Dev
+        if (-not $d) { Status; break }
+        foreach ($x in $d) {
+            W "restarting $($x.InstanceId)"
+            Disable-PnpDevice -InstanceId $x.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            Enable-PnpDevice -InstanceId $x.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds 3
+        Status
+    }
+    'remove' {
+        $pk = (pnputil /enum-drivers 2>$null | Out-String) -split "(\r?\n){2,}" | Where-Object { $_ -match 's10eisp\.inf' }
+        foreach ($b in $pk) {
+            if ($b -match 'Published Name\s*:\s*(oem\d+\.inf)') {
+                W "pnputil /delete-driver $($Matches[1]) /uninstall /force"
+                (pnputil /delete-driver $Matches[1] /uninstall /force 2>&1) | ForEach-Object { W "  $_" }
+            }
+        }
+        Status
+    }
+}
+W "log: $Out"

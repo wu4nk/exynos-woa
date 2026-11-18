@@ -1,10 +1,12 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem build-s10.cmd (v1.18) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
+rem build-s10.cmd (v1.19) - build, catalog and test-sign the Galaxy S10 (beyond1lte)
 rem Windows drivers: Exynos9820Hsi2c, S10Touch (touch, new in v1.5),
 rem Exynos9820Ufs (-Board Beyond1), S10eBattery (battery/charging), Exynos9820WlanCx (WiFi),
 rem Exynos9820Audio (speaker / earpiece: ACX, CS47L93 codec + two CS35L40 amps),
 rem and S10eDiag (kernel helper + S10eAgent service: power / Bixby / volume keys).
+rem v1.19: S10eIsp (UMDF 2 probe for the camera ISP, binds DSDT CISP = ACPI\SAMS982C, UEFI v0.2.3+) -> out\S10eIsp\,
+rem installed by isp-s10.ps1. Never fails the kit.
 rem v1.17: S10eCam (camera bring-up stages, legacy service like S10ePower, cam-s10.ps1) -> out\S10eCam\. Never
 rem fails the kit.
 rem v1.16: the UFS driver is built for the DUAL-BOOT S10 by default (-Board Beyond1Dual, board id 3: write fence =
@@ -91,6 +93,8 @@ call :power || echo [WARN] S10ePower not built - clocks stay at the boot rates
 call :cam || echo [WARN] S10eCam not built - cam-s10.ps1 has nothing to install
 rem v1.18: S10eCamera - the front camera as a Windows camera (AVStream on the S10eCam engine). camera-s10.ps1 installs it.
 call :camera || (echo [WARN] S10eCamera not built - no Windows camera & if exist "%OUT%\S10eCamera" rmdir /s /q "%OUT%\S10eCamera")
+rem v1.19: S10eIsp - UMDF 2 driver of the camera ISP (notes/s10-isp.md option A; v0.1 = probe). isp-s10.ps1 installs it.
+call :isp || (echo [WARN] S10eIsp not built & if exist "%OUT%\S10eIsp" rmdir /s /q "%OUT%\S10eIsp")
 rem v1.11: Bluetooth - Exynos9820Bt (BthxDDI transport over the BT UART, binds DSDT BTH0 = UEFI v0.2.1+ with the BT
 rem role latch). Its INF ships the phone's own patch file as bcm4375B1_semco.hcd; get-wifi-fw.cmd v1.1 puts the one
 rem that matches this phone's module in bcm4375\bt\. Without it Bluetooth is skipped (never fails the kit).
@@ -246,6 +250,30 @@ set "S10E_SIGN_SKIP="
 del /q "%DST%\*.obj" >nul 2>&1
 for %%F in ("%DST%\*.sys" "%DST%\*.exe") do call :sign "%%~F" || exit /b 1
 echo [ OK ] S10eDiag
+exit /b 0
+
+rem ---------------------------------------------------------------------------
+:isp
+rem v1.19: UMDF 2 DLL from its .vcxproj (WindowsUserModeDriver10.0 toolset), then the kit's own catalog + signature.
+set "SRC=%SRCROOT%S10eIsp"
+set "DST=%OUT%\S10eIsp"
+echo.
+echo ==== S10eIsp (camera ISP, UMDF 2 probe) ====
+pushd "%SRC%" || exit /b 1
+msbuild S10eIsp.vcxproj /nologo /m /v:minimal /p:Configuration=Release /p:Platform=ARM64 /p:SignMode=Off /p:EnableInf2cat=false /p:SkipPackageVerification=true /p:ApiValidator_Enable=false
+if errorlevel 1 (popd & echo [FAIL] build S10eIsp & exit /b 1)
+set "DLL="
+for /r "%SRC%\ARM64" %%F in (S10eIsp.dll) do if exist "%%F" set "DLL=%%F"
+popd
+if not defined DLL (echo [FAIL] S10eIsp.dll not found under ARM64\ & exit /b 1)
+mkdir "%DST%"
+copy /y "%DLL%" "%DST%\" >nul
+copy /y "%SRC%\S10eIsp.inf" "%DST%\" >nul
+call :sign "%DST%\S10eIsp.dll" || exit /b 1
+inf2cat /driver:"%DST%" /os:%CATOS% /uselocaltime
+if errorlevel 1 (echo [FAIL] inf2cat S10eIsp & exit /b 1)
+call :sign "%DST%\S10eIsp.cat" || exit /b 1
+echo [ OK ] S10eIsp
 exit /b 0
 
 rem ---------------------------------------------------------------------------

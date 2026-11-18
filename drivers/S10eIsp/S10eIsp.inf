@@ -1,0 +1,62 @@
+;
+; S10eIsp.inf (v0.1) - Galaxy S10 camera ISP, UMDF 2 probe driver (notes/s10-isp.md, Stage 4 option A).
+; Binds the DSDT node CISP (ACPI\SAMS982C, beyond1lte-uefi v0.2.3+, present only while PMU pd-isppre is ON).
+; UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping: the framework maps the ISP's registers into this
+; driver's host process (WdfDeviceGetHardwareRegisterMappedAddress) - the way Samsung's libraries will reach them.
+; Own host process (ProcessSharingDisabled): the libraries will run code generated at run time in it.
+;
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+CatalogFile = S10eIsp.cat
+DriverVer   = 11/18/2026,0.1.0.0
+PnpLockdown = 1
+
+[Manufacturer]
+%ProviderName% = Standard, NTARM64
+
+[Standard.NTARM64]
+%DeviceDesc% = S10eIsp_Install, ACPI\SAMS982C
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+S10eIsp.dll = 1
+
+[DestinationDirs]
+UMDriverCopy = 13
+
+[UMDriverCopy]
+S10eIsp.dll
+
+[S10eIsp_Install.NT]
+CopyFiles = UMDriverCopy
+Include   = WUDFRD.inf
+Needs     = WUDFRD.NT
+
+[S10eIsp_Install.NT.hw]
+Include = WUDFRD.inf
+Needs   = WUDFRD.NT.HW
+
+[S10eIsp_Install.NT.Services]
+Include = WUDFRD.inf
+Needs   = WUDFRD.NT.Services
+
+[S10eIsp_Install.NT.Wdf]
+UmdfService              = S10eIsp, S10eIsp_UmdfService
+UmdfServiceOrder         = S10eIsp
+UmdfDirectHardwareAccess = AllowDirectHardwareAccess
+UmdfRegisterAccessMode   = RegisterAccessUsingUserModeMapping
+UmdfHostProcessSharing   = ProcessSharingDisabled
+
+[S10eIsp_UmdfService]
+UmdfLibraryVersion = 2.15.0
+ServiceBinary      = %13%\S10eIsp.dll
+
+[Strings]
+ProviderName = "exynos-woa S10"
+DiskName     = "S10eIsp install disk"
+DeviceDesc   = "Galaxy S10 camera ISP (S10eIsp probe)"

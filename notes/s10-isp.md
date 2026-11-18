@@ -684,3 +684,23 @@ Plan (each a task, each waits for the result before it):
   abort, no bugcheck: the 3AA0 register block is readable from Windows with the clocks as sboot leaves them, no SMC.
   (The phone's clock said 2026-11-01 in the log header: RTC, irrelevant.)
 - Still open: pd-isplp state (ISP0 + MCSC) -> S10eCam 0.12.
+
+## Plan item 4: S10eIsp 0.1, the UMDF 2 probe (2026-11-18 14:30)
+- drivers/S10eIsp: S10eIsp.c (UMDF 2.15, C), S10eIsp.inf (ACPI\SAMS982C; UmdfDirectHardwareAccess =
+  AllowDirectHardwareAccess, UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping, UmdfHostProcessSharing =
+  ProcessSharingDisabled, UmdfLibraryVersion 2.15.0, ServiceBinary %13% - directive text from
+  wdf/specifying-wdf-directives-in-inf-files), S10eIsp.vcxproj (WindowsUserModeDriver10.0 like IddSampleDriver).
+  build-s10.cmd v1.19 :isp (msbuild -> dll + inf -> kit catalog + signature), make-kit.sh ships the source,
+  tools/s10-kit/isp-s10.ps1 v1.0 (install / status / restart / remove; reads the report from the registry).
+- What the probe does in PrepareHardware (inside its own Wudfhost): maps every memory resource (WdfDeviceMapIoSpace
+  + WdfDeviceGetHardwareRegisterMappedAddress); reads CMU_ISPPRE +0x201C (3AA0 aclk gate) and +0x20B4 (LHM_AXI_P)
+  both with WDF_READ_REGISTER_ULONG (wdfhwaccess.h: WdfDeviceReadFromHardware) and with a plain load from the user
+  mapping; if both gates are on, reads 3AA0 +0xF0 / +0xF4 from the user mapping; never reads ISPLP / MCSC; reports
+  GetProcessMitigationPolicy(ProcessDynamicCodePolicy), tries VirtualAlloc(PAGE_EXECUTE_READWRITE) and runs the
+  x18 check code on 8 threads x 1e8 there. Report: REG_SZ "Probe" under the device's hardware key subkey
+  (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE - the only writable one for UMDF,
+  WdfDeviceOpenRegistryKey docs). No interrupt, no register write.
+- Syntax check (no Windows build here): clang aarch64-pc-windows-msvc against the WDK 26100 um + UMDF 2.15 headers
+  (scratch ucheck-umdf.sh, a lower-case symlink overlay for the headers' mixed-case includes, km/crt as CRT): clean.
+  First version used READ_REGISTER_ULONG - not declared for UMDF; the UMDF form is WDF_READ_REGISTER_ULONG(Device,
+  reg). The real build (msbuild, linking WdfDriverStubUm) happens on the user's PC: NOT BUILT YET.

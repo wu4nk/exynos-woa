@@ -17,7 +17,7 @@ cp "$KIT"/{README.md,build-s10.cmd,make-windows.ps1,set-esp-type.ps1,z3s-disk.cs
 cp "$KIT/../S10eSpeakerTrim/S10eSpeakerTrim.cs" "$D/"
 mkdir -p "$D/setup" && cp "$KIT/setup/SetupComplete.cmd" "$KIT/setup/S10-install-once.cmd" "$D/setup/"
 cp "$UEFI" "$D/"
-for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag S10ePower S10eCam S10eCamera Exynos9820Mfc MaliG76Wddm MaliG76Wddm-legacy MaliG76Probe include; do
+for d in Exynos9820Hsi2c Exynos9820Ufs S10Touch S10eBattery Exynos9820Wlan Exynos9820WlanCx Exynos9820Audio Exynos9820Bt S10eDiag S10ePower S10eCam S10eCamera S10eIsp Exynos9820Mfc MaliG76Wddm MaliG76Wddm-legacy MaliG76Probe include; do
   (cd "$REPO/drivers" && git ls-files -z "$d" | xargs -0 -I{} cp --parents {} "$D/")
 done
 # v2.0: the Linux-built user-mode driver (tools/mesa-build/linux-build-g76.sh collect) goes into umd\ when
