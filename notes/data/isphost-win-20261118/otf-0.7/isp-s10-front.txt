@@ -1,0 +1,269 @@
+isp-s10.ps1 v1.8  front  2026-11-01T23:31:39
+firmware: 
+icacls C:\S10Prov\isp /grant *S-1-5-19:(OI)(CI)M   (LocalService = Wudfhost)
+  processed file: C:\S10Prov\isp
+  Successfully processed 1 files; Failed processing 0 files
+run.flg: run hw3aaotf
+pnputil /restart-device ACPI\SAMS982C\0
+  Microsoft PnP Utility
+  
+  Restarting device:         ACPI\SAMS982C\0
+  Device restarted successfully.
+  
+3AA0 armed: True  (1 s)
+cam-s10.ps1 shot -Bin -Otf -Frames 30
+  cam: S10eCam 0.14 stage 4 (shot) flags 00000014 coarse 0 again 0 ispdiv 0 frames 30
+  cam:   OTF route: SC_CON0 00000000 -> 00000002, SC_CON14 00000000 -> 00000000, PDP_IN_EN 00000000 -> 00000004
+  cam:   waiting for 30 frames (2 s at most)
+  cam:   30 frames counted on CH0 in 481 ms (first at 3 ms, last at 481 ms)
+  cam:   INT_SRC0 seen 01100000 (FS 1 FE 1 errors 000), INT_SRC1 00000000, DMA cmn INT_SRC 00000111
+  cam:   OTF route back: SC_CON0 00000000 SC_CON14 00000000 PDP_IN_EN 00000000
+FrontRun: finished: rc 0, log C:\S10Prov\isp\out\host.log  (8 s)
+front-trace.txt:
+  run.flg found ("run hw3aaotf
+  "), nodma 0, hw3aa 1, hw3aashot 1
+  S10eIsp 0.7 front thread: process 9704, data c:\windows\system32\driverstore\filerepository\s10eisp.inf_arm64_0d804ced607c51da, nodma 0, hw3aa 1, hw3aashot 1
+  hw3aa: the libraries get the REAL 3AA0 window 0000020A215C0000 for the init steps + 3AA set_param / shot F1 / stop
+  S10eIspDma open: ok (0)
+  pool mapped: 128 MiB PA 0xF5751000 va 0x20A21B40000 cache 1
+  calling isp_front_main, argc 5
+   883119695 us  front: isp_front_main entered
+   883125181 us  front: logs open, reading the libraries
+   883147840 us  front: libraries read
+   883150995 us  isp_load: exec alloc
+   883154996 us  isp_load: exec alloc ok
+   883180302 us  isp_load: copied + relocated
+   883183164 us  isp_load: icache flushed
+   883185524 us  isp_load: threads starting
+   883187276 us  isp_load: threads registered
+   883189058 us  isp_start: DDK start_up
+   883202725 us  isp_start: RTA start_up
+   883251764 us  hw3aa: reading all 3AA0 registers (before)
+   883272308 us  hw3aa: 3AA0 read (before)
+   883292129 us  3AA chain_create
+   883298012 us  3AA set_system_config
+   883301940 us  3AA object_create
+   883311352 us  ISP chain_create
+   883319395 us  ISP set_system_config
+   883325067 us  ISP object_create
+   883339374 us  hw3aa: reading all 3AA0 registers (after)
+   883386133 us  front: hw3aa init steps done
+   883401369 us  3AA apply_tune_set 6
+   883405625 us  3AA load_cal_data
+   883408971 us  3AA get_cal_data type 2
+   883412631 us  3AA set_param
+   883415754 us  3AA set_ctrl F1
+   883419444 us  3AA shot F1
+   883429815 us  hw3aa: armed, waiting for OTF frames
+   885474347 us  3AA set_ctrl F2
+   885479273 us  3AA shot F2
+   885509335 us  3AA set_ctrl F3
+   885513445 us  3AA shot F3
+   885543358 us  3AA set_ctrl F4
+   885548452 us  3AA shot F4
+   885576296 us  3AA set_ctrl F5
+   885579590 us  3AA shot F5
+   885609294 us  3AA set_ctrl F6
+   885614646 us  3AA shot F6
+   885643294 us  3AA set_ctrl F7
+   885646559 us  3AA shot F7
+   885674257 us  3AA set_ctrl F8
+   885677263 us  3AA shot F8
+   885710270 us  3AA set_ctrl F9
+   885713082 us  3AA shot F9
+   885742256 us  3AA set_ctrl F10
+   885745049 us  3AA shot F10
+   885774258 us  3AA set_ctrl F11
+   885777268 us  3AA shot F11
+   885809293 us  3AA set_ctrl F12
+   885813932 us  3AA shot F12
+   885842286 us  3AA set_ctrl F13
+   885846830 us  3AA shot F13
+   885875280 us  3AA set_ctrl F14
+   885879595 us  3AA shot F14
+   885909308 us  3AA set_ctrl F15
+   885913190 us  3AA shot F15
+   885943337 us  3AA set_ctrl F16
+   885947229 us  3AA shot F16
+   885974317 us  3AA set_ctrl F17
+   885978175 us  3AA shot F17
+   886009284 us  3AA set_ctrl F18
+   886012532 us  3AA shot F18
+   886043342 us  3AA set_ctrl F19
+   886047872 us  3AA shot F19
+   886075317 us  3AA set_ctrl F20
+   886079895 us  3AA shot F20
+   886107329 us  3AA set_ctrl F21
+   886112558 us  3AA shot F21
+   886143376 us  3AA set_ctrl F22
+   886148153 us  3AA shot F22
+   886176362 us  3AA set_ctrl F23
+   886183774 us  3AA shot F23
+   886209379 us  3AA set_ctrl F24
+   886216347 us  3AA shot F24
+   886241358 us  3AA set_ctrl F25
+   886246004 us  3AA shot F25
+   886276372 us  3AA set_ctrl F26
+   886283497 us  3AA shot F26
+   886308381 us  3AA set_ctrl F27
+   886315172 us  3AA shot F27
+   886342294 us  3AA set_ctrl F28
+   886345741 us  3AA shot F28
+   886375378 us  3AA set_ctrl F29
+   886382335 us  3AA shot F29
+   886407349 us  3AA set_ctrl F30
+   886414362 us  3AA shot F30
+   886674446 us  hw3aa: shot F1 done, watching the interrupt status 200 ms
+   886877696 us  hw3aa: reading all 3AA0 registers (after shot)
+   886961181 us  3AA stop
+   887014355 us  front: hw3aa shot + stop done
+   887017023 us  front: done
+  isp_front_main returned 0
+  interrupts: id 0 (GSIV 351): 94, to the libraries 94, masked 0; id 1 (GSIV 352): 31, to the libraries 31, masked 0; object 0: vector 2562 GSIV 351 -> id 0 (by GSIV); object 1: vector 2306 GSIV 352 -> id 1 (by GSIV)
+host.log: 3519 lines, steps 72, not 0: 0
+  hw3aa otf: +5 ms: interrupts 1, frame starts 0, frame ends 0
+  hw3aa otf: +2038 ms: interrupts 2, frame starts 1, frame ends 0
+  hw3aa otf: +2052 ms: interrupts 5, frame starts 1, frame ends 1
+  hw3aa otf: +2070 ms: interrupts 6, frame starts 2, frame ends 1
+  hw3aa otf: +2439 ms: interrupts 50, frame starts 13, frame ends 12
+  hw3aa otf: +2843 ms: interrupts 100, frame starts 25, frame ends 24
+  hw3aa otf: done after 2988 ms: interrupts 117, frame starts 29, frame ends 29, shots 30
+  hw3aa otf: before_bds buffer (dva 0xf8215000): 935377 of 1247616 bytes written by the 3AA -> C:\S10Prov\isp\out/otf-before_bds-912x684.raw
+  hw3aa otf: after_bds buffer (dva 0xf8346000): 935427 of 1247616 bytes written by the 3AA -> C:\S10Prov\isp\out/otf-after_bds-912x684.raw
+  hw3aa: shot: 1558 REAL 3AA0 registers changed
+  hw3aa: real interrupts handed to the libraries so far: 125
+  hw3aa: stop: 9 REAL 3AA0 registers changed
+  hw3aa: stopping here (no ISP step, no interrupt delivered)
+  done: traced OS calls 478, tasks 123, timers 0, irqs 125
+REAL 3AA0 register changes: 2743 (all in host.log)
+  hw 3AA0 init +0x0024 0x00000000 -> 0x00000011
+  hw 3AA0 init +0x005c 0x00000008 -> 0x00000000
+  hw 3AA0 init +0x0060 0x077b0000 -> 0x00000000
+  hw 3AA0 init +0x0064 0x00000002 -> 0x00000000
+  hw 3AA0 init +0x006c 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0070 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0104 0x00000800 -> 0x00100800
+  hw 3AA0 init +0x0400 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0404 0x00000002 -> 0x00000000
+  hw 3AA0 init +0x0408 0x00000b80 -> 0x00000020
+  hw 3AA0 init +0x040c 0x000008a0 -> 0x00000020
+  hw 3AA0 init +0x0410 0x00001140 -> 0x00000020
+  hw 3AA0 init +0x0414 0xf8215000 -> 0x00000000
+  hw 3AA0 init +0x0450 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0454 0x00000002 -> 0x00000000
+  hw 3AA0 init +0x0458 0x00000980 -> 0x00000020
+  hw 3AA0 init +0x045c 0x00000720 -> 0x00000020
+  hw 3AA0 init +0x0460 0x00000e40 -> 0x00000020
+  hw 3AA0 init +0x0464 0xf8e7b000 -> 0x00000000
+  hw 3AA0 init +0x04a0 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x04a8 0x0001d800 -> 0x00000020
+  hw 3AA0 init +0x04b0 0x0001d800 -> 0x00000020
+  hw 3AA0 init +0x04b4 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04b8 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04bc 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04c0 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04c4 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04c8 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04cc 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x04d0 0xf57ce800 -> 0x00000000
+  hw 3AA0 init +0x0580 0x00000001 -> 0x00000000
+  hw 3AA0 init +0x0588 0x00000018 -> 0x00000020
+  hw 3AA0 init +0x058c 0x00000012 -> 0x00000020
+  hw 3AA0 init +0x0594 0xf5754000 -> 0x00000000
+  hw 3AA0 init +0x0598 0xf5754000 -> 0x00000000
+  hw 3AA0 init +0x059c 0xf5754000 -> 0x00000000
+  hw 3AA0 init +0x05a0 0xf5754000 -> 0x00000000
+  hw 3AA0 init +0x05a4 0xf5754000 -> 0x00000000
+  hw 3AA0 init +0x05a8 0xf5754000 -> 0x00000000
+  hw 3AA0 init +0x05ac 0xf5754000 -> 0x00000000
+  hw irq #1 id 0: +0x10c 0x00100000 +0x11c 0x00000000 -> handler 0x0 in 58 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw3aa: after shot F1: +0x00 0x00000001 +0x10c 0x00000000 +0x11c 0x00000000 +0x108 0xfff0005f +0x118 0x00000000
+  hw3aa otf: +5 ms: interrupts 1, frame starts 0, frame ends 0
+  hw irq #2 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 304 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw3aa otf: +2038 ms: interrupts 2, frame starts 1, frame ends 0
+  hw irq #3 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 472 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #4 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 65 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #5 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 224 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw3aa otf: +2052 ms: interrupts 5, frame starts 1, frame ends 1
+  hw3aa otf: +2070 ms: interrupts 6, frame starts 2, frame ends 1
+  hw irq #6 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 1277 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #7 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 605 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #8 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 141 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #9 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 1040 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #10 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 174 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #11 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 442 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #12 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 46 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #13 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 213 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #14 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 666 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #15 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 927 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #16 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 128 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #17 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 514 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #18 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 175 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #19 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 458 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #20 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 71 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #21 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 194 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #22 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 170 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #23 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 375 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #24 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 37 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #25 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 205 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #26 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 134 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #27 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 372 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #28 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 51 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #29 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 131 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #30 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 319 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #31 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 379 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #32 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 40 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #33 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 157 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #34 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 132 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #35 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 376 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #36 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 37 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #37 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 135 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #38 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 134 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #39 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 367 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #40 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 47 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #41 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 190 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #42 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 202 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #43 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 500 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #44 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 58 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #45 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 195 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #46 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 380 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #47 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 549 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #48 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 60 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #49 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 191 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #50 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 218 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw3aa otf: +2439 ms: interrupts 50, frame starts 13, frame ends 12
+  hw irq #51 id 0: +0x10c 0x00000004 +0x11c 0x00000000 -> handler 0x0 in 596 us -> +0x10c 0x00000000 +0x11c 0x02000000
+  hw irq #52 id 1: +0x10c 0x00000000 +0x11c 0x02000000 -> handler 0x0 in 53 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #53 id 0: +0x10c 0x00100042 +0x11c 0x00000000 -> handler 0x0 in 184 us -> +0x10c 0x00000000 +0x11c 0x00000000
+  hw irq #54 id 0: +0x10c 0x00000001 +0x11c 0x00000000 -> handler 0x0 in 203 us -> +0x10c 0x00000000 +0x11c 0x00000000
+zip: C:\S10Prov\isp-front.zip
+device: ACPI\SAMS982C\0  status OK  problem CM_PROB_NONE  'Galaxy S10 camera ISP (S10eIsp probe)'
+driver: oem27.inf 0.7.0.0
+probe report (S10eIsp 0.7):
+  S10eIsp 0.7 probe, process 9704
+  memory 0: 0x17000000 + 0x4000 -> pseudo FFFF858094556000, user-mode mapping 0000020A215A0000
+  memory 1: 0x17190000 + 0x10000 -> pseudo FFFF85809455A000, user-mode mapping 0000020A215C0000
+  memory 2: 0x17430000 + 0x10000 -> pseudo FFFF85809456A000, user-mode mapping 0000020A215D0000
+  memory 3: 0x17440000 + 0x10000 -> pseudo FFFF858094680000, user-mode mapping 0000020A215E0000
+  resource 4: interrupt raw vector 351 (GSIV), translated vector 2562 level 10 flags 0x0 (level)
+  resource 5: interrupt raw vector 352 (GSIV), translated vector 2306 level 9 flags 0x0 (level)
+  CMU_ISPPRE via WDF_READ_REGISTER_ULONG: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000
+  CMU_ISPPRE via the user-mode mapping: 3AA0 aclk gate 00200000, LHM_AXI_P 00200000 -> same as the system call
+  3AA0 via the user-mode mapping: +0xF0 07010000 +0xF4 0000CC22 -> = Android's: the libraries can reach the 3AA from this process
+  ISPLP / MCSC: mapped only, never read (pd-isplp state unknown)
+  dynamic-code policy: ProhibitDynamicCode 0 AllowThreadOptOut 0 AllowRemoteDowngrade 0
+  RWX: VirtualAlloc(PAGE_EXECUTE_READWRITE) ok at 0000020A215F0000
+  x18: 8 threads x 100 M checks ran generated code in this process: X18 PRESERVED
+  DMA: pool 128 MiB at PA 0xF5751000..0xFD750FFF, write-combined, mapped at 0000020A21B40000 (S10eIspDma v1)
+  DCZID_EL0 = 0x4 (DZP 0, block 64 bytes)
+  DMA test: aligned 8-byte store + load -> ok
+  DMA test: unaligned 8-byte store + load (+0x1003) -> ok
+  DMA test: memset 64 KiB + check -> ok
+  DMA test: DC ZVA on a dirty block + check -> ok
+  DMA test: last byte store + load -> ok
+  DMA: handle closed (pool unmapped)
+  front run: started (FrontRun value, C:\S10Prov\isp\out\host.log)
+interrupts (value Irq): id 0 (GSIV 351): 94, to the libraries 94, masked 0; id 1 (GSIV 352): 31, to the libraries 31, masked 0; object 0: vector 2562 GSIV 351 -> id 0 (by GSIV); object 1: vector 2306 GSIV 352 -> id 1 (by GSIV)
+S10eIspDma service: RUNNING
+WUDFHost processes: 1
+log: C:\S10Prov\isp-s10-front.txt

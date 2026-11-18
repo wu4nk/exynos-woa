@@ -1,0 +1,71 @@
+3AA chain_create                    1.7 ms
+3AA set_system_config               0.5 ms
+3AA object_create                   6.1 ms
+ISP chain_create                    1.4 ms
+ISP set_system_config               0.8 ms
+ISP object_create                   9.8 ms
+3AA apply_tune_set 6                1.1 ms
+3AA load_cal_data                   0.6 ms
+3AA get_cal_data type 2             0.7 ms
+3AA set_param                       0.4 ms
+3AA set_ctrl F1                     0.9 ms
+3AA shot F1                         7.5 ms
+3AA set_ctrl F2                     0.7 ms
+3AA shot F2                         0.5 ms
+3AA set_ctrl F3                     0.9 ms
+3AA shot F3                         0.5 ms
+3AA set_ctrl F4                     0.6 ms
+3AA shot F4                         0.6 ms
+3AA set_ctrl F5                     0.6 ms
+3AA shot F5                         0.5 ms
+3AA set_ctrl F6                     2.4 ms
+3AA shot F6                         0.6 ms
+3AA set_ctrl F7                     0.5 ms
+3AA shot F7                         0.5 ms
+3AA set_ctrl F8                     0.5 ms
+3AA shot F8                         0.6 ms
+3AA set_ctrl F9                     0.5 ms
+3AA shot F9                         0.4 ms
+3AA set_ctrl F10                    0.5 ms
+3AA shot F10                        0.5 ms
+3AA set_ctrl F11                    0.5 ms
+3AA shot F11                        0.4 ms
+3AA set_ctrl F12                    0.9 ms
+3AA shot F12                        0.6 ms
+3AA set_ctrl F13                    0.9 ms
+3AA shot F13                        0.7 ms
+3AA set_ctrl F14                    0.8 ms
+3AA shot F14                        0.6 ms
+3AA set_ctrl F15                    0.9 ms
+3AA shot F15                        0.8 ms
+3AA set_ctrl F16                    0.8 ms
+3AA shot F16                        0.6 ms
+3AA set_ctrl F17                    0.8 ms
+3AA shot F17                        0.6 ms
+3AA set_ctrl F18                    0.8 ms
+3AA shot F18                        0.7 ms
+3AA set_ctrl F19                    1.0 ms
+3AA shot F19                        0.7 ms
+3AA set_ctrl F20                    0.9 ms
+3AA shot F20                        0.6 ms
+3AA set_ctrl F21                    0.8 ms
+3AA shot F21                        0.7 ms
+3AA set_ctrl F22                    1.4 ms
+3AA shot F22                        1.0 ms
+3AA set_ctrl F23                    1.6 ms
+3AA shot F23                        1.1 ms
+3AA set_ctrl F24                    1.4 ms
+3AA shot F24                        1.0 ms
+3AA set_ctrl F25                    1.4 ms
+3AA shot F25                        1.0 ms
+3AA set_ctrl F26                    1.4 ms
+3AA shot F26                        1.0 ms
+3AA set_ctrl F27                    1.4 ms
+3AA shot F27                        1.0 ms
+3AA set_ctrl F28                    0.8 ms
+3AA shot F28                        1.0 ms
+3AA set_ctrl F29                    1.4 ms
+3AA shot F29                        1.0 ms
+3AA set_ctrl F30                    1.4 ms
+3AA shot F30                        0.9 ms
+3AA stop                            1.0 ms

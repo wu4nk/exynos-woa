@@ -1109,3 +1109,20 @@ Plan (each a task, each waits for the result before it):
   set_ctrl / shot F1 -> 0 (same "Invalid iso / edge / noiseReduction mode 0" lines as the normal run), wait loop and
   buffer dump run (no interrupts on plain memory). Syntax: S10eCam.c clean (kcheck-wdm), S10eIsp.c clean but the
   known _set_invalid_parameter_handler.
+- 2026-11-18 21:39 RESULT (S10eCam 0.14 -Otf + S10eIsp 0.7 hw3aaotf; notes/data/isphost-win-20261118/otf-0.7/ - the
+  image buffers themselves are NOT committed: they show the user / their room): FIRST REAL FRAMES PROCESSED BY THE
+  3AA0 ON WINDOWS, driven by Samsung's libraries.
+  - cam-s10: OTF route SC_CON0 0 -> 2, SC_CON14 0 (already), PDP_IN_EN 0 -> 4; 30 frames on CSIS2 CH0 in 481 ms;
+    route restored. PDP0 untouched: its reset state passes the image (the inference held).
+  - S10eIsp: armed in 1 s; first frame start +2038 ms after arming (cam-s10 start-up), then per frame the pattern
+    IRQ0 b0 (frame start) -> IRQ0 b2 (CIN ROW) -> IRQ1 0x02000000 -> IRQ0 0x00100042 (b1 FRAME END + b6 + b20), all
+    handed to the libraries' handlers (40-1300 us each), all cleared. 29 frame starts / 29 frame ends, 30 shots
+    queued (set_ctrl + shot per frame end, all -> 0), 125 interrupts (id 0 94, id 1 31), tasks 123; no storm, no mask.
+  - Output: before_bds and after_bds buffers each 935377 / 935427 of 1247616 bytes written = 684 lines x 1376 bytes
+    (912 px packed 12-bit = 1368, stride aligned to 16). Packing (verified by a plausible image): pixel pairs in 3
+    bytes, p0 = b0 | (b1 & 0xF) << 8, p1 = b1 >> 4 | b2 << 4. Values 192..4095, mean 325, p1 / p99 220 / 1013
+    (12-bit: dark scene at the setfile's exposure). Rendered GRBG half-res: a recognisable scene (ceiling lanterns).
+  - Stop as before; regs-3AA0-hw-shot.txt kept.
+- So the whole 3AA0 path - sensor -> D-PHY -> CSIS2 -> PDP0 -> 3AA0 (real registers, real interrupts, real DMA into
+  the S10eIspDma pool) - runs on Windows under Samsung's own 3AA library. Next: ISP0 (ISPLP) M2M from the after-BDS
+  buffer (its interrupts 328 / 329 into the DSDT), then MCSC (programmed by the kernel's GPL driver, not the library).
