@@ -1042,6 +1042,15 @@
 // nothing is reserved between 0xCA000000 and EXYNOS_RSVD_MODEM_SPARE_BASE 0xD0000000 (this file).
 #define EXYNOS_FB_RESERVED_SIZE   ((UINT64)EXYNOS_BOARD_FB_RESERVED_SIZE)   // S10e 10 MiB (0xCA000000 .. 0xCA9FFFFF), S10 18 MiB (Exynos9820Board.h)
 
+// Camera ISP (notes/s10-isp.md Stage 4 option A; the DSDT node CISP, S10 only). LIVE-READ = read on the S10 itself.
+#define EXYNOS_CMU_ISPPRE_BASE    0x0000000017000000ULL   // LIVE-READ (S10eCam CMU_ISPPRE reads, cam-s10 logs 2026-11-01..18)
+#define EXYNOS_CMU_ISPPRE_SIZE    0x0000000000004000ULL   // SOURCE-ONLY (what S10eCam maps of cal-if SFR_BLOCK(CMU_ISPPRE, 0x17000000, 0x8000), cmucal-sfr.c:31)
+#define EXYNOS_ISP_3AA0_BASE      0x0000000017190000ULL   // LIVE-READ (S10eCam 0.11 + Android: ID 0x07010000 / 0xCC22)
+#define EXYNOS_ISP_ISPLP_BASE     0x0000000017430000ULL   // SOURCE-ONLY (live DT fimc_is@17190000 reg #3; Android dump read)
+#define EXYNOS_ISP_MCSC_BASE      0x0000000017440000ULL   // SOURCE-ONLY (live DT fimc_is@17190000 reg #5; Android dump read)
+#define EXYNOS_ISP_BLOCK_SIZE     0x0000000000010000ULL   // SOURCE-ONLY (each of the reg entries above)
+#define EXYNOS_PMU_ISPPRE_STATUS_OFFSET  0x2504u          // LIVE-READ (S10eCam stage 3, bit 0 = ON)
+#define EXYNOS_PMU_ISPLP_STATUS_OFFSET   0x2484u          // SOURCE-ONLY (flexpmu_cal_local_exynos9820.h isplp_status)
 //
 // ---------------------------------------------------------------------------
 // IRQ numbers the ACPI tables will need (SPI + 32 = GSIV, the repo's rule)

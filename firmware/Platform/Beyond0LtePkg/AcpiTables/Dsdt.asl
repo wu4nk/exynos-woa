@@ -563,5 +563,37 @@ DefinitionBlock ("Dsdt.aml", "DSDT", 2, "EXYNOS", "BEYOND0L", 0x00000002)
                 Return (Zero)
             }
         }
+#if EXYNOS9820_BOARD_BEYOND1
+        // Camera ISP for drivers/S10eIsp (UMDF 2; notes/s10-isp.md Stage 4 option A, plan item 4). S10 only.
+        // _HID SAMS982C (SAMS982B is reserved for the S10eCamera AVStream node, drivers/S10eCamera/S10eCamera.inf).
+        // _CRS ORDER IS A CONTRACT with S10eIsp.c (RES_*): CMU_ISPPRE, 3AA0, ISPLP (= DEV_HW_ISP0), MCSC.
+        // Addresses = Exynos9820.h EXYNOS_CMU_ISPPRE_* / EXYNOS_ISP_* (CMU_ISPPRE and 3AA0 read on this phone; ISPLP /
+        // MCSC from the vendor DT fimc_is@17190000 reg list, 0x10000 each).
+        // No interrupts yet: the libraries' handler must exist before one is connected (a level interrupt nobody
+        // clears would storm). They will be 3AA0 351 / 352, ISP0 328 / 329, MCSC0 331 (DT SPI + 32, notes).
+        // Present only while PMU pd-isppre is ON (STATUS 0x15862504 bit 0, K flexpmu_cal_local_exynos9820.h; the
+        // S10eCam log of 2026-11-18: ON as sboot leaves it): the driver reads CMU_ISPPRE, which aborts with the
+        // domain off. The PMU word is read by AML (no resource claimed: GPU0 owns that PMU page in its _CRS).
+        Device (CISP)
+        {
+            Name (_HID, "SAMS982C")
+            Name (_UID, Zero)
+            Name (_CCA, Zero)
+            Name (_CRS, ResourceTemplate ()
+            {
+                Memory32Fixed (ReadWrite, 0x17000000, 0x00004000)  // CMU_ISPPRE
+                Memory32Fixed (ReadWrite, 0x17190000, 0x00010000)  // 3AA0
+                Memory32Fixed (ReadWrite, 0x17430000, 0x00010000)  // ISPLP (ISP0) - pd-isplp, never read by S10eIsp 0.1
+                Memory32Fixed (ReadWrite, 0x17440000, 0x00010000)  // MCSC - pd-isplp, never read by S10eIsp 0.1
+            })
+            OperationRegion (ISPW, SystemMemory, 0x15862504, 4)
+            Field (ISPW, DWordAcc, NoLock, Preserve) { ISPS, 32 }
+            Method (_STA, 0, NotSerialized)
+            {
+                If (And (ISPS, One)) { Return (0x0F) }
+                Return (Zero)
+            }
+        }
+#endif
     }
 }

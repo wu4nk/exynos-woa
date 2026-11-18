@@ -704,3 +704,11 @@ Plan (each a task, each waits for the result before it):
   (scratch ucheck-umdf.sh, a lower-case symlink overlay for the headers' mixed-case includes, km/crt as CRT): clean.
   First version used READ_REGISTER_ULONG - not declared for UMDF; the UMDF form is WDF_READ_REGISTER_ULONG(Device,
   reg). The real build (msbuild, linking WdfDriverStubUm) happens on the user's PC: NOT BUILT YET.
+- UEFI beyond1lte v0.2.3 (2026-11-18 14:30): DSDT Device (CISP) _HID SAMS982C, S10 only (#if
+  EXYNOS9820_BOARD_BEYOND1): _CRS = CMU_ISPPRE 0x17000000/0x4000, 3AA0 0x17190000, ISPLP 0x17430000, MCSC 0x17440000
+  (0x10000 each), no interrupt; _STA = PMU 0x15862504 bit 0 (pd-isppre ON) read through an AML OperationRegion (no
+  resource claimed - GPU0 owns the PMU page in its _CRS). The addresses are now in Exynos9820.h (EXYNOS_CMU_ISPPRE_*,
+  EXYNOS_ISP_*, LIVE-READ / SOURCE-ONLY marked). Build Beyond1 DEBUG rc 0 (FVMAIN_COMPACT 99 %, 3408 B free),
+  iasl -d of the built Dsdt.aml shows the node as written; Beyond0 (S10e) DEBUG rc 0, its Dsdt.aml has no SAMS982C.
+  Image beyond1lte-uefi-v0.2.3.img 7716864 B sha256 6b083fc08fdc69b6ded2bf5a268f01d11baf6e07bc3b27cd9515459a48dd2ef3
+  (also carries the WINDOWS_WATCHDOG 0 change, next commit). NOT FLASHED.
