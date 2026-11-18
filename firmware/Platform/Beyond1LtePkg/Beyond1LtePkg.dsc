@@ -631,7 +631,12 @@
   }
   Platform/Beyond0LtePkg/Drivers/Beyond0LteAcpiPlatformDxe/Beyond0LteAcpiPlatformDxe.inf
   # W19: RAM boot log -> UEFILOG.TXT on the ESP (ReadyToBoot + exception handler)
-  Platform/Beyond0LtePkg/Drivers/Beyond0LteBootLogDxe/Beyond0LteBootLogDxe.inf
+  # v0.2.3: interactive use (HANDOFF section 29, notes/beyond1-port.md 2026-11-16): no 82 s cluster-0 WDT armed into
+  # Windows. The boot pair (WINRUN.FLG -> TWRP after an unclean end) stays as it was.
+  Platform/Beyond0LtePkg/Drivers/Beyond0LteBootLogDxe/Beyond0LteBootLogDxe.inf {
+    <BuildOptions>
+      *_*_*_CC_FLAGS = -DBEYOND0LTE_WINDOWS_WATCHDOG=0
+  }
   # M12: ACPM IPC -> S2MPS19 touch rails LDO19M/LDO27M on at ReadyToBoot (notes/m12-acpm.md)
   Platform/Beyond0LtePkg/Drivers/Beyond0LteTouchPowerDxe/Beyond0LteTouchPowerDxe.inf
   # D8a: read the CS47L93 codec / CS35L40 amp IDs into UEFILOG, buses restored (notes/d8-audio-m1.md)

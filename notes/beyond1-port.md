@@ -1980,3 +1980,7 @@ Cross-compiles clean; native debug test (nir_validate on) being built.
   C:\S10Prov\kit). NOT run on the phone yet.
 - Left for the next UEFI build: Beyond1LtePkg.dsc BootLogDxe -DBEYOND0LTE_WINDOWS_WATCHDOG=0 (interactive, per §29).
 - Review of the stay-s10 commit: make-windows diff = 4 lines, CRLF kept; no other 'v2.5-s10' literal left; the BootLog strings stay-s10 status greps for exist verbatim (rg 'BootLog: previous boot|Windows asked|clean Windows|Windows died' in BootLogDxe.c); stay.flg path = BootLogDxe's L"\\S10EDIAG\\stay.flg" on the BCD volume. Nothing found.
+- 2026-11-18 UEFI v0.2.3: done - Beyond1LtePkg.dsc builds BootLogDxe with -DBEYOND0LTE_WINDOWS_WATCHDOG=0 (module
+  BuildOptions; the build log carries the define for BootLogDxe, rc 0). The boot pair (WINRUN.FLG) is unchanged:
+  stay-s10.ps1 on still decides the "trip to TWRP after an unclean end". Same image as the ISP node
+  (notes/s10-isp.md), sha256 6b083fc0... NOT FLASHED.
