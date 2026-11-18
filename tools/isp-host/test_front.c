@@ -32,6 +32,7 @@ int isp_front_main(int argc, char **argv);
 #endif
 
 #include "isphost.h"
+#include "isp_compat.h"
 #include "mmio_trap.h"
 #include "plat_posix.h"
 
@@ -167,6 +168,31 @@ static volatile u32 *W3, *WI;
 static volatile u32 *HW3;
 static int HW3_SHOT;
 void isp_front_set_hw3aa(volatile void *va, int shot) { HW3 = (volatile u32 *)va; HW3_SHOT = shot; }
+
+/* S10eIsp 0.6: a REAL 3AA0 interrupt (UMDF passive ISR, GSIV 351 = id 0 / 352 = id 1) handed to the libraries'
+   handler (registered by 3AA chain_create: chain 0, ids 0 / 1), as the kernel's fimc_is_isr1_ddk / isr2 do. Returns
+   -1 when there is nothing to hand it to (no hw3aa run, or chain_create not done yet): the driver then masks the
+   source. The first 64 are logged with the status words before / after. */
+static volatile int hw_irq_ready;
+static u64 hw_irq_n;
+int isp_front_irq(u32 id)
+{
+    if (!HW3 || !hw_irq_ready || !H || id > 1) return -1;
+    ISP_ADD64(&hw_irq_n, 1);
+    u64 n = hw_irq_n;
+    u32 a1 = HW3[0x10c / 4], a2 = HW3[0x11c / 4];
+    u64 t0 = plat_usec();
+    u64 r = isp_irq_sync(H, 0, id);
+    u64 dt = plat_usec() - t0;
+    if (n <= 64) {
+        char b[192];
+        snprintf(b, sizeof(b), "hw irq #%llu id %u: +0x10c 0x%08x +0x11c 0x%08x -> handler 0x%llx in %llu us -> "
+                 "+0x10c 0x%08x +0x11c 0x%08x", (unsigned long long)n, id, a1, a2, (unsigned long long)r,
+                 (unsigned long long)dt, HW3[0x10c / 4], HW3[0x11c / 4]);
+        plat_log(b);
+    }
+    return 0;
+}
 
 static void hw_diff(const u32 *from, const u32 *to, const char *what)
 {
@@ -394,6 +420,7 @@ int main(int argc, char **argv)
 
     u64 w3 = (u64)(uintptr_t)T3, wi = (u64)(uintptr_t)TI;
     STEP("3AA chain_create", FN3[CHAIN_CREATE], 0, w3, 0, cb);
+    if (HW3) hw_irq_ready = 1;    /* 0.6: the libraries' 3AA handlers exist now (Register interrupt ID(0) / ID(1)) */
     u64 cfg = (u64)(uintptr_t)zalloc(40);
     w32(cfg, 1);
     STEP("3AA set_system_config", FN3[SET_SYSTEM_CONFIG], cfg);
@@ -501,6 +528,14 @@ int main(int argc, char **argv)
                  "+0x118 0x%08x", HW3[0], s1, s2, HW3[0x108 / 4], HW3[0x118 / 4]);
         plat_log(b);
         plat_mark("hw3aa: shot F1 done, watching the interrupt status 200 ms");
+#ifndef ISPHOST_DRIVER
+        if (getenv("HW3AA_SELFTEST")) {   /* build machine: what the phone showed after shot F1 (+0x10c bit 20), as
+                                             the ISR would hand it over */
+            HW3[0x10c / 4] = 1u << 20;
+            s1 = HW3[0x10c / 4];
+            isp_front_irq(0);
+        }
+#endif
         u64 t0 = plat_usec();
         while (plat_usec() - t0 < 200000) {
             u32 n1 = HW3[0x10c / 4], n2 = HW3[0x11c / 4];
@@ -517,6 +552,9 @@ int main(int argc, char **argv)
         snap(HW3, hw_shot);
         write_regs(hw_shot, "3AA0-hw-shot", "3AA0 0x17190000 REAL registers after 3AA shot F1 + 200 ms (S10eIsp hw3aashot)");
         hw_diff(hw_init, hw_shot, "shot");
+        snprintf(b, sizeof(b), "hw3aa: real interrupts handed to the libraries so far: %llu",
+                 (unsigned long long)hw_irq_n);
+        plat_log(b);
         STEP("3AA stop", FN3[STOP], r64(obj3), 0);
         u32 *hw_stop = malloc(0x10000);
         snap(HW3, hw_stop);

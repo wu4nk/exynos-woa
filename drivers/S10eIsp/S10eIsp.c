@@ -1,5 +1,5 @@
 /*
- * S10eIsp.c (v0.5) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
+ * S10eIsp.c (v0.6) - Galaxy S10 camera ISP, UMDF 2 driver (notes/s10-isp.md, Stage 4 option A, plan item 4).
  *
  * Future role: host Samsung's ISP libraries (tools/isp-host) inside this driver's Wudfhost process, with the ISP's
  * registers mapped into the process by the framework (UmdfRegisterAccessMode = RegisterAccessUsingUserModeMapping,
@@ -36,7 +36,13 @@
  *      interrupt-status watching (nothing connected), and the DDK's stop; registers read after shot and after stop.
  * ISPLP (ISP0) and MCSC are mapped but NEVER READ: pd-isplp's state is not known yet (S10eCam 0.12 prints it).
  * Up to 0.3.4 nothing was written to any register; 0.4 writes to 3AA0 only in the hw3aa run (item 8).
- * No interrupt is connected (none is declared in the DSDT node).
+ *  10. (0.6) INTERRUPTS: with UEFI v0.2.4 the node has 3AA0's two interrupts (GSIV 351 = the libraries' id 0, 352 =
+ *      id 1; _CRS order = creation order of the interrupt objects here). UMDF 2 handles them at PASSIVE_LEVEL
+ *      (WDF_INTERRUPT_CONFIG docs). The ISR hands each one to the libraries' handler (isp_front_irq ->
+ *      isp_irq_sync(chain 0, id), what the kernel's fimc_is_isr1_ddk / isr2 do); the handler clears the status. When
+ *      nobody can take it (no hw3aa run yet, or more than IRQ_STORM of them) the ISR masks 3AA0 at the source:
+ *      +0x108 = 0 and +0x118 = 0, the first two writes the libraries' own chain_create makes (Android trace).
+ *      Counts go to the registry value "Irq". With UEFI v0.2.3 (no interrupt resource) the objects stay unused.
  * The result goes to the registry, value "Probe" under
  *   HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\SAMS982C\<instance>\Device Parameters\S10eIsp
  * (PLUGPLAY_REGKEY_DEVICE | WDF_REGKEY_DEVICE_SUBKEY, KEY_READ | KEY_SET_VALUE: the only device key a UMDF driver may
@@ -50,8 +56,9 @@
 #include "plat_posix.h"                      /* tools/isp-host: plat_win_dma_pool, plat_win_set_thread_fatal */
 int isp_front_main(int argc, char **argv);   /* tools/isp-host/test_front.c built with ISPHOST_DRIVER */
 void isp_front_set_hw3aa(volatile void *va, int shot); /* 0.4/0.5: the REAL 3AA0 window (test_front.c) */
+int isp_front_irq(unsigned int id);          /* 0.6: a real 3AA0 interrupt to the libraries' handler (test_front.c) */
 
-#define S10EISP_VERSION L"0.5"
+#define S10EISP_VERSION L"0.6"
 
 /* resources, in the DSDT node's order (Dsdt.asl Device (CISP)) */
 #define RES_CMU_ISPPRE 0
@@ -78,13 +85,30 @@ typedef struct _RES {
 typedef struct _DEVCTX {
     RES res[RES_MAX];
     ULONG nres;
+    ULONG nint;                /* 0.6: interrupt resources, raw (GSIV) + translated vector, resource-list order */
+    ULONG rvec[4], tvec[4];
+    WDFINTERRUPT irq[2];
 } DEVCTX;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVCTX, GetCtx)
+
+typedef struct _IRQCTX {
+    ULONG index;               /* creation order */
+    LONG id;                   /* the libraries' interrupt id: 0 = GSIV 351 (INTR_HWIP1), 1 = 352; -1 = not resolved */
+    ULONG vec, gsiv;           /* WdfInterruptGetInfo's Vector, and the raw vector (GSIV) of the matching resource */
+    BOOLEAN by_gsiv;           /* id from the GSIV (else: creation order, the fallback) */
+} IRQCTX;
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(IRQCTX, GetIrqCtx)
+#define TAA_INT1_ENABLE 0x108u /* written 0 first by the libraries' chain_create; 0xfff0005f after shot F1 */
+#define TAA_INT2_ENABLE 0x118u
+#define IRQ_STORM 200000       /* interrupts per id handed to the libraries before the ISR gives up and masks */
+static volatile LONG g_irq_n[2], g_irq_lib[2], g_irq_masked[2];
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD EvtDeviceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE EvtPrepareHardware;
 EVT_WDF_DEVICE_RELEASE_HARDWARE EvtReleaseHardware;
+EVT_WDF_INTERRUPT_ISR IspIsr;
+static LONG IrqId(WDFINTERRUPT Interrupt);
 
 /* ---- probe log (one REG_SZ value) ---- */
 static WCHAR g_log[8192];
@@ -288,6 +312,26 @@ static void __cdecl InvalidParameter(const wchar_t *expr, const wchar_t *func, c
     Trace("CRT invalid parameter reported (call returns an error)");
 }
 
+static void IrqReport(void)
+{
+    WCHAR m[512];
+    size_t n;
+    StringCchPrintfW(m, ARRAYSIZE(m), L"id 0 (GSIV 351): %ld, to the libraries %ld, masked %ld; id 1 (GSIV 352): %ld, "
+                     L"to the libraries %ld, masked %ld", g_irq_n[0], g_irq_lib[0], g_irq_masked[0], g_irq_n[1],
+                     g_irq_lib[1], g_irq_masked[1]);
+    DEVCTX *c = g_dev ? GetCtx(g_dev) : NULL;
+    for (ULONG i = 0; c && i < 2; i++) {
+        if (!c->irq[i] || !c->nint) continue;
+        LONG id = IrqId(c->irq[i]);
+        IRQCTX *x = GetIrqCtx(c->irq[i]);
+        n = wcslen(m);
+        StringCchPrintfW(m + n, ARRAYSIZE(m) - n, L"; object %lu: vector %lu GSIV %lu -> id %ld (%s)", i, x->vec,
+                         x->gsiv, id, x->by_gsiv ? L"by GSIV" : L"by creation order");
+    }
+    SetValue(L"Irq", m);
+    Trace("interrupts: %S", m);
+}
+
 static DWORD WINAPI FrontThread(LPVOID p)
 {
     static char dir[MAX_PATH], data[MAX_PATH], layout[MAX_PATH], cal[MAX_PATH];
@@ -372,6 +416,7 @@ static DWORD WINAPI FrontThread(LPVOID p)
     Trace("isp_front_main returned %d", rc);
     StringCchPrintfW(msg, ARRAYSIZE(msg), L"finished: rc %d, log " ISP_DIR "\\out\\host.log", rc);
     SetValue(L"FrontRun", msg);
+    IrqReport();
     return 0;
 }
 
@@ -401,7 +446,7 @@ static void MaybeFrontRun(void)
 NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Translated)
 {
     DEVCTX *c = GetCtx(Device);
-    UNREFERENCED_PARAMETER(Raw);
+    c->nint = 0;
     g_log[0] = 0;
     Log(L"S10eIsp %s probe, process %lu", S10EISP_VERSION, GetCurrentProcessId());
 
@@ -410,6 +455,19 @@ NTSTATUS EvtPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Tra
     for (ULONG i = 0; i < count; i++) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d = WdfCmResourceListGetDescriptor(Translated, i);
         if (!d) continue;
+        if (d->Type == CmResourceTypeInterrupt) {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR rd = WdfCmResourceListGetDescriptor(Raw, i);
+            ULONG gsiv = (rd && rd->Type == CmResourceTypeInterrupt) ? rd->u.Interrupt.Vector : 0;
+            Log(L"resource %lu: interrupt raw vector %lu (GSIV), translated vector %lu level %lu flags 0x%X (%s)", i,
+                gsiv, d->u.Interrupt.Vector, d->u.Interrupt.Level, d->Flags,
+                (d->Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? L"edge" : L"level");
+            if (c->nint < ARRAYSIZE(c->rvec)) {
+                c->rvec[c->nint] = gsiv;
+                c->tvec[c->nint] = d->u.Interrupt.Vector;
+                c->nint++;
+            }
+            continue;
+        }
         if (d->Type != CmResourceTypeMemory) {
             Log(L"resource %lu: type %u (not memory, ignored)", i, d->Type);
             continue;
@@ -493,6 +551,56 @@ NTSTATUS EvtReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
     return STATUS_SUCCESS;
 }
 
+/* which of 3AA0's interrupts an object got: the docs fetched do not say how the framework matches resources to
+   objects, so the object's own vector (WdfInterruptGetInfo, valid after EvtDevicePrepareHardware) is looked up in the
+   translated list and the raw entry next to it gives the GSIV: 351 -> id 0, 352 -> id 1. Creation order only as the
+   fallback (recorded). */
+static LONG IrqId(WDFINTERRUPT Interrupt)
+{
+    IRQCTX *x = GetIrqCtx(Interrupt);
+    if (x->id >= 0) return x->id;
+    WDF_INTERRUPT_INFO info;
+    WDF_INTERRUPT_INFO_INIT(&info);
+    WdfInterruptGetInfo(Interrupt, &info);
+    DEVCTX *c = GetCtx(WdfInterruptGetDevice(Interrupt));
+    x->vec = info.Vector;
+    LONG id = (LONG)x->index;
+    for (ULONG k = 0; k < c->nint; k++)
+        if (c->tvec[k] == info.Vector) {
+            x->gsiv = c->rvec[k];
+            if (x->gsiv == 351 || x->gsiv == 352) { id = (LONG)(x->gsiv - 351); x->by_gsiv = TRUE; }
+        }
+    x->id = id;
+    return id;
+}
+
+/* 0.6: PASSIVE_LEVEL (UMDF 2 always). Each interrupt goes to the libraries' handler, which clears the 3AA0 status;
+   if it cannot (nothing to hand it to, or a storm), the source is masked so the level line drops. */
+BOOLEAN IspIsr(WDFINTERRUPT Interrupt, ULONG MessageID)
+{
+    LONG id = IrqId(Interrupt);
+    UNREFERENCED_PARAMETER(MessageID);
+    if (id < 0 || id > 1) return FALSE;
+    LONG n = InterlockedIncrement(&g_irq_n[id]);
+    if (n <= IRQ_STORM && isp_front_irq(id) == 0) {
+        InterlockedIncrement(&g_irq_lib[id]);
+        return TRUE;
+    }
+    DEVCTX *c = GetCtx(WdfInterruptGetDevice(Interrupt));
+    RES *taa = &c->res[RES_3AA0];
+    if (c->nres > RES_3AA0 && taa->pa.QuadPart == 0x17190000) {
+        if (taa->mapped) {
+            *(volatile ULONG *)(taa->mapped + TAA_INT1_ENABLE) = 0;
+            *(volatile ULONG *)(taa->mapped + TAA_INT2_ENABLE) = 0;
+        } else if (taa->pseudo) {
+            WDF_WRITE_REGISTER_ULONG(WdfInterruptGetDevice(Interrupt), (PULONG)((PUCHAR)taa->pseudo + TAA_INT1_ENABLE), 0);
+            WDF_WRITE_REGISTER_ULONG(WdfInterruptGetDevice(Interrupt), (PULONG)((PUCHAR)taa->pseudo + TAA_INT2_ENABLE), 0);
+        }
+    }
+    InterlockedIncrement(&g_irq_masked[id]);
+    return TRUE;
+}
+
 NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT Init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp;
@@ -504,7 +612,23 @@ NTSTATUS EvtDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT Init)
     pnp.EvtDeviceReleaseHardware = EvtReleaseHardware;
     WdfDeviceInitSetPnpPowerEventCallbacks(Init, &pnp);
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr, DEVCTX);
-    return WdfDeviceCreate(&Init, &attr, &dev);
+    NTSTATUS s = WdfDeviceCreate(&Init, &attr, &dev);
+    if (!NT_SUCCESS(s)) return s;
+    /* 0.6: one interrupt object per 3AA0 interrupt (WdfInterruptCreate docs: "once for each interrupt vector");
+       which one each gets is resolved by its vector (IrqId); unused without UEFI v0.2.4 */
+    for (ULONG i = 0; i < 2; i++) {
+        WDF_INTERRUPT_CONFIG ic;
+        WDF_OBJECT_ATTRIBUTES ia;
+        WDFINTERRUPT irq;
+        WDF_INTERRUPT_CONFIG_INIT(&ic, IspIsr, NULL);
+        WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&ia, IRQCTX);
+        s = WdfInterruptCreate(dev, &ic, &ia, &irq);
+        if (!NT_SUCCESS(s)) return s;
+        GetIrqCtx(irq)->index = i;
+        GetIrqCtx(irq)->id = -1;
+        GetCtx(dev)->irq[i] = irq;
+    }
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)

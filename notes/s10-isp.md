@@ -1019,3 +1019,29 @@ Plan (each a task, each waits for the result before it):
   descriptors 0x15F / 0x160 in SAMS982C's _CRS; FD carries "beyond1lte-uefi v0.2.4". Beyond0 (S10e) DEBUG rc 0, no
   SAMS982C. Image beyond1lte-uefi-v0.2.4.img 7716864 B sha256
   98e170d0647ce1f52bac459c75de2b628890758f74f4a0ac2c852ac81ddf3c01. NOT FLASHED.
+
+## Plan item 6 step 4b: S10eIsp 0.6 - 3AA0's interrupts connected, handed to the libraries (2026-11-18)
+- Docs (besides step 4a's): ddi WdfInterruptCreate - "Your driver must call WdfInterruptCreate once for each interrupt
+  vector that its device requires"; "Drivers typically call the WdfInterruptCreate method from an EvtDriverDeviceAdd
+  callback function" (then InterruptRaw / InterruptTranslated NULL); "the framework stores information about the
+  device's assigned interrupt resources in the interrupt objects that the driver has created" - HOW resources are
+  matched to objects is NOT stated in the pages fetched (creating-an-interrupt-object, WdfInterruptCreate).
+  ddi WdfInterruptGetInfo: valid "after the framework has called the driver's EvtDevicePrepareHardware callback
+  function and before ... EvtDeviceReleaseHardware"; IRQL <= DISPATCH_LEVEL; UMDF 2.0+.
+- So 0.6 does not rely on an order: two objects created in EvtDriverDeviceAdd (PassiveHandling is always TRUE in
+  UMDF 2); EvtPrepareHardware records each interrupt resource's raw vector (= GSIV, to be confirmed by the probe log)
+  next to its translated vector; on its first interrupt (and in the report) an object resolves its id from
+  WdfInterruptGetInfo().Vector -> translated entry -> raw GSIV: 351 -> id 0, 352 -> id 1 (creation order only as a
+  recorded fallback).
+- ISR (passive): isp_front_irq(id) (test_front.c) -> isp_irq_sync(H, chain 0, id) - the libraries' handler registered
+  by 3AA chain_create (the kernel's fimc_is_isr1_ddk / isr2 do the same call) reads and clears the status. Ready only
+  in a hw3aa run after 3AA chain_create; otherwise (or after IRQ_STORM = 200000 per id) the ISR masks 3AA0 at the
+  source: +0x108 = 0, +0x118 = 0 (the first two writes the libraries' chain_create makes; the DDK's stop also zeroes
+  +0x108). Counts in registry value "Irq" with each object's vector / GSIV / id; host.log logs the first 64 handed
+  over with +0x10c / +0x11c before and after.
+- Expected on the phone (UEFI v0.2.4 + S10eIsp 0.6, front -Hw3aaShot): the IRQ0 status bit 20 that appeared at shot
+  F1 (0.5) now raises GSIV 351 -> the libraries' handler clears it. Build-machine model (HW3AA_SELFTEST, +0x10c bit 20
+  set after shot, isp_front_irq(0)): handler -> 0 in 1.4 ms (qemu), +0x10c cleared (it wrote +0x110 = 0x00100000).
+- Syntax check S10eIsp.c (scratch ucheck-umdf.sh, clang against WDK 26100 um + UMDF 2.15 headers): clean except the
+  known _set_invalid_parameter_handler (km/crt lacks it; the EWDK build has it). test_front.c: zig aarch64 linux /
+  windows-gnu clean.
